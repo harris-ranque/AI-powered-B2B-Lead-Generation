@@ -1,7 +1,6 @@
 # Railway Frontend Configuration
 [build]
-builder = "nixpacks"
-watchPatterns = ["apps/web/**"]
+builder = "NIXPACKS"
 
 [deploy]
 startCommand = "npm start"

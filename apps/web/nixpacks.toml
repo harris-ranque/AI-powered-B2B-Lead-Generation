@@ -1,3 +1,4 @@
+# Railway Frontend Configuration
 providers = ["node"]
 
 [phases.setup]
@@ -5,15 +6,16 @@ nixPkgs = ["nodejs-18_x", "npm-9_x"]
 
 [phases.install]
 dependsOn = ["setup"]
+# No need to cd - Railway builds from service directory
 cmds = [
-  "cd apps/web && npm install --legacy-peer-deps"
+  "npm install --legacy-peer-deps"
 ]
 
 [phases.build]
 dependsOn = ["install"]
 cmds = [
-  "cd apps/web && npm run build"
+  "npm run build"
 ]
 
 [start]
-cmd = "cd apps/web && npm start"
+cmd = "npm start"

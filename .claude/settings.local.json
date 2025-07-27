@@ -29,7 +29,9 @@
       "Bash(git remote set-url:*)",
       "Bash(git push:*)",
       "Bash(npm install:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(cd:*)",
+      "WebFetch(domain:station.railway.com)"
     ],
     "deny": []
   }

@@ -1,4 +1,4 @@
-# Explicitly set Python provider for Railway detection
+# Railway Python FastAPI Configuration
 providers = ["python"]
 
 [phases.setup]
@@ -7,9 +7,8 @@ nixPkgs = ["python311", "python311Packages.pip", "gcc", "stdenv.cc"]
 
 [phases.install]
 dependsOn = ["setup"]
-# Navigate to the worker directory and install dependencies
+# No need to cd - Railway builds from service directory
 cmds = [
-  "cd apps/crewai-worker",
   "python -m pip install --upgrade pip",
   "pip install -r requirements.txt"
 ]
@@ -19,9 +18,10 @@ dependsOn = ["install"]
 # No build phase needed for Python
 
 [start]
-# Start the FastAPI application
-cmd = "cd apps/crewai-worker && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+# Use hypercorn as recommended by Railway for FastAPI
+cmd = "python -m hypercorn app.main:app --bind \"[::]:$PORT\""
 
 [variables]
 # Ensure Python is unbuffered for real-time logs
 PYTHONUNBUFFERED = "1"
+NIXPACKS_PYTHON_VERSION = "3.11"
