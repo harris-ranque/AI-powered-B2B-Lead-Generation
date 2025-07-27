@@ -6,16 +6,22 @@ nixPkgs = ["nodejs-18_x", "npm-9_x"]
 
 [phases.install]
 dependsOn = ["setup"]
-# No need to cd - Railway builds from service directory
+# Install dependencies
 cmds = [
   "npm install --legacy-peer-deps"
 ]
 
 [phases.build]
 dependsOn = ["install"]
+# Generate mock Convex files and build
 cmds = [
+  "node convex-mock.js",
   "npm run build"
 ]
 
 [start]
 cmd = "npm start"
+
+[variables]
+# Set placeholder Convex URL for build
+VITE_CONVEX_URL = "https://placeholder.convex.cloud"
