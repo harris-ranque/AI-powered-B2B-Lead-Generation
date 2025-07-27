@@ -1,12 +1,16 @@
 # Railway Frontend Configuration
 [build]
-builder = "dockerfile"
-dockerfilePath = "Dockerfile"
+builder = "nixpacks"
 
 [deploy]
+startCommand = "npm start"
 healthcheckPath = "/"
 healthcheckTimeout = 300
 restartPolicyType = "always"
 
 [service]
 internalPort = 3000
+
+[variables]
+NODE_ENV = "production"
+PORT = "3000"

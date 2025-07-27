@@ -1,0 +1,15 @@
+[providers]
+nodejs = "18"
+
+[variables]
+NODE_ENV = "production"
+NPM_CONFIG_PRODUCTION = "false"
+
+[phases.install]
+cmds = ["npm install --no-package-lock --legacy-peer-deps"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm start"
