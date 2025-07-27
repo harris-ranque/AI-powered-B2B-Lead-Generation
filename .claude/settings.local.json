@@ -27,7 +27,9 @@
       "Bash(mv:*)",
       "Bash(cd:*)",
       "Bash(git remote set-url:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(npm install:*)",
+      "Bash(cd:*)"
     ],
     "deny": []
   }

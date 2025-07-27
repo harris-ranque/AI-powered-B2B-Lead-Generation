@@ -59,10 +59,10 @@ If automatic detection fails:
 ```toml
 # apps/web/railway.toml
 [build]
-builder = "nixpacks"
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "pnpm start"
 healthcheckPath = "/"
 
 [service]
@@ -73,10 +73,10 @@ internalPort = 3000
 ```toml
 # apps/crewai-worker/railway.toml
 [build]
-builder = "nixpacks"
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
 healthcheckPath = "/health"
 
 [service]
@@ -123,10 +123,10 @@ After deployment:
    - Ensure `railway.toml` files exist in each app directory
    - Verify the `startCommand` is correctly specified
 
-2. **"Headless installation requires a pnpm-lock.yaml file"**
-   - This project uses npm instead of pnpm for Railway deployment
-   - `nixpacks.toml` files are configured to use `npm ci`
-   - `package-lock.json` is committed to the repository
+2. **"Headless installation requires a pnpm-lock.yaml file" / "npm ci" errors**
+   - Configured nixpacks to use `npm install` instead of `npm ci`
+   - Added `--no-package-lock` flag to avoid lock file dependencies
+   - Each service has its own `nixpacks.toml` configuration
 
 3. **Build failures**
    - Check that `requirements.txt` exists for Python service

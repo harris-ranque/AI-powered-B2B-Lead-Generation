@@ -1,8 +1,11 @@
+[providers]
+python = "3.11"
+
 [variables]
 PYTHONUNBUFFERED = "1"
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+cmds = ["pip install --upgrade pip", "pip install -r requirements.txt"]
 
 [start]
 cmd = "python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
