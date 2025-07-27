@@ -20,7 +20,10 @@
       "Bash(rm:*)",
       "Bash(cd:*)",
       "Bash(cd:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(git commit -m \"Initial commit: Lead Eternity monorepo setup\n\n- Frontend React app (apps/web) - port 3000\n- CrewAI worker FastAPI service (apps/crewai-worker) - port 8080  \n- Convex backend with real-time webhooks\n- Turbo monorepo configuration with pnpm workspaces\n- Environment configuration files for all services\n- Railway deployment configuration\n\n🤖 Generated with Claude Code\n\nCo-Authored-By: Claude <noreply@anthropic.com>\")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": []
   }
