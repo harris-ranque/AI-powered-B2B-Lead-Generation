@@ -3,7 +3,7 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+startCommand = "python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "always"
@@ -15,3 +15,4 @@ internalPort = 8080
 [variables]
 PYTHONUNBUFFERED = "1"
 ENVIRONMENT = "production"
+PORT = "8080"

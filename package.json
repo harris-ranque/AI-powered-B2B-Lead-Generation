@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
+    "start": "turbo start",
+    "start:web": "turbo start --filter=@genni/web",
+    "start:worker": "turbo start --filter=@genni/crewai-worker",
     "clean": "turbo clean",
     "type-check": "turbo type-check",
     "lint": "turbo lint",
