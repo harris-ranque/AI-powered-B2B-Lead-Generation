@@ -1,5 +1,5 @@
 """
-Configuration management for Lead Eternity CrewAI Worker
+Configuration management for Genni CrewAI Worker
 """
 import os
 from functools import lru_cache

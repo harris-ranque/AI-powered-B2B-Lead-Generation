@@ -1,3 +1,3 @@
 """
-CrewAI Agents package for Lead Eternity
+CrewAI Agents package for Genni
 """

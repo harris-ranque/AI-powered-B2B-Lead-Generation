@@ -174,7 +174,7 @@ export const ERROR_CODES = {
 // Email Templates
 export const EMAIL_TEMPLATES = {
   WELCOME: {
-    subject: "Welcome to Lead Eternity! 🚀",
+    subject: "Welcome to Genni! 🚀",
     template: "welcome",
   },
   
@@ -194,7 +194,7 @@ export const EMAIL_TEMPLATES = {
   },
   
   MONTHLY_SUMMARY: {
-    subject: "Your monthly Lead Eternity summary",
+    subject: "Your monthly Genni summary",
     template: "monthly_summary",
   },
 } as const;

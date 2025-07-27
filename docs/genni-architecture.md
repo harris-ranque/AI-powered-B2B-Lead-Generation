@@ -1,4 +1,4 @@
-# Lead Eternity - Final Architecture & Implementation Guide
+# Genni - Final Architecture & Implementation Guide
 
 ## Final Tech Stack
 

@@ -1,6 +1,6 @@
-# Lead Eternity Convex Backend
+# Genni Convex Backend
 
-This is the Convex backend for Lead Eternity, an AI-powered lead generation platform that combines Google Maps search, contact enrichment, and CrewAI-powered email personalization.
+This is the Convex backend for Genni, an AI-powered lead generation platform that combines Google Maps search, contact enrichment, and CrewAI-powered email personalization.
 
 ## Overview
 
@@ -265,7 +265,7 @@ Credit costs:
 For issues and questions:
 - Check the troubleshooting guide
 - Review error logs in Convex dashboard
-- Contact support at support@leadeternity.com
+- Contact support at support@genni.com
 
 ## License
 

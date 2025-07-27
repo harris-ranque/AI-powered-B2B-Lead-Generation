@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Lead Eternity App Deployment Script
-echo "🚀 Deploying Lead Eternity App..."
+# Genni App Deployment Script
+echo "🚀 Deploying Genni App..."
 
 # Build the project
 echo "🏗️  Building project..."

@@ -53,7 +53,7 @@ export const { auth, signIn, signOut, store } = convexAuth({
       await ctx.db.insert("notifications", {
         userId,
         type: "system_alert",
-        title: "Welcome to Lead Eternity!",
+        title: "Welcome to Genni!",
         message: "You've been given 50 free credits to get started. Complete your business profile to unlock the full potential of our AI-powered lead generation.",
         data: { credits: 50 },
         read: false,

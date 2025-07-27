@@ -1,4 +1,4 @@
-# Lead Eternity Component Build Plan
+# Genni Component Build Plan
 
 ## 📋 Project Analysis Summary
 

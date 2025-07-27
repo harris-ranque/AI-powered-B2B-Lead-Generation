@@ -167,7 +167,7 @@ export const getCreditPackages = query({
           price: 1900, // $19.00 in cents
           savings: 0,
           popular: false,
-          description: "Perfect for trying out Lead Eternity",
+          description: "Perfect for trying out Genni",
         },
         {
           id: "growth_500",

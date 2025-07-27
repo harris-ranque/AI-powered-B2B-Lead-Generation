@@ -87,7 +87,7 @@ APP_URL=http://localhost:3000
 
 1. **Deploy Convex Backend**
    ```bash
-   cd ../lead-eternity-convex
+   cd ../genni-convex
    npx convex dev    # For development
    npx convex deploy # For production
    ```

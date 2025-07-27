@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Lead Eternity App Setup Script
-echo "🚀 Setting up Lead Eternity App..."
+# Genni App Setup Script
+echo "🚀 Setting up Genni App..."
 
 # Check if pnpm is installed
 if ! command -v pnpm &> /dev/null; then

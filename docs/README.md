@@ -1,10 +1,10 @@
-# Lead Eternity
+# Genni
 
 🚀 **AI-Powered Lead Generation Platform** with 5-Agent Personalization System
 
 A sophisticated lead generation platform that combines intelligent lead discovery with AI-powered personalized email creation using CrewAI multi-agent systems.
 
-## ✨ What Makes Lead Eternity Unique
+## ✨ What Makes Genni Unique
 
 - **5-Agent AI System**: Comprehensive lead analysis and email personalization
 - **Real-time Lead Discovery**: Intelligent search with instant AI analysis
@@ -18,13 +18,13 @@ This monorepo contains:
 
 - **Frontend**: React 18 + TypeScript + Vite with shadcn/ui components
 - **CrewAI Worker**: Python FastAPI service with 5-agent AI system
-- **Backend**: Convex real-time database (separate repository: `lead-eternity-convex`)
+- **Backend**: Convex real-time database (separate repository: `genni-convex`)
 - **API Client**: Full TypeScript integration between frontend and AI worker
 
 ## 📁 Project Structure
 
 ```
-lead-eternity-app/
+genni-app/
 ├── apps/
 │   ├── web/                     # Next.js frontend
 │   └── crewai-worker/           # Python CrewAI service
@@ -49,7 +49,7 @@ lead-eternity-app/
 
 ```bash
 git clone <repository-url>
-cd lead-eternity-app
+cd genni-app
 chmod +x scripts/start-development.sh
 ./scripts/start-development.sh
 ```
@@ -151,7 +151,7 @@ PORT=8080
 
 ### Convex Backend Setup
 
-The backend is in a separate repository. See `lead-eternity-convex` for:
+The backend is in a separate repository. See `genni-convex` for:
 - Database schema
 - Authentication
 - API endpoints
@@ -169,7 +169,7 @@ The backend is in a separate repository. See `lead-eternity-convex` for:
 
 2. **Deploy Convex backend separately:**
    ```bash
-   cd ../lead-eternity-convex
+   cd ../genni-convex
    npx convex deploy
    ```
 

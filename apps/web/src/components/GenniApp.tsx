@@ -11,11 +11,11 @@ import { Settings } from "./Settings";
 import { LeadEternityDashboard } from "./LeadEternityDashboard";
 
 export function GenniApp() {
-  const [currentPage, setCurrentPage] = useState("lead-eternity");
+  const [currentPage, setCurrentPage] = useState("genni");
 
   const renderPage = () => {
     switch (currentPage) {
-      case "lead-eternity":
+      case "genni":
         return <LeadEternityDashboard />;
       case "lead-search":
         return <GenniLeadSearch />;
@@ -38,7 +38,7 @@ export function GenniApp() {
 
   return (
     <div className="min-h-screen bg-background">
-      {currentPage === "lead-eternity" ? (
+      {currentPage === "genni" ? (
         <LeadEternityDashboard />
       ) : (
         <>

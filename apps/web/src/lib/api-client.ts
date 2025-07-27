@@ -1,5 +1,5 @@
 /**
- * API Client for Lead Eternity - Convex Integration
+ * API Client for Genni - Convex Integration
  * Provides helper functions and default data for the application
  */
 
@@ -102,7 +102,7 @@ class ApiClient {
    */
   getDefaultBusinessProfile(): BusinessProfileInput {
     return {
-      companyName: 'Lead Eternity',
+      companyName: 'Genni',
       industry: 'Business Services & AI Solutions',
       valueProposition: 'AI-powered lead generation and personalized email automation that helps businesses scale their outreach and improve conversion rates',
       services: [
@@ -149,10 +149,10 @@ class ApiClient {
         }
       ],
       contactInfo: {
-        email: 'hello@leadeternity.com',
+        email: 'hello@genni.com',
         phone: '+1 (555) 123-4567',
-        website: 'https://leadeternity.com',
-        linkedin: 'https://linkedin.com/company/lead-eternity'
+        website: 'https://genni.com',
+        linkedin: 'https://linkedin.com/company/genni'
       }
     };
   }

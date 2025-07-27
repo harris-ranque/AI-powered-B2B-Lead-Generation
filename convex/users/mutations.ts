@@ -139,7 +139,7 @@ export const deductCredits = mutation({
         userId,
         type: "credits_low",
         title: "Credits Running Low",
-        message: `You have ${newBalance} credits remaining. Consider purchasing more to continue using Lead Eternity.`,
+        message: `You have ${newBalance} credits remaining. Consider purchasing more to continue using Genni.`,
         data: { creditsRemaining: newBalance },
         read: false,
         sent: false,

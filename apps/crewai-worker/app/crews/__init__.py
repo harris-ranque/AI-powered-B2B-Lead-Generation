@@ -1,3 +1,3 @@
 """
-CrewAI Crews package for Lead Eternity
+CrewAI Crews package for Genni
 """

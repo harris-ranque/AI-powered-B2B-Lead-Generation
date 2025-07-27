@@ -1,5 +1,5 @@
 """
-Lead Eternity CrewAI Worker Service
+Genni CrewAI Worker Service
 FastAPI application with multi-agent AI system for email personalization
 """
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Lead Eternity CrewAI Worker",
+    title="Genni CrewAI Worker",
     description="AI-powered email personalization service using CrewAI multi-agent system",
     version="1.0.0",
     docs_url="/docs",
@@ -57,7 +57,7 @@ webhook_client = WebhookClient(settings.webhook_url)
 async def root():
     """Health check endpoint"""
     return {
-        "service": "Lead Eternity CrewAI Worker",
+        "service": "Genni CrewAI Worker",
         "status": "active",
         "timestamp": datetime.utcnow().isoformat(),
         "version": "1.0.0"

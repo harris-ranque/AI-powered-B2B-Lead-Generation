@@ -65,7 +65,7 @@ export function LeadEternityDashboard() {
     setHasCompletedOnboarding(true);
     setCurrentTab("search");
     toast({
-      title: "Welcome to Lead Eternity!",
+      title: "Welcome to Genni!",
       description: "Your business profile has been saved. You're ready to start generating leads!",
     });
   };
@@ -116,7 +116,7 @@ export function LeadEternityDashboard() {
             <div className="flex items-center space-x-2">
               <Bot className="h-8 w-8 text-primary" />
               <div>
-                <h1 className="text-xl font-bold">Lead Eternity</h1>
+                <h1 className="text-xl font-bold">Genni</h1>
                 <p className="text-xs text-muted-foreground">AI-Powered Lead Generation</p>
               </div>
             </div>
@@ -356,7 +356,7 @@ export function LeadEternityDashboard() {
               <div className="mb-6">
                 <h2 className="text-2xl font-bold mb-2">Settings</h2>
                 <p className="text-muted-foreground">
-                  Configure your Lead Eternity platform preferences and AI settings.
+                  Configure your Genni platform preferences and AI settings.
                 </p>
               </div>
               <SettingsComponent />

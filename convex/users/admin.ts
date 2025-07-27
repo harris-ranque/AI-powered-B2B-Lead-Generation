@@ -263,7 +263,7 @@ export const reactivateUser = mutation({
       userId: args.userId,
       type: "system_alert",
       title: "Account Reactivated",
-      message: "Your account has been reactivated. You can now access all features of Lead Eternity.",
+      message: "Your account has been reactivated. You can now access all features of Genni.",
       data: { 
         reactivatedBy: currentUserId,
         reactivatedAt: Date.now(),

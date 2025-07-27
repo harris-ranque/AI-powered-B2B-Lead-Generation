@@ -1,5 +1,5 @@
 {
-  "name": "@lead-eternity/crewai-worker",
+  "name": "@genni/crewai-worker",
   "version": "0.1.0",
   "private": true,
   "scripts": {

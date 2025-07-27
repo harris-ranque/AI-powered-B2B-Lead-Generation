@@ -31,7 +31,7 @@ export const validateApiKey = internalQuery({
     // For now, we'll assume the API key belongs to a specific user
     // In a more complex system, you might have service-to-service keys
     const users = await ctx.db.query("users").collect();
-    const user = users.find(u => u.email === "api@leadeternity.com"); // Mock user for API access
+    const user = users.find(u => u.email === "api@genni.com"); // Mock user for API access
 
     return user;
   },

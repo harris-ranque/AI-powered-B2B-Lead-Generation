@@ -1,55 +1,126 @@
+// Developer configuration and payout settings
 export interface DeveloperConfig {
+  _id: string;
   developerId: string;
-  email: string;
-  name: string;
-  royaltyPercentage: number; // e.g., 0.05 for 5%
-  paymentMethod: 'stripe' | 'paypal' | 'bank_transfer';
-  paymentDetails: {
-    stripeAccountId?: string;
-    paypalEmail?: string;
-    bankAccount?: {
-      accountNumber: string;
-      routingNumber: string;
-      accountHolderName: string;
+  stripeConnectAccountId?: string;
+  stripeConnectStatus?: 'pending' | 'active' | 'rejected';
+  payoutMethod: 'automatic' | 'manual';
+  bankDetails?: {
+    accountName: string;
+    accountNumber: string;
+    routingNumber: string;
+    bankName: string;
+    swift?: string;
+  };
+  paypalEmail?: string;
+  preferredPaymentMethod?: 'bank' | 'paypal' | 'crypto' | 'check';
+  taxInfo?: {
+    taxId: string;
+    businessName?: string;
+    address: {
+      street: string;
+      city: string;
+      state: string;
+      zip: string;
+      country: string;
     };
   };
-  taxInfo: {
-    taxId?: string;
-    country: string;
-    taxExempt: boolean;
-  };
-  isActive: boolean;
   createdAt: number;
+  updatedAt: number;
 }
 
+// Revenue tracking for royalty calculations
 export interface RevenueTracking {
-  id: string;
-  month: string; // YYYY-MM format
-  totalRevenue: number;
-  royaltyAmount: number;
-  developerId: string;
-  status: 'pending' | 'calculated' | 'paid' | 'failed';
-  paymentDate?: number;
-  paymentReference?: string;
-  breakdown: {
-    subscriptions: number;
-    oneTimePayments: number;
-    refunds: number;
-  };
-  createdAt: number;
+  _id: string;
+  date: string; // YYYY-MM-DD
+  type: 'subscription' | 'one_time' | 'addon' | 'refund';
+  amount: number; // In cents
+  currency: string;
+  customerId: string;
+  subscriptionId?: string;
+  invoiceId?: string;
+  description: string;
+  stripeEventId: string; // For idempotency
+  metadata: Record<string, any>;
 }
 
+// Monthly royalty calculations and payment tracking
 export interface RoyaltyPayment {
-  id: string;
-  developerId: string;
-  amount: number;
-  currency: 'USD';
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  paymentMethod: string;
-  paymentReference?: string;
-  monthsCovered: string[]; // Array of YYYY-MM strings
-  taxWithheld?: number;
+  _id: string;
+  month: string; // YYYY-MM
+  startDate: string;
+  endDate: string;
+  totalRevenue: number; // In cents
+  royaltyRate: number; // 0.05 for 5%
+  royaltyAmount: number; // In cents
+  currency: string;
+  status: 'calculating' | 'pending' | 'processing' | 'paid' | 'failed' | 'disputed';
+  paymentMethod?: 'stripe_connect' | 'bank_transfer' | 'paypal' | 'other';
+  paymentDetails?: {
+    transactionId?: string;
+    paidAt?: number;
+    failureReason?: string;
+    notes?: string;
+  };
+  breakdown: Array<{
+    type: string;
+    count: number;
+    amount: number;
+  }>;
   createdAt: number;
-  completedAt?: number;
-  failureReason?: string;
+  dueDate: number; // 15th of following month
+}
+
+// Audit log for all royalty-related actions
+export interface RoyaltyAuditLog {
+  _id: string;
+  timestamp: number;
+  action: 'revenue_recorded' | 'royalty_calculated' | 'payment_initiated' | 'payment_completed' | 'payment_failed' | 'config_updated' | 'manual_adjustment';
+  performedBy: string; // User ID
+  details: Record<string, any>;
+  ipAddress?: string;
+}
+
+// Dashboard statistics
+export interface RoyaltyStats {
+  lifetimeEarnings: number;
+  pendingAmount: number;
+  currentMonthEarnings: number;
+  averageMonthly: number;
+  percentageChange: number;
+  firstPaymentDate?: string;
+  nextPaymentDate?: string;
+}
+
+// Payment table filter types
+export type PaymentFilter = 'all' | 'pending' | 'paid' | 'failed';
+
+// Stripe Connect OAuth response
+export interface StripeConnectResponse {
+  success: boolean;
+  accountId?: string;
+  error?: string;
+}
+
+// Export/Invoice data
+export interface InvoiceData {
+  paymentId: string;
+  month: string;
+  amount: number;
+  currency: string;
+  breakdown: Array<{
+    type: string;
+    count: number;
+    amount: number;
+  }>;
+  generatedAt: number;
+}
+
+// Admin view interfaces
+export interface AdminRoyaltyOverview {
+  totalPendingPayments: number;
+  totalPendingAmount: number;
+  monthlyRevenue: number;
+  royaltyRate: number;
+  nextPaymentDate: string;
 }

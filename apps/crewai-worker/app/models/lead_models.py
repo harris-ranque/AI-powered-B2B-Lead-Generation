@@ -1,5 +1,5 @@
 """
-Pydantic models for Lead Eternity CrewAI Worker
+Pydantic models for Genni CrewAI Worker
 """
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional

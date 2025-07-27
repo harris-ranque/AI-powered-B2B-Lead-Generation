@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Lead Eternity Development Startup Script
-echo "🚀 Starting Lead Eternity Development Environment..."
+# Genni Development Startup Script
+echo "🚀 Starting Genni Development Environment..."
 
 # Check if pnpm is installed
 if ! command -v pnpm &> /dev/null; then

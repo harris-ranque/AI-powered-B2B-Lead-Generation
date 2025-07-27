@@ -3,8 +3,8 @@ I'll create a comprehensive artifact with your final architecture and provide re
 ### **Recommended: Two Repository Approach**
 
 ```
-lead-eternity/
-├── lead-eternity-app/          # Repository 1
+genni/
+├── genni-app/          # Repository 1
 │   ├── apps/
 │   │   ├── web/               # React frontend
 │   │   └── crewai-worker/     # Python CrewAI
@@ -14,7 +14,7 @@ lead-eternity/
 │   ├── railway.json          # Multi-service config
 │   └── README.md
 │
-└── lead-eternity-convex/      # Repository 2
+└── genni-convex/      # Repository 2
     ├── convex/
     │   ├── schema.ts
     │   ├── auth.config.ts
@@ -34,7 +34,7 @@ lead-eternity/
 If you prefer everything together:
 
 ```
-lead-eternity-monorepo/
+genni-monorepo/
 ├── apps/
 │   ├── web/                # React frontend
 │   ├── convex/            # Convex backend
@@ -148,7 +148,7 @@ export const migrateN8NData = internalMutation({
 
 ### **3. Feature Parity Checklist**
 
-| N8N Feature | Lead Eternity Replacement | Status |
+| N8N Feature | Genni Replacement | Status |
 |-------------|---------------------------|--------|
 | Webhook triggers | Convex HTTP actions | ✓ |
 | Scheduled workflows | Convex cron/scheduler | ✓ |

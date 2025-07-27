@@ -1,3 +1,3 @@
 """
-Utilities package for Lead Eternity CrewAI Worker
+Utilities package for Genni CrewAI Worker
 """

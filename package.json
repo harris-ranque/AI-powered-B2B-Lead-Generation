@@ -1,7 +1,7 @@
 {
-  "name": "lead-eternity-app",
+  "name": "genni-app",
   "version": "1.0.0",
-  "description": "Lead generation platform with AI-powered email sequences",
+  "description": "AI-powered lead generation platform with intelligent email sequences",
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",

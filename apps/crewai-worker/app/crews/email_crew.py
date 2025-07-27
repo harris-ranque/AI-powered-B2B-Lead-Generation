@@ -210,13 +210,13 @@ class EmailPersonalizationCrew:
         
         # Create minimal business profile for analysis
         minimal_profile = BusinessProfile(
-            company_name="Lead Eternity",
+            company_name="Genni",
             industry="Business Services",
             value_proposition="AI-powered lead generation and personalization",
             services=["Lead Generation", "Email Personalization", "Sales Automation"],
             target_markets=["B2B", "SaaS", "Professional Services"],
             key_differentiators=["AI-powered", "Multi-agent system", "Personalized outreach"],
-            contact_info={"email": "contact@leadeternity.com"}
+            contact_info={"email": "contact@genni.com"}
         )
         
         # Create single task for relevance analysis

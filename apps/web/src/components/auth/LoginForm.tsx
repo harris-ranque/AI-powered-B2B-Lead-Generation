@@ -70,7 +70,7 @@ export function LoginForm() {
           <div className="flex items-center justify-center mb-4">
             <Bot className="h-10 w-10 text-primary" />
           </div>
-          <CardTitle className="text-2xl">Welcome to Lead Eternity</CardTitle>
+          <CardTitle className="text-2xl">Welcome to Genni</CardTitle>
           <CardDescription>
             Sign in to access your AI-powered lead generation platform
           </CardDescription>
