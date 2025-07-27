@@ -1,0 +1,4 @@
+# Force Railway to ignore nixpacks detection
+package.json
+pnpm-lock.yaml
+pnpm-workspace.yaml

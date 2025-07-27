@@ -10,7 +10,3 @@ restartPolicyType = "always"
 
 [service]
 internalPort = 3000
-
-[variables]
-NODE_ENV = "production"
-PORT = "3000"
