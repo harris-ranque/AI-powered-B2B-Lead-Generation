@@ -1,6 +1,7 @@
 # Railway Frontend Configuration
 [build]
 builder = "nixpacks"
+watchPatterns = ["apps/web/**"]
 
 [deploy]
 startCommand = "npm start"
@@ -10,7 +11,3 @@ restartPolicyType = "always"
 
 [service]
 internalPort = 3000
-
-[variables]
-NODE_ENV = "production"
-PORT = "3000"

@@ -1,17 +1,19 @@
 providers = ["node"]
 
-[node]
-version = "18"
-
-[variables]
-NODE_ENV = "production"
-NPM_CONFIG_PRODUCTION = "false"
+[phases.setup]
+nixPkgs = ["nodejs-18_x", "npm-9_x"]
 
 [phases.install]
-cmds = ["npm install --no-package-lock --legacy-peer-deps"]
+dependsOn = ["setup"]
+cmds = [
+  "cd apps/web && npm install --legacy-peer-deps"
+]
 
 [phases.build]
-cmds = ["npm run build"]
+dependsOn = ["install"]
+cmds = [
+  "cd apps/web && npm run build"
+]
 
 [start]
-cmd = "npm start"
+cmd = "cd apps/web && npm start"

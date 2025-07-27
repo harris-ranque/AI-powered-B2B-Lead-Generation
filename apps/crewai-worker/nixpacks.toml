@@ -1,13 +1,14 @@
 providers = ["python"]
 
-[python]
-version = "3.11"
-
-[variables]
-PYTHONUNBUFFERED = "1"
+[phases.setup]
+nixPkgs = ["python311", "gcc"]
 
 [phases.install]
-cmds = ["pip install --upgrade pip", "pip install -r requirements.txt"]
+dependsOn = ["setup"]
+cmds = [
+  "cd apps/crewai-worker && pip install --upgrade pip",
+  "cd apps/crewai-worker && pip install -r requirements.txt"
+]
 
 [start]
-cmd = "python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+cmd = "cd apps/crewai-worker && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
