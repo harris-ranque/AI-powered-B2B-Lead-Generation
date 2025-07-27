@@ -1,12 +1,8 @@
-import { GenniApp } from "@/components/GenniApp";
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { Navigate } from "react-router-dom";
 
 const Index = () => {
-  return (
-    <ProtectedRoute>
-      <GenniApp />
-    </ProtectedRoute>
-  );
+  // This is a fallback - users should be directed to the proper routes
+  return <Navigate to="/" replace />;
 };
 
 export default Index;

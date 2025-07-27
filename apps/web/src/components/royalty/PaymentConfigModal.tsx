@@ -20,14 +20,7 @@ interface PaymentConfigModalProps {
   onClose: () => void;
 }
 
-// Mock API function for development - replace with actual Convex API call
-const api = {
-  royalty: {
-    config: {
-      updateDeveloperConfig: () => null as any,
-    }
-  }
-};
+import { api } from '@/convex/_generated/api';
 
 export function PaymentConfigModal({ config, onClose }: PaymentConfigModalProps) {
   const updateConfig = useMutation(api.royalty.config.updateDeveloperConfig);

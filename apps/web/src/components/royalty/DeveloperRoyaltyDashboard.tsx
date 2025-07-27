@@ -18,19 +18,7 @@ import { PaymentTable } from './PaymentTable';
 import { PaymentConfigModal } from './PaymentConfigModal';
 import { RoyaltyStats, DeveloperConfig, RoyaltyPayment } from '@shared/royalty.types';
 
-// Mock API functions for development - replace with actual Convex API calls
-const api = {
-  royalty: {
-    config: {
-      getDeveloperConfig: () => null as any,
-      updateDeveloperConfig: () => null as any,
-    },
-    dashboard: {
-      getStats: () => null as any,
-      getPayments: () => null as any,
-    }
-  }
-};
+import { api } from '@/convex/_generated/api';
 
 export function DeveloperRoyaltyDashboard() {
   const config = useQuery(api.royalty.config.getDeveloperConfig) as DeveloperConfig | null;
