@@ -1,0 +1,24 @@
+{
+  "name": "lead-eternity-app",
+  "version": "1.0.0",
+  "description": "Lead generation platform with AI-powered email sequences",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "clean": "turbo clean",
+    "type-check": "turbo type-check",
+    "lint": "turbo lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
+  },
+  "devDependencies": {
+    "@turbo/gen": "^1.10.0",
+    "turbo": "^1.10.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "packageManager": "pnpm@8.0.0"
+}

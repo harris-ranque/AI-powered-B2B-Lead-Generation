@@ -1,0 +1,13 @@
+{
+  "name": "@lead-eternity/crewai-worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "python -m uvicorn app.main:app --reload --port 8080",
+    "start": "python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT",
+    "install": "pip install -r requirements.txt"
+  },
+  "engines": {
+    "python": ">=3.11"
+  }
+}

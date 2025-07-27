@@ -1,0 +1,467 @@
+import { useState } from "react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { 
+  CreditCard, 
+  Plus, 
+  TrendingUp, 
+  Calendar, 
+  Zap,
+  Crown,
+  Star,
+  CheckCircle,
+  AlertTriangle,
+  Clock
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { useBilling } from "@/hooks/useBilling";
+import { useUser, useUserCredits } from "@/hooks/useUser";
+
+interface PricingPlan {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  credits: number;
+  features: string[];
+  popular?: boolean;
+  currentPlan?: boolean;
+}
+
+interface UsageStats {
+  currentPeriodUsage: number;
+  totalCreditsUsed: number;
+  searchesThisMonth: number;
+  leadsGenerated: number;
+  emailsGenerated: number;
+  avgCostPerLead: number;
+}
+
+interface CreditManagerProps {
+  // Optional props for backwards compatibility
+  onUpgrade?: (planId: string) => void;
+  onPurchaseCredits?: (amount: number) => void;
+}
+
+export function CreditManager({ 
+  onUpgrade,
+  onPurchaseCredits 
+}: CreditManagerProps = {}) {
+  const [selectedCreditPack, setSelectedCreditPack] = useState<number | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  
+  const { toast } = useToast();
+  
+  // Real Convex hooks
+  const { user } = useUser();
+  const { credits, isLoading: creditsLoading } = useUserCredits();
+  const { billing, usage, createCheckoutSession, purchaseCredits, updatePlan } = useBilling();
+  
+  // Get real data from Convex
+  const currentCredits = credits || 0;
+  const currentPlan = user?.plan || 'free';
+  const usageStats: UsageStats = {
+    currentPeriodUsage: usage?.currentPeriodUsage || 0,
+    totalCreditsUsed: usage?.totalCreditsUsed || 0,
+    searchesThisMonth: usage?.searchesThisMonth || 0,
+    leadsGenerated: usage?.leadsGenerated || 0,
+    emailsGenerated: usage?.emailsGenerated || 0,
+    avgCostPerLead: usage?.avgCostPerLead || 0
+  };
+
+  const pricingPlans: PricingPlan[] = [
+    {
+      id: 'free',
+      name: 'Free',
+      description: 'Perfect for trying out the platform',
+      price: 0,
+      credits: 100,
+      features: [
+        '100 credits/month',
+        'Up to 50 leads per search',
+        'Basic lead information',
+        'Email support'
+      ],
+      currentPlan: currentPlan === 'free'
+    },
+    {
+      id: 'pro',
+      name: 'Pro',
+      description: 'Best for growing businesses',
+      price: 49,
+      credits: 1000,
+      features: [
+        '1,000 credits/month',
+        'Up to 500 leads per search',
+        'Email enrichment included',
+        'AI email generation',
+        'Priority support',
+        'Export to CSV/CRM'
+      ],
+      popular: true,
+      currentPlan: currentPlan === 'pro'
+    },
+    {
+      id: 'enterprise',
+      name: 'Enterprise',
+      description: 'For large-scale operations',
+      price: 199,
+      credits: 5000,
+      features: [
+        '5,000 credits/month',
+        'Unlimited leads per search',
+        'Advanced AI analysis',
+        'Custom integrations',
+        'Dedicated support',
+        'White-label options'
+      ],
+      currentPlan: currentPlan === 'enterprise'
+    }
+  ];
+
+  const creditPacks = [
+    { amount: 100, price: 15, bonus: 0 },
+    { amount: 500, price: 65, bonus: 50 },
+    { amount: 1000, price: 120, bonus: 150 },
+    { amount: 2500, price: 280, bonus: 500 }
+  ];
+
+  const getCreditUsagePercentage = () => {
+    const monthlyAllowance = getPlanCredits();
+    return Math.min((usageStats.currentPeriodUsage / monthlyAllowance) * 100, 100);
+  };
+
+  const getPlanCredits = () => {
+    const plan = pricingPlans.find(p => p.id === currentPlan);
+    return plan?.credits || 100;
+  };
+
+  const getRemainingDays = () => {
+    const now = new Date();
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const diff = endOfMonth.getTime() - now.getTime();
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  };
+
+  const handleUpgrade = async (planId: string) => {
+    if (planId === currentPlan) return;
+    
+    setIsProcessing(true);
+    
+    try {
+      // Create Stripe checkout session for plan upgrade
+      const result = await createCheckoutSession({
+        type: 'subscription',
+        planId,
+        successUrl: `${window.location.origin}/dashboard?upgraded=true`,
+        cancelUrl: `${window.location.origin}/dashboard`,
+      });
+      
+      if (result.url) {
+        toast({
+          title: "Redirecting to Stripe",
+          description: "Redirecting to secure payment...",
+        });
+        window.location.href = result.url;
+      }
+      
+      // Fallback to callback if provided
+      if (onUpgrade) {
+        onUpgrade(planId);
+      }
+    } catch (error) {
+      console.error('Plan upgrade failed:', error);
+      toast({
+        title: "Upgrade Failed",
+        description: "Failed to start upgrade process. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handlePurchaseCredits = async (amount: number) => {
+    setIsProcessing(true);
+    
+    try {
+      // Create Stripe checkout session for credit purchase
+      const pack = creditPacks.find(p => (p.amount + p.bonus) === amount);
+      if (!pack) throw new Error('Invalid credit pack');
+      
+      const result = await createCheckoutSession({
+        type: 'one_time',
+        credits: amount,
+        amount: pack.price * 100, // Convert to cents
+        successUrl: `${window.location.origin}/dashboard?credits_purchased=true`,
+        cancelUrl: `${window.location.origin}/dashboard`,
+      });
+      
+      if (result.url) {
+        toast({
+          title: "Redirecting to Stripe",
+          description: `Purchasing ${amount} credits...`,
+        });
+        window.location.href = result.url;
+      }
+      
+      // Fallback to callback if provided
+      if (onPurchaseCredits) {
+        onPurchaseCredits(amount);
+      }
+    } catch (error) {
+      console.error('Credit purchase failed:', error);
+      toast({
+        title: "Purchase Failed",
+        description: "Failed to start purchase process. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const shouldShowLowCreditWarning = () => {
+    return currentCredits < 50 || getCreditUsagePercentage() > 80;
+  };
+
+  // Show loading state
+  if (creditsLoading) {
+    return (
+      <div className="space-y-6">
+        <Alert>
+          <Clock className="h-4 w-4 animate-spin" />
+          <AlertDescription>
+            Loading billing information...
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Current Status */}
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Credit Overview</h3>
+          <Badge 
+            variant={currentPlan === 'free' ? 'secondary' : 'default'}
+            className={`${
+              currentPlan === 'pro' ? 'bg-blue-100 text-blue-800' : 
+              currentPlan === 'enterprise' ? 'bg-purple-100 text-purple-800' : ''
+            }`}
+          >
+            {currentPlan === 'free' && <Star className="h-3 w-3 mr-1" />}
+            {currentPlan === 'pro' && <Crown className="h-3 w-3 mr-1" />}
+            {currentPlan === 'enterprise' && <Zap className="h-3 w-3 mr-1" />}
+            {pricingPlans.find(p => p.id === currentPlan)?.name} Plan
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <CreditCard className="h-5 w-5 text-primary" />
+              <span className="text-sm font-medium">Available Credits</span>
+            </div>
+            <div className="text-3xl font-bold text-primary">{currentCredits}</div>
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="h-5 w-5 text-green-600" />
+              <span className="text-sm font-medium">Monthly Usage</span>
+            </div>
+            <div className="text-2xl font-bold">{usageStats.currentPeriodUsage}</div>
+            <div className="text-sm text-muted-foreground">of {getPlanCredits()} credits</div>
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Calendar className="h-5 w-5 text-blue-600" />
+              <span className="text-sm font-medium">Resets In</span>
+            </div>
+            <div className="text-2xl font-bold">{getRemainingDays()}</div>
+            <div className="text-sm text-muted-foreground">days</div>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm">
+            <span>Monthly usage</span>
+            <span>{getCreditUsagePercentage().toFixed(0)}%</span>
+          </div>
+          <Progress value={getCreditUsagePercentage()} className="h-2" />
+        </div>
+
+        {shouldShowLowCreditWarning() && (
+          <Alert className="mt-4" variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              {currentCredits < 50 
+                ? `Low credits: Only ${currentCredits} credits remaining.`
+                : `High usage: You've used ${getCreditUsagePercentage().toFixed(0)}% of your monthly credits.`
+              } Consider upgrading your plan or purchasing additional credits.
+            </AlertDescription>
+          </Alert>
+        )}
+      </Card>
+
+      {/* Usage Statistics */}
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold mb-4">Usage Statistics</h3>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-600">{usageStats.searchesThisMonth}</div>
+            <div className="text-sm text-muted-foreground">Searches</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-green-600">{usageStats.leadsGenerated}</div>
+            <div className="text-sm text-muted-foreground">Leads Found</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-purple-600">{usageStats.emailsGenerated}</div>
+            <div className="text-sm text-muted-foreground">Emails Generated</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-orange-600">${usageStats.avgCostPerLead.toFixed(2)}</div>
+            <div className="text-sm text-muted-foreground">Avg Cost/Lead</div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Quick Credit Purchase */}
+      {currentPlan !== 'enterprise' && (
+        <Card className="p-6">
+          <h3 className="text-lg font-semibold mb-4">Purchase Additional Credits</h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {creditPacks.map((pack, index) => (
+              <div 
+                key={index}
+                className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                  selectedCreditPack === index 
+                    ? 'border-primary bg-primary/5' 
+                    : 'border-border hover:border-primary/50'
+                }`}
+                onClick={() => setSelectedCreditPack(index)}
+              >
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-primary">
+                    {pack.amount + pack.bonus}
+                  </div>
+                  <div className="text-sm text-muted-foreground mb-2">
+                    credits
+                    {pack.bonus > 0 && (
+                      <Badge variant="secondary" className="ml-1 text-xs">
+                        +{pack.bonus} bonus
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-lg font-semibold">${pack.price}</div>
+                  <div className="text-xs text-muted-foreground">
+                    ${(pack.price / (pack.amount + pack.bonus)).toFixed(2)}/credit
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {selectedCreditPack !== null && (
+            <Button 
+              className="w-full mt-4"
+              disabled={isProcessing}
+              onClick={() => {
+                const pack = creditPacks[selectedCreditPack];
+                handlePurchaseCredits(pack.amount + pack.bonus);
+              }}
+            >
+              {isProcessing ? (
+                <>
+                  <Clock className="h-4 w-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Purchase {creditPacks[selectedCreditPack].amount + creditPacks[selectedCreditPack].bonus} Credits for ${creditPacks[selectedCreditPack].price}
+                </>
+              )}
+            </Button>
+          )}
+        </Card>
+      )}
+
+      {/* Plan Upgrade */}
+      {currentPlan !== 'enterprise' && (
+        <Card className="p-6">
+          <h3 className="text-lg font-semibold mb-4">Upgrade Your Plan</h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {pricingPlans.map((plan) => (
+              <div 
+                key={plan.id}
+                className={`border rounded-lg p-6 relative ${
+                  plan.popular ? 'border-primary shadow-lg' : 'border-border'
+                } ${plan.currentPlan ? 'bg-muted/30' : ''}`}
+              >
+                {plan.popular && (
+                  <Badge className="absolute -top-2 left-1/2 transform -translate-x-1/2 bg-primary">
+                    Most Popular
+                  </Badge>
+                )}
+                
+                {plan.currentPlan && (
+                  <Badge variant="secondary" className="absolute top-4 right-4">
+                    Current Plan
+                  </Badge>
+                )}
+
+                <div className="text-center mb-4">
+                  <h4 className="text-xl font-bold">{plan.name}</h4>
+                  <p className="text-sm text-muted-foreground mb-2">{plan.description}</p>
+                  <div className="text-3xl font-bold">
+                    ${plan.price}
+                    {plan.price > 0 && <span className="text-sm font-normal">/month</span>}
+                  </div>
+                </div>
+
+                <ul className="space-y-2 mb-6">
+                  {plan.features.map((feature, index) => (
+                    <li key={index} className="flex items-center gap-2 text-sm">
+                      <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+
+                <Button 
+                  className="w-full"
+                  variant={plan.currentPlan ? "secondary" : plan.popular ? "default" : "outline"}
+                  disabled={plan.currentPlan || isProcessing}
+                  onClick={() => !plan.currentPlan && handleUpgrade(plan.id)}
+                >
+                  {isProcessing ? (
+                    <>
+                      <Clock className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : plan.currentPlan ? (
+                    "Current Plan"
+                  ) : (
+                    `Upgrade to ${plan.name}`
+                  )}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}

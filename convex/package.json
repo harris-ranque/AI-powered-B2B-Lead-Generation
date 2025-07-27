@@ -1,0 +1,51 @@
+{
+  "name": "lead-eternity-convex",
+  "version": "1.0.0",
+  "description": "Convex backend for Lead Eternity - AI-powered lead generation platform",
+  "main": "index.js",
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy",
+    "codegen": "convex codegen",
+    "typecheck": "convex typecheck",
+    "predev": "convex codegen",
+    "build": "convex deploy --cmd-opts-path convex.json"
+  },
+  "dependencies": {
+    "@auth/core": "^0.37.4",
+    "@convex-dev/auth": "^0.0.75",
+    "convex": "^1.18.4",
+    "convex-helpers": "^0.1.64",
+    "stripe": "^17.4.0",
+    "zod": "^3.24.1",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "@types/stripe": "^8.0.417"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "convex",
+    "backend",
+    "lead-generation",
+    "ai",
+    "crewai",
+    "google-maps",
+    "stripe",
+    "findymail"
+  ],
+  "author": "Lead Eternity Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leadeternity/lead-eternity-convex.git"
+  },
+  "bugs": {
+    "url": "https://github.com/leadeternity/lead-eternity-convex/issues"
+  },
+  "homepage": "https://github.com/leadeternity/lead-eternity-convex#readme"
+}
