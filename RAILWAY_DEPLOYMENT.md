@@ -123,16 +123,22 @@ After deployment:
    - Ensure `railway.toml` files exist in each app directory
    - Verify the `startCommand` is correctly specified
 
-2. **Build failures**
+2. **"Headless installation requires a pnpm-lock.yaml file"**
+   - This project uses npm instead of pnpm for Railway deployment
+   - `nixpacks.toml` files are configured to use `npm ci`
+   - `package-lock.json` is committed to the repository
+
+3. **Build failures**
    - Check that `requirements.txt` exists for Python service
    - Verify `package.json` has correct scripts
+   - Ensure `nixpacks.toml` is properly configured
 
-3. **Port binding issues**
+4. **Port binding issues**
    - Ensure services use `$PORT` environment variable
    - Frontend: `--port $PORT`
    - Worker: `--port $PORT`
 
-4. **Service not responding**
+5. **Service not responding**
    - Check health check endpoints
    - Verify internal ports match service configuration
 

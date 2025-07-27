@@ -3,7 +3,7 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "pnpm start"
+startCommand = "npm start"
 healthcheckPath = "/"
 healthcheckTimeout = 300
 restartPolicyType = "always"
@@ -14,3 +14,4 @@ internalPort = 3000
 [variables]
 NODE_ENV = "production"
 PORT = "3000"
+NPM_CONFIG_PRODUCTION = "false"
