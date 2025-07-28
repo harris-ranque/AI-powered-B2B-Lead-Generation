@@ -4,8 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "python -m uvicorn app.main:app --reload --port 8080",
-    "start": "python -m hypercorn app.main:app --bind \"[::]:$PORT\"",
-    "install": "pip install -r requirements.txt"
+    "start": "python -m hypercorn app.main:app --bind \"[::]:$PORT\""
   },
   "engines": {
     "python": ">=3.11"
