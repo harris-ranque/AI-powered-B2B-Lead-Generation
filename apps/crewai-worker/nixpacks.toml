@@ -1,28 +1,8 @@
 # Railway Python FastAPI Configuration
 providers = ["python"]
 
-[phases.setup]
-# Install Python with pip included
-nixPkgs = ["python311", "python311Packages.pip", "python311Packages.setuptools", "gcc", "stdenv.cc"]
-
-[phases.install]
-dependsOn = ["setup"]
-# Ensure pip is available and install requirements
-cmds = [
-  "python -m ensurepip",
-  "python -m pip install --upgrade pip setuptools wheel",
-  "pip install -r requirements.txt"
-]
-
-[phases.build]
-dependsOn = ["install"]
-# No build phase needed for Python
-
 [start]
-# Use hypercorn as recommended by Railway for FastAPI
-cmd = "python -m hypercorn app.main:app --bind \"[::]:$PORT\""
+cmd = "hypercorn app.main:app --bind \"[::]:$PORT\""
 
 [variables]
-# Ensure Python is unbuffered for real-time logs
 PYTHONUNBUFFERED = "1"
-NIXPACKS_PYTHON_VERSION = "3.11"
