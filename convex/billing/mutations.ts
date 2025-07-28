@@ -1,6 +1,6 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { auth } from "../auth.config";
+import { auth } from "../auth";
 import { ERROR_CODES } from "../lib/constants";
 import { createError } from "../lib/helpers";
 import { creditTransactionValidator } from "../lib/validators";
@@ -112,9 +112,9 @@ export const createCheckoutSession = mutation({
       enterprise_2500: { credits: 2500, price: 29900, name: "Enterprise Pack" }, // $299.00
     };
 
-    const package = packages[args.creditPackage];
+    const selectedPackage = packages[args.creditPackage];
     
-    if (!package) {
+    if (!selectedPackage) {
       throw createError("Invalid credit package", ERROR_CODES.VALIDATION_ERROR, 400);
     }
 
@@ -124,7 +124,7 @@ export const createCheckoutSession = mutation({
       return {
         success: true,
         packageDetails: {
-          ...package,
+          ...selectedPackage,
           packageId: args.creditPackage,
         },
         userId,

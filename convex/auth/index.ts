@@ -1,6 +1,17 @@
 import { internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 
+// Stub auth functions for deployment without Convex Auth
+export const auth = {
+  getUserId: () => null,
+  isAuthenticated: () => false,
+};
+
+export const signIn = () => null;
+export const signOut = () => null;
+export const store = () => null;
+export const isAuthenticated = () => false;
+
 // Validate API key for external access
 export const validateApiKey = internalQuery({
   args: { apiKey: v.string() },

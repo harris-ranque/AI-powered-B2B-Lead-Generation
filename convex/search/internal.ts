@@ -169,3 +169,67 @@ export const getInProgressSearches = internalQuery({
       .collect();
   },
 });
+
+// Cron job functions
+export const processPendingSearches = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const pendingSearches = await ctx.db
+      .query("searches")
+      .withIndex("by_status", (q) => q.eq("status", "pending"))
+      .order("asc")
+      .take(5); // Process 5 at a time
+
+    for (const search of pendingSearches) {
+      // Mark as in_progress
+      await ctx.db.patch(search._id, {
+        status: "in_progress",
+        startedAt: Date.now(),
+      });
+
+      // TODO: Trigger actual search processing
+      console.log(`Processing search: ${search.name}`);
+    }
+  },
+});
+
+export const checkStaleSearches = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const oneHourAgo = Date.now() - (60 * 60 * 1000);
+    
+    const staleSearches = await ctx.db
+      .query("searches")
+      .withIndex("by_status", (q) => q.eq("status", "in_progress"))
+      .filter((q) => q.lt(q.field("startedAt"), oneHourAgo))
+      .collect();
+
+    for (const search of staleSearches) {
+      await ctx.db.patch(search._id, {
+        status: "failed",
+        error: "Search timed out after 1 hour",
+        completedAt: Date.now(),
+      });
+    }
+  },
+});
+
+export const updateSearchAnalytics = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    // Update search analytics and metrics
+    const completedSearches = await ctx.db
+      .query("searches")
+      .withIndex("by_status", (q) => q.eq("status", "completed"))
+      .collect();
+
+    // Calculate metrics
+    const totalSearches = completedSearches.length;
+    const avgCompletionTime = totalSearches > 0 
+      ? completedSearches.reduce((sum, s) => sum + (s.completedAt - s.createdAt), 0) / totalSearches
+      : 0;
+
+    // TODO: Store analytics data
+    console.log(`Analytics updated: ${totalSearches} searches, avg time: ${avgCompletionTime}ms`);
+  },
+});

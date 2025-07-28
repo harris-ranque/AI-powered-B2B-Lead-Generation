@@ -31,7 +31,25 @@
       "Bash(npm install:*)",
       "Bash(cd:*)",
       "Bash(cd:*)",
-      "WebFetch(domain:station.railway.com)"
+      "WebFetch(domain:station.railway.com)",
+      "mcp__convex-mcp__status",
+      "mcp__convex-mcp__functionSpec",
+      "mcp__convex-mcp__tables",
+      "Bash(timeout 30 npx convex dev)",
+      "Bash(cp:*)",
+      "mcp__convex-mcp__envList",
+      "mcp__convex-mcp__envSet",
+      "WebFetch(domain:docs.convex.dev)",
+      "WebFetch(domain:labs.convex.dev)",
+      "Bash(CONVEX_DEPLOYMENT=dev:dashing-coyote-96 npx convex env set AUTH_SECRET RwB9UniidLvJ2yuoZjmxAFfzU4wBQGwbGHk9mjMJRf7XNjZDBUsoNe27fBvUR6EB)",
+      "Bash(railway projects:*)",
+      "Bash(railway whoami:*)",
+      "Bash(railway service:*)",
+      "Bash(railway logs:*)",
+      "Bash(railway up:*)",
+      "Bash(railway status:*)",
+      "Bash(railway:*)",
+      "Bash(curl:*)"
     ],
     "deny": []
   }

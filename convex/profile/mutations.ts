@@ -1,6 +1,6 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { auth } from "../auth.config";
+import { auth } from "../auth";
 import { businessProfileValidator } from "../lib/validators";
 import { ERROR_CODES, BUSINESS_RULES } from "../lib/constants";
 import { createError, sanitizeString, validateEmail, validateUrl, normalizeUrl } from "../lib/helpers";

@@ -42,6 +42,14 @@ export const API_CONFIG = {
   },
 } as const;
 
+// Credit Costs
+export const CREDIT_COSTS = {
+  SEARCH: 1,
+  LEAD_ENRICHMENT: 2,
+  EMAIL_GENERATION: 3,
+  EMAIL_SEQUENCE: 5,
+} as const;
+
 // Business Rules
 export const BUSINESS_RULES = {
   SEARCH: {

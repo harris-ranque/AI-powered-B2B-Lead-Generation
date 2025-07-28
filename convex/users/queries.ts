@@ -1,6 +1,6 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { auth } from "../auth.config";
+import { auth } from "../auth";
 
 // Get current user profile
 export const getCurrentUser = query({

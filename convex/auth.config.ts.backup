@@ -1,0 +1,32 @@
+import { Anonymous } from "@convex-dev/auth/providers/Anonymous";
+import { convexAuth } from "@convex-dev/auth/server";
+
+const authConfig = convexAuth({
+  providers: [Anonymous],
+  callbacks: {
+    async createOrUpdateUser(ctx, args) {
+      // For anonymous auth, create a temporary user
+      const userId = await ctx.db.insert("users", {
+        email: args.email || `anonymous-${Date.now()}@temp.local`,
+        name: args.name || "Anonymous User",
+        avatar: args.image,
+        plan: "free",
+        credits: 50,
+        role: "user",
+        isActive: true,
+        preferences: {
+          emailNotifications: false,
+          language: "en",
+          timezone: "UTC",
+        },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      return userId;
+    },
+  },
+});
+
+export const { auth, signIn, signOut, store, isAuthenticated } = authConfig;
+export default authConfig;

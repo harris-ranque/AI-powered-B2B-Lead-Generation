@@ -1,6 +1,6 @@
 import { query, mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { auth } from "../auth.config";
+import { auth } from "../auth";
 import { ERROR_CODES } from "../lib/constants";
 import { createError, isAdmin, CREDIT_COSTS, PLAN_LIMITS } from "../lib/helpers";
 

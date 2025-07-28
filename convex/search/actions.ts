@@ -1,6 +1,6 @@
 import { action } from "../_generated/server";
 import { v } from "convex/values";
-import { auth } from "../auth.config";
+import { auth } from "../auth";
 import { API_CONFIG, ERROR_CODES, BUSINESS_RULES } from "../lib/constants";
 import { createError, retry } from "../lib/helpers";
 import { internal } from "../_generated/api";

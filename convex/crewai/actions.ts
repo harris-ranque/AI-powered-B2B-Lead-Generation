@@ -1,6 +1,6 @@
 import { action } from "../_generated/server";
 import { v } from "convex/values";
-import { auth } from "../auth.config";
+import { auth } from "../auth";
 import { API_CONFIG, ERROR_CODES, CREDIT_COSTS } from "../lib/constants";
 import { createError, generateRequestId, hasCredits } from "../lib/helpers";
 import { emailRequirementsValidator } from "../lib/validators";

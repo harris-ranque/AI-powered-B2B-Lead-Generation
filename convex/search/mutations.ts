@@ -1,6 +1,6 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { auth } from "../auth.config";
+import { auth } from "../auth";
 import { createSearchValidator } from "../lib/validators";
 import { ERROR_CODES, BUSINESS_RULES, STATUS } from "../lib/constants";
 import { createError, calculateSearchCost, hasCredits } from "../lib/helpers";
