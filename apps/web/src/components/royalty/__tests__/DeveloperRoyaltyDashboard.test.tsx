@@ -11,7 +11,7 @@ import {
 } from './mockData';
 
 // Mock the Convex API
-jest.mock('@/convex/_generated/api', () => ({
+jest.mock('../../../../convex/_generated/api', () => ({
   api: {
     royalty: {
       config: {

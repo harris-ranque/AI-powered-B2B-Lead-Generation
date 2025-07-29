@@ -4,7 +4,7 @@ hypercorn==0.16.0
 pydantic==2.5.0
 crewai==0.28.8
 crewai-tools==0.4.26
-langchain==0.1.0
+langchain==0.1.10
 langchain-openai==0.0.5
 python-dotenv==1.0.0
 requests==2.31.0
