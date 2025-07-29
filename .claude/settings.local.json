@@ -52,7 +52,9 @@
       "Bash(curl:*)",
       "Bash(cd:*)",
       "Bash(python:*)",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)"
     ],
     "deny": []
   }
