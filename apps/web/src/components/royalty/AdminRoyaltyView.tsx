@@ -8,7 +8,7 @@ import { CheckCircle, AlertCircle, DollarSign, Users, Calendar, TrendingUp } fro
 import { format } from 'date-fns';
 import { RoyaltyPayment, AdminRoyaltyOverview } from '@shared/royalty.types';
 
-import { api } from '../../../convex/_generated/api';
+import { api } from '../../../../convex/_generated/api';
 
 export function AdminRoyaltyView() {
   const payments = useQuery(api.royalty.admin.getAllPayments) as RoyaltyPayment[] | null;
