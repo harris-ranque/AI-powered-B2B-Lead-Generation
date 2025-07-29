@@ -13,7 +13,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@genni/shared-types": "workspace:*",
+    "@genni/shared-types": "file:../../packages/shared-types",
     "@auth/core": "^0.37.0",
     "@convex-dev/auth": "^0.0.70",
     "@hookform/resolvers": "^3.9.0",

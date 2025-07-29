@@ -1,8 +1,18 @@
 # Railway Frontend Configuration
-providers = ["node"]
+[phases.setup]
+nixPkgs = ["nodejs-18_x"]
 
-[build]
-cmd = "node convex-mock.js && npm run build"
+[phases.install]
+cmds = [
+  "npm install"
+]
+
+[phases.build]
+cmds = [
+  "node prebuild.cjs",
+  "node convex-mock.cjs",
+  "npm run build"
+]
 
 [start]
 cmd = "npm start"

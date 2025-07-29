@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { PaymentTable } from './PaymentTable';
 import { PaymentConfigModal } from './PaymentConfigModal';
-import { RoyaltyStats, DeveloperConfig, RoyaltyPayment } from '@shared/royalty.types';
+import { RoyaltyStats, DeveloperConfig, RoyaltyPayment } from '@/shared-types-local/royalty.types';
 
 import { api } from '../../../convex/_generated/api';
 

@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Download, FileText, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
-import { RoyaltyPayment, InvoiceData } from '@shared/royalty.types';
+import { RoyaltyPayment, InvoiceData } from '@/shared-types-local/royalty.types';
 
 interface InvoiceGeneratorProps {
   payment: RoyaltyPayment;

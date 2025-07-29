@@ -1,4 +1,4 @@
-import { DeveloperConfig, RoyaltyPayment, RoyaltyStats, AdminRoyaltyOverview } from '@shared/royalty.types';
+import { DeveloperConfig, RoyaltyPayment, RoyaltyStats, AdminRoyaltyOverview } from '@/shared-types-local/royalty.types';
 
 // Mock data for testing royalty components
 export const mockDeveloperConfig: DeveloperConfig = {

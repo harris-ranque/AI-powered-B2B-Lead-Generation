@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CheckCircle } from 'lucide-react';
-import { DeveloperConfig } from '@shared/royalty.types';
+import { DeveloperConfig } from '@/shared-types-local/royalty.types';
 
 interface PaymentConfigModalProps {
   config: DeveloperConfig | null;

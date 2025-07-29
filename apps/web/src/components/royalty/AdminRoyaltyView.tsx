@@ -6,7 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle, AlertCircle, DollarSign, Users, Calendar, TrendingUp } from 'lucide-react';
 import { format } from 'date-fns';
-import { RoyaltyPayment, AdminRoyaltyOverview } from '@shared/royalty.types';
+import { RoyaltyPayment, AdminRoyaltyOverview } from '@/shared-types-local/royalty.types';
 
 import { api } from '../../../convex/_generated/api';
 

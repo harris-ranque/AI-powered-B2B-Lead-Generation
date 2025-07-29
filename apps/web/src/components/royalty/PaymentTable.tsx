@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Download, MoreVertical, Eye, CreditCard } from 'lucide-react';
-import { RoyaltyPayment, DeveloperConfig, PaymentFilter } from '@shared/royalty.types';
+import { RoyaltyPayment, DeveloperConfig, PaymentFilter } from '@/shared-types-local/royalty.types';
 
 interface PaymentTableProps {
   payments: RoyaltyPayment[];

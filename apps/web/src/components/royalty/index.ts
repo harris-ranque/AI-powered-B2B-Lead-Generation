@@ -14,4 +14,4 @@ export type {
   PaymentFilter,
   InvoiceData,
   StripeConnectResponse,
-} from '@shared/royalty.types';
+} from '@/shared-types-local/royalty.types';

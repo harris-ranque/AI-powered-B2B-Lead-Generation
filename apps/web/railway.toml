@@ -1,6 +1,13 @@
 # Railway Frontend Configuration
 [build]
 builder = "NIXPACKS"
+buildCommand = "cd ../.. && pnpm install --frozen-lockfile && cd apps/web && pnpm build"
+watchPaths = [
+  "apps/web/**",
+  "packages/**",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml"
+]
 
 [deploy]
 startCommand = "pnpm start"
