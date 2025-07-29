@@ -1,8 +1,17 @@
 # Railway Python FastAPI Configuration
-providers = ["python"]
+[phases.setup]
+nixPkgs = ["python39", "pip"]
+
+[phases.install]
+cmds = [
+  "pip install --upgrade pip",
+  "pip install --no-compile --no-cache-dir -r requirements.txt"
+]
 
 [start]
-cmd = "hypercorn app.main:app --bind \"[::]:$PORT\""
+cmd = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2"
 
 [variables]
 PYTHONUNBUFFERED = "1"
+PYTHONDONTWRITEBYTECODE = "1"
+MALLOC_TRIM_THRESHOLD_ = "100000"

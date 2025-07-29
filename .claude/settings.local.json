@@ -49,7 +49,8 @@
       "Bash(railway up:*)",
       "Bash(railway status:*)",
       "Bash(railway:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(cd:*)"
     ],
     "deny": []
   }

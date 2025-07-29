@@ -17,6 +17,7 @@ from .models.lead_models import Lead, EmailGenerationRequest, EmailGenerationRes
 from .crews.email_crew import EmailPersonalizationCrew
 from .utils.config import get_settings
 from .utils.webhook import WebhookClient
+from .utils.performance import single_replica_optimizer, memory_monitor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -53,6 +54,13 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security
 # Initialize webhook client
 webhook_client = WebhookClient(settings.webhook_url)
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize background services on startup"""
+    # Start the background processor
+    asyncio.create_task(single_replica_optimizer.background_processor())
+    logger.info("Background processor started")
+
 @app.get("/")
 async def root():
     """Health check endpoint"""
@@ -66,6 +74,8 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check with detailed status"""
+    optimizer_status = single_replica_optimizer.get_status()
+    
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
@@ -73,6 +83,12 @@ async def health_check():
             "fastapi": "running",
             "crewai": "initialized",
             "openai": "connected" if settings.openai_api_key else "not configured"
+        },
+        "performance": {
+            "active_tasks": optimizer_status["active_tasks"],
+            "queue_size": optimizer_status["queue_size"],
+            "memory_usage_mb": round(optimizer_status["memory"]["rss"] / 1024 / 1024, 1),
+            "memory_percent": round(optimizer_status["memory"]["percent"], 1)
         }
     }
 
@@ -95,33 +111,43 @@ async def generate_email(
     try:
         logger.info(f"Processing email generation request for lead: {request.lead.company_name}")
         
-        # Initialize the email personalization crew
-        crew = EmailPersonalizationCrew()
+        # Check system capacity
+        optimizer_status = single_replica_optimizer.get_status()
+        if optimizer_status["memory"]["percent"] > 90:
+            raise HTTPException(
+                status_code=503, 
+                detail="System at capacity. Please try again in a few minutes."
+            )
         
-        # Start async processing
-        background_tasks.add_task(
-            process_email_generation,
-            crew,
-            request,
-            webhook_client
-        )
+        # Queue the task for optimized processing
+        task_data = {
+            "id": request.request_id,
+            "type": "email_generation",
+            "request": request.dict(),
+            "webhook_url": settings.webhook_url
+        }
+        
+        queue_result = await single_replica_optimizer.process_with_queue(task_data)
         
         return EmailGenerationResponse(
             request_id=request.request_id,
-            status="processing",
-            message="Email generation started. Results will be sent via webhook."
+            status="queued",
+            message=f"Email generation queued. {queue_result['message']} Queue size: {queue_result['queue_size']}"
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating email: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Email generation failed: {str(e)}")
 
+@memory_monitor
 async def process_email_generation(
     crew: EmailPersonalizationCrew,
     request: EmailGenerationRequest,
     webhook_client: WebhookClient
 ):
-    """Background task to process email generation"""
+    """Background task to process email generation with memory monitoring"""
     try:
         # Execute the CrewAI workflow
         result = await crew.execute_async(
@@ -150,6 +176,7 @@ async def process_email_generation(
         )
 
 @app.post("/analyze-lead")
+@memory_monitor
 async def analyze_lead(
     lead: Lead,
     authenticated: bool = Depends(verify_api_key)
@@ -218,6 +245,11 @@ async def get_agents_info(authenticated: bool = Depends(verify_api_key)):
         ],
         "workflow": "Sequential multi-agent collaboration with feedback loops"
     }
+
+@app.get("/performance")
+async def get_performance_metrics(authenticated: bool = Depends(verify_api_key)):
+    """Get detailed performance metrics"""
+    return single_replica_optimizer.get_status()
 
 if __name__ == "__main__":
     import uvicorn
