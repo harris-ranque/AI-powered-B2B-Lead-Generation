@@ -50,7 +50,9 @@
       "Bash(railway status:*)",
       "Bash(railway:*)",
       "Bash(curl:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(python:*)",
+      "Bash(pnpm build:*)"
     ],
     "deny": []
   }

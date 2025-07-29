@@ -18,6 +18,7 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "@/convex": path.resolve(__dirname, "../../convex"),
+      "@shared": path.resolve(__dirname, "../../packages/shared-types/src"),
     },
   },
 }));

@@ -1,6 +1,6 @@
 # Railway Python FastAPI Configuration
 [phases.setup]
-nixPkgs = ["python39", "pip"]
+nixPkgs = ["python311"]
 
 [phases.install]
 cmds = [

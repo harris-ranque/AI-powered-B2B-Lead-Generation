@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node convex-mock.cjs && vite build",
     "build:dev": "vite build --mode development",
     "start": "vite preview --host 0.0.0.0 --port $PORT",
     "lint": "eslint .",
@@ -13,6 +13,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@genni/shared-types": "workspace:*",
     "@auth/core": "^0.37.0",
     "@convex-dev/auth": "^0.0.70",
     "@hookform/resolvers": "^3.9.0",
