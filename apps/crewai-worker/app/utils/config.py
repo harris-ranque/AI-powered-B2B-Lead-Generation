@@ -3,7 +3,7 @@ Configuration management for Genni CrewAI Worker
 """
 import os
 from functools import lru_cache
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 from typing import Optional
 
 class Settings(BaseSettings):
