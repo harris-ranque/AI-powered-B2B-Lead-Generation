@@ -2,53 +2,35 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies needed for Python packages
+# Install minimal system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     git \
-    pkg-config \
-    libffi-dev \
-    libssl-dev \
-    gcc \
-    g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip and install wheel for better package handling
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+# Upgrade pip
+RUN pip install --no-cache-dir --upgrade pip
 
-# Copy requirements first for better caching
-COPY requirements.txt .
-
-# Install Python dependencies in stages for better error handling
-# First install core dependencies
+# Install dependencies directly without requirements.txt to avoid version conflicts
 RUN pip install --no-cache-dir \
     fastapi==0.109.0 \
     uvicorn[standard]==0.24.0 \
     gunicorn==21.2.0 \
     pydantic==2.7.0 \
-    pydantic-settings==2.9.1
-
-# Install utility dependencies
-RUN pip install --no-cache-dir \
+    pydantic-settings==2.9.1 \
     python-dotenv==1.0.0 \
     requests==2.31.0 \
     python-multipart==0.0.6 \
     aiohttp==3.9.0 \
     psutil==5.9.0
 
-# Install AI dependencies (most likely to cause issues)
+# Install newer compatible versions of AI libraries
 RUN pip install --no-cache-dir \
-    openai==1.51.2 \
-    langchain==0.2.16 \
-    langchain-openai==0.1.25 \
-    langchain-community==0.2.16 \
-    langchain-core==0.2.38
-
-# Finally install CrewAI (most complex)
-RUN pip install --no-cache-dir \
-    crewai==0.86.0 \
-    crewai-tools==0.17.0
+    "openai>=1.30.0" \
+    "crewai>=0.80.0,<1.0.0" \
+    "langchain>=0.1.0" \
+    "langchain-openai>=0.1.0"
 
 # Copy application code
 COPY . .
@@ -62,5 +44,5 @@ USER crewai
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8080}/health || exit 1
 
-# Use gunicorn with uvicorn worker and bind to Railway's $PORT
+# Use gunicorn with uvicorn worker
 CMD ["sh", "-c", "gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:${PORT:-8080} --workers 2 --access-logfile - --error-logfile -"]
