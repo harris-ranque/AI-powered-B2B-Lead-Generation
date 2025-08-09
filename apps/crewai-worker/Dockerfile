@@ -1,8 +1,9 @@
 FROM python:3.11-slim
 
+# Set working directory
 WORKDIR /app
 
-# Install system dependencies needed for Python packages
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
@@ -14,53 +15,29 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip and install wheel for better package handling
+# Upgrade pip/setuptools/wheel for modern packages
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Copy requirements first for better caching
+# Copy requirements first for caching
 COPY requirements.txt .
 
-# Install Python dependencies in stages for better error handling
-# First install core dependencies
+# Install Python dependencies
+# Fixed langchain-core version to satisfy both langchain and langchain-openai
 RUN pip install --no-cache-dir \
-    fastapi==0.109.0 \
-    uvicorn[standard]==0.24.0 \
-    gunicorn==21.2.0 \
-    pydantic==2.7.0 \
-    pydantic-settings==2.9.1
-
-# Install utility dependencies
-RUN pip install --no-cache-dir \
-    python-dotenv==1.0.0 \
-    requests==2.31.0 \
-    python-multipart==0.0.6 \
-    aiohttp==3.9.0 \
-    psutil==5.9.0
-
-# Install AI dependencies (most likely to cause issues)
-RUN pip install --no-cache-dir \
-    openai==1.51.2 \
-    langchain==0.2.16 \
-    langchain-openai==0.1.25 \
-    langchain-community==0.2.16 \
-    langchain-core==0.2.38
-
-# Finally install CrewAI (most complex)
-RUN pip install --no-cache-dir \
-    crewai==0.86.0 \
-    crewai-tools==0.17.0
+    -r requirements.txt \
+    langchain-core==0.2.40
 
 # Copy application code
 COPY . .
 
 # Create non-root user for security
-RUN useradd --create-home --shell /bin/bash crewai
-RUN chown -R crewai:crewai /app
+RUN useradd --create-home --shell /bin/bash crewai \
+    && chown -R crewai:crewai /app
 USER crewai
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8080}/health || exit 1
 
-# Use gunicorn with uvicorn worker and bind to Railway's $PORT
+# Start command - Gunicorn with Uvicorn workers
 CMD ["sh", "-c", "gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:${PORT:-8080} --workers 2 --access-logfile - --error-logfile -"]
