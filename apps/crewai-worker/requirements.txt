@@ -15,7 +15,7 @@ langchain-openai==0.1.25
 langchain-community==0.2.16
 langchain-core==0.2.40
 
-instructor>=1.10.0  # latest April/May 2025 release  [oai_citation:2‡PyPI](https://pypi.org/project/instructor/?utm_source=chatgpt.com)
+instructor>=1.10.0
 aiohttp>=3.9.1,<4.0.0
 
 crewai==0.86.0
