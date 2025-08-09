@@ -54,7 +54,8 @@
       "Bash(python:*)",
       "Bash(pnpm build:*)",
       "Bash(source:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(docker:*)"
     ],
     "deny": []
   }
