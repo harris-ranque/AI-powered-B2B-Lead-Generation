@@ -40,9 +40,8 @@ RUN useradd --create-home --shell /bin/bash crewai
 RUN chown -R crewai:crewai /app
 USER crewai
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8080}/health || exit 1
+# Expose port for Railway's health check
+EXPOSE ${PORT:-8080}
 
 # Use gunicorn with uvicorn worker
 CMD ["sh", "-c", "gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:${PORT:-8080} --workers 2 --access-logfile - --error-logfile -"]
