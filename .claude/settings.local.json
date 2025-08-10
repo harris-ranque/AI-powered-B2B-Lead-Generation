@@ -55,7 +55,11 @@
       "Bash(pnpm build:*)",
       "Bash(source:*)",
       "Bash(pip install:*)",
-      "Bash(docker:*)"
+      "Bash(docker:*)",
+      "Bash(echo:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "Bash(pip index versions:*)"
     ],
     "deny": []
   }
