@@ -43,5 +43,5 @@ USER crewai
 # Expose port for Railway's health check
 EXPOSE ${PORT:-8080}
 
-# Use gunicorn with uvicorn worker
+# Use gunicorn with uvicorn worker (Railway will override this with startCommand)
 CMD ["sh", "-c", "gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:${PORT:-8080} --workers 2 --access-logfile - --error-logfile -"]
