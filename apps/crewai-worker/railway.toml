@@ -1,9 +1,9 @@
 # Railway CrewAI Worker Configuration
 [build]
-builder = "NIXPACKS"
+builder = "DOCKERFILE"
 
 [deploy]
-startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2"
+startCommand = "gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:${PORT:-8080} --workers 2 --access-logfile - --error-logfile -"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "always"
