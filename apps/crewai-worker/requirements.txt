@@ -24,8 +24,9 @@ langchain-core>=0.2.40,<0.3.0
 instructor>=1.10.0,<2.0.0
 aiohttp>=3.9.1,<4.0.0
 
-# CrewAI framework
-crewai>=0.86.0,<1.0.0
-crewai-tools>=0.17.0,<1.0.0
-# Optional: pin embedchain only if needed
+# CrewAI framework (latest compatible pair)
+crewai>=0.152.0,<1.0.0
+crewai-tools==0.60.0
+
+# Optional: only pin embedchain if you truly need a specific version
 # embedchain==0.1.104
