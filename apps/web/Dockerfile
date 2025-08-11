@@ -6,23 +6,21 @@ WORKDIR /app
 # Install pnpm globally
 RUN npm install -g pnpm@8.15.1
 
-# Copy workspace root files first for better caching
-COPY pnpm-workspace.yaml ./
-COPY package.json pnpm-lock.yaml ./
-COPY turbo.json ./
+# Copy package files
+COPY package.json ./
+COPY ../../pnpm-lock.yaml ./
+COPY ../../pnpm-workspace.yaml ./
 
-# Copy packages directory
-COPY packages/ ./packages/
+# Copy shared types package if it exists
+COPY ../../packages/ ./packages/ 2>/dev/null || true
 
-# Copy web app specific files
-COPY apps/web/package.json ./apps/web/
-COPY apps/web/ ./apps/web/
+# Copy app source
+COPY . ./
 
-# Install dependencies from workspace root
+# Install dependencies
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
-# Build the web application
-WORKDIR /app/apps/web
+# Build the application
 RUN pnpm build
 
 # Production stage - serve with Node.js
@@ -34,7 +32,7 @@ WORKDIR /app
 RUN npm install -g serve@14.2.1
 
 # Copy built files from build stage
-COPY --from=build /app/apps/web/dist ./dist
+COPY --from=build /app/dist ./dist
 
 # Railway will set PORT environment variable
 ENV PORT=3000

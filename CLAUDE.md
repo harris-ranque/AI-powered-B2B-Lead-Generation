@@ -268,14 +268,94 @@ npx convex dev    # Runs Convex in development mode
 ```
 
 ### Deployment
+
+#### Railway CLI Commands
 ```bash
-# Deploy Frontend/CrewAI to Railway
-cd genni-app
-railway up
+# Authentication & Setup
+railway login           # Login to Railway account
+railway whoami         # Check current user
+railway logout         # Logout from Railway
+
+# Project Management
+railway link           # Link to existing Railway project
+railway unlink         # Unlink from current project
+railway projects       # List all projects
+
+# Service Management
+railway service        # Show linked service details
+railway status         # Show deployment status
+
+# Deployment Commands
+railway up             # Deploy current directory to Railway
+railway up --detach    # Deploy without attaching to logs
+railway up --service <name>  # Deploy to specific service
+
+# Environment Variables
+railway variables      # List all environment variables
+railway variables set KEY=value  # Set environment variable
+railway variables delete KEY     # Delete environment variable
+
+# Logs & Monitoring
+railway logs           # View deployment logs (live)
+railway logs --tail 100  # View last 100 log lines
+railway logs --service <name>  # View logs for specific service
+railway logs --deployment  # View build/deployment logs
+
+# Local Development
+railway run <command>  # Run command with Railway environment
+railway run pnpm dev   # Run dev server with Railway env vars
+railway run pnpm build # Build with Railway environment
+
+# Domain Management
+railway domain         # Show custom domains
+railway domain add <domain>  # Add custom domain
+
+# Database Commands (if using Railway DB)
+railway connect postgres  # Connect to PostgreSQL
+railway connect redis    # Connect to Redis
+
+# Deployment Rollback
+railway down           # Take down the deployment
+railway restart        # Restart the service
+
+# Build & Deploy for Specific Services
+cd apps/web
+railway up --service genni-web
+
+cd apps/crewai-worker  
+railway up --service genni-crewai-worker
 
 # Deploy Convex Backend
 cd genni-convex
 npx convex deploy
+```
+
+#### Troubleshooting Railway Deployments
+```bash
+# Check deployment status
+railway status
+
+# View build logs
+railway logs --deployment
+
+# View runtime logs
+railway logs --tail 500
+
+# Check environment variables
+railway variables
+
+# Test build locally with Railway environment
+railway run pnpm build
+
+# Connect to service shell (if available)
+railway shell
+
+# Force redeploy
+railway up --force
+
+# Check service health
+railway logs | grep -i error
+railway logs | grep -i "listening on"
 ```
 
 ### Service Access
