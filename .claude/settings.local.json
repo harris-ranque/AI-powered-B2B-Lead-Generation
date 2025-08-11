@@ -59,7 +59,9 @@
       "Bash(echo:*)",
       "mcp__context7__resolve-library-id",
       "mcp__context7__get-library-docs",
-      "Bash(pip index versions:*)"
+      "Bash(pip index versions:*)",
+      "Bash(pnpm install:*)",
+      "Bash(PORT=3001 pnpm start:*)"
     ],
     "deny": []
   }
