@@ -17,7 +17,9 @@ logger.info('Application starting up', {
   timestamp: new Date().toISOString(),
   environment: import.meta.env.MODE,
   nodeEnv: import.meta.env.NODE_ENV,
-  isDevelopment: import.meta.env.MODE === 'development'
+  railwayEnv: import.meta.env.VITE_RAILWAY_ENVIRONMENT || import.meta.env.ENVIRONMENT,
+  isDevelopment: import.meta.env.MODE === 'development',
+  convexConfigured: Boolean(import.meta.env.VITE_CONVEX_URL && !import.meta.env.VITE_CONVEX_URL.includes('placeholder'))
 });
 
 // Trigger redeploy
