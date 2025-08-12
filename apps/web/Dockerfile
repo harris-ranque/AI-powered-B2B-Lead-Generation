@@ -47,5 +47,9 @@ RUN npm install -g serve
 # Expose port (Railway will override with $PORT)
 EXPOSE 3000
 
+# Copy and make start script executable
+COPY start.sh ./
+RUN chmod +x start.sh
+
 # Start command (Railway will provide $PORT)
-CMD ["sh", "-c", "if [ -n \"$PORT\" ]; then serve -s dist -l $PORT; else serve -s dist; fi"]
+CMD ["./start.sh"]
