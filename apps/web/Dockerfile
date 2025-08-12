@@ -7,18 +7,15 @@ WORKDIR /app
 # Install pnpm directly without corepack to avoid signature issues
 RUN npm install -g pnpm@latest
 
-# Copy workspace files from root context
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/web/package.json ./apps/web/
+# Copy package files (Railway builds from /apps/web directory)
+COPY package.json ./
+COPY pnpm-lock-real.yaml ./pnpm-lock.yaml
 
 # Install dependencies
-RUN pnpm install --frozen-lockfile
+RUN pnpm install
 
-# Copy web app source
-COPY apps/web ./apps/web
-
-# Change to web app directory
-WORKDIR /app/apps/web
+# Copy source code
+COPY . .
 
 # Create mock Convex files and build
 RUN node convex-mock.cjs && pnpm build
