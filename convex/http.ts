@@ -5,6 +5,9 @@ import { WEBHOOK_EVENTS, ERROR_CODES } from "./lib/constants";
 
 const http = httpRouter();
 
+// Add auth routes for OAuth callbacks and authentication
+auth.addHttpRoutes(http);
+
 // Health check endpoint
 http.route({
   path: "/health",

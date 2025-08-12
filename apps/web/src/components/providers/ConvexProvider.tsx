@@ -69,11 +69,11 @@ export function ConvexProvider({ children }: ConvexProviderProps) {
   }
 
   try {
-    // For now, run without ConvexAuthProvider to avoid the "options" error
-    // The auth functionality can be added later once the compatibility issue is resolved
     return (
       <BaseConvexProvider client={convex}>
-        {children}
+        <ConvexAuthProvider>
+          {children}
+        </ConvexAuthProvider>
       </BaseConvexProvider>
     );
   } catch (error) {
