@@ -8,7 +8,7 @@
     "build": "node convex-mock.cjs && vite build",
     "build:dev": "node convex-mock.cjs && vite build --mode development",
     "build:staging": "node convex-mock.cjs && vite build --mode staging",
-    "start": "serve -s dist -l 0.0.0.0:$PORT",
+    "start": "serve -s dist -p $PORT",
     "lint": "eslint .",
     "preview": "vite preview",
     "type-check": "tsc --noEmit"
