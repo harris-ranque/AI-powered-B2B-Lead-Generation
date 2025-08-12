@@ -64,7 +64,8 @@ async def startup_event():
     logger.info("GENNI CREWAI WORKER STARTING UP")
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'production')}")
     logger.info(f"OpenAI API Key configured: {'Yes' if settings.openai_api_key else 'No'}")
-    logger.info(f"Webhook URL: {settings.webhook_url}")
+    logger.info(f"Convex URL: {settings.convex_url}")
+    logger.info(f"Webhook URL: {settings.webhook_url} {'(auto-calculated)' if settings.convex_url and not os.getenv('WEBHOOK_URL') else '(explicit)'}")
     logger.debug(f"API Key configured: {'Yes' if settings.api_key else 'No'}")
     
     # Start the background processor

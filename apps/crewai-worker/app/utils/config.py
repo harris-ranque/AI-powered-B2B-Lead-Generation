@@ -13,8 +13,20 @@ class Settings(BaseSettings):
     api_key: str = os.getenv("API_KEY", "default-secure-key-change-in-production")
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     
-    # Webhook Configuration
-    webhook_url: str = os.getenv("WEBHOOK_URL", "")
+    # Convex Configuration
+    convex_url: str = os.getenv("CONVEX_URL", "")
+    
+    # Webhook Configuration (auto-constructed from Convex URL if not provided)
+    webhook_url: str = ""
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Auto-construct webhook URL from Convex URL if not explicitly set
+        if not self.webhook_url and self.convex_url:
+            # Convert site URL to HTTP endpoint
+            # e.g., "https://happy-horse-123.convex.site" -> "https://happy-horse-123.convex.site/crewai/webhook"
+            base_url = self.convex_url.rstrip('/')
+            self.webhook_url = f"{base_url}/crewai/webhook"
     
     # Server Configuration
     port: int = int(os.getenv("PORT", "8080"))
@@ -44,14 +56,17 @@ def validate_required_settings():
     settings = get_settings()
     
     required_fields = {
-        "openai_api_key": "OpenAI API key is required",
-        "webhook_url": "Webhook URL is required for result callbacks"
+        "openai_api_key": "OpenAI API key is required"
     }
     
     missing = []
     for field, message in required_fields.items():
         if not getattr(settings, field):
             missing.append(message)
+    
+    # Check that either webhook_url or convex_url is provided
+    if not settings.webhook_url and not settings.convex_url:
+        missing.append("Either WEBHOOK_URL or CONVEX_URL is required for result callbacks")
     
     if missing:
         raise ValueError(f"Missing required configuration: {', '.join(missing)}")
