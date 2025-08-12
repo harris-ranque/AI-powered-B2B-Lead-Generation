@@ -1,9 +1,8 @@
 # Railway Frontend Configuration
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
 
-[deploy]  
+[deploy]
 startCommand = "serve -s dist -l $PORT"
 healthcheckPath = "/"
 healthcheckTimeout = 300
