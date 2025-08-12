@@ -7,7 +7,7 @@ WORKDIR /app
 # Install pnpm directly without corepack to avoid signature issues
 RUN npm install -g pnpm@latest
 
-# Copy package files (Railway builds from /apps/web directory)
+# Copy package files (Railway now builds from /apps/web directory)
 COPY package.json ./
 COPY pnpm-lock-real.yaml ./pnpm-lock.yaml
 
