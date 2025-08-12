@@ -48,4 +48,4 @@ RUN npm install -g serve
 EXPOSE 3000
 
 # Start command (Railway will provide $PORT)
-CMD ["sh", "-c", "serve -s dist -p ${PORT:-3000}"]
+CMD ["sh", "-c", "if [ -n \"$PORT\" ]; then serve -s dist -l $PORT; else serve -s dist; fi"]
