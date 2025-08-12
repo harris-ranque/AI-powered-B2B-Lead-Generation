@@ -63,7 +63,7 @@ export function ResetPasswordForm() {
                 </Button>
               </Link>
               
-              <Link to="/login">
+              <Link to="/signin">
                 <Button variant="outline" className="w-full">
                   Back to Sign In
                 </Button>
@@ -108,9 +108,9 @@ export function ResetPasswordForm() {
         description: "Your password has been updated successfully.",
       });
       
-      // Redirect to login after 3 seconds
+      // Redirect to signin after 3 seconds
       setTimeout(() => {
-        navigate('/login');
+        navigate('/signin');
       }, 3000);
     } catch (error) {
       toast({
@@ -144,7 +144,7 @@ export function ResetPasswordForm() {
               </AlertDescription>
             </Alert>
             
-            <Link to="/login">
+            <Link to="/signin">
               <Button className="w-full">
                 Sign In Now
               </Button>
@@ -258,7 +258,7 @@ export function ResetPasswordForm() {
 
           <div className="text-center text-sm text-muted-foreground">
             Remember your password?{" "}
-            <Link to="/login" className="text-primary hover:underline">
+            <Link to="/signin" className="text-primary hover:underline">
               Sign in
             </Link>
           </div>

@@ -1,5 +1,6 @@
-import { Menu, MoreHorizontal } from "lucide-react";
+import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ClerkUserButton } from "@/components/auth/ClerkAuthWrapper";
 
 interface MobileHeaderProps {
   title: string;
@@ -19,9 +20,7 @@ export function MobileHeader({ title, showMenu = true, onMenuClick }: MobileHead
         <h1 className="text-lg font-semibold">{title}</h1>
       </div>
       
-      <Button variant="ghost" size="icon">
-        <MoreHorizontal className="h-5 w-5" />
-      </Button>
+      <ClerkUserButton />
     </header>
   );
 }

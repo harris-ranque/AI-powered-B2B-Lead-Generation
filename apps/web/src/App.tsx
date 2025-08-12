@@ -52,7 +52,8 @@ const App = () => (
                 <Route path="/terms" element={<TermsPage />} />
 
                 {/* Authentication Routes */}
-                <Route path="/login" element={<LoginForm />} />
+                <Route path="/signin" element={<LoginForm />} />
+                <Route path="/login" element={<LoginForm />} /> {/* Legacy redirect */}
                 <Route path="/signup" element={<SignUpForm />} />
                 <Route path="/forgot-password" element={<ForgotPasswordForm />} />
                 <Route path="/reset-password" element={<ResetPasswordForm />} />

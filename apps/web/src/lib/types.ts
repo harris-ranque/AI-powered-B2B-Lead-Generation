@@ -1,5 +1,5 @@
 // Types based on Convex schema for frontend use
-import type { Doc, Id } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@genni/convex-types/dataModel";
 
 // Re-export Convex types for convenience
 export type { Doc, Id };

@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { LoginForm } from "./LoginForm";
+import { ClerkAuthWrapper } from "./ClerkAuthWrapper";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 
 interface ProtectedRouteProps {
@@ -19,7 +19,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!isAuthenticated) {
-    return <LoginForm />;
+    return <ClerkAuthWrapper mode="signin" />;
   }
 
   return <>{children}</>;

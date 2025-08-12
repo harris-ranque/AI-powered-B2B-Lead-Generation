@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useAction } from "convex/react";
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/@/convex/_generated/dataModel";
+import { api } from "@genni/convex-types"
+import type { Id } from "@genni/convex-types/dataModel";
 import { useEffect } from "react";
 import { createLogger, timeOperation } from "@/utils/logger";
 

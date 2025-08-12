@@ -30,7 +30,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useEmailGeneration, useCrewAIRequest } from "@/hooks/useCrewAI";
 import { useProfile } from "@/hooks/useProfile";
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Id } from "@genni/convex-types/dataModel";
 
 interface AIEmailGeneratorProps {
   selectedLead?: Lead;

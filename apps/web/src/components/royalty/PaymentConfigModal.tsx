@@ -20,7 +20,7 @@ interface PaymentConfigModalProps {
   onClose: () => void;
 }
 
-import { api } from "@/convex/_generated/api"
+import { api } from "@genni/convex-types"
 
 export function PaymentConfigModal({ config, onClose }: PaymentConfigModalProps) {
   const updateConfig = useMutation(api.royalty.config.updateDeveloperConfig);

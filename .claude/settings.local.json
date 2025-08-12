@@ -64,7 +64,8 @@
       "Bash(PORT=3001 pnpm start:*)",
       "Bash(unset CONVEX_DEPLOYMENT)",
       "WebFetch(domain:docs.railway.com)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(node:*)"
     ],
     "deny": []
   }

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GenniLogo } from "./GenniLogo";
+import { ClerkUserButton } from "./auth/ClerkAuthWrapper";
 
 interface GenniSidebarProps {
   currentPage: string;
@@ -108,11 +109,17 @@ export function GenniSidebar({ currentPage, onPageChange }: GenniSidebarProps) {
             ))}
           </nav>
 
-          {/* Dark Mode Toggle */}
-          <div className="mt-auto pt-8">
+          {/* User Profile and Settings */}
+          <div className="mt-auto pt-8 space-y-4">
+            {/* User Profile */}
+            <div className="flex items-center justify-center">
+              <ClerkUserButton />
+            </div>
+            
+            {/* Dark Mode Toggle */}
             <button className="flex items-center gap-3 px-4 py-3 w-full text-left text-sidebar-foreground hover:bg-sidebar-accent hover:text-primary rounded-lg transition-smooth">
               <Moon className="h-5 w-5" />
-              <span className="font-medium">Settings</span>
+              <span className="font-medium">Theme</span>
             </button>
           </div>
         </div>

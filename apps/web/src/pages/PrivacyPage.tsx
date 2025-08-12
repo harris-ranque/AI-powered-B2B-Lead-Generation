@@ -73,7 +73,7 @@ export default function PrivacyPage() {
           </div>
 
           <div className="flex items-center space-x-4">
-            <Link to="/login">
+            <Link to="/signin">
               <Button variant="ghost">Sign In</Button>
             </Link>
             <Link to="/signup">

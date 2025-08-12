@@ -1,5 +1,5 @@
 import { ConvexProvider as BaseConvexProvider } from "convex/react";
-import { ConvexAuthProvider } from "@convex-dev/auth/react";
+import { ClerkProvider } from "@clerk/clerk-react";
 import { ReactNode } from "react";
 import { convex, isConvexConfigured } from "@/lib/convex";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -68,20 +68,32 @@ export function ConvexProvider({ children }: ConvexProviderProps) {
     return <ConvexErrorFallback />;
   }
 
+  const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  
+  if (!clerkPublishableKey) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Configuration Error</AlertTitle>
+          <AlertDescription>
+            Missing Clerk publishable key. Please check your environment configuration.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
   try {
     return (
-      <BaseConvexProvider client={convex}>
-        <ConvexAuthProvider>
+      <ClerkProvider publishableKey={clerkPublishableKey}>
+        <BaseConvexProvider client={convex}>
           {children}
-        </ConvexAuthProvider>
-      </BaseConvexProvider>
+        </BaseConvexProvider>
+      </ClerkProvider>
     );
   } catch (error) {
     console.error("ConvexProvider error:", error);
-    // If this is the specific "options" error, provide more specific guidance
-    if (error instanceof Error && error.message.includes("options")) {
-      console.error("This appears to be a Convex auth configuration issue. Please check version compatibility.");
-    }
     return <ConvexErrorFallback />;
   }
 }

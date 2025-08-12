@@ -18,7 +18,7 @@ import { PaymentTable } from './PaymentTable';
 import { PaymentConfigModal } from './PaymentConfigModal';
 import { RoyaltyStats, DeveloperConfig, RoyaltyPayment } from '@shared';
 
-import { api } from "@/convex/_generated/api"
+import { api } from "@genni/convex-types"
 
 export function DeveloperRoyaltyDashboard() {
   const config = useQuery(api.royalty.config.getDeveloperConfig) as DeveloperConfig | null;

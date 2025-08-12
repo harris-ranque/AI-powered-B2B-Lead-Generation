@@ -1,6 +1,6 @@
 import { useAction, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/@/convex/_generated/dataModel";
+import { api } from "@genni/convex-types"
+import type { Id } from "@genni/convex-types/dataModel";
 
 export function useEmailGeneration() {
   const generateEmail = useAction(api.crewai.actions.generateEmail);

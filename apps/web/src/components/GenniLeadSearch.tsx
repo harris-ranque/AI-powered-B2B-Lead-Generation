@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CircularProgress } from "./CircularProgress";
 import { Play, Download, Bot, Mail, Clock, AlertCircle } from "lucide-react";
 import type { Lead } from "@/lib/api-client";
-import type { Id } from "@/@/convex/_generated/dataModel";
+import type { Id } from "@genni/convex-types/dataModel";
 import { useLeads } from "@/hooks/useLeads";
 import { useProfile } from "@/hooks/useProfile";
 import { useLogger } from "@/utils/logger";

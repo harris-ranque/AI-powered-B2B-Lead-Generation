@@ -35,7 +35,7 @@ export function DeveloperRoute({ children }: DeveloperRouteProps) {
             </CardDescription>
           </CardHeader>
           <CardContent className="text-center">
-            <Link to="/login">
+            <Link to="/signin">
               <Button className="w-full">
                 Sign In
               </Button>

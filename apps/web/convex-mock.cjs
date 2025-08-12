@@ -12,23 +12,82 @@ fs.mkdirSync(srcGenDir, { recursive: true });
 const apiContent = `
 // Auto-generated mock for Railway build
 export const api = {
-  users: {},
-  profile: {},
-  search: {},
-  leads: {},
-  crewai: {},
-  billing: {},
-  royalty: {
-    config: {
-      getDeveloperConfig: ""
+  users: {
+    queries: {
+      getCurrentUser: "users:queries:getCurrentUser",
+      getUserById: "users:queries:getUserById", 
+      getUserStats: "users:queries:getUserStats",
+      getUserActivity: "users:queries:getUserActivity",
+      getUserByEmail: "users:queries:getUserByEmail",
+      getUserPreferences: "users:queries:getUserPreferences"
     },
-    dashboard: {
-      getStats: "",
-      getPayments: ""
+    mutations: {
+      updateUser: "users:mutations:updateUser",
+      deleteUser: "users:mutations:deleteUser",
+      addCredits: "users:mutations:addCredits"
     }
   },
-  admin: {},
-  notifications: {}
+  profile: {
+    queries: {
+      getProfile: "profile:queries:getProfile"
+    },
+    mutations: {
+      updateProfile: "profile:mutations:updateProfile"
+    }
+  },
+  search: {
+    queries: {
+      getSearch: "search:queries:getSearch",
+      listSearches: "search:queries:listSearches"
+    },
+    mutations: {
+      createSearch: "search:mutations:createSearch"
+    },
+    actions: {
+      startSearch: "search:actions:startSearch"
+    }
+  },
+  leads: {
+    queries: {
+      getLead: "leads:queries:getLead",
+      getLeads: "leads:queries:getLeads"
+    },
+    mutations: {
+      updateLead: "leads:mutations:updateLead"
+    }
+  },
+  crewai: {
+    actions: {
+      generateEmail: "crewai:actions:generateEmail"
+    }
+  },
+  billing: {
+    queries: {
+      getBilling: "billing:queries:getBilling"
+    },
+    mutations: {
+      updateBilling: "billing:mutations:updateBilling"
+    }
+  },
+  royalty: {
+    config: {
+      getDeveloperConfig: "royalty:config:getDeveloperConfig"
+    },
+    dashboard: {
+      getStats: "royalty:dashboard:getStats",
+      getPayments: "royalty:dashboard:getPayments"
+    }
+  },
+  admin: {
+    queries: {
+      getMetrics: "admin:queries:getMetrics"
+    }
+  },
+  notifications: {
+    queries: {
+      getNotifications: "notifications:queries:getNotifications"
+    }
+  }
 };
 `;
 
