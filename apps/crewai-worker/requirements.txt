@@ -15,10 +15,10 @@ psutil>=5.9.0
 
 # AI/ML dependencies with compatible ranges
 openai>=1.70.0,<2.0.0
-langchain>=0.2.17,<0.3.0
-langchain-openai>=0.1.25,<0.2.0
-langchain-community>=0.2.17,<0.3.0
-langchain-core>=0.2.40,<0.3.0
+langchain>=0.3.1,<0.4.0
+langchain-openai>=0.2.1,<0.3.0
+langchain-community>=0.3.1,<0.4.0
+langchain-core>=0.3.1,<0.4.0
 
 # Enhanced AI capabilities
 instructor>=1.10.0,<2.0.0
@@ -28,5 +28,5 @@ aiohttp>=3.10.0,<4.0.0
 crewai>=0.152.0,<1.0.0
 crewai-tools==0.60.0
 
-# Optional: only pin embedchain if you truly need a specific version
-# embedchain==0.1.104
+# Explicitly exclude embedchain to avoid conflicts
+# embedchain is causing dependency conflicts with langchain and chromadb
