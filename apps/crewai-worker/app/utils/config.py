@@ -29,18 +29,18 @@ class Settings(BaseSettings):
             self.webhook_url = f"{base_url}/crewai/webhook"
     
     # Server Configuration
-    port: int = int(os.getenv("PORT", "8080"))
+    port: int = int(os.getenv("PORT_OPTIONAL", os.getenv("PORT", "8080")))
     environment: str = os.getenv("ENVIRONMENT", "development")
-    debug: bool = os.getenv("DEBUG", "false").lower() == "true"
+    debug: bool = os.getenv("DEBUG_OPTIONAL", "false").lower() == "true"
     
     # CrewAI Configuration
-    crew_verbose: bool = os.getenv("CREW_VERBOSE", "true").lower() == "true"
-    max_execution_time: int = int(os.getenv("MAX_EXECUTION_TIME", "300"))  # 5 minutes
+    crew_verbose: bool = os.getenv("CREW_VERBOSE_OPTIONAL", "true").lower() == "true"
+    max_execution_time: int = int(os.getenv("MAX_EXECUTION_TIME_OPTIONAL", "300"))  # 5 minutes
     
     # Model Configuration
-    default_model: str = os.getenv("DEFAULT_MODEL", "gpt-4o-mini")
-    temperature: float = float(os.getenv("TEMPERATURE", "0.7"))
-    max_tokens: int = int(os.getenv("MAX_TOKENS", "2000"))
+    default_model: str = os.getenv("DEFAULT_MODEL_OPTIONAL", "gpt-4o-mini")
+    temperature: float = float(os.getenv("TEMPERATURE_OPTIONAL", "0.7"))
+    max_tokens: int = int(os.getenv("MAX_TOKENS_OPTIONAL", "2000"))
     
     class Config:
         env_file = ".env"
