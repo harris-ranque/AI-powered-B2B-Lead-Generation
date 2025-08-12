@@ -1,13 +1,13 @@
-# Railway CrewAI Worker Configuration
+# Railway CrewAI Worker Configuration  
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile.minimal"
 
 [deploy]
 startCommand = "./start.sh"
-healthcheckPath = "/health"
+healthcheckPath = "/health" 
 healthcheckTimeout = 300
 restartPolicyType = "always"
+numReplicas = 1
 
 [variables]
 PYTHONUNBUFFERED = "1"
