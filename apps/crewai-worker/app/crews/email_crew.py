@@ -11,8 +11,10 @@ from datetime import datetime
 from ..agents.email_agents import EmailPersonalizationAgents
 from ..models.lead_models import Lead, BusinessProfile, EmailRequirements, EmailGenerationResult, AgentResult, EmailContent
 from ..utils.config import get_settings
+from ..utils.logger import setup_logger, log_request_details, log_response_details, log_error_details
 
 settings = get_settings()
+logger = setup_logger(__name__)
 
 class EmailPersonalizationCrew:
     """
@@ -21,6 +23,9 @@ class EmailPersonalizationCrew:
     
     def __init__(self):
         """Initialize the crew with all agents"""
+        logger.info("Initializing EmailPersonalizationCrew")
+        logger.debug("Creating 5 specialized agents")
+        
         self.agents = {
             'relevance_analyzer': EmailPersonalizationAgents.relevance_analyzer(),
             'pain_point_researcher': EmailPersonalizationAgents.pain_point_researcher(),
@@ -29,10 +34,18 @@ class EmailPersonalizationCrew:
             'followup_strategist': EmailPersonalizationAgents.followup_strategist()
         }
         
+        logger.info(f"✅ Crew initialized with {len(self.agents)} agents")
+        for agent_name in self.agents.keys():
+            logger.debug(f"  - {agent_name} ready")
+        
     def _create_tasks(self, lead: Lead, business_profile: BusinessProfile, requirements: EmailRequirements) -> list:
         """Create task sequence for the crew"""
+        logger.info(f"Creating task sequence for lead: {lead.company_name}")
+        logger.debug(f"Business profile: {business_profile.company_name}")
+        logger.debug(f"Requirements: tone={requirements.tone}, length={requirements.length}")
         
         # Task 1: Lead Relevance Analysis
+        logger.debug("Creating Task 1: Lead Relevance Analysis")
         relevance_task = Task(
             description=f"""
             Analyze the lead qualification and relevance for our services:
@@ -177,11 +190,15 @@ class EmailPersonalizationCrew:
         """Execute the crew workflow asynchronously"""
         
         start_time = time.time()
+        logger.info(f"🚀 Starting email generation for {lead.company_name}")
+        logger.debug(f"Lead details: industry={lead.industry}, size={lead.company_size}, location={lead.location}")
         
         # Create tasks
         tasks = self._create_tasks(lead, business_profile, requirements)
+        logger.info(f"Created {len(tasks)} tasks for crew execution")
         
         # Create and configure crew
+        logger.debug("Configuring CrewAI crew with sequential process")
         crew = Crew(
             agents=list(self.agents.values()),
             tasks=tasks,
@@ -189,26 +206,39 @@ class EmailPersonalizationCrew:
             verbose=settings.crew_verbose,
             max_execution_time=settings.max_execution_time
         )
+        logger.debug(f"Crew configured: verbose={settings.crew_verbose}, max_time={settings.max_execution_time}s")
         
         # Execute crew (run in thread pool since CrewAI is not async)
+        logger.info("Executing CrewAI workflow...")
         loop = asyncio.get_event_loop()
         crew_result = await loop.run_in_executor(None, crew.kickoff)
         
         end_time = time.time()
         processing_time = end_time - start_time
+        logger.info(f"✅ Crew execution completed in {processing_time:.2f} seconds")
+        logger.debug(f"Crew result type: {type(crew_result)}")
         
         # Parse crew results into structured format
-        return self._parse_crew_result(
+        logger.debug("Parsing crew results into structured format")
+        result = self._parse_crew_result(
             crew_result,
             lead,
             requirements,
             processing_time
         )
+        
+        logger.info(f"📧 Generated email for {lead.company_name}: Subject='{result.primary_email.subject[:50]}...'")
+        logger.debug(f"Result contains {len(result.followup_sequence)} follow-up emails")
+        
+        return result
     
     async def analyze_lead_only(self, lead: Lead) -> Dict[str, Any]:
         """Quick lead analysis without full email generation"""
+        logger.info(f"Starting quick analysis for lead: {lead.company_name}")
+        start_time = time.time()
         
         # Create minimal business profile for analysis
+        logger.debug("Creating minimal business profile for analysis")
         minimal_profile = BusinessProfile(
             company_name="Genni",
             industry="Business Services",
@@ -238,6 +268,7 @@ class EmailPersonalizationCrew:
         )
         
         # Execute single agent
+        logger.debug("Creating single-agent crew for quick analysis")
         crew = Crew(
             agents=[self.agents['relevance_analyzer']],
             tasks=[relevance_task],
@@ -245,16 +276,23 @@ class EmailPersonalizationCrew:
             verbose=False
         )
         
+        logger.info("Executing relevance analysis...")
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, crew.kickoff)
         
+        processing_time = time.time() - start_time
+        logger.info(f"✅ Quick analysis completed in {processing_time:.2f} seconds")
+        
         # Parse quick result
-        return {
+        analysis_result = {
             "relevance_score": 75,  # Would parse from actual result
             "pain_points": ["Scaling challenges", "Technology gaps", "Competitive pressure"],
             "fit_assessment": str(result),
             "recommended_approach": "Consultative approach focusing on growth solutions"
         }
+        
+        logger.debug(f"Analysis result: score={analysis_result['relevance_score']}, pain_points={len(analysis_result['pain_points'])}")
+        return analysis_result
     
     def _parse_crew_result(
         self, 
@@ -264,6 +302,8 @@ class EmailPersonalizationCrew:
         processing_time: float
     ) -> EmailGenerationResult:
         """Parse crew execution result into structured response"""
+        logger.debug("Parsing crew execution results")
+        logger.debug(f"Processing time: {processing_time:.2f}s")
         
         # In a real implementation, you would parse the actual crew result
         # For now, creating a structured response based on expected output

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,6 +10,7 @@ import type { Lead } from "@/lib/api-client";
 import type { Id } from "@/@/convex/_generated/dataModel";
 import { useLeads } from "@/hooks/useLeads";
 import { useProfile } from "@/hooks/useProfile";
+import { useLogger } from "@/utils/logger";
 
 interface LeadSearchProps {
   searchId?: Id<"searches"> | null;
@@ -17,9 +18,36 @@ interface LeadSearchProps {
 }
 
 export function GenniLeadSearch({ searchId, onGenerateEmail }: LeadSearchProps) {
+  const logger = useLogger('GenniLeadSearch');
+  
   // Real Convex hooks
   const { leads, isLoading } = useLeads(searchId || undefined);
   const { profile } = useProfile();
+
+  useEffect(() => {
+    logger.componentMount('GenniLeadSearch');
+    logger.info('Lead search component initialized', { 
+      searchId,
+      hasProfile: !!profile 
+    });
+    
+    return () => {
+      logger.componentUnmount('GenniLeadSearch');
+    };
+  }, []);
+
+  useEffect(() => {
+    if (leads) {
+      logger.info('Leads data updated', {
+        searchId,
+        leadCount: leads.length,
+        statuses: leads.reduce((acc, lead) => {
+          acc[lead.status] = (acc[lead.status] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>)
+      });
+    }
+  }, [leads, searchId]);
 
   // Convert Convex leads to expected Lead format
   const searchResults = leads?.map(lead => ({
@@ -46,6 +74,10 @@ export function GenniLeadSearch({ searchId, onGenerateEmail }: LeadSearchProps) 
   })) || [];
 
   const downloadResults = () => {
+    logger.userAction('Download results', { 
+      leadCount: searchResults.length,
+      searchId 
+    });
     const csvContent = [
       ['Company Name', 'Contact Name', 'Title', 'Email', 'Phone', 'Location', 'Industry', 'Company Size', 'Website'],
       ...searchResults.map(result => [
@@ -70,6 +102,11 @@ export function GenniLeadSearch({ searchId, onGenerateEmail }: LeadSearchProps) 
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
+    
+    logger.info('Results downloaded successfully', {
+      filename: `lead-search-results-${new Date().toISOString().split('T')[0]}.csv`,
+      recordCount: searchResults.length
+    });
   };
 
   return (

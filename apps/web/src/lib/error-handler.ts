@@ -1,4 +1,5 @@
 // Global error handler for uncaught errors and promise rejections
+import { trackError, logger } from '@/utils/logger';
 
 export interface ErrorDetails {
   message: string;
@@ -11,6 +12,8 @@ export interface ErrorDetails {
   href: string;
 }
 
+const errorLogger = logger;
+
 class GlobalErrorHandler {
   private static instance: GlobalErrorHandler;
   private errorQueue: ErrorDetails[] = [];
@@ -18,6 +21,7 @@ class GlobalErrorHandler {
 
   private constructor() {
     this.setupErrorHandlers();
+    errorLogger.info('Global error handler initialized');
   }
 
   public static getInstance(): GlobalErrorHandler {
@@ -28,9 +32,11 @@ class GlobalErrorHandler {
   }
 
   private setupErrorHandlers(): void {
+    errorLogger.debug('Setting up global error handlers');
+    
     // Handle uncaught JavaScript errors
     window.addEventListener('error', (event) => {
-      this.handleError({
+      const errorDetails = {
         message: event.message,
         stack: event.error?.stack,
         url: event.filename,
@@ -39,22 +45,44 @@ class GlobalErrorHandler {
         timestamp: Date.now(),
         userAgent: navigator.userAgent,
         href: window.location.href,
-      });
+      };
+      
+      errorLogger.error('Uncaught error detected', errorDetails);
+      this.handleError(errorDetails);
     });
 
     // Handle unhandled promise rejections
     window.addEventListener('unhandledrejection', (event) => {
-      this.handleError({
+      const errorDetails = {
         message: `Unhandled Promise Rejection: ${event.reason}`,
         stack: event.reason?.stack,
         timestamp: Date.now(),
         userAgent: navigator.userAgent,
         href: window.location.href,
+      };
+      
+      errorLogger.error('Unhandled promise rejection', {
+        reason: event.reason,
+        promise: event.promise
       });
+      
+      this.handleError(errorDetails);
     });
   }
 
   private handleError(errorDetails: ErrorDetails): void {
+    // Track error with logger
+    const error = new Error(errorDetails.message);
+    if (errorDetails.stack) {
+      error.stack = errorDetails.stack;
+    }
+    trackError(error, {
+      url: errorDetails.url,
+      lineNumber: errorDetails.lineNumber,
+      columnNumber: errorDetails.columnNumber,
+      href: errorDetails.href
+    });
+
     // Log to console in development
     if (import.meta.env.DEV) {
       console.error('Global Error Handler:', errorDetails);
@@ -62,10 +90,17 @@ class GlobalErrorHandler {
 
     // Add to error queue
     this.errorQueue.push(errorDetails);
+    errorLogger.debug('Error added to queue', { 
+      queueSize: this.errorQueue.length,
+      errorMessage: errorDetails.message 
+    });
     
     // Keep only the most recent errors
     if (this.errorQueue.length > this.maxErrors) {
-      this.errorQueue.shift();
+      const removed = this.errorQueue.shift();
+      errorLogger.debug('Old error removed from queue', { 
+        removedMessage: removed?.message 
+      });
     }
 
     // Handle specific error types
@@ -74,9 +109,11 @@ class GlobalErrorHandler {
 
   private handleSpecificErrors(errorDetails: ErrorDetails): void {
     const message = errorDetails.message.toLowerCase();
+    errorLogger.debug('Analyzing error type', { message });
 
     // Environment variable errors
     if (message.includes('vite_convex_url') || message.includes('environment variable')) {
+      errorLogger.warn('Configuration error detected', { message });
       this.showUserFriendlyError(
         'Configuration Error',
         'The application is temporarily unavailable due to configuration updates. Please try refreshing the page.'
@@ -86,6 +123,7 @@ class GlobalErrorHandler {
 
     // Network errors
     if (message.includes('fetch') || message.includes('network') || message.includes('connection')) {
+      errorLogger.warn('Network error detected', { message });
       this.showUserFriendlyError(
         'Connection Error',
         'Unable to connect to our services. Please check your internet connection and try again.'
@@ -95,6 +133,7 @@ class GlobalErrorHandler {
 
     // Convex client errors
     if (message.includes('convex') || message.includes('client')) {
+      errorLogger.warn('Convex client error detected', { message });
       this.showUserFriendlyError(
         'Service Error',
         'Our backend service is temporarily unavailable. Please try again in a few minutes.'
@@ -104,14 +143,22 @@ class GlobalErrorHandler {
 
     // For production, show generic error message for unknown errors
     if (!import.meta.env.DEV) {
+      errorLogger.error('Unknown error in production', { message });
       this.showUserFriendlyError(
         'Unexpected Error',
         'Something went wrong. Please refresh the page and try again.'
       );
+    } else {
+      errorLogger.error('Unknown error in development', { 
+        message,
+        fullDetails: errorDetails 
+      });
     }
   }
 
   private showUserFriendlyError(title: string, message: string): void {
+    errorLogger.info('Showing user-friendly error', { title, message });
+    
     // Create a user-friendly error notification
     const errorDiv = document.createElement('div');
     errorDiv.className = 'fixed top-4 right-4 z-50 max-w-sm bg-red-50 border border-red-200 rounded-lg p-4 shadow-lg';
@@ -141,6 +188,7 @@ class GlobalErrorHandler {
     setTimeout(() => {
       if (errorDiv.parentNode) {
         errorDiv.parentNode.removeChild(errorDiv);
+        errorLogger.debug('Error notification auto-dismissed', { title });
       }
     }, 10000);
 
@@ -149,11 +197,14 @@ class GlobalErrorHandler {
   }
 
   public getRecentErrors(): ErrorDetails[] {
+    errorLogger.debug('Getting recent errors', { count: this.errorQueue.length });
     return [...this.errorQueue];
   }
 
   public clearErrors(): void {
+    const count = this.errorQueue.length;
     this.errorQueue = [];
+    errorLogger.info('Error queue cleared', { previousCount: count });
   }
 }
 

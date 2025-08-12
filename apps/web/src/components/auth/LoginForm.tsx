@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Bot, Github, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
+import { useLogger, timeOperation } from "@/utils/logger";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
@@ -14,18 +15,37 @@ export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const { signIn } = useAuth();
   const { toast } = useToast();
+  const logger = useLogger('LoginForm');
+
+  useEffect(() => {
+    logger.componentMount('LoginForm');
+    logger.info('Login form rendered');
+    
+    return () => {
+      logger.componentUnmount('LoginForm');
+    };
+  }, []);
 
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    logger.userAction('Email sign-in attempt', { email });
     setIsLoading(true);
     
     try {
-      await signIn("password", { email, password, flow: "signIn" });
+      await timeOperation('email-signin', async () => {
+        await signIn("password", { email, password, flow: "signIn" });
+      });
+      
+      logger.info('Email sign-in successful', { email });
       toast({
         title: "Welcome back!",
         description: "You've been signed in successfully.",
       });
     } catch (error) {
+      logger.error('Email sign-in failed', { 
+        email,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
       toast({
         title: "Sign In Failed",
         description: "Please check your credentials and try again.",
@@ -37,10 +57,17 @@ export function LoginForm() {
   };
 
   const handleGitHubSignIn = async () => {
+    logger.userAction('GitHub sign-in attempt');
     setIsLoading(true);
     try {
-      await signIn("github");
+      await timeOperation('github-signin', async () => {
+        await signIn("github");
+      });
+      logger.info('GitHub sign-in initiated');
     } catch (error) {
+      logger.error('GitHub sign-in failed', {
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
       toast({
         title: "GitHub Sign In Failed",
         description: "Please try again.",
@@ -51,10 +78,17 @@ export function LoginForm() {
   };
 
   const handleGoogleSignIn = async () => {
+    logger.userAction('Google sign-in attempt');
     setIsLoading(true);
     try {
-      await signIn("google");
+      await timeOperation('google-signin', async () => {
+        await signIn("google");
+      });
+      logger.info('Google sign-in initiated');
     } catch (error) {
+      logger.error('Google sign-in failed', {
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
       toast({
         title: "Google Sign In Failed",
         description: "Please try again.",
