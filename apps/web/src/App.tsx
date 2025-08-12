@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ConvexProvider } from "@/components/providers/ConvexProvider";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Public Pages
 import LandingPage from "./pages/LandingPage";
@@ -33,72 +34,84 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const App = () => (
-  <ConvexProvider>
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            {/* Public Routes - No Authentication Required */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/contact" element={<ContactPage />} />
-            <Route path="/pricing" element={<PricingPage />} />
-            <Route path="/privacy" element={<PrivacyPage />} />
-            <Route path="/terms" element={<TermsPage />} />
+  <ErrorBoundary>
+    <ConvexProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <ErrorBoundary>
+              <Routes>
+                {/* Public Routes - No Authentication Required */}
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/about" element={<AboutPage />} />
+                <Route path="/contact" element={<ContactPage />} />
+                <Route path="/pricing" element={<PricingPage />} />
+                <Route path="/privacy" element={<PrivacyPage />} />
+                <Route path="/terms" element={<TermsPage />} />
 
-            {/* Authentication Routes */}
-            <Route path="/login" element={<LoginForm />} />
-            <Route path="/signup" element={<SignUpForm />} />
-            <Route path="/forgot-password" element={<ForgotPasswordForm />} />
-            <Route path="/reset-password" element={<ResetPasswordForm />} />
+                {/* Authentication Routes */}
+                <Route path="/login" element={<LoginForm />} />
+                <Route path="/signup" element={<SignUpForm />} />
+                <Route path="/forgot-password" element={<ForgotPasswordForm />} />
+                <Route path="/reset-password" element={<ResetPasswordForm />} />
 
-            {/* Protected App Routes */}
-            <Route 
-              path="/app" 
-              element={
-                <ProtectedRoute>
-                  <GenniApp />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/app/*" 
-              element={
-                <ProtectedRoute>
-                  <GenniApp />
-                </ProtectedRoute>
-              } 
-            />
+                {/* Protected App Routes */}
+                <Route 
+                  path="/app" 
+                  element={
+                    <ErrorBoundary>
+                      <ProtectedRoute>
+                        <GenniApp />
+                      </ProtectedRoute>
+                    </ErrorBoundary>
+                  } 
+                />
+                <Route 
+                  path="/app/*" 
+                  element={
+                    <ErrorBoundary>
+                      <ProtectedRoute>
+                        <GenniApp />
+                      </ProtectedRoute>
+                    </ErrorBoundary>
+                  } 
+                />
 
-            {/* Admin Routes */}
-            <Route 
-              path="/admin" 
-              element={
-                <AdminRoute>
-                  <AdminDashboard />
-                </AdminRoute>
-              } 
-            />
+                {/* Admin Routes */}
+                <Route 
+                  path="/admin" 
+                  element={
+                    <ErrorBoundary>
+                      <AdminRoute>
+                        <AdminDashboard />
+                      </AdminRoute>
+                    </ErrorBoundary>
+                  } 
+                />
 
-            {/* Developer Routes */}
-            <Route 
-              path="/developer" 
-              element={
-                <DeveloperRoute>
-                  <DeveloperRoyaltyDashboard />
-                </DeveloperRoute>
-              } 
-            />
+                {/* Developer Routes */}
+                <Route 
+                  path="/developer" 
+                  element={
+                    <ErrorBoundary>
+                      <DeveloperRoute>
+                        <DeveloperRoyaltyDashboard />
+                      </DeveloperRoute>
+                    </ErrorBoundary>
+                  } 
+                />
 
-            {/* Catch-all route - must be last */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </QueryClientProvider>
-  </ConvexProvider>
+                {/* Catch-all route - must be last */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </ErrorBoundary>
+          </BrowserRouter>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ConvexProvider>
+  </ErrorBoundary>
 );
 
 export default App;

@@ -301,6 +301,21 @@ npm install
 npx convex dev    # Runs Convex in development mode
 ```
 
+### Railway Deployment Context
+**IMPORTANT**: Railway deploys each app from its respective directory, NOT from the repository root:
+
+- **Web App**: Deploys from `/apps/web/` directory
+  - Uses `apps/web/Dockerfile` 
+  - Railway.toml in web directory references local files
+  - Build context is the web app folder
+
+- **CrewAI Worker**: Deploys from `/apps/crewai-worker/` directory  
+  - Uses `apps/crewai-worker/Dockerfile.minimal`
+  - Railway.toml in worker directory references local files
+  - Build context is the worker app folder
+
+Each service has its own Railway configuration and deploys independently from its app folder.
+
 ### Deployment
 
 #### Railway CLI Commands
