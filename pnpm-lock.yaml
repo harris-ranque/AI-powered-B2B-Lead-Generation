@@ -21,6 +21,8 @@ importers:
         specifier: ^5.0.0
         version: 5.8.3
 
+  apps/crewai-worker: {}
+
   apps/web:
     dependencies:
       '@auth/core':

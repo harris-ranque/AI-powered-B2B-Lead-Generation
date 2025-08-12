@@ -553,3 +553,4 @@ Complete royalty system implementation with the following components:
 - Health endpoint validation with FastAPI, CrewAI, and OpenAI services
 
 **Status**: Both services validated with Docker Desktop and ready for Railway deployment.
+- remember the locations of the root directories in railway

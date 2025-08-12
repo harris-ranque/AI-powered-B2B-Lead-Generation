@@ -1,0 +1,17 @@
+{
+  "name": "genni-convex",
+  "version": "1.0.0",
+  "description": "Genni Convex backend",
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy"
+  },
+  "dependencies": {
+    "convex": "^1.25.4"
+  },
+  "devDependencies": {
+    "@types/node": "^18.17.0",
+    "typescript": "~5.0.3"
+  }
+}
