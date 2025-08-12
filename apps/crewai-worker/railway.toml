@@ -1,9 +1,10 @@
 # Railway CrewAI Worker Configuration
 [build]
 builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.minimal"
 
 [deploy]
-startCommand = "gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:${PORT:-8080} --workers 2 --access-logfile - --error-logfile -"
+startCommand = "./start.sh"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "always"
@@ -11,3 +12,4 @@ restartPolicyType = "always"
 [variables]
 PYTHONUNBUFFERED = "1"
 PYTHONDONTWRITEBYTECODE = "1"
+PORT = "8080"

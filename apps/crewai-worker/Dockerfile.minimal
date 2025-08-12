@@ -35,14 +35,20 @@ RUN pip install --no-cache-dir \
 # Copy application code
 COPY . .
 
+# Make startup script executable
+RUN chmod +x start.sh
+
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash crewai
 RUN chown -R crewai:crewai /app
 USER crewai
 
-# Health check
+# Set default PORT environment variable
+ENV PORT=8080
+
+# Health check with default port fallback
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8080}/health || exit 1
 
-# Use gunicorn with uvicorn worker
-CMD ["sh", "-c", "gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:${PORT:-8080} --workers 2 --access-logfile - --error-logfile -"]
+# Use startup script for better environment handling
+CMD ["./start.sh"]
