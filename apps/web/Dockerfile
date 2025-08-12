@@ -11,6 +11,27 @@ RUN npm install -g pnpm@latest
 COPY package.json ./
 COPY pnpm-lock-real.yaml ./pnpm-lock.yaml
 
+# Create workspace packages with mock content for build
+RUN mkdir -p packages/convex-types packages/shared-types
+
+# Create mock convex-types package with required files
+RUN echo '{"name":"@genni/convex-types","version":"1.0.0","main":"./src/_generated/api.js","types":"./src/_generated/api.d.ts","exports":{".":{"types":"./src/_generated/api.d.ts","default":"./src/_generated/api.js"},"./dataModel":{"types":"./src/_generated/dataModel.d.ts","default":"./src/_generated/dataModel.js"}}}' > packages/convex-types/package.json && \
+    mkdir -p packages/convex-types/src/_generated && \
+    echo 'export const api = {};' > packages/convex-types/src/_generated/api.js && \
+    echo 'export declare const api: any;' > packages/convex-types/src/_generated/api.d.ts && \
+    echo 'export {};' > packages/convex-types/src/_generated/dataModel.js && \
+    echo 'export {};' > packages/convex-types/src/_generated/dataModel.d.ts
+
+# Create mock shared-types package  
+RUN echo '{"name":"@genni/shared-types","version":"1.0.0","main":"./src/index.js","types":"./src/index.d.ts"}' > packages/shared-types/package.json && \
+    mkdir -p packages/shared-types/src && \
+    echo 'export {};' > packages/shared-types/src/index.ts && \
+    echo 'export {};' > packages/shared-types/src/index.js && \
+    echo 'export {};' > packages/shared-types/src/index.d.ts
+
+# Create minimal pnpm-workspace.yaml for Docker context
+RUN echo -e "packages:\n  - 'packages/*'" > pnpm-workspace.yaml
+
 # Install dependencies
 RUN pnpm install
 
