@@ -1,10 +1,10 @@
 # Railway Frontend Configuration
 [build]
 builder = "NIXPACKS"
-buildCommand = "node convex-mock.cjs && pnpm build"
+buildCommand = "node convex-mock.cjs && npm run build"
 
 [deploy]  
-startCommand = "pnpm start"
+startCommand = "npm start"
 healthcheckPath = "/"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

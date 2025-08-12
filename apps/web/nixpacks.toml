@@ -4,18 +4,20 @@ nixPkgs = ["nodejs-18_x"]
 
 [phases.install]
 cmds = [
-  "npm install"
+  "corepack enable",
+  "npm install -g pnpm",
+  "pnpm install"
 ]
 
 [phases.build]
 cmds = [
   "node prebuild.cjs",
   "node convex-mock.cjs",
-  "npm run build"
+  "pnpm build"
 ]
 
 [start]
-cmd = "npm start"
+cmd = "pnpm start"
 
 [variables]
 # Set placeholder Convex URL for build
