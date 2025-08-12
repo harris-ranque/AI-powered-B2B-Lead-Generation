@@ -1,0 +1,18 @@
+{
+  "name": "@genni/crewai-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Python FastAPI CrewAI worker service",
+  "scripts": {
+    "dev": "python3 -m uvicorn app.main:app --reload --port 8080",
+    "start": "gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT",
+    "build": "echo 'Python app - no build step required'",
+    "type-check": "python3 -m py_compile app/main.py",
+    "lint": "echo 'Python linting not configured yet'",
+    "install-deps": "pip install -r requirements.txt",
+    "test": "echo 'Python tests not configured yet'"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

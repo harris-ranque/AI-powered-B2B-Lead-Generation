@@ -13,14 +13,14 @@ import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CheckCircle } from 'lucide-react';
-import { DeveloperConfig } from '@/shared-types-local/royalty.types';
+import { DeveloperConfig } from '@shared';
 
 interface PaymentConfigModalProps {
   config: DeveloperConfig | null;
   onClose: () => void;
 }
 
-import { api } from '../../../convex/_generated/api';
+import { api } from "@/convex/_generated/api"
 
 export function PaymentConfigModal({ config, onClose }: PaymentConfigModalProps) {
   const updateConfig = useMutation(api.royalty.config.updateDeveloperConfig);

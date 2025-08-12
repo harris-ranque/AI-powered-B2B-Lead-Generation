@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useAction } from "convex/react";
-import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
+import { api } from "@/convex/_generated/api"
+import type { Id } from "@/@/convex/_generated/dataModel";
 
 export function useSearches() {
   const searches = useQuery(api.search.queries.getUserSearches);

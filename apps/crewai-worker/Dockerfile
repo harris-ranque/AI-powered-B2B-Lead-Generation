@@ -1,47 +1,33 @@
-FROM python:3.11-slim
-
+# Stage 1: Builder
+FROM python:3.11-slim AS builder
 WORKDIR /app
 
-# Install minimal system dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    git \
+    build-essential libffi-dev libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip
-RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Install dependencies directly without requirements.txt to avoid version conflicts
-RUN pip install --no-cache-dir \
-    fastapi==0.109.0 \
-    uvicorn[standard]==0.24.0 \
-    gunicorn==21.2.0 \
-    pydantic==2.7.0 \
-    pydantic-settings==2.9.1 \
-    python-dotenv==1.0.0 \
-    requests==2.31.0 \
-    python-multipart==0.0.6 \
-    aiohttp==3.9.0 \
-    psutil==5.9.0
+COPY requirements.txt .
 
-# Install newer compatible versions of AI libraries
-RUN pip install --no-cache-dir \
-    "openai>=1.30.0" \
-    "crewai>=0.80.0,<1.0.0" \
-    "langchain>=0.1.0" \
-    "langchain-openai>=0.1.0"
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-# Copy application code
+# Stage 2: Runtime
+FROM python:3.11-slim
+WORKDIR /app
+
+# Install curl for health checks
+RUN apt-get update && apt-get install -y curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /install /usr/local
 COPY . .
 
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash crewai
-RUN chown -R crewai:crewai /app
-USER crewai
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /app
+USER appuser
 
-# Expose port for Railway's health check
-EXPOSE ${PORT:-8080}
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8080}/health || exit 1
 
-# Use gunicorn with uvicorn worker (Railway will override this with startCommand)
 CMD ["sh", "-c", "gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:${PORT:-8080} --workers 2 --access-logfile - --error-logfile -"]

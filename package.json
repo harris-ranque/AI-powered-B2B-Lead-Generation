@@ -8,9 +8,13 @@
     "start": "turbo start",
     "start:web": "turbo start --filter=@genni/web",
     "start:worker": "turbo start --filter=@genni/crewai-worker",
+    "dev:web": "turbo dev --filter=@genni/web",
+    "dev:worker": "turbo dev --filter=@genni/crewai-worker",
     "clean": "turbo clean",
     "type-check": "turbo type-check",
     "lint": "turbo lint",
+    "test": "turbo test",
+    "install-deps": "turbo install-deps",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
   },
   "devDependencies": {

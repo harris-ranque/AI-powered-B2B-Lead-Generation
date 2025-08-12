@@ -107,14 +107,31 @@ pnpm dev
 # Build all apps for production
 pnpm build
 
+# Start production servers
+pnpm start
+
+# Start specific services
+pnpm start:web      # Frontend only
+pnpm start:worker   # CrewAI worker only
+
+# Development for specific services
+pnpm dev:web        # Frontend dev server only
+pnpm dev:worker     # CrewAI worker dev server only
+
 # Run linting across all apps
 pnpm lint
 
 # Run TypeScript type checking
 pnpm type-check
 
+# Run tests across all apps
+pnpm test
+
 # Clean all build artifacts
 pnpm clean
+
+# Install dependencies for all apps
+pnpm install-deps
 
 # Format code across all apps
 pnpm format
@@ -149,10 +166,19 @@ pip install -r requirements.txt
 
 # Start FastAPI development server (port 8080)
 pnpm dev
-# Or directly: python -m uvicorn app.main:app --reload --port 8080
+# Or directly: python3 -m uvicorn app.main:app --reload --port 8080
 
-# Start production server
+# Start production server (with Gunicorn)
 pnpm start
+
+# Build (no-op for Python)
+pnpm build
+
+# Type check Python files
+pnpm type-check
+
+# Install dependencies
+pnpm install-deps
 ```
 
 ## Technology Stack
@@ -184,12 +210,20 @@ pnpm start
 - **Entry Point**: `src/main.tsx` → `src/App.tsx` → `src/pages/Index.tsx` → `src/components/GenniApp.tsx`
 - **UI Components**: Extensive shadcn/ui component library in `src/components/ui/`
 - **Business Components**: Lead generation interface components in `src/components/`
+- **Feature-Specific Components**:
+  - `src/components/auth/`: Authentication flow components
+  - `src/components/royalty/`: Royalty system components with tests
+  - `src/components/providers/`: React context providers
+- **Custom Hooks**: Business logic hooks in `src/hooks/`
+- **Type Definitions**: Shared types in `src/lib/types.ts`
 - **Key Components**:
   - `GenniApp`: Main application container
   - `LeadGenApp`: Lead generation workflow
   - `ChatInterface`: AI interaction interface
   - `Dashboard`: User dashboard and metrics
   - `EmailStudio`: Email template management
+  - `AdminDashboard`: Administrative interface
+  - `RoyaltyDashboard`: Developer royalty management
 
 ### CrewAI Multi-Agent System
 The Python worker implements a 5-agent system for email personalization:
@@ -214,10 +248,10 @@ The Python worker implements a 5-agent system for email personalization:
 ### Frontend Environment Variables
 Create `apps/web/.env.local`:
 ```env
-NEXT_PUBLIC_CONVEX_URL=your_convex_url
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
-NEXT_PUBLIC_POSTHOG_KEY=phc_...
-NEXT_PUBLIC_POSTHOG_HOST=
+VITE_CONVEX_URL=your_convex_url
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
+VITE_POSTHOG_KEY=phc_...
+VITE_POSTHOG_HOST=
 ```
 
 ### CrewAI Worker Environment Variables
@@ -375,8 +409,10 @@ railway logs | grep -i "listening on"
 
 - **Linting**: ESLint for TypeScript/React code
 - **Type Checking**: TypeScript compiler with strict configuration
+- **Testing**: React component tests (see `src/components/royalty/__tests__/`)
 - **Build Validation**: Production builds tested before deployment
 - **Code Formatting**: Prettier for consistent formatting
+- **Build Tools**: Vite for fast development and optimized production builds
 
 ## Key Integrations
 
@@ -409,8 +445,96 @@ railway logs | grep -i "listening on"
 - Clear boundaries between features
 - Reusable components and utilities
 
+## Testing Commands
+
+### Running Tests
+```bash
+# Run all tests
+pnpm test
+
+# Run tests for specific app
+cd apps/web && pnpm test
+
+# Run tests with coverage
+cd apps/web && pnpm test --coverage
+```
+
+## Build Process
+
+### Frontend Build Process
+- Uses `convex-mock.cjs` to handle Convex imports during build
+- Supports both development and production builds
+- Vite handles bundling and optimization
+
+### Worker Build Process
+- Python app requires no build step
+- Dependencies managed via `requirements.txt`
+- Production deployment uses Gunicorn WSGI server
+
 ## Deployment
 
 - **Frontend & Worker**: Deployed to Railway using `./scripts/deploy.sh`
 - **Backend**: Convex deployed separately from `genni-convex` repository
 - **Environment**: Production environment variables configured in Railway and Convex
+- **Configuration**: Railway deployment configured via `railway.toml` files
+
+## Implementation History
+
+### Royalty System Implementation
+
+Complete royalty system implementation with the following components:
+
+**Frontend Components** (`apps/web/src/components/royalty/`):
+- `DeveloperRoyaltyDashboard.tsx` - Main dashboard with earnings overview
+- `PaymentTable.tsx` - Sortable/filterable payment history 
+- `PaymentConfigModal.tsx` - Payment method setup with Stripe Connect
+- `AdminRoyaltyView.tsx` - Admin interface for payment management
+- `InvoiceGenerator.tsx` - PDF-ready invoice generation
+
+**Key Features Delivered**:
+- Real-time earnings dashboard with lifetime/pending/monthly stats
+- Multiple payment methods (Stripe Connect, bank transfer, PayPal)
+- Payment history with status tracking and filtering
+- Invoice generation and CSV export
+- Admin payment management interface
+- Comprehensive TypeScript types and test coverage
+
+**Backend Integration Required**: Convex schema updates and API endpoints for revenue tracking, payment processing, and Stripe Connect integration.
+
+### Security Updates Applied
+
+**CrewAI Worker Dependencies**:
+- Updated gunicorn >=23.0.0 (CVE-2024-6827 HTTP Request Smuggling fix)
+- Updated uvicorn >=0.24.0 (CVE-2024-5829 denial of service fix)
+- Updated pydantic >=2.8.0 (multiple security vulnerabilities fixed)
+- Updated langchain ecosystem to 0.3.x series for compatibility
+
+**Impact**: Resolved critical security vulnerabilities and dependency conflicts preventing deployment.
+
+### CrewAI Version Compatibility Fixes
+
+**Problem Resolved**: CrewAI version 0.28.8 never existed on PyPI, causing deployment failures.
+
+**Solution Applied**: Updated to modern standalone CrewAI framework:
+- CrewAI >=0.152.0 with compatible tool versions
+- Updated langchain ecosystem to 0.3.x series 
+- Resolved embedchain dependency conflicts
+- Fixed chromadb version compatibility issues
+
+**Result**: Clean dependency resolution and successful Docker builds for production deployment.
+
+### Docker Deployment Fixes
+
+**Web App**: Fixed Railway deployment from `/apps/web` directory context:
+- Updated Dockerfile to work with Railway's build context
+- Resolved pnpm installation issues (bypassed corepack signature errors)
+- Added real pnpm-lock.yaml file to avoid symlink issues
+- Successfully tested Docker build and container deployment
+
+**CrewAI Worker**: Resolved dependency conflicts and validated deployment:
+- Fixed langchain version conflicts (updated to 0.3.x series)
+- Removed problematic embedchain dependency
+- Multi-stage Docker build producing 1.29GB production image
+- Health endpoint validation with FastAPI, CrewAI, and OpenAI services
+
+**Status**: Both services validated with Docker Desktop and ready for Railway deployment.
