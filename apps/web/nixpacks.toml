@@ -4,8 +4,7 @@ nixPkgs = ["nodejs-18_x"]
 
 [phases.install]
 cmds = [
-  "corepack enable",
-  "npm install -g pnpm",
+  "npm install -g pnpm@latest",
   "pnpm install"
 ]
 
