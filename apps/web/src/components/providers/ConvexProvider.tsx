@@ -78,6 +78,10 @@ export function ConvexProvider({ children }: ConvexProviderProps) {
     );
   } catch (error) {
     console.error("ConvexProvider error:", error);
+    // If this is the specific "options" error, provide more specific guidance
+    if (error instanceof Error && error.message.includes("options")) {
+      console.error("This appears to be a Convex auth configuration issue. Please check version compatibility.");
+    }
     return <ConvexErrorFallback />;
   }
 }
