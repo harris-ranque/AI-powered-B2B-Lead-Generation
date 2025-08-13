@@ -30,7 +30,7 @@ export const createOrUpdateProfile = mutation({
         metrics: cs.metrics,
       })) || [],
       contactInfo: {
-        email: args.contactInfo.email ? (validateEmail(args.contactInfo.email) ? args.contactInfo.email : "") : "",
+        email: args.contactInfo.email ? (validateEmail(args.contactInfo.email) ? args.contactInfo.email : "") : (user.email || ""),
         phone: args.contactInfo.phone ? sanitizeString(args.contactInfo.phone) : "",
         website: args.contactInfo.website ? (validateUrl(args.contactInfo.website) ? normalizeUrl(args.contactInfo.website) : "") : "",
         linkedin: args.contactInfo.linkedin ? (validateUrl(args.contactInfo.linkedin) ? normalizeUrl(args.contactInfo.linkedin) : "") : "",
@@ -69,6 +69,8 @@ export const createOrUpdateProfile = mutation({
       .unique();
 
     // Determine if profile is complete
+    // If contactInfo.email is empty, use the user's Clerk email as backup
+    const userEmail = sanitizedData.contactInfo.email || user.email || "";
     const isComplete = !!(
       sanitizedData.companyName &&
       sanitizedData.industry &&
@@ -76,7 +78,7 @@ export const createOrUpdateProfile = mutation({
       sanitizedData.services.length > 0 &&
       sanitizedData.targetMarkets.length > 0 &&
       sanitizedData.keyDifferentiators.length > 0 &&
-      sanitizedData.contactInfo.email
+      userEmail // User has email from Clerk or manually entered
     );
 
     const profileData = {
@@ -234,6 +236,9 @@ export const updateProfileSection = mutation({
     // Check if profile is now complete
     const updatedProfile = await ctx.db.get(profile._id);
     if (updatedProfile) {
+      // Get user for email fallback
+      const currentUser = await getCurrentUser(ctx);
+      const userEmail = updatedProfile.contactInfo?.email || currentUser?.email || "";
       const isComplete = !!(
         updatedProfile.companyName &&
         updatedProfile.industry &&
@@ -241,7 +246,7 @@ export const updateProfileSection = mutation({
         updatedProfile.services?.length > 0 &&
         updatedProfile.targetMarkets?.length > 0 &&
         updatedProfile.keyDifferentiators?.length > 0 &&
-        updatedProfile.contactInfo?.email
+        userEmail // User has email from Clerk or manually entered
       );
 
       if (isComplete !== updatedProfile.isComplete) {
@@ -404,6 +409,7 @@ export const importProfile = mutation({
       };
     } else {
       // Create new profile
+      const userEmail = profileData.contactInfo?.email || "";
       const isComplete = !!(
         profileData.companyName &&
         profileData.industry &&
@@ -411,7 +417,7 @@ export const importProfile = mutation({
         profileData.services?.length > 0 &&
         profileData.targetMarkets?.length > 0 &&
         profileData.keyDifferentiators?.length > 0 &&
-        profileData.contactInfo?.email
+        userEmail // User has email from profile data
       );
 
       const profileId = await ctx.db.insert("businessProfiles", {
