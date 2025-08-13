@@ -6,9 +6,9 @@ export function useBilling() {
   const usage = useQuery(api.billing.queries.getUsageStats);
   const transactions = useQuery(api.billing.queries.getCreditTransactions);
   
-  const updatePlan = useMutation(api.billing.mutations.updatePlan);
+  const updatePlan = useMutation(api.billing.mutations.updateSubscription);
   const purchaseCredits = useMutation(api.billing.mutations.purchaseCredits);
-  const createCheckoutSession = useAction(api.billing.actions.createCheckoutSession);
+  const createCheckoutSession = useMutation(api.billing.mutations.createCheckoutSession);
   
   return {
     billing,

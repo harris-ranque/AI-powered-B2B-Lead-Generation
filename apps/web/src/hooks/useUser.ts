@@ -3,9 +3,9 @@ import { api } from "@genni/convex-types"
 import type { Id } from "@genni/convex-types/dataModel";
 
 export function useUser() {
-  const user = useQuery(api.users.queries.getCurrentUser);
-  const updateUser = useMutation(api.users.mutations.updateUser);
-  const deleteUser = useMutation(api.users.mutations.deleteUser);
+  const user = useQuery(api.users.queries.getCurrentUserData);
+  const updateUser = useMutation(api.users.mutations.updateProfile);
+  const deleteUser = useMutation(api.users.mutations.deleteAccount);
   
   return {
     user,

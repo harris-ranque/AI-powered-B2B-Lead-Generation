@@ -4,7 +4,7 @@ import type { Id } from "@genni/convex-types/dataModel";
 
 export function useNotifications() {
   const notifications = useQuery(api.notifications.queries.getUserNotifications);
-  const unreadCount = useQuery(api.notifications.queries.getUnreadCount);
+  const unreadCount = useQuery(api.notifications.queries.getNotificationCounts);
   
   const markAsRead = useMutation(api.notifications.mutations.markAsRead);
   const markAllAsRead = useMutation(api.notifications.mutations.markAllAsRead);

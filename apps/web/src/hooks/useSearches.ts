@@ -16,10 +16,10 @@ export function useSearches() {
   const duplicateSearchMutation = useMutation(api.search.mutations.duplicateSearch);
 
   useEffect(() => {
-    if (searches) {
+    if (searches?.searches) {
       logger.debug('Searches loaded', {
-        count: searches.length,
-        statuses: searches.reduce((acc, search) => {
+        count: searches.searches.length,
+        statuses: searches.searches.reduce((acc, search) => {
           acc[search.status] = (acc[search.status] || 0) + 1;
           return acc;
         }, {} as Record<string, number>)
@@ -58,7 +58,7 @@ export function useSearches() {
   };
   
   return {
-    searches,
+    searches: searches?.searches,
     createSearch,
     updateSearchStatus,
     updateSearchProgress,
