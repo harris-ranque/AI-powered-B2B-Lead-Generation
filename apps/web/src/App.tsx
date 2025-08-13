@@ -30,7 +30,6 @@ import { DeveloperRoyaltyDashboard } from "@/components/royalty/DeveloperRoyalty
 
 // Other Pages
 import NotFound from "./pages/NotFound";
-import { DebugAuth } from "./debug-auth";
 
 const queryClient = new QueryClient();
 
@@ -41,7 +40,6 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          <DebugAuth />
           <BrowserRouter>
             <ErrorBoundary>
               <Routes>

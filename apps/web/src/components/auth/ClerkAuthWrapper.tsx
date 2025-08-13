@@ -17,15 +17,44 @@ export function ClerkAuthWrapper({ children, mode = 'signin', redirectUrl }: Cle
             signInUrl="/signin"
             appearance={{
               elements: {
-                formButtonPrimary: "bg-primary hover:bg-primary/90",
-                card: "shadow-md",
-                headerTitle: "text-2xl font-semibold",
+                formButtonPrimary: "bg-primary hover:bg-primary/90 text-primary-foreground border-0",
+                card: "shadow-lg border border-border bg-card",
+                headerTitle: "text-2xl font-semibold text-foreground",
                 headerSubtitle: "text-muted-foreground",
-                socialButtonsBlockButton: "border border-input bg-background hover:bg-accent",
-                formFieldInput: "border border-input bg-background",
+                socialButtonsBlockButton: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+                socialButtonsBlockButtonText: "text-foreground",
+                dividerLine: "bg-border",
+                dividerText: "text-muted-foreground",
+                formFieldInput: "border border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background",
+                formFieldLabel: "text-foreground font-medium",
+                formFieldInputShowPasswordButton: "text-muted-foreground hover:text-foreground",
                 footerActionLink: "text-primary hover:text-primary/80",
+                identityPreviewText: "text-foreground",
+                identityPreviewEditButton: "text-primary hover:text-primary/80",
+                formHeaderTitle: "text-foreground",
+                formHeaderSubtitle: "text-muted-foreground",
+                otpCodeFieldInput: "border border-input bg-background text-foreground",
+                alternativeMethodsBlockButton: "border border-input bg-background hover:bg-accent text-foreground",
+              },
+              layout: {
+                socialButtonsPlacement: "top",
+                showOptionalFields: true,
               },
             }}
+            additionalSignUpFields={[
+              {
+                name: "first_name",
+                label: "First name",
+                placeholder: "Enter your first name",
+                required: true,
+              },
+              {
+                name: "last_name", 
+                label: "Last name",
+                placeholder: "Enter your last name",
+                required: true,
+              },
+            ]}
           />
         </div>
       </div>
@@ -40,13 +69,27 @@ export function ClerkAuthWrapper({ children, mode = 'signin', redirectUrl }: Cle
           signUpUrl="/signup"
           appearance={{
             elements: {
-              formButtonPrimary: "bg-primary hover:bg-primary/90",
-              card: "shadow-md",
-              headerTitle: "text-2xl font-semibold",
+              formButtonPrimary: "bg-primary hover:bg-primary/90 text-primary-foreground border-0",
+              card: "shadow-lg border border-border bg-card",
+              headerTitle: "text-2xl font-semibold text-foreground",
               headerSubtitle: "text-muted-foreground",
-              socialButtonsBlockButton: "border border-input bg-background hover:bg-accent",
-              formFieldInput: "border border-input bg-background",
+              socialButtonsBlockButton: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+              socialButtonsBlockButtonText: "text-foreground",
+              dividerLine: "bg-border",
+              dividerText: "text-muted-foreground",
+              formFieldInput: "border border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background",
+              formFieldLabel: "text-foreground font-medium",
+              formFieldInputShowPasswordButton: "text-muted-foreground hover:text-foreground",
               footerActionLink: "text-primary hover:text-primary/80",
+              identityPreviewText: "text-foreground",
+              identityPreviewEditButton: "text-primary hover:text-primary/80",
+              formHeaderTitle: "text-foreground",
+              formHeaderSubtitle: "text-muted-foreground",
+              otpCodeFieldInput: "border border-input bg-background text-foreground",
+              alternativeMethodsBlockButton: "border border-input bg-background hover:bg-accent text-foreground",
+            },
+            layout: {
+              socialButtonsPlacement: "top",
             },
           }}
         />
