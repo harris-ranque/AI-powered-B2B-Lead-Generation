@@ -20,7 +20,7 @@ export function Dashboard() {
   const totalLeads = userLeadStats?.totalLeads || 0;
   const leadsWithEmails = userLeadStats?.withEmails || 0;
   const totalSearches = searches?.length || 0;
-  const emailsGenerated = emailRequests?.length || 0;
+  const emailsGenerated = emailRequests?.page?.length || 0;
 
   const stats = [
     { 
@@ -44,13 +44,13 @@ export function Dashboard() {
     { 
       title: "AI Emails Generated", 
       value: emailsGenerated.toLocaleString(), 
-      change: emailRequests?.filter(r => r.status === 'completed').length ? `${emailRequests.filter(r => r.status === 'completed').length} successful` : "None generated", 
+      change: emailRequests?.page?.filter(r => r.status === 'completed').length ? `${emailRequests.page.filter(r => r.status === 'completed').length} successful` : "None generated", 
       icon: Bot 
     },
   ];
 
   // Convert notifications to recent activity format
-  const recentActivity = notifications?.slice(0, 4).map(notification => ({
+  const recentActivity = notifications?.notifications?.slice(0, 4).map(notification => ({
     action: notification.title,
     time: new Date(notification._creationTime).toLocaleString(),
     count: notification.type

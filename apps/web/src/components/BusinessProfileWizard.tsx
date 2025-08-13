@@ -134,19 +134,21 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
     setIsSaving(true);
     
     try {
-      // Save profile to Convex
+      // Save profile to Convex - map frontend fields to backend schema
       await createOrUpdateProfile({
         companyName: profile.companyName,
         industry: profile.industry,
-        targetIndustries: profile.targetIndustries,
-        offerings: profile.offerings,
-        toneOfVoice: profile.toneOfVoice,
+        services: profile.offerings, // Map offerings to services
+        targetMarkets: profile.targetIndustries, // Map targetIndustries to targetMarkets
         valueProposition: profile.valueProposition,
         keyDifferentiators: profile.keyDifferentiators,
-        painPointsWeSolve: profile.painPointsWeSolve,
-        idealCustomerProfile: profile.idealCustomerProfile,
-        currentChallenges: profile.currentChallenges,
-        isComplete: true,
+        contactInfo: {
+          // Include required contactInfo object with empty values
+          email: "",
+          phone: "",
+          website: "",
+          linkedin: "",
+        },
       });
 
       onComplete(profile);

@@ -42,7 +42,8 @@ export function LeadEternityDashboard() {
   // Real backend integration
   const { user, isAuthenticated } = useAuth();
   const { profile, isComplete: hasCompletedOnboarding } = useProfile();
-  const { balance: userCredits } = useCredits();
+  const { balance } = useCredits();
+  const userCredits = balance?.balance || 0;
   const { purchaseCredits, usage } = useBilling();
   const { requests: emailRequests } = useCrewAIRequests();
   const { searches } = useSearches();
@@ -53,7 +54,7 @@ export function LeadEternityDashboard() {
   const isAdmin = user?.role === 'admin' || user?.isAdmin === true;
   
   // Convert email requests to EmailGenerationResult format for compatibility
-  const generatedEmails = emailRequests?.filter(req => req.status === 'completed').map(req => ({
+  const generatedEmails = emailRequests?.page?.filter(req => req.status === 'completed').map(req => ({
     primary_email: {
       subject: req.result?.subject || 'Generated Email',
       body: req.result?.body || '',
@@ -211,7 +212,7 @@ export function LeadEternityDashboard() {
               <CreditCard className="h-4 w-4 mr-2" />
               Credits & Billing
               <Badge variant="secondary" className="ml-auto text-xs">
-                {userCredits || 0}
+                {userCredits}
               </Badge>
             </Button>
             
