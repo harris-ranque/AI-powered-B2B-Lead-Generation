@@ -14,16 +14,18 @@ const apiContent = `
 export const api = {
   users: {
     queries: {
-      getCurrentUser: "users:queries:getCurrentUser",
+      getCurrentUserData: "users:queries:getCurrentUserData",
       getUserById: "users:queries:getUserById", 
       getUserStats: "users:queries:getUserStats",
       getUserActivity: "users:queries:getUserActivity",
       getUserByEmail: "users:queries:getUserByEmail",
-      getUserPreferences: "users:queries:getUserPreferences"
+      getUserPreferences: "users:queries:getUserPreferences",
+      getUserCredits: "users:queries:getUserCredits",
+      listUsers: "users:queries:listUsers"
     },
     mutations: {
-      updateUser: "users:mutations:updateUser",
-      deleteUser: "users:mutations:deleteUser",
+      updateProfile: "users:mutations:updateProfile",
+      deleteAccount: "users:mutations:deleteAccount",
       addCredits: "users:mutations:addCredits"
     }
   },
@@ -38,13 +40,22 @@ export const api = {
   search: {
     queries: {
       getSearch: "search:queries:getSearch",
-      listSearches: "search:queries:listSearches"
+      getUserSearches: "search:queries:getUserSearches",
+      getSearchById: "search:queries:getSearchById",
+      getSearchResults: "search:queries:getSearchResults",
+      getSearchAnalytics: "search:queries:getSearchAnalytics"
     },
     mutations: {
-      createSearch: "search:mutations:createSearch"
+      createSearch: "search:mutations:createSearch",
+      updateSearchStatus: "search:mutations:updateSearchStatus",
+      updateSearchProgress: "search:mutations:updateSearchProgress",
+      cancelSearch: "search:mutations:cancelSearch",
+      deleteSearch: "search:mutations:deleteSearch",
+      duplicateSearch: "search:mutations:duplicateSearch"
     },
     actions: {
-      startSearch: "search:actions:startSearch"
+      startSearch: "search:actions:startSearch",
+      searchGoogleMaps: "search:actions:searchGoogleMaps"
     }
   },
   leads: {
@@ -66,7 +77,9 @@ export const api = {
       getBilling: "billing:queries:getBilling"
     },
     mutations: {
-      updateBilling: "billing:mutations:updateBilling"
+      updateSubscription: "billing:mutations:updateSubscription",
+      purchaseCredits: "billing:mutations:purchaseCredits",
+      createCheckoutSession: "billing:mutations:createCheckoutSession"
     }
   },
   royalty: {
@@ -85,7 +98,13 @@ export const api = {
   },
   notifications: {
     queries: {
-      getNotifications: "notifications:queries:getNotifications"
+      getUserNotifications: "notifications:queries:getUserNotifications",
+      getNotificationCounts: "notifications:queries:getNotificationCounts"
+    },
+    mutations: {
+      markAsRead: "notifications:mutations:markAsRead",
+      markAllAsRead: "notifications:mutations:markAllAsRead",
+      deleteNotification: "notifications:mutations:deleteNotification"
     }
   }
 };
