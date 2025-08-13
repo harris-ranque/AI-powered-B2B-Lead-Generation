@@ -366,3 +366,6 @@ export const getProfileByUserId = query({
     return profile;
   },
 });
+
+// Alias for getCurrentProfile to maintain compatibility
+export const getBusinessProfile = getCurrentProfile;

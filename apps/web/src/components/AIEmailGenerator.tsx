@@ -104,27 +104,8 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
     }
   }, [request, isGenerating, onEmailGenerated, toast]);
 
-  // Mock lead for demo if none selected
-  const demoLead: Lead = {
-    id: 'demo_lead_1',
-    company_name: 'TechFlow Solutions',
-    contact_name: 'Sarah Johnson',
-    title: 'VP of Marketing',
-    industry: 'SaaS',
-    company_size: '50-200 employees',
-    location: 'San Francisco, CA',
-    description: 'Cloud-based project management and collaboration platform for distributed teams',
-    website: 'https://techflowsolutions.com',
-    contact_info: {
-      email: 'sarah.johnson@techflowsolutions.com',
-      linkedin: 'https://linkedin.com/in/sarahjohnson-marketing'
-    },
-    status: 'new',
-    technologies: ['React', 'Node.js', 'AWS', 'MongoDB'],
-    pain_points: ['Lead generation scalability', 'Email personalization at scale']
-  };
-
-  const targetLead = selectedLead || demoLead;
+  // Require lead selection - no demo data
+  const targetLead = selectedLead;
 
   const handleGenerateEmail = async () => {
     if (!profile) {
@@ -136,7 +117,7 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
       return;
     }
 
-    if (!selectedLead) {
+    if (!targetLead) {
       toast({
         title: "Lead Required",
         description: "Please select a lead to generate an email for.",
@@ -149,8 +130,8 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
     setCurrentTab("result");
     
     try {
-      // Convert selectedLead to the ID format needed by Convex
-      const leadId = selectedLead.id as Id<"leads">;
+      // Convert targetLead to the ID format needed by Convex
+      const leadId = targetLead.id as Id<"leads">;
       
       const result = await generateEmail({
         leadId,

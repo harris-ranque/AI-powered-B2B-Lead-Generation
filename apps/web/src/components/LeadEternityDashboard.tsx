@@ -28,18 +28,41 @@ import { Dashboard } from "./Dashboard";
 import { Settings as SettingsComponent } from "./Settings";
 import type { Lead, EmailGenerationResult, BusinessProfileInput } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/hooks/useProfile";
+import { useCredits, useBilling } from "@/hooks/useBilling";
+import { useCrewAIRequests } from "@/hooks/useCrewAI";
+import { useSearches } from "@/hooks/useSearches";
+import { useUserLeads } from "@/hooks/useLeads";
 
 export function LeadEternityDashboard() {
   const [currentTab, setCurrentTab] = useState("onboarding");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [generatedEmails, setGeneratedEmails] = useState<EmailGenerationResult[]>([]);
-  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
-  const [businessProfile, setBusinessProfile] = useState<BusinessProfileInput | null>(null);
   
-  // Mock user data - in real app this would come from authentication/database
-  const [userCredits, setUserCredits] = useState(250);
-  const [userPlan, setUserPlan] = useState<'free' | 'pro' | 'enterprise'>('pro');
-  const [isAdmin, setIsAdmin] = useState(true); // Mock admin status
+  // Real backend integration
+  const { user, isAuthenticated } = useAuth();
+  const { profile, isComplete: hasCompletedOnboarding } = useProfile();
+  const { balance: userCredits } = useCredits();
+  const { purchaseCredits, usage } = useBilling();
+  const { requests: emailRequests } = useCrewAIRequests();
+  const { searches } = useSearches();
+  const { stats: leadStats } = useUserLeads();
+  
+  // Derive user plan from user data
+  const userPlan = user?.plan || 'free';
+  const isAdmin = user?.role === 'admin' || user?.isAdmin === true;
+  
+  // Convert email requests to EmailGenerationResult format for compatibility
+  const generatedEmails = emailRequests?.filter(req => req.status === 'completed').map(req => ({
+    primary_email: {
+      subject: req.result?.subject || 'Generated Email',
+      body: req.result?.body || '',
+    },
+    follow_up_emails: req.result?.followUps || [],
+    relevance_score: req.result?.relevanceScore || 0.8,
+    personalization_notes: req.result?.notes || [],
+    estimated_response_rate: req.result?.estimatedResponseRate || 0.15,
+  })) || [];
   
   const { toast } = useToast();
 
@@ -60,9 +83,7 @@ export function LeadEternityDashboard() {
     });
   };
 
-  const handleCompleteOnboarding = (profile: BusinessProfileInput) => {
-    setBusinessProfile(profile);
-    setHasCompletedOnboarding(true);
+  const handleCompleteOnboarding = (profileData: BusinessProfileInput) => {
     setCurrentTab("search");
     toast({
       title: "Welcome to Genni!",
@@ -71,7 +92,6 @@ export function LeadEternityDashboard() {
   };
 
   const handleSkipOnboarding = () => {
-    setHasCompletedOnboarding(true);
     setCurrentTab("search");
     toast({
       title: "Onboarding Skipped",
@@ -87,13 +107,20 @@ export function LeadEternityDashboard() {
     });
   };
 
-  const handlePurchaseCredits = (amount: number) => {
-    // In real app, this would integrate with payment processing
-    setUserCredits(prev => prev + amount);
-    toast({
-      title: "Credits Purchased",
-      description: `Added ${amount} credits to your account.`,
-    });
+  const handlePurchaseCredits = async (amount: number) => {
+    try {
+      await purchaseCredits({ amount });
+      toast({
+        title: "Credits Purchased",
+        description: `Added ${amount} credits to your account.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Purchase Failed",
+        description: "Failed to purchase credits. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Show onboarding if not completed
@@ -169,7 +196,7 @@ export function LeadEternityDashboard() {
             >
               <Building2 className="h-4 w-4 mr-2" />
               Business Profile
-              {!businessProfile && (
+              {!profile?.isComplete && (
                 <Badge variant="outline" className="ml-auto text-xs">
                   Setup
                 </Badge>
@@ -184,7 +211,7 @@ export function LeadEternityDashboard() {
               <CreditCard className="h-4 w-4 mr-2" />
               Credits & Billing
               <Badge variant="secondary" className="ml-auto text-xs">
-                {userCredits}
+                {userCredits || 0}
               </Badge>
             </Button>
             
@@ -270,14 +297,13 @@ export function LeadEternityDashboard() {
               </div>
               
               <BusinessProfileWizard 
-                onComplete={(profile) => {
-                  setBusinessProfile(profile);
+                onComplete={(profileData) => {
                   toast({
                     title: "Profile Updated",
                     description: "Your business profile has been updated successfully.",
                   });
                 }}
-                initialData={businessProfile}
+                initialData={profile}
               />
             </div>
           )}
@@ -292,15 +318,19 @@ export function LeadEternityDashboard() {
               </div>
               
               <CreditManager
-                currentCredits={userCredits}
+                currentCredits={userCredits || 0}
                 currentPlan={userPlan}
                 usageStats={{
-                  currentPeriodUsage: 156,
-                  totalCreditsUsed: 1247,
-                  searchesThisMonth: 23,
-                  leadsGenerated: 1156,
+                  currentPeriodUsage: usage?.currentPeriodUsage || 0,
+                  totalCreditsUsed: usage?.totalCreditsUsed || 0,
+                  searchesThisMonth: searches?.filter(s => {
+                    const now = new Date();
+                    const searchDate = new Date(s._creationTime);
+                    return searchDate.getMonth() === now.getMonth() && searchDate.getFullYear() === now.getFullYear();
+                  }).length || 0,
+                  leadsGenerated: leadStats?.totalLeads || 0,
                   emailsGenerated: generatedEmails.length,
-                  avgCostPerLead: 1.25
+                  avgCostPerLead: usage?.avgCostPerLead || 0
                 }}
                 onUpgrade={handleUpgradePlan}
                 onPurchaseCredits={handlePurchaseCredits}
@@ -326,16 +356,11 @@ export function LeadEternityDashboard() {
                 <Alert>
                   <Bot className="h-4 w-4" />
                   <AlertDescription>
-                    Select a lead from the Lead Search to generate a personalized AI email, or use the demo lead below to test the system.
+                    Select a lead from the Lead Search to generate a personalized AI email.
                   </AlertDescription>
                 </Alert>
               )}
               
-              {!selectedLead && (
-                <div className="mt-6">
-                  <AIEmailGenerator onEmailGenerated={handleEmailGenerated} />
-                </div>
-              )}
             </div>
           )}
 

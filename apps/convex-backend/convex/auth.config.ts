@@ -1,13 +1,11 @@
 // Clerk authentication configuration for Convex
-// Using direct Clerk integration instead of @convex-dev/auth
+// Direct Clerk integration using JWT verification
 
-const authConfig = {
+export default {
   providers: [
     {
-      domain: process.env.CLERK_JWT_ISSUER_DOMAIN!,
-      applicationID: process.env.CLERK_SECRET_KEY!,
+      domain: process.env.CLERK_JWT_ISSUER_DOMAIN,
+      applicationID: "convex",
     }
   ]
 };
-
-export default authConfig;

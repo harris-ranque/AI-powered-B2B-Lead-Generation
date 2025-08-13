@@ -105,16 +105,16 @@ export function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
 
-  // Configuration state
-  const [creditCosts, setCreditCosts] = useState<CreditCosts>({
+  // Configuration data from backend
+  const creditCosts = configuration?.creditCosts || {
     leadDiscovery: 1,
     contactEnrichment: 2,
     aiAnalysis: 3,
     emailGeneration: 5,
     bulkAnalysis: 10,
-  });
+  };
 
-  const [planLimits, setPlanLimits] = useState<PlanLimits>({
+  const planLimits = configuration?.planLimits || {
     free: {
       monthlyCredits: 50,
       maxLeadsPerSearch: 25,
@@ -130,7 +130,7 @@ export function AdminDashboard() {
       maxLeadsPerSearch: 500,
       maxSearches: -1, // Unlimited
     },
-  });
+  };
 
   // Real Convex hooks
   const { metrics, systemHealth, isLoading: metricsLoading } = useAdminDashboard();
@@ -138,20 +138,8 @@ export function AdminDashboard() {
   const { analytics, revenueStats, isLoading: analyticsLoading } = useAdminAnalytics();
   const { configuration, updateCreditCosts, updatePlanLimits, isLoading: configLoading } = useAdminConfiguration();
 
-  // Mock companies data for now
-  const companies: Company[] = [
-    {
-      id: "1",
-      name: "Example Corp",
-      industry: "Technology",
-      userCount: 5,
-      totalRevenue: 2500,
-      plan: "pro",
-      status: "active",
-      monthlySearches: 45,
-      conversionRate: 18
-    }
-  ];
+  // Companies data from backend (placeholder for future implementation)
+  const companies: Company[] = [];
 
   // Use real data or fallback to defaults
   const adminMetrics: AdminMetrics = {

@@ -3,6 +3,7 @@ import { internalMutation } from "./_generated/server";
 import { DataModel } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 
 type AuthContext = GenericQueryCtx<DataModel> | GenericMutationCtx<DataModel> | GenericActionCtx<DataModel>;
 
@@ -19,6 +20,7 @@ export async function getUserId(ctx: AuthContext): Promise<string | null> {
     }
 
     // For Clerk integration, the subject contains the Clerk user ID
+    // Identity object structure: { subject: "user_xxx", issuer: "https://clerk-domain", ... }
     return identity.subject;
   } catch (error) {
     console.error("Failed to get user identity:", error);
@@ -39,7 +41,6 @@ export async function getCurrentUser(ctx: AuthContext): Promise<Doc<"users"> | n
   // Actions need to use runQuery instead of direct db access
   if ('runQuery' in ctx) {
     // This is an action context
-    const { internal } = await import("./_generated/api");
     const user = await ctx.runQuery(internal.auth.index.getUserByClerkId, {
       clerkId: clerkUserId,
     });
@@ -96,7 +97,6 @@ export async function getUserByClerkId(ctx: AuthContext, clerkId: string): Promi
   // Actions need to use runQuery instead of direct db access
   if ('runQuery' in ctx) {
     // This is an action context
-    const { internal } = await import("./_generated/api");
     const user = await ctx.runQuery(internal.auth.index.getUserByClerkId, {
       clerkId: clerkId,
     });

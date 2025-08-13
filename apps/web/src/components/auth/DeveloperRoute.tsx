@@ -49,7 +49,7 @@ export function DeveloperRoute({ children }: DeveloperRouteProps) {
   // Check if user has developer role or is the designated developer
   const isDeveloper = user?.role === 'developer' || 
                      user?.isDeveloper === true ||
-                     user?.email === process.env.NEXT_PUBLIC_DEVELOPER_EMAIL;
+                     user?.email === import.meta.env.VITE_DEVELOPER_EMAIL;
 
   if (!isDeveloper) {
     return (

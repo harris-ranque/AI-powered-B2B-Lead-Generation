@@ -13,7 +13,7 @@ export function ClerkAuthWrapper({ children, mode = 'signin', redirectUrl }: Cle
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="w-full max-w-md">
           <SignUp
-            redirectUrl={redirectUrl || "/"}
+            redirectUrl={redirectUrl || "/app"}
             signInUrl="/signin"
             appearance={{
               elements: {
@@ -36,7 +36,7 @@ export function ClerkAuthWrapper({ children, mode = 'signin', redirectUrl }: Cle
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="w-full max-w-md">
         <SignIn
-          redirectUrl={redirectUrl || "/"}
+          redirectUrl={redirectUrl || "/app"}
           signUpUrl="/signup"
           appearance={{
             elements: {

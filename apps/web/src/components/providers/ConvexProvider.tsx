@@ -1,5 +1,5 @@
-import { ConvexProvider as BaseConvexProvider } from "convex/react";
-import { ClerkProvider } from "@clerk/clerk-react";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
+import { ClerkProvider, useAuth } from "@clerk/clerk-react";
 import { ReactNode } from "react";
 import { convex, isConvexConfigured } from "@/lib/convex";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -87,9 +87,9 @@ export function ConvexProvider({ children }: ConvexProviderProps) {
   try {
     return (
       <ClerkProvider publishableKey={clerkPublishableKey}>
-        <BaseConvexProvider client={convex}>
+        <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
           {children}
-        </BaseConvexProvider>
+        </ConvexProviderWithClerk>
       </ClerkProvider>
     );
   } catch (error) {
