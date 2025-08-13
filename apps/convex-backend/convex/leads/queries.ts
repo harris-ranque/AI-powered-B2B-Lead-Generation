@@ -471,3 +471,136 @@ export const exportLeads = query({
     return JSON.stringify(exportData, null, 2);
   },
 });
+
+// Get all leads for the current user across all searches
+export const getUserLeads = query({
+  args: {
+    limit: v.optional(v.number()),
+    offset: v.optional(v.number()),
+    status: v.optional(v.union(
+      v.literal("new"),
+      v.literal("qualified"),
+      v.literal("contacted"),
+      v.literal("nurturing"),
+      v.literal("converted"),
+      v.literal("unqualified")
+    )),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+
+    if (!user) {
+      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+    }
+
+    const limit = args.limit || 50;
+    const offset = args.offset || 0;
+
+    // Get user's searches first
+    const userSearches = await ctx.db
+      .query("searches")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+    
+    const searchIds = userSearches.map(search => search._id);
+
+    if (searchIds.length === 0) {
+      return [];
+    }
+
+    // Get leads for all user searches
+    let allLeads = [];
+    for (const searchId of searchIds) {
+      let leadsQuery = ctx.db
+        .query("leads")
+        .withIndex("by_search", (q) => q.eq("searchId", searchId));
+
+      if (args.status) {
+        leadsQuery = leadsQuery.filter((q) => q.eq(q.field("status"), args.status));
+      }
+
+      const searchLeads = await leadsQuery.collect();
+      allLeads.push(...searchLeads);
+    }
+
+    // Sort by creation time (most recent first) and paginate
+    allLeads.sort((a, b) => b._creationTime - a._creationTime);
+    
+    const startIndex = offset;
+    const endIndex = Math.min(startIndex + limit, allLeads.length);
+    const paginatedLeads = allLeads.slice(startIndex, endIndex);
+
+    return {
+      page: paginatedLeads,
+      isDone: endIndex >= allLeads.length,
+      continueCursor: endIndex < allLeads.length ? endIndex.toString() : null,
+    };
+  },
+});
+
+// Get lead statistics for the current user
+export const getLeadStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+
+    if (!user) {
+      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+    }
+
+    // Get user's searches first
+    const userSearches = await ctx.db
+      .query("searches")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+    
+    const searchIds = userSearches.map(search => search._id);
+
+    if (searchIds.length === 0) {
+      return {
+        total: 0,
+        byStatus: {},
+        byEnrichment: {},
+        averageRelevanceScore: 0,
+        recentlyCreated: 0,
+      };
+    }
+
+    // Get all leads for user's searches
+    const allLeads = await ctx.db
+      .query("leads")
+      .filter((q) => q.or(...searchIds.map(id => q.eq(q.field("searchId"), id))))
+      .collect();
+
+    // Calculate statistics
+    const byStatus = allLeads.reduce((acc, lead) => {
+      acc[lead.status] = (acc[lead.status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const byEnrichment = allLeads.reduce((acc, lead) => {
+      acc[lead.enrichmentStatus] = (acc[lead.enrichmentStatus] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const relevanceScores = allLeads
+      .map(lead => lead.aiAnalysis?.relevanceScore)
+      .filter((score): score is number => score !== undefined);
+    
+    const averageRelevanceScore = relevanceScores.length > 0 
+      ? relevanceScores.reduce((sum, score) => sum + score, 0) / relevanceScores.length 
+      : 0;
+
+    // Leads created in the last 7 days
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const recentlyCreated = allLeads.filter(lead => lead.createdAt > weekAgo).length;
+
+    return {
+      total: allLeads.length,
+      byStatus,
+      byEnrichment,
+      averageRelevanceScore,
+      recentlyCreated,
+    };
+  },
+});

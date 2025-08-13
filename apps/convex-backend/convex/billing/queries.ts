@@ -447,3 +447,135 @@ export const canPerformOperation = query({
     return { canPerform: true };
   },
 });
+
+// Get user's current credit balance
+export const getCreditBalance = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+    
+    if (!user) {
+      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+    }
+
+    return {
+      balance: user.credits || 0,
+      plan: user.plan,
+    };
+  },
+});
+
+// Get user's credit transactions
+export const getCreditTransactions = query({
+  args: {
+    limit: v.optional(v.number()),
+    offset: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    
+    if (!user) {
+      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+    }
+
+    const limit = args.limit || 50;
+    const offset = args.offset || 0;
+
+    // Get credit transactions from the creditTransactions table
+    const transactions = await ctx.db
+      .query("creditTransactions")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .order("desc")
+      .paginate({ numItems: limit, cursor: null });
+
+    return transactions;
+  },
+});
+
+// Get user's billing information (alias for getCurrentBilling)
+export const getUserBilling = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+    
+    if (!user) {
+      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+    }
+
+    // Get active billing record
+    const billing = await ctx.db
+      .query("billing")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .filter((q) => q.eq(q.field("status"), "active"))
+      .unique();
+
+    return {
+      user: {
+        plan: user.plan,
+        credits: user.credits,
+      },
+      billing,
+    };
+  },
+});
+
+// Get usage statistics (alias for getUsageAnalytics)
+export const getUsageStats = query({
+  args: {
+    timeframe: v.optional(v.union(
+      v.literal("day"),
+      v.literal("week"),
+      v.literal("month"),
+      v.literal("year")
+    )),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    
+    if (!user) {
+      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+    }
+
+    const timeframe = args.timeframe || "month";
+    const now = Date.now();
+    
+    // Calculate time range
+    let startDate: number;
+    switch (timeframe) {
+      case "day":
+        startDate = now - 24 * 60 * 60 * 1000;
+        break;
+      case "week":
+        startDate = now - 7 * 24 * 60 * 60 * 1000;
+        break;
+      case "month":
+        startDate = now - 30 * 24 * 60 * 60 * 1000;
+        break;
+      case "year":
+        startDate = now - 365 * 24 * 60 * 60 * 1000;
+        break;
+    }
+
+    // Get usage transactions in the timeframe
+    const usageTransactions = await ctx.db
+      .query("creditTransactions")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .filter((q) => 
+        q.and(
+          q.eq(q.field("type"), "usage"),
+          q.gte(q.field("_creationTime"), startDate)
+        )
+      )
+      .collect();
+
+    const totalUsed = usageTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    
+    return {
+      timeframe,
+      totalUsed,
+      transactionCount: usageTransactions.length,
+      currentBalance: user.credits || 0,
+      plan: user.plan,
+    };
+  },
+});

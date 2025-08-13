@@ -188,3 +188,33 @@ export const getUserPreferences = query({
     };
   },
 });
+
+// Get user credits (for useUserCredits hook)
+export const getUserCredits = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireAuth(ctx);
+    return user.credits || 0;
+  },
+});
+
+// List users (admin only)
+export const listUsers = query({
+  args: {
+    limit: v.optional(v.number()),
+    offset: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    const limit = args.limit || 50;
+    const offset = args.offset || 0;
+
+    const users = await ctx.db
+      .query("users")
+      .order("desc")
+      .take(limit + offset);
+
+    return users.slice(offset);
+  },
+});
