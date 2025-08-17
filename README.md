@@ -319,6 +319,37 @@ pnpm start
 python test_convex_integration.py
 ```
 
+## 🧪 Testing & Debugging
+
+### Visual Debugging with LangGraph Studio
+```bash
+cd apps/langgraph-worker
+
+# Launch LangGraph Studio (visual workflow debugger)
+python launch_langgraph_studio.py
+# Open http://localhost:3001
+```
+
+### Testing Suite
+```bash
+cd apps/langgraph-worker
+
+# 1. Test without OpenAI credits (integration tests)
+python test_integration_comprehensive.py
+
+# 2. Full OpenAI verification (uses API credits)
+python test_with_openai_credits.py
+
+# 3. Demo workflow (no API calls)
+python test_workflow_demo.py
+```
+
+### What Each Test Does
+- **Visual Debugging**: Interactive workflow graph with real-time execution monitoring
+- **Integration Tests**: Comprehensive testing of all endpoints and workflows without using OpenAI credits
+- **OpenAI Verification**: Full end-to-end testing with real AI responses (requires valid OpenAI API key with credits)
+- **Demo Workflow**: Validates workflow structure and creates sample data for Studio testing
+
 ## 🔧 Environment Configuration
 
 ### Frontend Environment Variables
