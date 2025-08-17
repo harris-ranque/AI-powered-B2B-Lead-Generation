@@ -52,9 +52,9 @@ class EmailGenerationState(TypedDict):
     errors: Optional[List[str]]
     recommendations: Optional[List[str]]
     
-    # Performance tracking
-    start_time: datetime
-    end_time: Optional[datetime]
+    # Performance tracking (stored as ISO strings for serialization)
+    start_time: str  # ISO format datetime string
+    end_time: Optional[str]  # ISO format datetime string
     total_processing_time: Optional[float]
     
     # Quality metrics

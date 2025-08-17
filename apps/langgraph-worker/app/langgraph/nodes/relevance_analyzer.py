@@ -141,6 +141,7 @@ async def relevance_analyzer_node(state: EmailGenerationState) -> Dict[str, Any]
         logger.info(f"Relevance analysis complete: Score={analysis.relevance_score:.2f}, Level={analysis.qualification_level}")
         
         return {
+            "current_stage": "relevance_analysis",  # Update stage for supervisor routing
             "relevance_analysis": {
                 "score": analysis.relevance_score,
                 "qualification_level": analysis.qualification_level,
@@ -181,6 +182,7 @@ async def relevance_analyzer_node(state: EmailGenerationState) -> Dict[str, Any]
         )
         
         return {
+            "current_stage": "error",  # Set error stage
             "relevance_score": 0.5,  # Default middle score on error
             "relevance_analysis": {
                 "error": str(e),
@@ -189,6 +191,5 @@ async def relevance_analyzer_node(state: EmailGenerationState) -> Dict[str, Any]
                 "fit_assessment": "Analysis failed due to error"
             },
             "agent_results": [*state.get("agent_results", []), agent_result],
-            "errors": [*state.get("errors", []), f"Relevance analyzer error: {str(e)}"],
-            "current_stage": "error"
+            "errors": [*state.get("errors", []), f"Relevance analyzer error: {str(e)}"]
         }

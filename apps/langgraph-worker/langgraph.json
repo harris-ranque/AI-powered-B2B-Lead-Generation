@@ -1,0 +1,9 @@
+{
+  "dependencies": [
+    "."
+  ],
+  "graphs": {
+    "email_generation": "app.langgraph.workflow:create_email_generation_workflow"
+  },
+  "env": ".env"
+}

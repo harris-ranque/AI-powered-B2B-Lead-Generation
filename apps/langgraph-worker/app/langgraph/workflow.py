@@ -8,7 +8,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from ..utils.logger import setup_logger
 from .state import EmailGenerationState
-from .supervisor import supervisor_router
+from .supervisor import supervisor_node, supervisor_router
 from .nodes import (
     relevance_analyzer_node,
     pain_point_researcher_node,
@@ -49,7 +49,7 @@ def create_email_generation_workflow(
     workflow = StateGraph(EmailGenerationState)
     
     # Add all nodes to the graph
-    workflow.add_node("supervisor", supervisor_router)
+    workflow.add_node("supervisor", supervisor_node)
     workflow.add_node("relevance_analyzer", relevance_analyzer_node)
     workflow.add_node("pain_point_researcher", pain_point_researcher_node)
     workflow.add_node("value_matcher", value_matcher_node)
@@ -64,7 +64,7 @@ def create_email_generation_workflow(
     # From supervisor, route to appropriate nodes or end
     workflow.add_conditional_edges(
         "supervisor",
-        lambda x: x,  # Supervisor returns the routing decision
+        supervisor_router,  # Supervisor returns the routing decision string
         {
             "relevance_analyzer": "relevance_analyzer",
             "pain_point_researcher": "pain_point_researcher",
@@ -130,7 +130,7 @@ async def execute_email_generation(
         "business_profile": business_profile,
         "requirements": requirements,
         "current_stage": "start",
-        "start_time": datetime.utcnow(),
+        "start_time": datetime.utcnow().isoformat(),  # Store as string to avoid serialization issues
         "agent_results": [],
         "errors": [],
         "processing_times": {},
@@ -211,7 +211,7 @@ async def execute_with_streaming(
         "business_profile": business_profile,
         "requirements": requirements,
         "current_stage": "start",
-        "start_time": datetime.utcnow(),
+        "start_time": datetime.utcnow().isoformat(),  # Store as string to avoid serialization issues
         "agent_results": [],
         "errors": [],
         "processing_times": {},

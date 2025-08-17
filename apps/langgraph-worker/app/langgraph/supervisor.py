@@ -3,7 +3,7 @@ Supervisor node for routing and orchestration in LangGraph workflow
 """
 from typing import Literal
 from langchain_openai import ChatOpenAI
-from langgraph.types import Command
+# from langgraph.types import Command  # Not needed with string routing
 from ..utils.config import get_settings
 from ..utils.logger import setup_logger
 from .state import EmailGenerationState
@@ -20,24 +20,35 @@ def create_supervisor_llm():
         openai_api_key=settings.openai_api_key
     )
 
-def supervisor_router(state: EmailGenerationState) -> Command[Literal[
-    "relevance_analyzer",
-    "pain_point_researcher", 
-    "value_matcher",
-    "email_writer",
-    "followup_strategist",
-    "aggregator",
-    "__end__"
-]]:
+def supervisor_node(state: EmailGenerationState) -> dict:
     """
-    Supervisor function that routes to the next appropriate agent.
-    Uses deterministic routing based on workflow stage.
+    Supervisor node that updates state and determines workflow progress.
+    This is the actual node function that returns state updates.
     
     Args:
         state: Current workflow state
         
     Returns:
-        Command object directing next node
+        State updates dict
+    """
+    current_stage = state.get("current_stage", "start")
+    logger.info(f"Supervisor processing stage: {current_stage}")
+    
+    # Just return minimal state update - routing is handled by supervisor_router
+    return {
+        "current_stage": current_stage  # Keep current stage
+    }
+
+def supervisor_router(state: EmailGenerationState) -> str:
+    """
+    Router function for conditional edges.
+    Determines next node based on current state.
+    
+    Args:
+        state: Current workflow state
+        
+    Returns:
+        Next node name as string
     """
     current_stage = state.get("current_stage", "start")
     logger.info(f"Supervisor routing from stage: {current_stage}")
@@ -45,15 +56,12 @@ def supervisor_router(state: EmailGenerationState) -> Command[Literal[
     # Error handling
     if current_stage == "error":
         logger.error(f"Workflow in error state: {state.get('errors', [])}")
-        return Command(goto="__end__", update={"current_stage": "error"})
+        return "__end__"
     
     # Stage-based routing logic
     if current_stage == "start":
         logger.info("Starting workflow with relevance analysis")
-        return Command(
-            goto="relevance_analyzer",
-            update={"current_stage": "relevance_analysis"}
-        )
+        return "relevance_analyzer"
     
     elif current_stage == "relevance_analysis":
         # Check relevance score to determine if we should continue
@@ -61,75 +69,42 @@ def supervisor_router(state: EmailGenerationState) -> Command[Literal[
         
         if relevance_score < 0.3:  # Low relevance threshold
             logger.warning(f"Low relevance score ({relevance_score}), ending workflow")
-            return Command(
-                goto="aggregator",
-                update={
-                    "current_stage": "aggregation",
-                    "recommendations": ["Lead has low relevance score, consider deprioritizing"]
-                }
-            )
+            return "aggregator"
         
         logger.info(f"Relevance score ({relevance_score}) acceptable, proceeding to pain point research")
-        return Command(
-            goto="pain_point_researcher",
-            update={"current_stage": "pain_point_research"}
-        )
+        return "pain_point_researcher"
     
     elif current_stage == "pain_point_research":
         logger.info("Moving from pain point research to value matching")
-        return Command(
-            goto="value_matcher",
-            update={"current_stage": "value_matching"}
-        )
+        return "value_matcher"
     
     elif current_stage == "value_matching":
         logger.info("Moving from value matching to email writing")
-        return Command(
-            goto="email_writer",
-            update={"current_stage": "email_writing"}
-        )
+        return "email_writer"
     
     elif current_stage == "email_writing":
         # Check if follow-up sequence is requested
         requirements = state.get("requirements")
         if requirements and hasattr(requirements, 'follow_up_sequence') and requirements.follow_up_sequence:
             logger.info("Follow-up sequence requested, routing to strategist")
-            return Command(
-                goto="followup_strategist",
-                update={"current_stage": "followup_strategy"}
-            )
+            return "followup_strategist"
         else:
             logger.info("No follow-up sequence needed, moving to aggregation")
-            return Command(
-                goto="aggregator",
-                update={"current_stage": "aggregation"}
-            )
+            return "aggregator"
     
     elif current_stage == "followup_strategy":
         logger.info("Follow-up strategy complete, moving to aggregation")
-        return Command(
-            goto="aggregator",
-            update={"current_stage": "aggregation"}
-        )
+        return "aggregator"
     
     elif current_stage == "aggregation" or current_stage == "complete":
         logger.info("Workflow complete, ending")
-        return Command(
-            goto="__end__",
-            update={"current_stage": "complete"}
-        )
+        return "__end__"
     
     else:
         logger.error(f"Unknown stage: {current_stage}")
-        return Command(
-            goto="__end__",
-            update={
-                "current_stage": "error",
-                "errors": [f"Unknown workflow stage: {current_stage}"]
-            }
-        )
+        return "__end__"
 
-def intelligent_supervisor_router(state: EmailGenerationState) -> Command:
+def intelligent_supervisor_router(state: EmailGenerationState) -> str:
     """
     Alternative supervisor that uses LLM for more intelligent routing decisions.
     Can be used for more complex workflows or A/B testing.
@@ -170,7 +145,5 @@ def intelligent_supervisor_router(state: EmailGenerationState) -> Command:
     
     logger.info(f"Intelligent supervisor routing to: {next_agent}")
     
-    return Command(
-        goto=next_agent,
-        update={"next_agent": next_agent}
-    )
+    state["next_agent"] = next_agent
+    return next_agent

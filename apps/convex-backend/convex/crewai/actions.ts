@@ -6,8 +6,8 @@ import { createError, generateRequestId, hasCredits } from "../lib/helpers";
 import { emailRequirementsValidator } from "../lib/validators";
 import { internal } from "../_generated/api";
 
-// Types for CrewAI API responses
-interface CrewAIResponse {
+// Types for LangGraph API responses
+interface LangGraphResponse {
   status: "processing" | "completed" | "failed";
   result?: any;
   error?: string;
@@ -73,15 +73,15 @@ export const generateEmail = action({
     }
 
     const requestId = generateRequestId();
-    const crewaiUrl = process.env.CREWAI_URL;
+    const langgraphUrl = process.env.CREWAI_URL; // Environment variable name kept for compatibility
     const apiKey = process.env.CREWAI_API_KEY;
 
-    if (!crewaiUrl || !apiKey) {
-      throw createError("CrewAI service not configured", ERROR_CODES.INTERNAL_ERROR, 500);
+    if (!langgraphUrl || !apiKey) {
+      throw createError("LangGraph service not configured", ERROR_CODES.INTERNAL_ERROR, 500);
     }
 
     try {
-      // Create CrewAI request record
+      // Create LangGraph request record
       await ctx.runMutation(internal.crewai.internal.createRequest, {
         userId: user._id,
         leadId: args.leadId,
@@ -95,7 +95,7 @@ export const generateEmail = action({
         creditsUsed: CREDIT_COSTS.EMAIL_GENERATION,
       });
 
-      // Prepare payload for CrewAI worker
+      // Prepare payload for LangGraph worker
       const payload = {
         request_id: requestId,
         lead: {
@@ -138,8 +138,8 @@ export const generateEmail = action({
         },
       };
 
-      // Send request to CrewAI worker
-      const response = await fetch(`${crewaiUrl}/generate-email`, {
+      // Send request to LangGraph worker
+      const response = await fetch(`${langgraphUrl}/generate-email`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -150,10 +150,10 @@ export const generateEmail = action({
       });
 
       if (!response.ok) {
-        throw new Error(`CrewAI API error: ${response.status} ${response.statusText}`);
+        throw new Error(`LangGraph API error: ${response.status} ${response.statusText}`);
       }
 
-      const result = await response.json() as CrewAIResponse;
+      const result = await response.json() as LangGraphResponse;
 
       // Update request status
       await ctx.runMutation(internal.crewai.internal.updateRequestStatus, {
@@ -184,7 +184,7 @@ export const generateEmail = action({
       };
 
     } catch (error) {
-      console.error("CrewAI email generation error:", error);
+      console.error("LangGraph email generation error:", error);
       
       // Update request as failed
       await ctx.runMutation(internal.crewai.internal.updateRequestStatus, {
@@ -195,7 +195,7 @@ export const generateEmail = action({
 
       throw createError(
         "Failed to generate email. Please try again.",
-        ERROR_CODES.CREWAI_ERROR,
+        ERROR_CODES.CREWAI_ERROR, // Keep error code name for compatibility
         500
       );
     }
@@ -240,15 +240,15 @@ export const analyzeLead = action({
     }
 
     const requestId = generateRequestId();
-    const crewaiUrl = process.env.CREWAI_URL;
+    const langgraphUrl = process.env.CREWAI_URL; // Environment variable name kept for compatibility
     const apiKey = process.env.CREWAI_API_KEY;
 
-    if (!crewaiUrl || !apiKey) {
-      throw createError("CrewAI service not configured", ERROR_CODES.INTERNAL_ERROR, 500);
+    if (!langgraphUrl || !apiKey) {
+      throw createError("LangGraph service not configured", ERROR_CODES.INTERNAL_ERROR, 500);
     }
 
     try {
-      // Create CrewAI request record
+      // Create LangGraph request record
       await ctx.runMutation(internal.crewai.internal.createRequest, {
         userId: user._id,
         leadId: args.leadId,
@@ -261,7 +261,7 @@ export const analyzeLead = action({
         creditsUsed: CREDIT_COSTS.AI_ANALYSIS,
       });
 
-      // Prepare payload for CrewAI worker
+      // Prepare payload for LangGraph worker
       const payload = {
         request_id: requestId,
         lead: {
@@ -284,8 +284,8 @@ export const analyzeLead = action({
         },
       };
 
-      // Send request to CrewAI worker
-      const response = await fetch(`${crewaiUrl}/analyze-lead`, {
+      // Send request to LangGraph worker
+      const response = await fetch(`${langgraphUrl}/analyze-lead`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -296,10 +296,10 @@ export const analyzeLead = action({
       });
 
       if (!response.ok) {
-        throw new Error(`CrewAI API error: ${response.status} ${response.statusText}`);
+        throw new Error(`LangGraph API error: ${response.status} ${response.statusText}`);
       }
 
-      const result = await response.json() as CrewAIResponse;
+      const result = await response.json() as LangGraphResponse;
 
       // Update request status
       await ctx.runMutation(internal.crewai.internal.updateRequestStatus, {
@@ -341,7 +341,7 @@ export const analyzeLead = action({
       };
 
     } catch (error) {
-      console.error("CrewAI lead analysis error:", error);
+      console.error("LangGraph lead analysis error:", error);
       
       // Update request as failed
       await ctx.runMutation(internal.crewai.internal.updateRequestStatus, {
@@ -352,7 +352,7 @@ export const analyzeLead = action({
 
       throw createError(
         "Failed to analyze lead. Please try again.",
-        ERROR_CODES.CREWAI_ERROR,
+        ERROR_CODES.CREWAI_ERROR, // Keep error code name for compatibility
         500
       );
     }
@@ -369,18 +369,18 @@ export const getServiceStatus = action({
       throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
     }
 
-    const crewaiUrl = process.env.CREWAI_URL;
+    const langgraphUrl = process.env.CREWAI_URL; // Environment variable name kept for compatibility
     const apiKey = process.env.CREWAI_API_KEY;
 
-    if (!crewaiUrl || !apiKey) {
+    if (!langgraphUrl || !apiKey) {
       return {
         status: "unavailable",
-        error: "CrewAI service not configured",
+        error: "LangGraph service not configured",
       };
     }
 
     try {
-      const response = await fetch(`${crewaiUrl}/health`, {
+      const response = await fetch(`${langgraphUrl}/health`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
@@ -395,7 +395,7 @@ export const getServiceStatus = action({
         };
       }
 
-      const result = await response.json() as CrewAIResponse;
+      const result = await response.json() as LangGraphResponse;
 
       return {
         status: "healthy",
@@ -423,15 +423,15 @@ export const getAgentsInfo = action({
       throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
     }
 
-    const crewaiUrl = process.env.CREWAI_URL;
+    const langgraphUrl = process.env.CREWAI_URL; // Environment variable name kept for compatibility
     const apiKey = process.env.CREWAI_API_KEY;
 
-    if (!crewaiUrl || !apiKey) {
-      throw createError("CrewAI service not configured", ERROR_CODES.INTERNAL_ERROR, 500);
+    if (!langgraphUrl || !apiKey) {
+      throw createError("LangGraph service not configured", ERROR_CODES.INTERNAL_ERROR, 500);
     }
 
     try {
-      const response = await fetch(`${crewaiUrl}/agents/info`, {
+      const response = await fetch(`${langgraphUrl}/agents/info`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
@@ -443,7 +443,7 @@ export const getAgentsInfo = action({
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const result = await response.json() as CrewAIResponse;
+      const result = await response.json() as LangGraphResponse;
 
       return {
         agents: result.agents || [],
@@ -455,7 +455,7 @@ export const getAgentsInfo = action({
       console.error("Get agents info error:", error);
       throw createError(
         "Failed to get agents information",
-        ERROR_CODES.CREWAI_ERROR,
+        ERROR_CODES.CREWAI_ERROR, // Keep error code name for compatibility
         500
       );
     }

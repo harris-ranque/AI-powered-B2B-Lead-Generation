@@ -21,12 +21,9 @@ import { ForgotPasswordForm } from "@/components/auth/ForgotPasswordForm";
 import { ResetPasswordForm } from "@/components/auth/ResetPasswordForm";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AdminRoute } from "@/components/auth/AdminRoute";
-import { DeveloperRoute } from "@/components/auth/DeveloperRoute";
-
 // App Components
 import { GenniApp } from "@/components/GenniApp";
 import { AdminDashboard } from "@/components/AdminDashboard";
-import { DeveloperRoyaltyDashboard } from "@/components/royalty/DeveloperRoyaltyDashboard";
 
 // Other Pages
 import NotFound from "./pages/NotFound";
@@ -88,18 +85,6 @@ const App = () => (
                       <AdminRoute>
                         <AdminDashboard />
                       </AdminRoute>
-                    </ErrorBoundary>
-                  } 
-                />
-
-                {/* Developer Routes */}
-                <Route 
-                  path="/developer" 
-                  element={
-                    <ErrorBoundary>
-                      <DeveloperRoute>
-                        <DeveloperRoyaltyDashboard />
-                      </DeveloperRoute>
                     </ErrorBoundary>
                   } 
                 />

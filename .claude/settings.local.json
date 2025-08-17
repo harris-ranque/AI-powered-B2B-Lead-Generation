@@ -65,7 +65,9 @@
       "Bash(unset CONVEX_DEPLOYMENT)",
       "WebFetch(domain:docs.railway.com)",
       "Bash(grep:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(touch:*)"
     ],
     "deny": []
   }

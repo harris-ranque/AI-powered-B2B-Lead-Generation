@@ -56,7 +56,7 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security
     return True
 
 # Initialize webhook client
-webhook_client = WebhookClient(settings.webhook_url)
+webhook_client = WebhookClient(settings.webhook_url, settings.api_key)
 
 @app.on_event("startup")
 async def startup_event():
@@ -241,6 +241,29 @@ async def analyze_lead(
         
         relevance_analysis = result.get("relevance_analysis", {})
         
+        # Prepare analysis result for webhook
+        analysis_result = {
+            "relevance_score": result.get("relevance_score", 0),
+            "qualification_level": relevance_analysis.get("qualification_level", "Unknown"),
+            "fit_assessment": relevance_analysis.get("fit_assessment", ""),
+            "key_factors": relevance_analysis.get("key_factors", []),
+            "opportunities": relevance_analysis.get("opportunities", []),
+            "red_flags": relevance_analysis.get("red_flags", []),
+            "confidence": result.get("confidence_scores", {}).get("relevance_analyzer", 0.5),
+            "pain_points": relevance_analysis.get("pain_points", []),
+            "value_matches": relevance_analysis.get("value_matches", []),
+            "recommended_approach": relevance_analysis.get("recommended_approach", "")
+        }
+        
+        # Send webhook notification
+        await webhook_client.send_analysis_result(
+            request_id=f"analysis_{lead.id}",
+            lead_id=lead.id,
+            status="completed",
+            analysis=analysis_result,
+            processing_time=duration
+        )
+        
         response = {
             "lead_id": lead.id,
             "relevance_score": result.get("relevance_score", 0),
@@ -257,6 +280,16 @@ async def analyze_lead(
         
     except Exception as e:
         duration = (datetime.utcnow() - start_time).total_seconds()
+        
+        # Send error webhook
+        await webhook_client.send_analysis_result(
+            request_id=f"analysis_{lead.id}",
+            lead_id=lead.id,
+            status="failed",
+            error=str(e),
+            processing_time=duration
+        )
+        
         log_error_details(logger, e, {
             "lead_id": lead.id,
             "lead_company": lead.company_name,

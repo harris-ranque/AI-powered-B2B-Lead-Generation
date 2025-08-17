@@ -143,7 +143,7 @@ http.route({
   }),
 });
 
-// CrewAI webhook handler for email generation completion
+// LangGraph webhook handler for email generation completion
 http.route({
   path: "/webhooks/crewai/email-completed",
   method: "POST",
@@ -194,7 +194,7 @@ http.route({
       );
 
     } catch (error) {
-      console.error("CrewAI webhook error:", error);
+      console.error("LangGraph webhook error:", error);
       return new Response(
         JSON.stringify({ error: "Internal server error" }),
         { 
@@ -206,7 +206,7 @@ http.route({
   }),
 });
 
-// CrewAI webhook handler for lead analysis completion
+// LangGraph webhook handler for lead analysis completion
 http.route({
   path: "/webhooks/crewai/analysis-completed",
   method: "POST",
@@ -247,7 +247,7 @@ http.route({
       );
 
     } catch (error) {
-      console.error("CrewAI analysis webhook error:", error);
+      console.error("LangGraph analysis webhook error:", error);
       return new Response(
         JSON.stringify({ error: "Internal server error" }),
         { 
@@ -500,7 +500,7 @@ http.route({
         timestamp: new Date().toISOString(),
         endpoints: {
           "/health": "System health check",
-          "/webhooks/crewai/*": "CrewAI integration webhooks",
+          "/webhooks/crewai/*": "LangGraph integration webhooks",
           "/webhooks/stripe": "Stripe payment webhooks",
           "/webhooks/findymail/*": "FindyMail enrichment webhooks",
           "/api/leads/export": "Lead data export API",

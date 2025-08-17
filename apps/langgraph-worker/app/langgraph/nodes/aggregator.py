@@ -33,7 +33,15 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
     try:
         # Calculate total processing time
         end_time = datetime.utcnow()
-        total_time = (end_time - state.get("start_time", end_time)).total_seconds()
+        start_time_str = state.get("start_time")
+        if start_time_str:
+            try:
+                start_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+                total_time = (end_time - start_time).total_seconds()
+            except (ValueError, AttributeError):
+                total_time = 0.0
+        else:
+            total_time = 0.0
         
         # Compile recommendations based on analysis
         recommendations = state.get("recommendations", [])
@@ -102,7 +110,7 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
         
         # Update state with final results
         return {
-            "end_time": end_time,
+            "end_time": end_time.isoformat(),  # Store as string
             "total_processing_time": total_time,
             "final_result": result,
             "agent_results": [*state.get("agent_results", []), aggregator_result],

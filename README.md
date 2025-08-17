@@ -1,6 +1,6 @@
 # Genni - AI-Powered Lead Generation Platform
 
-> Sophisticated AI-powered lead generation platform built as a monorepo combining React frontend with Python CrewAI worker service to generate personalized email sequences for business leads.
+> Sophisticated AI-powered lead generation platform built as a monorepo combining React frontend with Python LangGraph worker service to generate personalized email sequences for business leads.
 
 ## 🏗️ Architecture Overview
 
@@ -8,19 +8,19 @@ This is a multi-repository system with the following structure:
 
 ### Frontend & AI Worker (This Repository)
 - **Frontend** (`apps/web/`): React + TypeScript + Vite application using shadcn/ui components
-- **CrewAI Worker** (`apps/crewai-worker/`): Python FastAPI service with CrewAI multi-agent system
+- **LangGraph Worker** (`apps/langgraph-worker/`): Python FastAPI service with LangGraph multi-agent system
 
-### Backend Repository (`genni-convex`)
+### Backend Repository (`apps/convex-backend/`)
 - **Convex Backend**: Real-time database with complete business logic
-- **Deployment**: Separate repository managed independently
+- **Deployment**: Integrated in monorepo structure
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        Railway                               │
 ├─────────────────────────┬───────────────────────────────────┤
-│   React Frontend App    │        CrewAI Worker              │
+│   React Frontend App    │        LangGraph Worker           │
 │   - TypeScript/React    │        - Python/FastAPI          │
-│   - Stripe Elements     │        - CrewAI Agents           │
+│   - Stripe Elements     │        - LangGraph Agents        │
 │   - PostHog Analytics   │        - Async Processing        │
 │   - Admin Dashboard     │        - Port 8080               │
 │   - Port 3000          │                                   │
@@ -51,7 +51,7 @@ This is a multi-repository system with the following structure:
 
 ### Prerequisites
 - Node.js 18+ and pnpm
-- Python 3.11+ for CrewAI worker
+- Python 3.11+ for LangGraph worker
 - Convex CLI and Railway CLI for deployment
 
 ### Development Setup
@@ -64,10 +64,10 @@ pnpm install
 
 # 2. Set up environment files
 cp apps/web/.env.example apps/web/.env.local
-cp apps/crewai-worker/.env.example apps/crewai-worker/.env
+cp apps/langgraph-worker/.env.example apps/langgraph-worker/.env
 
 # 3. Install Python dependencies
-cd apps/crewai-worker
+cd apps/langgraph-worker
 pip install -r requirements.txt
 cd ../..
 
@@ -77,14 +77,13 @@ pnpm dev
 
 This will start:
 - React frontend on `http://localhost:3000`
-- CrewAI worker on `http://localhost:8080`
+- LangGraph worker on `http://localhost:8080`
 
-### Backend Setup (Separate Repository)
+### Backend Setup (Integrated)
 ```bash
-# In a separate terminal/directory
-git clone <genni-convex-repository>
-cd genni-convex
-npm install
+# In the same repository - separate terminal
+cd apps/convex-backend
+pnpm install
 npx convex dev
 ```
 
@@ -99,17 +98,17 @@ npx convex dev
 - **State Management**: TanStack Query
 - **Form Handling**: React Hook Form with Zod validation
 
-### CrewAI Worker
+### LangGraph Worker
 - **Framework**: FastAPI
-- **AI System**: CrewAI with OpenAI integration
-- **Dependencies**: LangChain, Pydantic
+- **AI System**: LangGraph with OpenAI integration
+- **Dependencies**: LangChain, LangGraph, Pydantic
 - **Python Version**: 3.11+
 
 ### Infrastructure
 - **Package Manager**: pnpm with workspaces
 - **Monorepo**: Turborepo
 - **Deployment**: Railway (both frontend and worker)
-- **Backend/Database**: Convex (separate repository)
+- **Backend/Database**: Convex (integrated monorepo)
 
 ## 📦 Project Structure
 
@@ -129,17 +128,28 @@ LeadGen/
 │   │   ├── package.json
 │   │   └── vite.config.ts
 │   │
-│   └── crewai-worker/               # Python FastAPI service
-│       ├── app/
-│       │   ├── agents/              # CrewAI agents
-│       │   ├── crews/               # Agent crews
-│       │   ├── models/              # Pydantic models
-│       │   ├── utils/               # Utilities
-│       │   └── main.py              # FastAPI app
-│       ├── requirements.txt
-│       └── package.json
-│
-├── convex/                          # Convex backend (legacy structure)
+│   ├── langgraph-worker/            # Python FastAPI service
+│   │   ├── app/
+│   │   │   ├── langgraph/           # LangGraph workflow system
+│   │   │   │   ├── nodes/           # Individual agent nodes
+│   │   │   │   ├── state.py         # Workflow state management
+│   │   │   │   ├── supervisor.py    # Agent supervisor
+│   │   │   │   └── workflow.py      # Workflow orchestration
+│   │   │   ├── models/              # Pydantic models
+│   │   │   ├── utils/               # Utilities
+│   │   │   └── main.py              # FastAPI app
+│   │   ├── requirements.txt
+│   │   └── package.json
+│   │
+│   └── convex-backend/              # Convex backend (integrated)
+│       ├── convex/                  # Convex functions
+│       │   ├── auth/                # Authentication
+│       │   ├── leads/               # Lead management
+│       │   ├── crewai/              # LangGraph integration
+│       │   ├── billing/             # Payment processing
+│       │   └── schema.ts            # Database schema
+│       ├── package.json
+│       └── convex.json
 ├── docs/                            # Documentation
 ├── scripts/                         # Deployment scripts
 ├── package.json                     # Root package.json
@@ -147,54 +157,67 @@ LeadGen/
 └── pnpm-workspace.yaml             # pnpm workspace config
 ```
 
-## 🤖 CrewAI Multi-Agent System
+## 🤖 LangGraph Multi-Agent System
 
-The Python worker implements a 5-agent system for email personalization:
+The Python worker implements a 7-agent LangGraph system for email personalization:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│              EMAIL PERSONALIZATION CREW                  │
+│           LANGGRAPH EMAIL GENERATION WORKFLOW            │
 ├─────────────────────────────────────────────────────────┤
 │                                                         │
-│  Input: Lead Data + User Profile                       │
-│                   │                                     │
-│                   ▼                                     │
+│  Input: Lead Data + Business Profile + Requirements    │
+│                           │                             │
+│                           ▼                             │
+│  ┌─────────────────────────────────────────────────────┐│
+│  │              SUPERVISOR AGENT                       ││
+│  │         Routes workflow through agents              ││
+│  │         based on conditional logic                  ││
+│  └─────────────────────┬───────────────────────────────┘│
+│                        ▼                                │
 │  ┌─────────────────────────────────┐                  │
 │  │   1. RELEVANCE ANALYZER         │                  │
-│  │   - Match offerings to needs    │                  │
-│  │   - Score fit (1-10)           │                  │
-│  │   - Find connection points      │                  │
+│  │   - Determines lead relevance   │                  │
+│  │   - Qualification scoring       │                  │
+│  │   - Fit assessment              │                  │
 │  └────────────────┬────────────────┘                  │
 │                   ▼                                     │
 │  ┌─────────────────────────────────┐                  │
 │  │   2. PAIN POINT RESEARCHER      │                  │
-│  │   - Industry challenges         │                  │
-│  │   - Company-specific issues     │                  │
-│  │   - Growth blockers             │                  │
+│  │   - Identifies challenges       │                  │
+│  │   - Industry-specific pain      │                  │
+│  │   - Growth obstacles            │                  │
 │  └────────────────┬────────────────┘                  │
 │                   ▼                                     │
 │  ┌─────────────────────────────────┐                  │
-│  │   3. VALUE PROP MATCHER         │                  │
-│  │   - Align solutions to pains    │                  │
-│  │   - Create benefit statements   │                  │
-│  │   - Prioritize propositions     │                  │
+│  │   3. VALUE MATCHER              │                  │
+│  │   - Aligns solutions to pain    │                  │
+│  │   - Value proposition mapping   │                  │
+│  │   - Benefit quantification      │                  │
 │  └────────────────┬────────────────┘                  │
 │                   ▼                                     │
 │  ┌─────────────────────────────────┐                  │
-│  │   4. EMAIL COPYWRITER           │                  │
-│  │   - 140-word main email         │                  │
-│  │   - Compelling subject line     │                  │
-│  │   - Clear CTA                   │                  │
+│  │   4. EMAIL WRITER               │                  │
+│  │   - Personalized content        │                  │
+│  │   - Compelling subject lines    │                  │
+│  │   - Clear CTAs                  │                  │
 │  └────────────────┬────────────────┘                  │
 │                   ▼                                     │
 │  ┌─────────────────────────────────┐                  │
 │  │   5. FOLLOW-UP STRATEGIST       │                  │
-│  │   - 4 follow-up emails          │                  │
-│  │   - Different angles            │                  │
-│  │   - Escalating urgency          │                  │
+│  │   - Multi-email sequences       │                  │
+│  │   - Strategic timing            │                  │
+│  │   - Varied approaches           │                  │
 │  └────────────────┬────────────────┘                  │
 │                   ▼                                     │
-│         Output: 5 Personalized Emails                  │
+│  ┌─────────────────────────────────┐                  │
+│  │   6. RESULT AGGREGATOR          │                  │
+│  │   - Compiles final results      │                  │
+│  │   - Quality validation          │                  │
+│  │   - Confidence scoring          │                  │
+│  └────────────────┬────────────────┘                  │
+│                   ▼                                     │
+│     Output: Complete Email Campaign + Analytics        │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -207,7 +230,7 @@ The Python worker implements a 5-agent system for email personalization:
 3. Backend triggers Google Maps API for lead discovery
 4. Each lead processed through:
    - FindyMail API for contact enrichment
-   - CrewAI worker for AI analysis and email generation
+   - LangGraph worker for AI analysis and email generation
 5. Results stored in Convex and displayed in real-time frontend
 
 ### AI Processing Flow
@@ -217,15 +240,18 @@ Lead Data ──▶ HTTP POST ──▶ Railway Worker
  [Convex]    [Auth+JSON]    [Python App]
                                  │
                          ┌───────▼────────┐
-                         │  Agent Crew    │
+                         │ LangGraph Flow │
                          ├────────────────┤
-                         │ 1. Analyzer    │
-                         │ 2. Researcher  │
-                         │ 3. Writer      │
-                         │ 4. Follow-ups  │
+                         │ 1. Supervisor  │
+                         │ 2. Analyzer    │
+                         │ 3. Researcher  │
+                         │ 4. Value Match │
+                         │ 5. Writer      │
+                         │ 6. Follow-ups  │
+                         │ 7. Aggregator  │
                          └───────┬────────┘
                                  │
-                         Generate 5 Emails
+                     Generate Email Campaign
                                  │
                          Webhook Results
                                  │
@@ -275,9 +301,9 @@ pnpm lint
 pnpm preview
 ```
 
-### CrewAI Worker Development (`apps/crewai-worker/`)
+### LangGraph Worker Development (`apps/langgraph-worker/`)
 ```bash
-cd apps/crewai-worker
+cd apps/langgraph-worker
 
 # Install Python dependencies
 pip install -r requirements.txt
@@ -288,6 +314,9 @@ pnpm dev
 
 # Start production server
 pnpm start
+
+# Test the integration
+python test_convex_integration.py
 ```
 
 ## 🔧 Environment Configuration
@@ -301,17 +330,28 @@ NEXT_PUBLIC_POSTHOG_KEY=phc_...
 NEXT_PUBLIC_POSTHOG_HOST=
 ```
 
-### CrewAI Worker Environment Variables
-Create `apps/crewai-worker/.env`:
+### LangGraph Worker Environment Variables
+Create `apps/langgraph-worker/.env`:
 ```env
-API_KEY=your_secure_api_key
-OPENAI_API_KEY=sk-...
-WEBHOOK_URL=your_convex_webhook_url
+# Required
+OPENAI_API_KEY=sk-your-openai-api-key-here
+API_KEY=your-secure-api-key-here
+CONVEX_URL=https://your-convex-deployment.convex.site
+
+# Optional - webhook URL is auto-constructed from CONVEX_URL
+WEBHOOK_URL=https://your-convex-deployment.convex.site/webhooks/crewai/email-completed
+
+# Optional server configuration
 PORT=8080
+ENVIRONMENT=development
+DEBUG=false
+DEFAULT_MODEL=gpt-4o-mini
+TEMPERATURE=0.7
+MAX_TOKENS=2000
 ```
 
 ### Convex Backend Environment Variables
-Create `genni-convex/.env.local`:
+Create `apps/convex-backend/.env.local`:
 ```env
 # API Keys
 OPENAI_API_KEY=sk-...
@@ -321,9 +361,14 @@ STRIPE_SECRET_KEY=sk_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_CONNECT_CLIENT_ID=ca_...
 
-# CrewAI Worker
+# LangGraph Worker (environment variable names kept for compatibility)
 CREWAI_URL=http://localhost:8080
 CREWAI_API_KEY=your_secure_api_key
+
+# Clerk Authentication
+CLERK_SECRET_KEY=sk_...
+CLERK_WEBHOOK_SECRET=whsec_...
+CLERK_JWT_ISSUER_DOMAIN=https://clerk.your-domain.com
 
 # Admin
 ADMIN_EMAILS=admin@example.com
@@ -335,27 +380,31 @@ APP_URL=http://localhost:3000
 
 ## 🚀 Deployment
 
-### Multi-Repository Development
+### Integrated Monorepo Development
 ```bash
-# Repository 1 (Frontend + CrewAI) - This Repository
+# Single Repository - All services
 cd genni-app
 pnpm install
-pnpm dev          # Runs both React and CrewAI worker
+pnpm dev          # Runs React frontend and LangGraph worker
 
-# Repository 2 (Convex Backend) - Separate Repository
-cd genni-convex
-npm install
+# Convex Backend - Separate terminal
+cd apps/convex-backend
+pnpm install
 npx convex dev    # Runs Convex in development mode
 ```
 
 ### Deployment to Production
 ```bash
-# Deploy Frontend/CrewAI to Railway
-cd genni-app
-railway up
+# Deploy Frontend to Railway
+cd apps/web
+railway up --service genni-web
+
+# Deploy LangGraph Worker to Railway
+cd apps/langgraph-worker
+railway up --service genni-langgraph-worker
 
 # Deploy Convex Backend
-cd genni-convex
+cd apps/convex-backend
 npx convex deploy
 ```
 
@@ -369,7 +418,7 @@ npx convex deploy
 ### Core Functionality
 - **Smart Lead Discovery**: Google Maps API integration for business discovery
 - **Contact Enrichment**: FindyMail API for email and contact information
-- **AI-Powered Analysis**: CrewAI multi-agent system for lead intelligence
+- **AI-Powered Analysis**: LangGraph multi-agent system for lead intelligence
 - **Personalized Email Generation**: 5-email sequences tailored to each lead
 - **Real-time Updates**: Live progress tracking and results display
 - **User Management**: Authentication, profiles, and business configuration
@@ -385,11 +434,76 @@ npx convex deploy
 ## 🔑 Key Integrations
 
 - **Convex Backend**: Real-time database and API layer
-- **CrewAI**: Multi-agent AI system for email generation
+- **LangGraph**: Multi-agent AI system for email generation
 - **Google Maps API**: Business discovery and location data
 - **FindyMail API**: Contact information enrichment
 - **Stripe**: Payment processing and subscription management
 - **Railway**: Deployment platform for frontend and worker
+
+## 🔗 LangGraph-Convex Integration
+
+The LangGraph worker integrates seamlessly with the Convex backend through REST API calls and webhooks:
+
+### Integration Architecture
+
+```
+┌─────────────────┐    HTTP/JSON     ┌──────────────────┐    Webhooks    ┌─────────────────┐
+│   Frontend      │ ───────────────> │ Convex Backend   │ ─────────────> │ LangGraph       │
+│   (React App)   │                  │ (Functions)      │                │ Worker          │
+└─────────────────┘                  └──────────────────┘ <───────────── └─────────────────┘
+                                              │                                      │
+                                              │                                      │
+                                              ▼                                      ▼
+                                     ┌──────────────────┐                ┌─────────────────┐
+                                     │ Convex Database  │                │ OpenAI GPT      │
+                                     │ (Real-time)      │                │ (AI Models)     │
+                                     └──────────────────┘                └─────────────────┘
+```
+
+### Key Integration Points
+
+1. **Convex → LangGraph** (HTTP Requests):
+   - `POST /generate-email` - Generate personalized emails
+   - `POST /analyze-lead` - Analyze lead relevance and fit
+   - `GET /health` - Health check
+   - `GET /agents/info` - Agent information
+
+2. **LangGraph → Convex** (Webhooks):
+   - `POST /webhooks/crewai/email-completed` - Email generation results
+   - `POST /webhooks/crewai/analysis-completed` - Lead analysis results
+
+### Authentication & Security
+
+- **Bearer Token Authentication**: All API calls use `CREWAI_API_KEY` for authentication
+- **Automatic Webhook URL Construction**: Worker auto-constructs webhook URLs from `CONVEX_URL`
+- **Retry Logic**: Exponential backoff for webhook delivery failures
+- **Error Handling**: Comprehensive error handling with user notifications
+
+### Configuration
+
+The LangGraph worker automatically constructs webhook URLs:
+```bash
+# Set in LangGraph worker
+CONVEX_URL=https://your-convex.convex.site
+
+# Auto-constructed webhook URLs:
+# Email: https://your-convex.convex.site/webhooks/crewai/email-completed
+# Analysis: https://your-convex.convex.site/webhooks/crewai/analysis-completed
+```
+
+### Testing Integration
+
+Test the integration with the provided test script:
+```bash
+cd apps/langgraph-worker
+python test_convex_integration.py
+```
+
+This verifies:
+- ✅ Health endpoint accessibility
+- ✅ Webhook configuration
+- ✅ API authentication
+- ✅ Convex connectivity
 
 ## 📚 Documentation
 
@@ -398,6 +512,7 @@ npx convex deploy
 - [`CLAUDE.md`](./CLAUDE.md) - Project context for Claude Code development
 - [`docs/genni-architecture.md`](./docs/genni-architecture.md) - Detailed system architecture
 - [`docs/FRONTEND-INTEGRATION.md`](./docs/FRONTEND-INTEGRATION.md) - Frontend integration guide
+- [`LANGGRAPH_CONVEX_INTEGRATION.md`](./LANGGRAPH_CONVEX_INTEGRATION.md) - Complete LangGraph-Convex integration guide
 
 ## 🧪 Testing & Quality
 
@@ -421,4 +536,4 @@ This project is proprietary and confidential.
 
 ---
 
-**Built with** ❤️ **using React, TypeScript, CrewAI, and Convex**
+**Built with** ❤️ **using React, TypeScript, LangGraph, and Convex**

@@ -24,9 +24,9 @@ class Settings(BaseSettings):
         # Auto-construct webhook URL from Convex URL if not explicitly set
         if not self.webhook_url and self.convex_url:
             # Convert site URL to HTTP endpoint
-            # e.g., "https://happy-horse-123.convex.site" -> "https://happy-horse-123.convex.site/crewai/webhook"
+            # e.g., "https://happy-horse-123.convex.site" -> "https://happy-horse-123.convex.site/webhooks/crewai/email-completed"
             base_url = self.convex_url.rstrip('/')
-            self.webhook_url = f"{base_url}/crewai/webhook"
+            self.webhook_url = f"{base_url}/webhooks/crewai/email-completed"
     
     # Server Configuration
     port: int = int(os.getenv("PORT_OPTIONAL", os.getenv("PORT", "8080")))
