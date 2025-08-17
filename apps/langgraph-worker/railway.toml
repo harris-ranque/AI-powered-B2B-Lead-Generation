@@ -1,4 +1,4 @@
-# Railway CrewAI Worker Configuration  
+# Railway LangGraph Worker Configuration  
 [build]
 builder = "DOCKERFILE"
 

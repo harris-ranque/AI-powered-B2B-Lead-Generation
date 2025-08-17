@@ -102,7 +102,7 @@ class EmailGenerationResult(BaseModel):
     relevance_score: float = Field(..., description="Lead relevance score (0-1)")
     pain_points_identified: List[str] = Field(..., description="Identified pain points")
     value_matches: List[str] = Field(..., description="Value proposition matches")
-    primary_email: EmailContent = Field(..., description="Primary email content")
+    primary_email: Optional[EmailContent] = Field(None, description="Primary email content")
     follow_up_sequence: Optional[FollowUpSequence] = Field(None, description="Follow-up sequence")
     agent_results: List[AgentResult] = Field(..., description="Individual agent outputs")
     processing_time: float = Field(..., description="Total processing time")

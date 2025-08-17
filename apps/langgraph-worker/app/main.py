@@ -1,6 +1,6 @@
 """
-Genni CrewAI Worker Service
-FastAPI application with multi-agent AI system for email personalization
+Genni LangGraph Worker Service
+FastAPI application with LangGraph multi-agent AI system for email personalization
 """
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -14,10 +14,11 @@ import asyncio
 import json
 
 from .models.lead_models import Lead, EmailGenerationRequest, EmailGenerationResponse
-from .crews.email_crew import EmailPersonalizationCrew
+from .langgraph.state import EmailGenerationState
+from .langgraph.workflow import create_email_generation_workflow, execute_email_generation, execute_with_streaming
 from .utils.config import get_settings
 from .utils.webhook import WebhookClient
-from .utils.performance import single_replica_optimizer, memory_monitor
+from .utils.performance import single_replica_optimizer
 from .utils.logger import setup_logger, log_request_details, log_response_details, log_error_details
 
 # Configure logging
@@ -25,9 +26,9 @@ logger = setup_logger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Genni CrewAI Worker",
-    description="AI-powered email personalization service using CrewAI multi-agent system",
-    version="1.0.0",
+    title="Genni LangGraph Worker",
+    description="AI-powered email personalization service using LangGraph multi-agent system",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -61,7 +62,7 @@ webhook_client = WebhookClient(settings.webhook_url)
 async def startup_event():
     """Initialize background services on startup"""
     logger.info("=" * 60)
-    logger.info("GENNI CREWAI WORKER STARTING UP")
+    logger.info("GENNI LANGGRAPH WORKER STARTING UP")
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'production')}")
     logger.info(f"OpenAI API Key configured: {'Yes' if settings.openai_api_key else 'No'}")
     logger.info(f"Convex URL: {settings.convex_url}")
@@ -71,6 +72,7 @@ async def startup_event():
     # Start the background processor
     asyncio.create_task(single_replica_optimizer.background_processor())
     logger.info("Background processor started successfully")
+    logger.info("LangGraph workflow system initialized")
     logger.info("=" * 60)
 
 @app.get("/")
@@ -78,10 +80,11 @@ async def root():
     """Health check endpoint"""
     logger.debug("Root endpoint accessed")
     response = {
-        "service": "Genni CrewAI Worker",
+        "service": "Genni LangGraph Worker",
         "status": "active",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "1.0.0"
+        "version": "2.0.0",
+        "workflow_engine": "LangGraph"
     }
     logger.debug(f"Root response: {response}")
     return response
@@ -98,7 +101,7 @@ async def health_check():
         "timestamp": datetime.utcnow().isoformat(),
         "services": {
             "fastapi": "running",
-            "crewai": "initialized",
+            "langgraph": "initialized",
             "openai": "connected" if settings.openai_api_key else "not configured"
         },
         "performance": {
@@ -119,7 +122,7 @@ async def generate_email(
     authenticated: bool = Depends(verify_api_key)
 ):
     """
-    Generate personalized email using CrewAI multi-agent system
+    Generate personalized email using LangGraph multi-agent system
     
     This endpoint processes a lead through our 5-agent system:
     1. Relevance Analyzer - Determines lead relevance and fit
@@ -131,43 +134,60 @@ async def generate_email(
     start_time = datetime.utcnow()
     
     try:
-        logger.info(f"Processing email generation request for lead: {request.lead.company_name}")
+        logger.info(f"[LangGraph] Processing email generation for lead: {request.lead.company_name}")
         log_request_details(logger, request.dict(), "/generate-email")
         
         # Check system capacity
         optimizer_status = single_replica_optimizer.get_status()
-        logger.debug(f"System status: {optimizer_status}")
-        
         if optimizer_status["memory"]["percent"] > 90:
             raise HTTPException(
                 status_code=503, 
                 detail="System at capacity. Please try again in a few minutes."
             )
         
-        # Queue the task for optimized processing
-        task_data = {
-            "id": request.request_id,
-            "type": "email_generation",
-            "request": request.dict(),
-            "webhook_url": settings.webhook_url
-        }
-        
-        queue_result = await single_replica_optimizer.process_with_queue(task_data)
-        logger.debug(f"Queue result: {queue_result}")
-        
-        response = EmailGenerationResponse(
-            request_id=request.request_id,
-            status="queued",
-            message=f"Email generation queued. {queue_result['message']} Queue size: {queue_result['queue_size']}"
+        # Execute LangGraph workflow
+        result = await execute_email_generation(
+            lead=request.lead,
+            business_profile=request.business_profile,
+            requirements=request.requirements,
+            request_id=request.request_id
         )
+        
+        if result["status"] == "completed":
+            # Send success webhook
+            result_dict = result["result"].dict() if result["result"] else {}
+            await webhook_client.send_result(
+                request_id=request.request_id,
+                status="completed",
+                result=result_dict
+            )
+            
+            response = EmailGenerationResponse(
+                request_id=request.request_id,
+                status="completed",
+                message="Email generation completed successfully via LangGraph",
+                result=result["result"]
+            )
+        else:
+            # Send error webhook
+            await webhook_client.send_result(
+                request_id=request.request_id,
+                status="error",
+                error=result.get("error", "Unknown error")
+            )
+            
+            response = EmailGenerationResponse(
+                request_id=request.request_id,
+                status="error",
+                message=f"Email generation failed: {result.get('error', 'Unknown error')}",
+                error=result.get("error")
+            )
         
         duration = (datetime.utcnow() - start_time).total_seconds()
         log_response_details(logger, response.dict(), duration)
         
         return response
         
-    except HTTPException:
-        raise
     except Exception as e:
         log_error_details(logger, e, {
             "request_id": request.request_id,
@@ -176,84 +196,60 @@ async def generate_email(
         })
         raise HTTPException(status_code=500, detail=f"Email generation failed: {str(e)}")
 
-@memory_monitor
-async def process_email_generation(
-    crew: EmailPersonalizationCrew,
-    request: EmailGenerationRequest,
-    webhook_client: WebhookClient
-):
-    """Background task to process email generation with memory monitoring"""
-    start_time = datetime.utcnow()
-    logger.info(f"Starting email generation for request: {request.request_id}")
-    logger.debug(f"Lead: {request.lead.company_name}, Industry: {request.lead.business_type}")
-    
-    try:
-        logger.debug("Initializing CrewAI workflow")
-        # Execute the CrewAI workflow
-        result = await crew.execute_async(
-            lead=request.lead,
-            business_profile=request.business_profile,
-            requirements=request.requirements
-        )
-        
-        duration = (datetime.utcnow() - start_time).total_seconds()
-        logger.info(f"CrewAI workflow completed in {duration:.2f}s")
-        log_response_details(logger, result, duration)
-        
-        # Send success webhook
-        logger.debug(f"Sending success webhook to: {webhook_client.webhook_url}")
-        await webhook_client.send_result(
-            request_id=request.request_id,
-            status="completed",
-            result=result
-        )
-        
-        logger.info(f"✅ Email generation completed successfully for request: {request.request_id}")
-        
-    except Exception as e:
-        duration = (datetime.utcnow() - start_time).total_seconds()
-        log_error_details(logger, e, {
-            "request_id": request.request_id,
-            "lead": request.lead.company_name,
-            "duration": duration
-        })
-        
-        # Send error webhook
-        logger.debug(f"Sending error webhook for request: {request.request_id}")
-        await webhook_client.send_result(
-            request_id=request.request_id,
-            status="error",
-            error=str(e)
-        )
-
 @app.post("/analyze-lead")
-@memory_monitor
 async def analyze_lead(
     lead: Lead,
     authenticated: bool = Depends(verify_api_key)
 ):
-    """Quick lead analysis without full email generation"""
+    """Quick lead analysis using relevance analyzer node only"""
     start_time = datetime.utcnow()
-    logger.info(f"Analyzing lead: {lead.company_name}")
+    logger.info(f"[LangGraph] Analyzing lead: {lead.company_name}")
     log_request_details(logger, lead.dict(), "/analyze-lead")
     
     try:
-        logger.debug("Initializing EmailPersonalizationCrew for analysis")
-        crew = EmailPersonalizationCrew()
+        # Create minimal state for relevance analysis only
+        from .langgraph.nodes.relevance_analyzer import relevance_analyzer_node
+        from .models.lead_models import BusinessProfile, EmailRequirements
         
-        logger.debug("Starting lead analysis")
-        analysis = await crew.analyze_lead_only(lead)
+        # Create minimal business profile for analysis
+        minimal_profile = BusinessProfile(
+            company_name="Genni",
+            industry="Business Services",
+            value_proposition="AI-powered lead generation and personalization",
+            services=["Lead Generation", "Email Personalization", "Sales Automation"],
+            target_markets=["B2B", "SaaS", "Professional Services"],
+            key_differentiators=["AI-powered", "Multi-agent system", "Personalized outreach"],
+            contact_info={"email": "contact@genni.com"}
+        )
+        
+        # Create minimal state
+        state = {
+            "request_id": f"analysis_{lead.id}",
+            "lead": lead,
+            "business_profile": minimal_profile,
+            "requirements": EmailRequirements(call_to_action="Schedule a call"),
+            "agent_results": [],
+            "processing_times": {},
+            "confidence_scores": {}
+        }
+        
+        # Run relevance analysis
+        result = await relevance_analyzer_node(state)
         
         duration = (datetime.utcnow() - start_time).total_seconds()
         logger.info(f"Lead analysis completed in {duration:.2f}s")
-        logger.debug(f"Analysis results: relevance_score={analysis.get('relevance_score', 0)}")
+        
+        relevance_analysis = result.get("relevance_analysis", {})
         
         response = {
             "lead_id": lead.id,
-            "relevance_score": analysis.get("relevance_score", 0),
-            "pain_points": analysis.get("pain_points", []),
-            "fit_assessment": analysis.get("fit_assessment", ""),
-            "recommended_approach": analysis.get("recommended_approach", "")
+            "relevance_score": result.get("relevance_score", 0),
+            "qualification_level": relevance_analysis.get("qualification_level", "Unknown"),
+            "fit_assessment": relevance_analysis.get("fit_assessment", ""),
+            "key_factors": relevance_analysis.get("key_factors", []),
+            "opportunities": relevance_analysis.get("opportunities", []),
+            "red_flags": relevance_analysis.get("red_flags", []),
+            "processing_time": duration
         }
         
         log_response_details(logger, response, duration)
@@ -293,34 +289,61 @@ async def get_agents_info(authenticated: bool = Depends(verify_api_key)):
     logger.debug("Agents info requested")
     
     agents_info = {
+        "workflow_engine": "LangGraph",
+        "orchestration": "Supervisor-based routing with conditional logic",
         "agents": [
             {
                 "name": "Relevance Analyzer",
                 "role": "Determines lead relevance and fit",
-                "specialization": "Lead qualification and scoring"
+                "specialization": "Lead qualification and scoring",
+                "output": "Structured relevance analysis with confidence scoring"
             },
             {
                 "name": "Pain Point Researcher", 
                 "role": "Identifies customer challenges",
-                "specialization": "Problem identification and analysis"
+                "specialization": "Problem identification and analysis",
+                "output": "Categorized pain points with severity assessment"
             },
             {
                 "name": "Value Matcher",
                 "role": "Aligns solutions to problems", 
-                "specialization": "Solution-problem mapping"
+                "specialization": "Solution-problem mapping",
+                "output": "Value propositions with quantified benefits"
             },
             {
                 "name": "Email Writer",
                 "role": "Crafts personalized emails",
-                "specialization": "Content creation and personalization"
+                "specialization": "Content creation and personalization",
+                "output": "Complete email with personalization notes"
             },
             {
                 "name": "Follow-up Strategist",
                 "role": "Plans email sequences",
-                "specialization": "Sequence planning and optimization"
+                "specialization": "Sequence planning and optimization",
+                "output": "Multi-touch strategy with timing and content themes"
+            },
+            {
+                "name": "Supervisor",
+                "role": "Orchestrates workflow and routing",
+                "specialization": "Dynamic agent coordination",
+                "output": "Routing decisions and workflow management"
+            },
+            {
+                "name": "Result Aggregator",
+                "role": "Compiles final results",
+                "specialization": "Result synthesis and recommendations",
+                "output": "Comprehensive EmailGenerationResult"
             }
         ],
-        "workflow": "Sequential multi-agent collaboration with feedback loops"
+        "features": [
+            "Supervisor-based orchestration",
+            "Conditional routing logic",
+            "State persistence capability",
+            "Streaming execution support",
+            "Quality gates and validation",
+            "Structured outputs with confidence scoring",
+            "Error handling and recovery"
+        ]
     }
     
     logger.debug(f"Returning info for {len(agents_info['agents'])} agents")
@@ -334,6 +357,33 @@ async def get_performance_metrics(authenticated: bool = Depends(verify_api_key))
     
     logger.debug(f"Performance: Memory={metrics['memory']['percent']:.1f}%, Queue={metrics['queue_size']}, Active={metrics['active_tasks']}")
     return metrics
+
+@app.get("/workflow-engine")
+async def get_workflow_engine(authenticated: bool = Depends(verify_api_key)):
+    """Get information about the current workflow engine"""
+    logger.debug("Workflow engine info requested")
+    
+    engine_info = {
+        "name": "LangGraph",
+        "version": "2.0.0",
+        "endpoint": "/generate-email",
+        "status": "active",
+        "description": "LangGraph-based supervisor orchestration system",
+        "features": [
+            "Supervisor-based routing",
+            "State persistence capability",
+            "Streaming execution support",
+            "Better observability",
+            "Conditional routing logic",
+            "Quality gates and validation",
+            "Structured outputs with confidence scoring",
+            "Error handling and recovery"
+        ],
+        "migration_status": "completed",
+        "previous_engine": "CrewAI (removed)"
+    }
+    
+    return engine_info
 
 if __name__ == "__main__":
     import uvicorn
