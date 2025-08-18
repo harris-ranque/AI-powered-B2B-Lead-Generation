@@ -1,5 +1,6 @@
 import { internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
+import { internal } from "../_generated/api";
 
 // Internal function to get search for processing
 export const getSearchForProcessing = internalQuery({
@@ -114,31 +115,18 @@ export const recordSearchCredits = internalMutation({
       creditsUsed: totalCreditsUsed,
     });
 
-    // Update user credits
-    const user = await ctx.db.get(search.userId);
-    
-    if (user) {
-      const newBalance = user.credits - args.creditsUsed;
-      
-      await ctx.db.patch(search.userId, {
-        credits: Math.max(0, newBalance),
-        updatedAt: Date.now(),
-      });
-
-      // Record transaction
-      await ctx.db.insert("creditTransactions", {
-        userId: search.userId,
-        type: "usage",
-        amount: -args.creditsUsed,
-        description: `Search: ${search.name}`,
-        relatedEntity: {
-          type: "search",
-          id: args.searchId,
-        },
-        balanceAfter: Math.max(0, newBalance),
-        createdAt: Date.now(),
-      });
-    }
+    // Record credit usage using atomic transaction system
+    await ctx.runMutation(internal.credits.transactions.createCreditTransaction, {
+      userId: search.userId,
+      type: "usage",
+      amount: -args.creditsUsed,
+      description: `Search: ${search.name}`,
+      relatedEntity: {
+        type: "search",
+        id: args.searchId,
+      },
+      requireMinimumBalance: false, // Allow overdraft for completed operations
+    });
   },
 });
 
@@ -231,5 +219,15 @@ export const updateSearchAnalytics = internalMutation({
 
     // TODO: Store analytics data
     console.log(`Analytics updated: ${totalSearches} searches, avg time: ${avgCompletionTime}ms`);
+  },
+});
+
+// Get search for processing without user restriction (for orchestrator)
+export const getSearchById = internalQuery({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.searchId);
   },
 });

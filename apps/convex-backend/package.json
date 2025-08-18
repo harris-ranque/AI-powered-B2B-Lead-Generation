@@ -8,7 +8,9 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "convex": "^1.24.0"
+    "convex": "^1.24.0",
+    "stripe": "^18.4.0",
+    "svix": "^1.73.0"
   },
   "devDependencies": {
     "@types/node": "^18.17.0",

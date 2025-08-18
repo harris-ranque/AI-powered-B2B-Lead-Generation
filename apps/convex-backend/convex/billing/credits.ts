@@ -46,16 +46,8 @@ export const refreshMonthlyCredits = internalMutation({
             continue; // Skip free users
         }
 
-        // Add credits
-        const newBalance = user.credits + monthlyCredits;
-        
-        await ctx.db.patch(user._id, {
-          credits: newBalance,
-          updatedAt: Date.now(),
-        });
-
-        // Record credit transaction
-        await ctx.db.insert("creditTransactions", {
+        // Add credits using atomic transaction system
+        const transactionResult = await ctx.runMutation(internal.credits.transactions.createCreditTransaction, {
           userId: user._id,
           type: "bonus",
           amount: monthlyCredits,
@@ -64,9 +56,9 @@ export const refreshMonthlyCredits = internalMutation({
             type: "billing",
             id: billing._id,
           },
-          balanceAfter: newBalance,
-          createdAt: Date.now(),
         });
+
+        const newBalance = transactionResult.newBalance;
 
         // Send notification
         await ctx.runMutation(internal.notifications.internal.createSystemNotification, {

@@ -51,14 +51,14 @@ export const getSearchLeads = query({
     if (args.status) {
       leadsQuery = ctx.db
         .query("leads")
-        .withIndex("by_status", (q) => q.eq("status", args.status))
+        .withIndex("by_status", (q) => q.eq("status", args.status!))
         .filter((q) => q.eq(q.field("searchId"), args.searchId));
     }
 
     if (args.enrichmentStatus) {
       leadsQuery = ctx.db
         .query("leads")
-        .withIndex("by_enrichment_status", (q) => q.eq("enrichmentStatus", args.enrichmentStatus))
+        .withIndex("by_enrichment_status", (q) => q.eq("enrichmentStatus", args.enrichmentStatus!))
         .filter((q) => q.eq(q.field("searchId"), args.searchId));
     }
 
@@ -142,7 +142,7 @@ export const getRecentLeads = query({
     if (args.status) {
       query = ctx.db
         .query("leads")
-        .withIndex("by_status", (q) => q.eq("status", args.status))
+        .withIndex("by_status", (q) => q.eq("status", args.status!))
         .filter((q) => q.eq(q.field("userId"), user._id));
     }
 
@@ -177,7 +177,7 @@ export const getLeadStatistics = query({
     if (args.searchId) {
       query = ctx.db
         .query("leads")
-        .withIndex("by_search", (q) => q.eq("searchId", args.searchId));
+        .withIndex("by_search", (q) => q.eq("searchId", args.searchId!));
     }
 
     const leads = await query
@@ -312,7 +312,7 @@ export const searchLeads = query({
     if (args.searchId) {
       query = ctx.db
         .query("leads")
-        .withIndex("by_search", (q) => q.eq("searchId", args.searchId));
+        .withIndex("by_search", (q) => q.eq("searchId", args.searchId!));
     }
 
     const allLeads = await query.collect();
@@ -516,7 +516,7 @@ export const getUserLeads = query({
         .withIndex("by_search", (q) => q.eq("searchId", searchId));
 
       if (args.status) {
-        leadsQuery = leadsQuery.filter((q) => q.eq(q.field("status"), args.status));
+        leadsQuery = leadsQuery.filter((q) => q.eq(q.field("status"), args.status!));
       }
 
       const searchLeads = await leadsQuery.collect();

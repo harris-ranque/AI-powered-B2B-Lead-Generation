@@ -17,7 +17,9 @@ import {
   CheckCircle,
   CreditCard,
   UserCheck,
-  Building2
+  Building2,
+  Bug,
+  Activity
 } from "lucide-react";
 import { EnhancedLeadSearch } from "./EnhancedLeadSearch";
 import { AIEmailGenerator } from "./AIEmailGenerator";
@@ -26,12 +28,14 @@ import { CreditManager } from "./CreditManager";
 import { AdminDashboard } from "./AdminDashboard";
 import { Dashboard } from "./Dashboard";
 import { Settings as SettingsComponent } from "./Settings";
+import { DebugDashboard } from "./DebugDashboard";
+import { PerformanceMonitoringDashboard } from "./PerformanceMonitoringDashboard";
 import type { Lead, EmailGenerationResult, BusinessProfileInput } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import { useCredits, useBilling } from "@/hooks/useBilling";
-import { useCrewAIRequests } from "@/hooks/useCrewAI";
+import { useLangGraphRequests } from "@/hooks/useLangGraph";
 import { useSearches } from "@/hooks/useSearches";
 import { useUserLeads } from "@/hooks/useLeads";
 
@@ -45,7 +49,7 @@ export function LeadEternityDashboard() {
   const { balance } = useCredits();
   const userCredits = balance?.balance || 0;
   const { purchaseCredits, usage } = useBilling();
-  const { requests: emailRequests } = useCrewAIRequests();
+  const { requests: emailRequests } = useLangGraphRequests();
   const { searches } = useSearches();
   const { stats: leadStats } = useUserLeads();
   
@@ -247,6 +251,34 @@ export function LeadEternityDashboard() {
                 </Badge>
               </Button>
             )}
+            
+            {isAdmin && (
+              <Button
+                variant={currentTab === "debug" ? "default" : "ghost"}
+                className="w-full justify-start"
+                onClick={() => setCurrentTab("debug")}
+              >
+                <Bug className="h-4 w-4 mr-2" />
+                Debug Panel
+                <Badge variant="outline" className="ml-auto text-xs">
+                  Dev
+                </Badge>
+              </Button>
+            )}
+            
+            {isAdmin && (
+              <Button
+                variant={currentTab === "performance" ? "default" : "ghost"}
+                className="w-full justify-start"
+                onClick={() => setCurrentTab("performance")}
+              >
+                <Activity className="h-4 w-4 mr-2" />
+                Performance
+                <Badge variant="outline" className="ml-auto text-xs">
+                  Admin
+                </Badge>
+              </Button>
+            )}
           </nav>
 
           {/* Recent Activity */}
@@ -392,6 +424,30 @@ export function LeadEternityDashboard() {
           {currentTab === "admin" && isAdmin && (
             <div>
               <AdminDashboard />
+            </div>
+          )}
+          
+          {currentTab === "debug" && isAdmin && (
+            <div className="p-6">
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold mb-2">Debug Dashboard</h2>
+                <p className="text-muted-foreground">
+                  Advanced debugging tools for correlation tracking, performance monitoring, and system diagnostics.
+                </p>
+              </div>
+              <DebugDashboard />
+            </div>
+          )}
+          
+          {currentTab === "performance" && isAdmin && (
+            <div className="p-6">
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold mb-2">Performance Monitoring</h2>
+                <p className="text-muted-foreground">
+                  Real-time system metrics, performance analysis, and comprehensive monitoring dashboard.
+                </p>
+              </div>
+              <PerformanceMonitoringDashboard />
             </div>
           )}
         </div>

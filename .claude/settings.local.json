@@ -67,7 +67,8 @@
       "Bash(grep:*)",
       "Bash(node:*)",
       "Bash(pnpm lint:*)",
-      "Bash(touch:*)"
+      "Bash(touch:*)",
+      "Bash(langgraph:*)"
     ],
     "deny": []
   }

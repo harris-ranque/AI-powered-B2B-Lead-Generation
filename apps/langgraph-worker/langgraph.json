@@ -3,7 +3,7 @@
     "."
   ],
   "graphs": {
-    "email_generation": "app.langgraph.workflow:create_email_generation_workflow"
+    "email_generation": "app.langgraph.workflow:create_email_generation_workflow_studio"
   },
   "env": ".env"
 }

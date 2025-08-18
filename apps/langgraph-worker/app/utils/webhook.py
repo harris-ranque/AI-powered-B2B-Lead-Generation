@@ -57,6 +57,10 @@ class WebhookClient:
                         if response.status == 200:
                             logger.info(f"Webhook sent successfully for request {request_id}")
                             return True
+                        elif response.status in [401, 403, 400]:
+                            # Don't retry auth/validation errors
+                            logger.error(f"Webhook failed with non-retryable status {response.status}")
+                            return False
                         else:
                             logger.warning(f"Webhook failed with status {response.status}")
                             
@@ -66,9 +70,12 @@ class WebhookClient:
                 logger.error(f"Webhook error for request {request_id}: {str(e)} (attempt {attempt + 1})")
             
             if attempt < retries:
-                # Exponential backoff
-                wait_time = 2 ** attempt
-                logger.info(f"Retrying webhook in {wait_time} seconds...")
+                # Enhanced exponential backoff with jitter
+                import random
+                base_wait = 2 ** attempt
+                jitter = base_wait * 0.1 * (2 * random.random() - 1)  # Add jitter
+                wait_time = max(base_wait + jitter, 0.5)  # Minimum 0.5s wait
+                logger.info(f"Retrying webhook in {wait_time:.1f} seconds...")
                 await asyncio.sleep(wait_time)
         
         logger.error(f"Failed to send webhook after {retries + 1} attempts for request {request_id}")
@@ -92,8 +99,8 @@ class WebhookClient:
         
         # Construct analysis webhook URL
         analysis_webhook_url = self.webhook_url.replace(
-            "/webhooks/crewai/email-completed", 
-            "/webhooks/crewai/analysis-completed"
+            "/webhooks/langgraph/email-completed", 
+            "/webhooks/langgraph/analysis-completed"
         )
             
         payload = {

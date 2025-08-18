@@ -27,7 +27,7 @@ export const getUserRequests = query({
     const offset = args.offset || 0;
 
     let requestsQuery = ctx.db
-      .query("crewaiRequests")
+      .query("langgraphRequests")
       .withIndex("by_user", (q) => q.eq("userId", user._id));
 
     if (args.status) {
@@ -44,7 +44,7 @@ export const getUserRequests = query({
 
 // Get a specific CrewAI request
 export const getRequest = query({
-  args: { requestId: v.id("crewaiRequests") },
+  args: { requestId: v.id("langgraphRequests") },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
 
@@ -105,7 +105,7 @@ export const getEmailGenerationStats = query({
 
     // Get email generation requests in the timeframe
     const emailRequests = await ctx.db
-      .query("crewaiRequests")
+      .query("langgraphRequests")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .filter((q) => 
         q.and(
@@ -146,7 +146,7 @@ export const getRecentRequests = query({
     const limit = args.limit || 10;
 
     const requests = await ctx.db
-      .query("crewaiRequests")
+      .query("langgraphRequests")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .order("desc")
       .take(limit);

@@ -17,14 +17,17 @@ import {
   Users,
   Settings,
   History,
-  Sparkles
+  Sparkles,
+  Activity,
+  AlertTriangle,
+  Bell
 } from "lucide-react";
-import { GenniLeadSearch } from "./GenniLeadSearch";
+import { GenniLeadSearch } from "./GenniLeadSearch";\nimport { SearchProgressTracker } from "./SearchProgressTracker";
 import type { Lead } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { useSearches, useGoogleMapsSearch } from "@/hooks/useSearches";
 import { useUser, useUserCredits } from "@/hooks/useUser";
-import { useProfile } from "@/hooks/useProfile";
+import { useProfile } from "@/hooks/useProfile";\nimport { useStatusBroadcasts, useCreditBroadcasts, getPriorityDisplay, formatBroadcastTime } from "@/hooks/useStatusBroadcasts";
 import type { SearchParams as ConvexSearchParams } from "@/lib/types";
 
 interface LocalSearchParams {
@@ -69,7 +72,7 @@ export function EnhancedLeadSearch({
   const { credits, isLoading: creditsLoading } = useUserCredits();
   const { profile } = useProfile();
   const { searches, createSearch, cancelSearch, isLoading: searchesLoading } = useSearches();
-  const { searchGoogleMaps } = useGoogleMapsSearch();
+  const { searchGoogleMaps } = useGoogleMapsSearch();\n  \n  // Real-time broadcasting integration\n  const {\n    urgentBroadcasts,\n    searchBroadcasts,\n    rateLimitWarnings,\n    acknowledgeBroadcast,\n    hasUrgent\n  } = useStatusBroadcasts();\n  \n  const {\n    lowCreditWarnings,\n    hasLowCredits,\n    currentBalance\n  } = useCreditBroadcasts();
   
   // Get real user data or fallback to props
   const userCredits = credits ?? 100;
@@ -451,6 +454,44 @@ export function EnhancedLeadSearch({
 
         <TabsContent value="active" className="mt-6">
           <div className="space-y-4">
+            {/* Urgent Broadcast Alerts */}
+            {urgentBroadcasts.length > 0 && (
+              <Alert className="bg-orange-50 border-orange-200">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">
+                      {urgentBroadcasts.length} urgent alert{urgentBroadcasts.length > 1 ? 's' : ''} require attention
+                    </span>
+                    <div className="flex gap-2">
+                      {urgentBroadcasts.slice(0, 2).map((alert) => (
+                        <Badge key={alert._id} variant="destructive" className="text-xs">
+                          {alert.title}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Credit Warnings */}
+            {hasLowCredits && (
+              <Alert className="bg-yellow-50 border-yellow-200">
+                <Bell className="h-4 w-4" />
+                <AlertDescription>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">
+                      Low credit balance: {currentBalance} remaining
+                    </span>
+                    <Button size="sm" variant="outline">
+                      Purchase Credits
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
             {searchesLoading ? (
               <Alert>
                 <Clock className="h-4 w-4 animate-spin" />
@@ -466,34 +507,47 @@ export function EnhancedLeadSearch({
                 </AlertDescription>
               </Alert>
             ) : (
-              activeSearches.map(search => (
-                <Card key={search._id} className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-medium">{search.name}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Status: {search.status} • {search.progress.discovered}/{search.progress.total} leads discovered
-                      </p>
+              <>
+                {/* Real-time Progress Tracking */}
+                <div className="space-y-4">
+                  {activeSearches.map(search => (
+                    <SearchProgressTracker
+                      key={search._id}
+                      searchId={search._id}
+                      compact={false}
+                      showHistory={true}
+                      className="border-primary/20"
+                    />
+                  ))}
+                </div>
+
+                {/* Live Search Broadcasts */}
+                {searchBroadcasts.length > 0 && (
+                  <Card className="p-4 bg-blue-50 border-blue-200">
+                    <h4 className="font-semibold text-blue-800 mb-2 flex items-center gap-2">
+                      <Activity className="h-4 w-4" />
+                      Live Search Updates
+                    </h4>
+                    <div className="space-y-2">
+                      {searchBroadcasts.slice(0, 3).map((broadcast) => {
+                        const priorityDisplay = getPriorityDisplay(broadcast.priority);
+                        return (
+                          <div key={broadcast._id} className="text-sm text-blue-700">
+                            <div className="flex items-center gap-2">
+                              <span>{priorityDisplay.icon}</span>
+                              <strong>{broadcast.title}:</strong>
+                              <span>{broadcast.message}</span>
+                              <span className="text-xs text-blue-600 ml-auto">
+                                {formatBroadcastTime(broadcast.createdAt)}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="flex gap-2">
-                      {search.status === 'completed' && (
-                        <Button size="sm" onClick={() => handleViewResults(search._id)}>
-                          View Results
-                        </Button>
-                      )}
-                      {(search.status === 'pending' || search.status === 'in_progress') && (
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => handleCancelSearch(search._id)}
-                        >
-                          Cancel
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              ))
+                  </Card>
+                )}
+              </>
             )}
           </div>
         </TabsContent>

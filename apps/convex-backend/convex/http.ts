@@ -2,6 +2,9 @@ import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { WEBHOOK_EVENTS, ERROR_CODES } from "./lib/constants";
+import { Webhook } from "svix";
+import Stripe from "stripe";
+import { validateWebhookEnvironment, getRequiredEnvVar } from "./lib/env-validation";
 
 const http = httpRouter();
 
@@ -11,19 +14,11 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request: Request) => {
     try {
-      // Get webhook secret
-      const webhookSecret = process.env.CLERK_WEBHOOK_SECRET;
+      // Validate webhook environment variables
+      validateWebhookEnvironment();
       
-      if (!webhookSecret) {
-        console.error("CLERK_WEBHOOK_SECRET environment variable not set");
-        return new Response(
-          JSON.stringify({ error: "Webhook secret not configured" }),
-          { 
-            status: 500,
-            headers: { "Content-Type": "application/json" }
-          }
-        );
-      }
+      // Get webhook secret
+      const webhookSecret = getRequiredEnvVar("CLERK_WEBHOOK_SECRET");
 
       // Get Svix headers
       const svixId = request.headers.get("svix-id");
@@ -43,17 +38,21 @@ http.route({
 
       const payload = await request.text();
       
-      // Parse the webhook payload (simplified - no signature verification for now)
-      // TODO: Add proper Svix signature verification in production
+      // Verify webhook signature using Svix
       let event;
       try {
-        event = JSON.parse(payload);
+        const wh = new Webhook(webhookSecret);
+        event = wh.verify(payload, {
+          "svix-id": svixId,
+          "svix-timestamp": svixTimestamp,
+          "svix-signature": svixSignature,
+        }) as any;
       } catch (err) {
-        console.error("Failed to parse webhook payload:", err);
+        console.error("Webhook signature verification failed:", err);
         return new Response(
-          JSON.stringify({ error: "Invalid payload" }),
+          JSON.stringify({ error: "Invalid webhook signature" }),
           { 
-            status: 400,
+            status: 401,
             headers: { "Content-Type": "application/json" }
           }
         );
@@ -145,15 +144,17 @@ http.route({
 
 // LangGraph webhook handler for email generation completion
 http.route({
-  path: "/webhooks/crewai/email-completed",
+  path: "/webhooks/langgraph/email-completed",
   method: "POST",
   handler: httpAction(async (ctx, request: Request) => {
     try {
-      // Verify API key
+      // Verify API key with enhanced security
       const authHeader = request.headers.get("Authorization");
-      const expectedKey = process.env.CREWAI_API_KEY;
+      const expectedKey = process.env.LANGGRAPH_API_KEY || process.env.CREWAI_API_KEY;
+      const userAgent = request.headers.get("User-Agent");
       
-      if (!authHeader || !expectedKey || authHeader !== `Bearer ${expectedKey}`) {
+      if (!authHeader || !expectedKey) {
+        console.error("Missing authorization header or API key not configured");
         return new Response(
           JSON.stringify({ error: "Unauthorized" }),
           { 
@@ -161,6 +162,22 @@ http.route({
             headers: { "Content-Type": "application/json" }
           }
         );
+      }
+
+      if (authHeader !== `Bearer ${expectedKey}`) {
+        console.error("Invalid API key provided");
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { 
+            status: 401,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
+
+      // Optional: Add user agent validation for additional security
+      if (userAgent && !userAgent.includes("langgraph-worker")) {
+        console.warn("Unexpected user agent for LangGraph webhook:", userAgent);
       }
 
       const payload = await request.json() as any;
@@ -177,7 +194,7 @@ http.route({
       }
 
       // Process the webhook
-      await ctx.runMutation(internal.crewai.webhooks.handleEmailGenerationWebhook, {
+      await ctx.runMutation(internal.langgraph.webhooks.handleEmailGenerationWebhook, {
         requestId: payload.request_id,
         status: payload.status,
         result: payload.result,
@@ -208,15 +225,17 @@ http.route({
 
 // LangGraph webhook handler for lead analysis completion
 http.route({
-  path: "/webhooks/crewai/analysis-completed",
+  path: "/webhooks/langgraph/analysis-completed",
   method: "POST",
   handler: httpAction(async (ctx, request: Request) => {
     try {
-      // Verify API key
+      // Verify API key with enhanced security
       const authHeader = request.headers.get("Authorization");
-      const expectedKey = process.env.CREWAI_API_KEY;
+      const expectedKey = process.env.LANGGRAPH_API_KEY || process.env.CREWAI_API_KEY;
+      const userAgent = request.headers.get("User-Agent");
       
-      if (!authHeader || !expectedKey || authHeader !== `Bearer ${expectedKey}`) {
+      if (!authHeader || !expectedKey) {
+        console.error("Missing authorization header or API key not configured");
         return new Response(
           JSON.stringify({ error: "Unauthorized" }),
           { 
@@ -226,10 +245,26 @@ http.route({
         );
       }
 
+      if (authHeader !== `Bearer ${expectedKey}`) {
+        console.error("Invalid API key provided");
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { 
+            status: 401,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
+
+      // Optional: Add user agent validation for additional security
+      if (userAgent && !userAgent.includes("langgraph-worker")) {
+        console.warn("Unexpected user agent for LangGraph webhook:", userAgent);
+      }
+
       const payload = await request.json() as any;
       
       // Process the webhook
-      await ctx.runMutation(internal.crewai.webhooks.handleAnalysisWebhook, {
+      await ctx.runMutation(internal.langgraph.webhooks.handleAnalysisWebhook, {
         requestId: payload.request_id,
         leadId: payload.lead_id,
         status: payload.status,
@@ -265,12 +300,15 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request: Request) => {
     try {
-      const signature = request.headers.get("stripe-signature");
-      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+      // Validate webhook environment variables
+      validateWebhookEnvironment();
       
-      if (!signature || !webhookSecret) {
+      const signature = request.headers.get("stripe-signature");
+      const webhookSecret = getRequiredEnvVar("STRIPE_WEBHOOK_SECRET");
+      
+      if (!signature) {
         return new Response(
-          JSON.stringify({ error: "Missing signature or secret" }),
+          JSON.stringify({ error: "Missing Stripe signature" }),
           { 
             status: 400,
             headers: { "Content-Type": "application/json" }
@@ -280,13 +318,23 @@ http.route({
 
       const body = await request.text();
       
-      // Verify webhook signature (simplified - in production use Stripe's library)
-      // const isValid = verifyStripeSignature(body, signature, webhookSecret);
-      // if (!isValid) {
-      //   return new Response("Invalid signature", { status: 400 });
-      // }
-
-      const event = JSON.parse(body);
+      // Verify webhook signature using Stripe
+      let event;
+      try {
+        const stripe = new Stripe(getRequiredEnvVar("STRIPE_SECRET_KEY"), {
+          apiVersion: "2025-07-30.basil",
+        });
+        event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+      } catch (err) {
+        console.error("Stripe webhook signature verification failed:", err);
+        return new Response(
+          JSON.stringify({ error: "Invalid webhook signature" }),
+          { 
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
       
       // Handle different Stripe events
       switch (event.type) {
@@ -500,7 +548,7 @@ http.route({
         timestamp: new Date().toISOString(),
         endpoints: {
           "/health": "System health check",
-          "/webhooks/crewai/*": "LangGraph integration webhooks",
+          "/webhooks/langgraph/*": "LangGraph integration webhooks",
           "/webhooks/stripe": "Stripe payment webhooks",
           "/webhooks/findymail/*": "FindyMail enrichment webhooks",
           "/api/leads/export": "Lead data export API",

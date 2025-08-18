@@ -27,4 +27,4 @@ aiohttp>=3.10.0,<4.0.0
 # LangGraph framework for workflow orchestration
 langgraph>=0.2.0,<1.0.0
 langgraph-checkpoint>=2.0.0,<3.0.0
-langgraph-studio>=0.1.0  # For visual workflow debugging
+# langgraph-studio>=0.0.5  # Optional for visual debugging (conflicts with FastAPI)

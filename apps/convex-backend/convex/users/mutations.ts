@@ -4,6 +4,7 @@ import { auth, getCurrentUser, requireAuth, requireAdmin } from "../auth";
 import { updateUserValidator } from "../lib/validators";
 import { ERROR_CODES } from "../lib/constants";
 import { createError, isAdmin } from "../lib/helpers";
+import { internal } from "../_generated/api";
 
 // Update user profile
 export const updateProfile = mutation({
@@ -98,32 +99,17 @@ export const deductCredits = mutation({
       throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
     }
 
-    if (user.credits < args.amount) {
-      throw createError(
-        "Insufficient credits",
-        ERROR_CODES.INSUFFICIENT_CREDITS,
-        400
-      );
-    }
-
-    const newBalance = user.credits - args.amount;
-
-    // Update user credits
-    await ctx.db.patch(user._id, {
-      credits: newBalance,
-      updatedAt: Date.now(),
-    });
-
-    // Record transaction
-    await ctx.db.insert("creditTransactions", {
+    // Use atomic transaction system for credit deduction
+    const transactionResult: any = await ctx.runMutation(internal.credits.transactions.createCreditTransaction, {
       userId: user._id,
       type: "usage",
       amount: -args.amount,
       description: args.description,
-      ...(args.relatedEntity && { relatedEntity: args.relatedEntity }),
-      balanceAfter: newBalance,
-      createdAt: Date.now(),
+      relatedEntity: args.relatedEntity,
+      requireMinimumBalance: true, // Enforce minimum balance check
     });
+
+    const newBalance: number = transactionResult.newBalance;
 
     // Check if credits are low and send notification
     if (newBalance <= 10 && newBalance > 0) {

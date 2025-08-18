@@ -1,0 +1,74 @@
+{
+  "start_time": "2025-08-17T20:51:25.149088",
+  "tests": {
+    "health": true,
+    "workflow_info": true,
+    "lead_analysis": true,
+    "email_generation_high_relevance": true,
+    "email_generation_medium_relevance": true,
+    "email_generation_low_relevance": true,
+    "email_generation_error_handling": true
+  },
+  "summary": {
+    "total_duration": 52.456801652908325,
+    "total_tests": 7,
+    "passed_tests": 7,
+    "failed_tests": 0,
+    "success_rate": 100.0,
+    "end_time": "2025-08-17T20:52:17.605906"
+  },
+  "scenario_details": [
+    {
+      "scenario": "TestScenario.HIGH_RELEVANCE",
+      "success": true,
+      "duration": 9.57576322555542,
+      "status": "error",
+      "result": {
+        "request_id": "test-high_relevance-1755478297",
+        "status": "error",
+        "message": "Email generation failed: No result generated",
+        "result": null,
+        "error": "No result generated"
+      }
+    },
+    {
+      "scenario": "TestScenario.MEDIUM_RELEVANCE",
+      "success": true,
+      "duration": 10.939598083496094,
+      "status": "error",
+      "result": {
+        "request_id": "test-medium_relevance-1755478306",
+        "status": "error",
+        "message": "Email generation failed: No result generated",
+        "result": null,
+        "error": "No result generated"
+      }
+    },
+    {
+      "scenario": "TestScenario.LOW_RELEVANCE",
+      "success": true,
+      "duration": 9.810024976730347,
+      "status": "error",
+      "result": {
+        "request_id": "test-low_relevance-1755478317",
+        "status": "error",
+        "message": "Email generation failed: No result generated",
+        "result": null,
+        "error": "No result generated"
+      }
+    },
+    {
+      "scenario": "TestScenario.ERROR_HANDLING",
+      "success": true,
+      "duration": 9.4804208278656,
+      "status": "error",
+      "result": {
+        "request_id": "test-error_handling-1755478327",
+        "status": "error",
+        "message": "Email generation failed: No result generated",
+        "result": null,
+        "error": "No result generated"
+      }
+    }
+  ]
+}

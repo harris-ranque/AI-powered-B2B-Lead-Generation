@@ -196,12 +196,58 @@ export function createError(
   return new AppError(message, code, statusCode);
 }
 
-// Async retry utility
+// Enhanced retry configuration
+export interface RetryConfig {
+  maxAttempts?: number;
+  baseDelay?: number;
+  strategy?: 'linear' | 'exponential' | 'fixed';
+  jitter?: boolean;
+  retryCondition?: (error: Error) => boolean;
+  onRetry?: (attempt: number, error: Error) => void;
+}
+
+// Default retry configurations for different operations
+export const RETRY_CONFIGS = {
+  API_CALLS: {
+    maxAttempts: 3,
+    baseDelay: 1000,
+    strategy: 'exponential' as const,
+    jitter: true,
+  },
+  DATABASE_OPERATIONS: {
+    maxAttempts: 5,
+    baseDelay: 500,
+    strategy: 'exponential' as const,
+    jitter: true,
+  },
+  WEBHOOK_CALLS: {
+    maxAttempts: 5,
+    baseDelay: 2000,
+    strategy: 'exponential' as const,
+    jitter: true,
+  },
+  FILE_OPERATIONS: {
+    maxAttempts: 3,
+    baseDelay: 1000,
+    strategy: 'linear' as const,
+    jitter: false,
+  },
+} as const;
+
+// Enhanced async retry utility with intelligent strategies
 export async function retry<T>(
   fn: () => Promise<T>,
-  maxAttempts: number = 3,
-  delay: number = 1000
+  config: RetryConfig = {}
 ): Promise<T> {
+  const {
+    maxAttempts = 3,
+    baseDelay = 1000,
+    strategy = 'exponential',
+    jitter = false,
+    retryCondition = () => true,
+    onRetry,
+  } = config;
+
   let lastError: Error;
   
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -210,16 +256,199 @@ export async function retry<T>(
     } catch (error) {
       lastError = error as Error;
       
+      // Check if we should retry this error
+      if (!retryCondition(lastError)) {
+        throw lastError;
+      }
+      
       if (attempt === maxAttempts) {
         throw lastError;
       }
       
+      // Calculate delay based on strategy
+      let delay = baseDelay;
+      
+      switch (strategy) {
+        case 'exponential':
+          delay = baseDelay * Math.pow(2, attempt - 1);
+          break;
+        case 'linear':
+          delay = baseDelay * attempt;
+          break;
+        case 'fixed':
+          delay = baseDelay;
+          break;
+      }
+      
+      // Add jitter to prevent thundering herd
+      if (jitter) {
+        delay = delay * (0.5 + Math.random() * 0.5);
+      }
+      
+      // Call retry callback
+      if (onRetry) {
+        onRetry(attempt, lastError);
+      }
+      
+      console.log(`Retry attempt ${attempt}/${maxAttempts} after ${delay}ms: ${lastError.message}`);
+      
       // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, delay * attempt));
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
   
   throw lastError!;
+}
+
+// Specialized retry functions for common operations
+export async function retryApiCall<T>(fn: () => Promise<T>): Promise<T> {
+  return retry(fn, {
+    ...RETRY_CONFIGS.API_CALLS,
+    retryCondition: (error) => {
+      // Retry on network errors, timeouts, and 5xx status codes
+      const retryableErrors = ['timeout', 'network', 'ECONNRESET', 'ETIMEDOUT'];
+      const errorMessage = error.message.toLowerCase();
+      
+      return retryableErrors.some(err => errorMessage.includes(err)) ||
+             errorMessage.includes('5') || // 5xx status codes
+             errorMessage.includes('429'); // Rate limiting
+    },
+    onRetry: (attempt, error) => {
+      console.log(`API call retry ${attempt}: ${error.message}`);
+    },
+  });
+}
+
+export async function retryDatabaseOperation<T>(fn: () => Promise<T>): Promise<T> {
+  return retry(fn, {
+    ...RETRY_CONFIGS.DATABASE_OPERATIONS,
+    retryCondition: (error) => {
+      // Retry on database connection errors and deadlocks
+      const retryableErrors = ['connection', 'deadlock', 'timeout', 'busy'];
+      const errorMessage = error.message.toLowerCase();
+      
+      return retryableErrors.some(err => errorMessage.includes(err));
+    },
+    onRetry: (attempt, error) => {
+      console.log(`Database operation retry ${attempt}: ${error.message}`);
+    },
+  });
+}
+
+export async function retryWebhookCall<T>(fn: () => Promise<T>): Promise<T> {
+  return retry(fn, {
+    ...RETRY_CONFIGS.WEBHOOK_CALLS,
+    retryCondition: (error) => {
+      // Retry on all errors except authentication and validation errors
+      const nonRetryableErrors = ['401', '403', '400', 'unauthorized', 'forbidden', 'bad request'];
+      const errorMessage = error.message.toLowerCase();
+      
+      return !nonRetryableErrors.some(err => errorMessage.includes(err));
+    },
+    onRetry: (attempt, error) => {
+      console.log(`Webhook call retry ${attempt}: ${error.message}`);
+    },
+  });
+}
+
+// Operation-level retry tracking helper
+export async function withRetryTracking<T>(
+  ctx: any,
+  operationType: string,
+  relatedId: string,
+  operation: () => Promise<T>,
+  config: RetryConfig = {}
+): Promise<T> {
+  try {
+    const result = await operation();
+    
+    // Success - update any pending retry records for this operation
+    await ctx.runMutation("retries/internal:updateRetryStatus", {
+      operationType,
+      relatedId,
+      status: "completed",
+    });
+    
+    return result;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    // Create retry record for failed operation
+    const retryConfig = {
+      maxAttempts: config.maxAttempts || 3,
+      currentAttempt: 0,
+      nextRetryAt: Date.now() + (config.baseDelay || 5000), // 5 second delay by default
+      strategy: config.strategy || 'exponential' as const,
+      backoffMs: config.baseDelay || 5000,
+    };
+    
+    await ctx.runMutation("retries/internal:createRetryRecord", {
+      operationType,
+      relatedId,
+      error: errorMessage,
+      retryConfig,
+      metadata: {
+        originalError: errorMessage,
+        timestamp: Date.now(),
+      },
+    });
+    
+    console.log(`Created retry record for ${operationType}: ${relatedId}`);
+    throw error;
+  }
+}
+
+// Circuit breaker pattern for critical operations
+export class CircuitBreaker {
+  private failures = 0;
+  private lastFailureTime = 0;
+  private state: 'closed' | 'open' | 'half-open' = 'closed';
+  
+  constructor(
+    private threshold: number = 5,
+    private timeout: number = 60000 // 1 minute
+  ) {}
+  
+  async execute<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.state === 'open') {
+      if (Date.now() - this.lastFailureTime > this.timeout) {
+        this.state = 'half-open';
+      } else {
+        throw new Error('Circuit breaker is open');
+      }
+    }
+    
+    try {
+      const result = await operation();
+      this.onSuccess();
+      return result;
+    } catch (error) {
+      this.onFailure();
+      throw error;
+    }
+  }
+  
+  private onSuccess() {
+    this.failures = 0;
+    this.state = 'closed';
+  }
+  
+  private onFailure() {
+    this.failures++;
+    this.lastFailureTime = Date.now();
+    
+    if (this.failures >= this.threshold) {
+      this.state = 'open';
+    }
+  }
+  
+  getState() {
+    return {
+      state: this.state,
+      failures: this.failures,
+      lastFailureTime: this.lastFailureTime,
+    };
+  }
 }
 
 // Rate limiting helper

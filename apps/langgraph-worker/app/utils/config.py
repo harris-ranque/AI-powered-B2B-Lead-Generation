@@ -1,5 +1,5 @@
 """
-Configuration management for Genni CrewAI Worker
+Configuration management for Genni LangGraph Worker
 """
 import os
 from functools import lru_cache
@@ -24,17 +24,17 @@ class Settings(BaseSettings):
         # Auto-construct webhook URL from Convex URL if not explicitly set
         if not self.webhook_url and self.convex_url:
             # Convert site URL to HTTP endpoint
-            # e.g., "https://happy-horse-123.convex.site" -> "https://happy-horse-123.convex.site/webhooks/crewai/email-completed"
+            # e.g., "https://happy-horse-123.convex.site" -> "https://happy-horse-123.convex.site/webhooks/langgraph/email-completed"
             base_url = self.convex_url.rstrip('/')
-            self.webhook_url = f"{base_url}/webhooks/crewai/email-completed"
+            self.webhook_url = f"{base_url}/webhooks/langgraph/email-completed"
     
     # Server Configuration
     port: int = int(os.getenv("PORT_OPTIONAL", os.getenv("PORT", "8080")))
     environment: str = os.getenv("ENVIRONMENT", "development")
     debug: bool = os.getenv("DEBUG_OPTIONAL", "false").lower() == "true"
     
-    # CrewAI Configuration
-    crew_verbose: bool = os.getenv("CREW_VERBOSE_OPTIONAL", "true").lower() == "true"
+    # LangGraph Configuration
+    langgraph_verbose: bool = os.getenv("LANGGRAPH_VERBOSE_OPTIONAL", "true").lower() == "true"
     max_execution_time: int = int(os.getenv("MAX_EXECUTION_TIME_OPTIONAL", "300"))  # 5 minutes
     
     # Model Configuration

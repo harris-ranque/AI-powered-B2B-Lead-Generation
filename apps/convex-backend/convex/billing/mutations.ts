@@ -4,6 +4,7 @@ import { getCurrentUser } from "../auth";
 import { ERROR_CODES } from "../lib/constants";
 import { createError } from "../lib/helpers";
 import { creditTransactionValidator } from "../lib/validators";
+import { internal } from "../_generated/api";
 
 // Purchase credits with Stripe
 export const purchaseCredits = mutation({
@@ -373,25 +374,19 @@ export const processRefund = mutation({
       throw createError("Invalid refund amount", ERROR_CODES.VALIDATION_ERROR, 400);
     }
 
-    const newBalance = Math.max(0, user.credits - args.amount);
-
     try {
-      // Update user credits
-      await ctx.db.patch(user._id, {
-        credits: newBalance,
-        updatedAt: Date.now(),
-      });
-
-      // Record refund transaction
-      await ctx.db.insert("creditTransactions", {
+      // Use atomic transaction system for refund
+      const transactionResult: any = await ctx.runMutation(internal.credits.transactions.createCreditTransaction, {
         userId: user._id,
         type: "refund",
         amount: -args.amount,
         description: `Refund: ${args.reason}`,
         stripePaymentId: args.transactionId,
-        balanceAfter: newBalance,
-        createdAt: Date.now(),
+        parentTransactionId: originalTransaction._id,
+        requireMinimumBalance: false, // Refunds can go negative temporarily
       });
+
+      const newBalance: number = transactionResult.newBalance;
 
       // Send notification
       await ctx.db.insert("notifications", {

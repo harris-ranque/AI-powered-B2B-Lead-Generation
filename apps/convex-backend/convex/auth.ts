@@ -137,23 +137,21 @@ export async function deductCredits(ctx: GenericMutationCtx<DataModel>, amount: 
     return false;
   }
 
-  // Update user credits
-  await ctx.db.patch(user._id, {
-    credits: user.credits - amount,
-    updatedAt: Date.now(),
-  });
+  try {
+    // Use atomic transaction system for credit deduction
+    await ctx.runMutation(internal.credits.transactions.createCreditTransaction, {
+      userId: user._id,
+      type: "usage",
+      amount: -amount,
+      description,
+      requireMinimumBalance: true,
+    });
 
-  // Record transaction
-  await ctx.db.insert("creditTransactions", {
-    userId: user._id,
-    type: "usage",
-    amount: -amount,
-    description,
-    balanceAfter: user.credits - amount,
-    createdAt: Date.now(),
-  });
-
-  return true;
+    return true;
+  } catch (error) {
+    console.error(`Failed to deduct credits: ${error}`);
+    return false;
+  }
 }
 
 /**

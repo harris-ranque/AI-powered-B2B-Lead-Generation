@@ -2,7 +2,7 @@ import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { getCurrentUser } from "../auth";
 import { API_CONFIG, ERROR_CODES, CREDIT_COSTS } from "../lib/constants";
-import { createError, generateRequestId, hasCredits } from "../lib/helpers";
+import { createError, generateRequestId, hasCredits, retryApiCall } from "../lib/helpers";
 import { emailRequirementsValidator } from "../lib/validators";
 import { internal } from "../_generated/api";
 
@@ -73,8 +73,8 @@ export const generateEmail = action({
     }
 
     const requestId = generateRequestId();
-    const langgraphUrl = process.env.CREWAI_URL; // Environment variable name kept for compatibility
-    const apiKey = process.env.CREWAI_API_KEY;
+    const langgraphUrl = process.env.LANGGRAPH_URL || process.env.CREWAI_URL; // Support both for backward compatibility
+    const apiKey = process.env.LANGGRAPH_API_KEY || process.env.CREWAI_API_KEY;
 
     if (!langgraphUrl || !apiKey) {
       throw createError("LangGraph service not configured", ERROR_CODES.INTERNAL_ERROR, 500);
@@ -82,7 +82,7 @@ export const generateEmail = action({
 
     try {
       // Create LangGraph request record
-      await ctx.runMutation(internal.crewai.internal.createRequest, {
+      await ctx.runMutation(internal.langgraph.internal.createRequest, {
         userId: user._id,
         leadId: args.leadId,
         requestId,
@@ -138,25 +138,28 @@ export const generateEmail = action({
         },
       };
 
-      // Send request to LangGraph worker
-      const response = await fetch(`${langgraphUrl}/generate-email`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(API_CONFIG.CREWAI_WORKER.TIMEOUT),
+      // Send request to LangGraph worker with enhanced retry
+      const result = await retryApiCall(async () => {
+        const response = await fetch(`${langgraphUrl}/generate-email`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(API_CONFIG.LANGGRAPH_WORKER.TIMEOUT),
+        });
+
+        if (!response.ok) {
+          throw new Error(`LangGraph API error: ${response.status} ${response.statusText}`);
+        }
+
+        const jsonData = await response.json();
+        return jsonData as LangGraphResponse;
       });
 
-      if (!response.ok) {
-        throw new Error(`LangGraph API error: ${response.status} ${response.statusText}`);
-      }
-
-      const result = await response.json() as LangGraphResponse;
-
       // Update request status
-      await ctx.runMutation(internal.crewai.internal.updateRequestStatus, {
+      await ctx.runMutation(internal.langgraph.internal.updateRequestStatus, {
         requestId,
         status: result.status === "processing" ? "processing" : "completed",
         outputData: result.status === "completed" ? result.result : undefined,
@@ -187,7 +190,7 @@ export const generateEmail = action({
       console.error("LangGraph email generation error:", error);
       
       // Update request as failed
-      await ctx.runMutation(internal.crewai.internal.updateRequestStatus, {
+      await ctx.runMutation(internal.langgraph.internal.updateRequestStatus, {
         requestId,
         status: "failed",
         error: error instanceof Error ? error.message : "Unknown error",
@@ -195,7 +198,7 @@ export const generateEmail = action({
 
       throw createError(
         "Failed to generate email. Please try again.",
-        ERROR_CODES.CREWAI_ERROR, // Keep error code name for compatibility
+        ERROR_CODES.LANGGRAPH_ERROR,
         500
       );
     }
@@ -240,8 +243,8 @@ export const analyzeLead = action({
     }
 
     const requestId = generateRequestId();
-    const langgraphUrl = process.env.CREWAI_URL; // Environment variable name kept for compatibility
-    const apiKey = process.env.CREWAI_API_KEY;
+    const langgraphUrl = process.env.LANGGRAPH_URL || process.env.CREWAI_URL; // Support both for backward compatibility
+    const apiKey = process.env.LANGGRAPH_API_KEY || process.env.CREWAI_API_KEY;
 
     if (!langgraphUrl || !apiKey) {
       throw createError("LangGraph service not configured", ERROR_CODES.INTERNAL_ERROR, 500);
@@ -249,7 +252,7 @@ export const analyzeLead = action({
 
     try {
       // Create LangGraph request record
-      await ctx.runMutation(internal.crewai.internal.createRequest, {
+      await ctx.runMutation(internal.langgraph.internal.createRequest, {
         userId: user._id,
         leadId: args.leadId,
         requestId,
@@ -284,25 +287,28 @@ export const analyzeLead = action({
         },
       };
 
-      // Send request to LangGraph worker
-      const response = await fetch(`${langgraphUrl}/analyze-lead`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(API_CONFIG.CREWAI_WORKER.TIMEOUT),
+      // Send request to LangGraph worker with enhanced retry
+      const result = await retryApiCall(async () => {
+        const response = await fetch(`${langgraphUrl}/analyze-lead`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(API_CONFIG.LANGGRAPH_WORKER.TIMEOUT),
+        });
+
+        if (!response.ok) {
+          throw new Error(`LangGraph API error: ${response.status} ${response.statusText}`);
+        }
+
+        const jsonData = await response.json();
+        return jsonData as LangGraphResponse;
       });
 
-      if (!response.ok) {
-        throw new Error(`LangGraph API error: ${response.status} ${response.statusText}`);
-      }
-
-      const result = await response.json() as LangGraphResponse;
-
       // Update request status
-      await ctx.runMutation(internal.crewai.internal.updateRequestStatus, {
+      await ctx.runMutation(internal.langgraph.internal.updateRequestStatus, {
         requestId,
         status: "completed",
         outputData: result,
@@ -344,7 +350,7 @@ export const analyzeLead = action({
       console.error("LangGraph lead analysis error:", error);
       
       // Update request as failed
-      await ctx.runMutation(internal.crewai.internal.updateRequestStatus, {
+      await ctx.runMutation(internal.langgraph.internal.updateRequestStatus, {
         requestId,
         status: "failed",
         error: error instanceof Error ? error.message : "Unknown error",
@@ -352,7 +358,7 @@ export const analyzeLead = action({
 
       throw createError(
         "Failed to analyze lead. Please try again.",
-        ERROR_CODES.CREWAI_ERROR, // Keep error code name for compatibility
+        ERROR_CODES.LANGGRAPH_ERROR,
         500
       );
     }
@@ -455,7 +461,7 @@ export const getAgentsInfo = action({
       console.error("Get agents info error:", error);
       throw createError(
         "Failed to get agents information",
-        ERROR_CODES.CREWAI_ERROR, // Keep error code name for compatibility
+        ERROR_CODES.LANGGRAPH_ERROR,
         500
       );
     }

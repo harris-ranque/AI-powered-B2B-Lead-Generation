@@ -2,7 +2,7 @@ import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { getCurrentUser } from "../auth";
 import { API_CONFIG, ERROR_CODES, BUSINESS_RULES } from "../lib/constants";
-import { createError, retry } from "../lib/helpers";
+import { createError, retryApiCall } from "../lib/helpers";
 import { internal } from "../_generated/api";
 
 // Google Maps Places API integration
@@ -79,13 +79,13 @@ export const searchGoogleMaps: any = action({
 
       searchUrl += "?" + params.toString();
 
-      const placesResponse = await retry(async () => {
+      const placesResponse = await retryApiCall(async () => {
         const response = await fetch(searchUrl);
         if (!response.ok) {
           throw new Error(`Google Maps API error: ${response.status}`);
         }
         return response.json() as any;
-      }, 3, 2000);
+      });
 
       if (placesResponse.status === "ZERO_RESULTS") {
         return {
@@ -195,6 +195,13 @@ export const searchGoogleMaps: any = action({
         discovered: search.progress.discovered + processedLeads.length,
         totalFound: search.results.totalFound + processedLeads.length,
       });
+
+      // Trigger orchestrator to continue pipeline
+      if (processedLeads.length > 0) {
+        await ctx.runMutation(internal.search.orchestrator.orchestrateSearchPipeline, {
+          searchId: args.searchId,
+        });
+      }
 
       return {
         results: processedLeads,

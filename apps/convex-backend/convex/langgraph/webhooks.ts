@@ -2,7 +2,7 @@ import { internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 
-// Handle email generation webhook from CrewAI
+// Handle email generation webhook from LangGraph
 export const handleEmailGenerationWebhook = internalMutation({
   args: {
     requestId: v.string(),
@@ -12,14 +12,14 @@ export const handleEmailGenerationWebhook = internalMutation({
     processingTime: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    // Get the CrewAI request
+    // Get the LangGraph request
     const request = await ctx.db
-      .query("crewaiRequests")
+      .query("langgraphRequests")
       .withIndex("by_request_id", (q) => q.eq("requestId", args.requestId))
       .unique();
 
     if (!request) {
-      console.error(`CrewAI request not found: ${args.requestId}`);
+      console.error(`LangGraph request not found: ${args.requestId}`);
       return;
     }
 
@@ -147,7 +147,7 @@ export const handleEmailGenerationWebhook = internalMutation({
   },
 });
 
-// Handle lead analysis webhook from CrewAI
+// Handle lead analysis webhook from LangGraph
 export const handleAnalysisWebhook = internalMutation({
   args: {
     requestId: v.string(),
@@ -158,14 +158,14 @@ export const handleAnalysisWebhook = internalMutation({
     processingTime: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    // Get the CrewAI request
+    // Get the LangGraph request
     const request = await ctx.db
-      .query("crewaiRequests")
+      .query("langgraphRequests")
       .withIndex("by_request_id", (q) => q.eq("requestId", args.requestId))
       .unique();
 
     if (!request) {
-      console.error(`CrewAI request not found: ${args.requestId}`);
+      console.error(`LangGraph request not found: ${args.requestId}`);
       return;
     }
 
@@ -212,6 +212,11 @@ export const handleAnalysisWebhook = internalMutation({
             searchId: lead.searchId,
             analyzed: progressData.analyzedLeads,
             avgRelevanceScore: progressData.avgRelevanceScore,
+          });
+
+          // Real-time trigger: Check if analysis phase is complete for this search
+          await ctx.scheduler.runAfter(1000, internal.search.orchestrator.checkAnalysisProgress, {
+            searchId: lead.searchId,
           });
         }
 
@@ -265,7 +270,7 @@ export const handleAnalysisWebhook = internalMutation({
   },
 });
 
-// Handle bulk analysis completion webhook
+// Handle bulk analysis completion webhook from LangGraph
 export const handleBulkAnalysisWebhook = internalMutation({
   args: {
     requestId: v.string(),
@@ -275,14 +280,14 @@ export const handleBulkAnalysisWebhook = internalMutation({
     processingTime: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    // Get the CrewAI request
+    // Get the LangGraph request
     const request = await ctx.db
-      .query("crewaiRequests")
+      .query("langgraphRequests")
       .withIndex("by_request_id", (q) => q.eq("requestId", args.requestId))
       .unique();
 
     if (!request) {
-      console.error(`CrewAI request not found: ${args.requestId}`);
+      console.error(`LangGraph request not found: ${args.requestId}`);
       return;
     }
 

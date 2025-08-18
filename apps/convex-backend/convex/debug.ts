@@ -44,7 +44,7 @@ export const debugAuth = query({
         status: "error",
         identity: null,
         hasAuth: false,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         message: "Error occurred during auth check"
       };
     }

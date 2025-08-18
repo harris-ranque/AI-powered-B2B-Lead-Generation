@@ -341,7 +341,8 @@ class OpenAIIntegrationTest:
                     if line.strip():
                         self.log(f"     {line.strip()}", "INFO", "RESULTS")
                 if len(body.split('\n')) > 8:
-                    self.log(f"     ... ({len(body.split('\n'))} total lines)", "INFO", "RESULTS")
+                    lines_count = len(body.split('\n'))
+                    self.log(f"     ... ({lines_count} total lines)", "INFO", "RESULTS")
             
             effectiveness = primary_email.get('estimated_effectiveness', 0)
             self.log(f"   Effectiveness Score: {effectiveness:.3f}", "INFO", "RESULTS")

@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
+from langchain_core.runnables import RunnableConfig
 from ..utils.logger import setup_logger
 from .state import EmailGenerationState
 from .supervisor import supervisor_node, supervisor_router
@@ -263,3 +264,25 @@ async def execute_with_streaming(
             "error": str(e),
             "timestamp": datetime.utcnow().isoformat()
         }
+
+
+# LangGraph Studio entry point - requires RunnableConfig parameter
+def create_email_generation_workflow_studio(config: RunnableConfig) -> StateGraph:
+    """
+    LangGraph Studio compatible entry point.
+    
+    This function is required by LangGraph Studio which expects a function
+    that takes exactly one argument: a RunnableConfig.
+    
+    Args:
+        config: RunnableConfig required by LangGraph Studio
+        
+    Returns:
+        StateGraph: The compiled workflow
+    """
+    # Extract debug flag from config if present
+    debug = config.get("configurable", {}).get("debug", False) if config else False
+    
+    # Create workflow with default checkpointer for Studio
+    checkpointer = MemorySaver()
+    return create_email_generation_workflow(checkpointer, debug)

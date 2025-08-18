@@ -37,25 +37,29 @@ export const createLeadFromSearch = internalMutation({
       return existingLead._id;
     }
 
-    // Create new lead
-    const leadId = await ctx.db.insert("leads", {
+    // Create new lead with proper optional property handling
+    const leadData: any = {
       searchId: args.searchId,
       userId: args.userId,
       businessName: args.businessName,
       address: args.address,
-      phone: args.phone,
-      website: args.website,
-      rating: args.rating,
-      reviewCount: args.reviewCount,
-      category: args.category,
       placeId: args.placeId,
       location: args.location,
-      enrichmentStatus: STATUS.ENRICHMENT.PENDING,
-      status: STATUS.LEAD.NEW,
+      enrichmentStatus: "pending",
+      status: "new",
       tags: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
-    });
+    };
+
+    // Add optional fields only if they exist
+    if (args.phone) leadData.phone = args.phone;
+    if (args.website) leadData.website = args.website;
+    if (args.rating !== undefined) leadData.rating = args.rating;
+    if (args.reviewCount !== undefined) leadData.reviewCount = args.reviewCount;
+    if (args.category) leadData.category = args.category;
+
+    const leadId = await ctx.db.insert("leads", leadData);
 
     return leadId;
   },
@@ -68,15 +72,15 @@ export const updateLeadEnrichment = internalMutation({
     contactInfo: v.object({
       emails: v.array(v.object({
         email: v.string(),
-        type: v.optional(v.string()),
-        confidence: v.optional(v.number()),
+        type: v.string(),
+        confidence: v.number(),
       })),
       contacts: v.array(v.object({
         name: v.string(),
         title: v.optional(v.string()),
         email: v.optional(v.string()),
         linkedin: v.optional(v.string()),
-        confidence: v.optional(v.number()),
+        confidence: v.number(),
       })),
       socialProfiles: v.optional(v.object({
         linkedin: v.optional(v.string()),
@@ -120,34 +124,7 @@ export const updateLeadAnalysis = internalMutation({
   },
 });
 
-// Internal function to get leads pending enrichment
-export const getLeadsPendingEnrichment = internalQuery({
-  args: { limit: v.optional(v.number()) },
-  handler: async (ctx, args) => {
-    const limit = args.limit || 20;
-    
-    return await ctx.db
-      .query("leads")
-      .withIndex("by_enrichment_status", (q) => q.eq("enrichmentStatus", "pending"))
-      .take(limit);
-  },
-});
-
-// Internal function to get leads pending AI analysis
-export const getLeadsPendingAnalysis = internalQuery({
-  args: { limit: v.optional(v.number()) },
-  handler: async (ctx, args) => {
-    const limit = args.limit || 20;
-    
-    const leads = await ctx.db
-      .query("leads")
-      .withIndex("by_enrichment_status", (q) => q.eq("enrichmentStatus", "completed"))
-      .filter((q) => q.eq(q.field("aiAnalysis"), undefined))
-      .take(limit);
-
-    return leads;
-  },
-});
+// Moved duplicate functions to bottom with enhanced functionality
 
 // Internal function to get lead by ID for processing
 export const getLeadForProcessing = internalQuery({
@@ -220,6 +197,112 @@ export const getSearchProgressData = internalQuery({
     const avgRelevanceScore = leadsWithRelevance.length > 0 
       ? leadsWithRelevance.reduce((sum, lead) => sum + (lead.aiAnalysis?.relevanceScore || 0), 0) / leadsWithRelevance.length
       : undefined;
+
+    return {
+      totalLeads,
+      enrichedLeads,
+      analyzedLeads,
+      avgRelevanceScore,
+    };
+  },
+});
+
+// Get leads pending enrichment for a specific search
+export const getLeadsPendingEnrichment = internalQuery({
+  args: { 
+    searchId: v.optional(v.id("searches")),
+    limit: v.optional(v.number()) 
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit || 20;
+    
+    let query = ctx.db
+      .query("leads")
+      .withIndex("by_enrichment_status", (q) => q.eq("enrichmentStatus", "pending"));
+    
+    if (args.searchId) {
+      query = query.filter((q) => q.eq(q.field("searchId"), args.searchId));
+    }
+    
+    return await query.take(limit);
+  },
+});
+
+// Get enriched leads ready for analysis
+export const getEnrichedLeadsForAnalysis = internalQuery({
+  args: { 
+    searchId: v.id("searches"),
+    limit: v.optional(v.number()) 
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit || 20;
+    
+    return await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .filter((q) => 
+        q.and(
+          q.eq(q.field("enrichmentStatus"), "completed"),
+          q.eq(q.field("aiAnalysis"), undefined)
+        )
+      )
+      .take(limit);
+  },
+});
+
+// Get leads pending analysis for a specific search
+export const getLeadsPendingAnalysis = internalQuery({
+  args: { 
+    searchId: v.optional(v.id("searches")),
+    limit: v.optional(v.number()) 
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit || 20;
+    
+    let query = ctx.db
+      .query("leads")
+      .withIndex("by_enrichment_status", (q) => q.eq("enrichmentStatus", "completed"))
+      .filter((q) => q.eq(q.field("aiAnalysis"), undefined));
+    
+    if (args.searchId) {
+      query = query.filter((q) => q.eq(q.field("searchId"), args.searchId));
+    }
+    
+    return await query.take(limit);
+  },
+});
+
+// Get lead count for a search
+export const getLeadCount = internalQuery({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    const leads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+    
+    return leads.length;
+  },
+});
+
+// Get search statistics
+export const getSearchStatistics = internalQuery({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    const leads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    const totalLeads = leads.length;
+    const enrichedLeads = leads.filter(l => l.enrichmentStatus === "completed").length;
+    const analyzedLeads = leads.filter(l => l.aiAnalysis).length;
+
+    // Calculate average relevance score
+    const leadsWithRelevance = leads.filter(l => l.aiAnalysis?.relevanceScore);
+    const avgRelevanceScore = leadsWithRelevance.length > 0 
+      ? leadsWithRelevance.reduce((sum, lead) => sum + (lead.aiAnalysis?.relevanceScore || 0), 0) / leadsWithRelevance.length
+      : 0;
 
     return {
       totalLeads,

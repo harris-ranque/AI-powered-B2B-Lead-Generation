@@ -3,12 +3,12 @@ import { api } from "@genni/convex-types"
 import type { Id } from "@genni/convex-types/dataModel";
 
 export function useEmailGeneration() {
-  const generateEmail = useAction(api.crewai.actions.generateEmail);
-  const analyzeLeads = useAction(api.crewai.actions.analyzeLeads);
+  const generateEmail = useAction(api.langgraph.actions.generateEmail);
+  const analyzeLead = useAction(api.langgraph.actions.analyzeLead);
   
   return {
     generateEmail,
-    analyzeLeads,
+    analyzeLead,
   };
 }
 
@@ -24,8 +24,8 @@ export function useEmailSequences(leadId?: Id<"leads">) {
   };
 }
 
-export function useCrewAIRequests() {
-  const requests = useQuery(api.crewai.queries.getUserRequests);
+export function useLangGraphRequests() {
+  const requests = useQuery(api.langgraph.queries.getUserRequests);
   
   return {
     requests,
@@ -33,9 +33,9 @@ export function useCrewAIRequests() {
   };
 }
 
-export function useCrewAIRequest(requestId: string | undefined) {
+export function useLangGraphRequest(requestId: string | undefined) {
   const request = useQuery(
-    api.crewai.queries.getRequest,
+    api.langgraph.queries.getRequest,
     requestId ? { requestId } : "skip"
   );
   

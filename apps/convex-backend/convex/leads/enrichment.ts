@@ -1,16 +1,23 @@
 import { internalMutation, internalAction } from "../_generated/server";
 import { v } from "convex/values";
 import { API_CONFIG, ERROR_CODES, CREDIT_COSTS } from "../lib/constants";
-import { retry } from "../lib/helpers";
+import { retryApiCall } from "../lib/helpers";
 import { internal } from "../_generated/api";
+import { withBatchRateLimit } from "../rateLimit/middleware";
 
 // Process lead enrichment queue
 export const processEnrichmentQueue = internalMutation({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    searchId: v.optional(v.id("searches")),
+    priority: v.optional(v.boolean()), // High priority processing
+  },
+  handler: async (ctx, args) => {
+    const limit = args.priority ? 20 : 10; // Higher limit for priority processing
+    
     // Get leads pending enrichment
     const pendingLeads = await ctx.runQuery(internal.leads.internal.getLeadsPendingEnrichment, {
-      limit: 10,
+      searchId: args.searchId,
+      limit,
     });
 
     if (pendingLeads.length === 0) {
@@ -31,8 +38,8 @@ export const processEnrichmentQueue = internalMutation({
           enrichmentStatus: "in_progress",
         });
 
-        // Trigger enrichment action
-        await ctx.runAction(internal.leads.enrichment.enrichLead, {
+        // Schedule enrichment action
+        await ctx.scheduler.runAfter(0, internal.leads.enrichment.enrichLead, {
           leadId: lead._id,
         });
 
@@ -82,7 +89,7 @@ export const enrichLead = internalAction({
         location: lead.location.formattedAddress,
       };
 
-      const response = await retry(async () => {
+      const response = await retryApiCall(async () => {
         const res = await fetch(`${API_CONFIG.FINDYMAIL.BASE_URL}${API_CONFIG.FINDYMAIL.ENDPOINTS.SEARCH_EMAILS}`, {
           method: "POST",
           headers: {
@@ -98,13 +105,14 @@ export const enrichLead = internalAction({
         }
 
         return res.json();
-      }, 3, 2000);
+      });
 
-      // Process the enrichment results
+      // Process the enrichment results with proper type checking
+      const responseData = response as any;
       const enrichmentData = {
-        emails: response.emails || [],
-        contacts: response.contacts || [],
-        socialProfiles: response.social_profiles || {},
+        emails: responseData?.emails || [],
+        contacts: responseData?.contacts || [],
+        socialProfiles: responseData?.social_profiles || {},
       };
 
       // Update lead with enrichment data
@@ -117,7 +125,7 @@ export const enrichLead = internalAction({
       // Record credit usage
       await ctx.runMutation(internal.search.internal.recordSearchCredits, {
         searchId: lead.searchId,
-        creditsUsed: CREDIT_COSTS.EMAIL_ENRICHMENT,
+        creditsUsed: CREDIT_COSTS.LEAD_ENRICHMENT,
       });
 
       // Update search progress
@@ -130,6 +138,19 @@ export const enrichLead = internalAction({
         enriched: progressData.enrichedLeads,
         enrichedCount: progressData.enrichedLeads,
       });
+
+      // Real-time trigger: Check if this lead should trigger analysis phase
+      if (progressData.enrichedLeads > 0) {
+        // Schedule immediate analysis for this enriched lead
+        await ctx.scheduler.runAfter(1000, internal.langgraph.actions.analyzeLead, {
+          leadId: args.leadId,
+        });
+        
+        // Also trigger orchestrator to check if enrichment phase is complete
+        await ctx.scheduler.runAfter(2000, internal.search.orchestrator.orchestrateSearchPipeline, {
+          searchId: lead.searchId,
+        });
+      }
 
     } catch (error) {
       console.error(`Enrichment failed for lead ${args.leadId}:`, error);

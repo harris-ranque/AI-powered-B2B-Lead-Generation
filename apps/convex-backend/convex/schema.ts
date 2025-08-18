@@ -87,6 +87,14 @@ export default defineSchema({
     }),
     error: v.optional(v.string()),
     creditsUsed: v.number(),
+    creditsReserved: v.optional(v.number()),
+    reservationId: v.optional(v.id("creditReservations")),
+    actualCosts: v.optional(v.object({
+      discovery: v.number(),
+      enrichment: v.number(),
+      analysis: v.number(),
+    })),
+    creditsRefunded: v.optional(v.number()),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
     createdAt: v.number(),
@@ -270,7 +278,8 @@ export default defineSchema({
       v.literal("purchase"),
       v.literal("usage"),
       v.literal("refund"),
-      v.literal("bonus")
+      v.literal("bonus"),
+      v.literal("rollback")
     ),
     amount: v.number(),
     description: v.string(),
@@ -279,15 +288,39 @@ export default defineSchema({
       id: v.string(),
     })),
     stripePaymentId: v.optional(v.string()),
+    parentTransactionId: v.optional(v.id("creditTransactions")),
     balanceAfter: v.number(),
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])
     .index("by_type", ["type"])
-    .index("by_created", ["createdAt"]),
+    .index("by_created", ["createdAt"])
+    .index("by_parent", ["parentTransactionId"]),
 
-  // CrewAI Requests - Track AI processing requests
-  crewaiRequests: defineTable({
+  // Credit Reservations - Two-phase commit for credit operations
+  creditReservations: defineTable({
+    userId: v.id("users"),
+    amount: v.number(),
+    operationType: v.string(),
+    operationId: v.string(),
+    description: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("committed"),
+      v.literal("rolled_back")
+    ),
+    actualAmount: v.optional(v.number()),
+    expiresAt: v.number(),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_status", ["status"])
+    .index("by_operation", ["operationType", "operationId"])
+    .index("by_expires", ["expiresAt"]),
+
+  // LangGraph Requests - Track AI processing requests
+  langgraphRequests: defineTable({
     userId: v.id("users"),
     leadId: v.optional(v.id("leads")),
     requestId: v.string(),
@@ -458,4 +491,245 @@ export default defineSchema({
     .index("by_type", ["type"])
     .index("by_user", ["userId"])
     .index("by_timestamp", ["timestamp"]),
+
+  // Retry tracking for failed operations
+  retryRecords: defineTable({
+    operationType: v.union(
+      v.literal("google_maps_search"),
+      v.literal("findymail_enrichment"), 
+      v.literal("langgraph_analysis"),
+      v.literal("langgraph_email_generation"),
+      v.literal("webhook_call"),
+      v.literal("search_orchestration")
+    ),
+    relatedId: v.string(), // searchId, leadId, requestId, etc.
+    error: v.string(),
+    retryConfig: v.object({
+      maxAttempts: v.number(),
+      currentAttempt: v.number(),
+      nextRetryAt: v.number(),
+      strategy: v.union(
+        v.literal("exponential"),
+        v.literal("linear"),
+        v.literal("fixed")
+      ),
+      backoffMs: v.number(),
+    }),
+    metadata: v.optional(v.any()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("executing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status", ["status"])
+    .index("by_related_id", ["relatedId"])
+    .index("by_operation_type", ["operationType"])
+    .index("by_next_retry", ["retryConfig.nextRetryAt"]),
+
+  // Rate limiting records
+  rateLimitRecords: defineTable({
+    userId: v.id("users"),
+    operation: v.union(
+      v.literal("searches"),
+      v.literal("enrichment"),
+      v.literal("ai_analysis"),
+      v.literal("api_calls")
+    ),
+    requestCount: v.number(),
+    timestamp: v.number(),
+    windowStart: v.number(),
+    withinLimits: v.boolean(),
+    usedBurst: v.boolean(),
+  })
+    .index("by_user_operation", ["userId", "operation"])
+    .index("by_timestamp", ["timestamp"])
+    .index("by_window", ["windowStart"]),
+
+  // Rate limit violations
+  rateLimitViolations: defineTable({
+    userId: v.id("users"),
+    operation: v.union(
+      v.literal("searches"),
+      v.literal("enrichment"),
+      v.literal("ai_analysis"),
+      v.literal("api_calls")
+    ),
+    requestCount: v.number(),
+    currentUsage: v.number(),
+    limit: v.number(),
+    burstUsage: v.number(),
+    burstLimit: v.number(),
+    timestamp: v.number(),
+    userPlan: v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise")),
+    isAdmin: v.boolean(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_timestamp", ["timestamp"])
+    .index("by_operation", ["operation"]),
+
+  // Adaptive rate limits
+  adaptiveRateLimits: defineTable({
+    userId: v.id("users"),
+    limits: v.object({
+      searches: v.number(),
+      enrichment: v.number(),
+      ai_analysis: v.number(),
+      api_calls: v.number(),
+    }),
+    adjustmentFactor: v.number(),
+    reason: v.string(),
+    createdAt: v.number(),
+    lastUpdated: v.number(),
+    analysisWindow: v.object({
+      start: v.number(),
+      end: v.number(),
+    }),
+    metrics: v.object({
+      totalRequests: v.number(),
+      violationCount: v.number(),
+      violationRate: v.number(),
+    }),
+  })
+    .index("by_user", ["userId"])
+    .index("by_last_updated", ["lastUpdated"]),
+
+  // Batch processing plans
+  batchPlans: defineTable({
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+    totalItems: v.number(),
+    batchSize: v.number(),
+    totalBatches: v.number(),
+    estimatedTimePerBatch: v.number(),
+    priorityScore: v.number(),
+    systemLoad: v.number(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    createdBatches: v.number(),
+    completedBatches: v.number(),
+    failedBatches: v.number(),
+    processingDelay: v.number(),
+    maxConcurrentBatches: v.number(),
+    createdAt: v.number(),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_search", ["searchId"])
+    .index("by_user", ["userId"])
+    .index("by_status", ["status"])
+    .index("by_priority", ["priorityScore"])
+    .index("by_created", ["createdAt"]),
+
+  // Individual search batches
+  searchBatches: defineTable({
+    batchPlanId: v.id("batchPlans"),
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+    batchNumber: v.number(),
+    startIndex: v.number(),
+    endIndex: v.number(),
+    itemCount: v.number(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("retrying")
+    ),
+    priorityScore: v.number(),
+    estimatedProcessingTime: v.number(),
+    attempts: v.number(),
+    maxAttempts: v.number(),
+    createdAt: v.number(),
+    scheduledAt: v.optional(v.number()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    error: v.optional(v.string()),
+    result: v.optional(v.any()),
+  })
+    .index("by_batch_plan", ["batchPlanId"])
+    .index("by_search", ["searchId"])
+    .index("by_user", ["userId"])
+    .index("by_status", ["status"])
+    .index("by_priority", ["priorityScore"])
+    .index("by_scheduled", ["scheduledAt"]),
+
+  // Real-time status broadcasts
+  statusBroadcasts: defineTable({
+    userId: v.id("users"),
+    type: v.string(),
+    title: v.string(),
+    message: v.string(),
+    data: v.optional(v.any()),
+    priority: v.number(),
+    tags: v.array(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("delivered"),
+      v.literal("failed")
+    ),
+    delivered: v.boolean(),
+    acknowledged: v.boolean(),
+    requiresAck: v.boolean(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    deliveredAt: v.optional(v.number()),
+    acknowledgedAt: v.optional(v.number()),
+    error: v.optional(v.string()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_status", ["status"])
+    .index("by_priority", ["priority"])
+    .index("by_expires", ["expiresAt"])
+    .index("by_type", ["type"])
+    .index("by_delivered", ["delivered"])
+    .index("by_acknowledged", ["acknowledged"]),
+
+  // Correlation tracking for enhanced logging
+  correlationLogs: defineTable({
+    correlationId: v.string(),
+    operationType: v.string(),
+    parentId: v.optional(v.string()),
+    userId: v.id("users"),
+    searchId: v.optional(v.id("searches")),
+    leadId: v.optional(v.id("leads")),
+    batchId: v.optional(v.string()),
+    level: v.union(
+      v.literal("debug"),
+      v.literal("info"),
+      v.literal("warn"),
+      v.literal("error")
+    ),
+    message: v.string(),
+    data: v.optional(v.any()),
+    error: v.optional(v.object({
+      message: v.string(),
+      stack: v.optional(v.string()),
+      name: v.optional(v.string()),
+    })),
+    performance: v.optional(v.object({
+      startTime: v.number(),
+      endTime: v.optional(v.number()),
+      duration: v.optional(v.number()),
+    })),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_correlation_id", ["correlationId"])
+    .index("by_operation_type", ["operationType"])
+    .index("by_parent_id", ["parentId"])
+    .index("by_user", ["userId"])
+    .index("by_search", ["searchId"])
+    .index("by_lead", ["leadId"])
+    .index("by_level", ["level"])
+    .index("by_created", ["createdAt"]),
 });

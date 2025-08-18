@@ -19,9 +19,10 @@ export const API_CONFIG = {
       BULK_SEARCH: "/bulk-search",
     },
     RATE_LIMIT: 100, // requests per minute
+    TIMEOUT: 30000, // 30 seconds
   },
   
-  CREWAI_WORKER: {
+  LANGGRAPH_WORKER: {
     ENDPOINTS: {
       GENERATE_EMAIL: "/generate-email",
       ANALYZE_LEAD: "/analyze-lead",
@@ -130,7 +131,7 @@ export const STATUS = {
     UNPAID: "unpaid",
   },
   
-  CREWAI: {
+  LANGGRAPH: {
     PENDING: "pending",
     PROCESSING: "processing",
     COMPLETED: "completed",
@@ -163,8 +164,8 @@ export const ERROR_CODES = {
   ENRICHMENT_FAILED: "ENRICHMENT_FAILED",
   
   // AI & Email Generation
-  CREWAI_TIMEOUT: "CREWAI_TIMEOUT",
-  CREWAI_ERROR: "CREWAI_ERROR",
+  LANGGRAPH_TIMEOUT: "LANGGRAPH_TIMEOUT",
+  LANGGRAPH_ERROR: "LANGGRAPH_ERROR",
   EMAIL_GENERATION_FAILED: "EMAIL_GENERATION_FAILED",
   INVALID_EMAIL_PARAMS: "INVALID_EMAIL_PARAMS",
   
@@ -210,12 +211,14 @@ export const EMAIL_TEMPLATES = {
 
 // AI Configuration
 export const AI_CONFIG = {
-  CREW_AGENTS: {
+  LANGGRAPH_AGENTS: {
     RELEVANCE_ANALYZER: "relevance_analyzer",
     PAIN_POINT_RESEARCHER: "pain_point_researcher",
     VALUE_MATCHER: "value_matcher",
     EMAIL_WRITER: "email_writer",
     FOLLOW_UP_STRATEGIST: "follow_up_strategist",
+    SUPERVISOR: "supervisor",
+    AGGREGATOR: "aggregator",
   },
   
   CONFIDENCE_THRESHOLDS: {
@@ -241,7 +244,7 @@ export const WEBHOOK_EVENTS = {
     INVOICE_PAYMENT_FAILED: "invoice.payment_failed",
   },
   
-  CREWAI: {
+  LANGGRAPH: {
     EMAIL_GENERATION_COMPLETED: "email_generation_completed",
     LEAD_ANALYSIS_COMPLETED: "lead_analysis_completed",
     BULK_ANALYSIS_COMPLETED: "bulk_analysis_completed",

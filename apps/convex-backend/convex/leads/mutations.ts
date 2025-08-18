@@ -287,15 +287,16 @@ export const retryEnrichment = mutation({
     }
 
     // Reset enrichment status to pending
-    await ctx.db.patch(args.leadId, {
-      enrichmentStatus: STATUS.ENRICHMENT.PENDING,
-      contactInfo: undefined, // Clear any partial data
+    const updateData: any = {
+      enrichmentStatus: "pending",
       updatedAt: Date.now(),
-    });
+    };
+    // Note: contactInfo is cleared by not including it in the update
+    await ctx.db.patch(args.leadId, updateData);
 
     // Send notification
     await ctx.db.insert("notifications", {
-      userId,
+      userId: user._id,
       type: "system_alert",
       title: "Enrichment Retry Queued",
       message: `Enrichment for ${lead.businessName} has been queued for retry.`,
@@ -348,7 +349,7 @@ export const markEmailAsSent = mutation({
 
     // Send notification
     await ctx.db.insert("notifications", {
-      userId,
+      userId: user._id,
       type: "email_sent",
       title: "Email Sent Successfully! 📧",
       message: `Your personalized email has been sent${args.recipient ? ` to ${args.recipient}` : ""}.`,

@@ -4,93 +4,96 @@ import { getCurrentUser } from "../auth";
 import { createSearchValidator } from "../lib/validators";
 import { ERROR_CODES, BUSINESS_RULES, STATUS } from "../lib/constants";
 import { createError, calculateSearchCost, hasCredits } from "../lib/helpers";
+import { withRateLimit } from "../rateLimit/middleware";
 
 // Create a new search
 export const createSearch = mutation({
   args: createSearchValidator,
   handler: async (ctx, args) => {
-    const user = await getCurrentUser(ctx);
+    return await withRateLimit(ctx, "searches", async () => {
+      const user = await getCurrentUser(ctx);
 
-    if (!user) {
-      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
-    }
+      if (!user) {
+        throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+      }
 
-    // Validate search parameters
-    const { parameters } = args;
-    
-    // Check plan limits
-    let maxAllowed: number = BUSINESS_RULES.SEARCH.MAX_RESULTS_FREE;
-    if (user.plan === "pro") {
-      maxAllowed = BUSINESS_RULES.SEARCH.MAX_RESULTS_PRO;
-    } else if (user.plan === "enterprise") {
-      maxAllowed = BUSINESS_RULES.SEARCH.MAX_RESULTS_ENTERPRISE;
-    }
+      // Validate search parameters
+      const { parameters } = args;
+      
+      // Check plan limits
+      let maxAllowed: number = BUSINESS_RULES.SEARCH.MAX_RESULTS_FREE;
+      if (user.plan === "pro") {
+        maxAllowed = BUSINESS_RULES.SEARCH.MAX_RESULTS_PRO;
+      } else if (user.plan === "enterprise") {
+        maxAllowed = BUSINESS_RULES.SEARCH.MAX_RESULTS_ENTERPRISE;
+      }
 
-    if (parameters.maxResults > maxAllowed) {
-      throw createError(
-        `Your ${user.plan} plan allows maximum ${maxAllowed} results per search`,
-        ERROR_CODES.PLAN_LIMIT_EXCEEDED,
-        400
+      if (parameters.maxResults > maxAllowed) {
+        throw createError(
+          `Your ${user.plan} plan allows maximum ${maxAllowed} results per search`,
+          ERROR_CODES.PLAN_LIMIT_EXCEEDED,
+          400
+        );
+      }
+
+      // Calculate estimated credit cost
+      const estimatedCost = calculateSearchCost(
+        parameters.maxResults,
+        true, // Include enrichment
+        true  // Include AI analysis
       );
-    }
 
-    // Calculate estimated credit cost
-    const estimatedCost = calculateSearchCost(
-      parameters.maxResults,
-      true, // Include enrichment
-      true  // Include AI analysis
-    );
+      if (!hasCredits(user, estimatedCost)) {
+        throw createError(
+          `Insufficient credits. This search requires approximately ${estimatedCost} credits.`,
+          ERROR_CODES.INSUFFICIENT_CREDITS,
+          400
+        );
+      }
 
-    if (!hasCredits(user, estimatedCost)) {
-      throw createError(
-        `Insufficient credits. This search requires approximately ${estimatedCost} credits.`,
-        ERROR_CODES.INSUFFICIENT_CREDITS,
-        400
-      );
-    }
+      // Create the search record
+      const searchId = await ctx.db.insert("searches", {
+        userId: user._id,
+        name: args.name,
+        parameters,
+        status: STATUS.SEARCH.PENDING,
+        progress: {
+          discovered: 0,
+          enriched: 0,
+          analyzed: 0,
+          total: parameters.maxResults,
+        },
+        results: {
+          totalFound: 0,
+          enrichedCount: 0,
+        },
+        creditsUsed: 0,
+        createdAt: Date.now(),
+      });
 
-    // Create the search record
-    const searchId = await ctx.db.insert("searches", {
-      userId: user._id,
-      name: args.name,
-      parameters,
-      status: STATUS.SEARCH.PENDING,
-      progress: {
-        discovered: 0,
-        enriched: 0,
-        analyzed: 0,
-        total: parameters.maxResults,
-      },
-      results: {
-        totalFound: 0,
-        enrichedCount: 0,
-      },
-      creditsUsed: 0,
-      createdAt: Date.now(),
-    });
+      // Send notification
+      await ctx.db.insert("notifications", {
+        userId: user._id,
+        type: "system_alert",
+        title: "Search Created",
+        message: `Search "${args.name}" has been created and will begin processing shortly.`,
+        data: { 
+          searchId,
+          searchName: args.name,
+          estimatedCost,
+        },
+        read: false,
+        sent: false,
+        createdAt: Date.now(),
+      });
 
-    // Send notification
-    await ctx.db.insert("notifications", {
-      userId: user._id,
-      type: "system_alert",
-      title: "Search Created",
-      message: `Search "${args.name}" has been created and will begin processing shortly.`,
-      data: { 
+      return { 
+        success: true, 
         searchId,
-        searchName: args.name,
         estimatedCost,
-      },
-      read: false,
-      sent: false,
-      createdAt: Date.now(),
+        message: "Search created successfully",
+      };
     });
-
-    return { 
-      success: true, 
-      searchId,
-      estimatedCost,
-      message: "Search created successfully",
-    };
   },
 });
 
