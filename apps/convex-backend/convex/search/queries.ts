@@ -484,3 +484,54 @@ export const validateSearchParameters = query({
     };
   },
 });
+
+// Get search statistics for dashboard
+export const getSearchStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+    
+    if (!user) {
+      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+    }
+
+    // Get all user searches
+    const searches = await ctx.db
+      .query("searches")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+
+    // Calculate stats
+    const totalSearches = searches.length;
+    const completedSearches = searches.filter(s => s.status === "completed");
+    const inProgressSearches = searches.filter(s => s.status === "in_progress");
+    const failedSearches = searches.filter(s => s.status === "failed");
+
+    // Get total leads from completed searches
+    const totalLeads = completedSearches.reduce((total, search) => 
+      total + (search.results?.totalResults || 0), 0
+    );
+
+    // Calculate average completion time for completed searches
+    const completedWithDuration = completedSearches.filter(s => 
+      s.completedAt && s.createdAt
+    );
+    const avgCompletionTime = completedWithDuration.length > 0
+      ? completedWithDuration.reduce((total, search) => 
+          total + (search.completedAt! - search.createdAt), 0
+        ) / completedWithDuration.length
+      : 0;
+
+    return {
+      totalSearches,
+      completedSearches: completedSearches.length,
+      inProgressSearches: inProgressSearches.length,
+      failedSearches: failedSearches.length,
+      totalLeads,
+      avgCompletionTime: Math.round(avgCompletionTime / 1000), // Convert to seconds
+      completionRate: totalSearches > 0 
+        ? Math.round((completedSearches.length / totalSearches) * 100) 
+        : 0,
+    };
+  },
+});

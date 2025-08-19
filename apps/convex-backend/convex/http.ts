@@ -4,7 +4,7 @@ import { internal } from "./_generated/api";
 import { WEBHOOK_EVENTS, ERROR_CODES } from "./lib/constants";
 import { Webhook } from "svix";
 import Stripe from "stripe";
-import { validateWebhookEnvironment, getRequiredEnvVar } from "./lib/env-validation";
+import { validateWebhookEnvironment, getRequiredEnvVar } from "./lib/env_validation";
 
 const http = httpRouter();
 

@@ -95,3 +95,24 @@ export const getNotificationCounts = query({
     return counts;
   },
 });
+
+// Get unread notification count (simple version for components)
+export const getUnreadCount = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+    
+    if (!user) {
+      return 0;
+    }
+
+    const unreadCount = await ctx.db
+      .query("notifications")
+      .withIndex("by_read", (q) => q.eq("read", false))
+      .filter((q) => q.eq(q.field("userId"), user._id))
+      .collect()
+      .then(notifs => notifs.length);
+
+    return unreadCount;
+  },
+});
