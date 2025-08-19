@@ -28,7 +28,7 @@ import {
   type EmailGenerationResponse 
 } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
-import { useEmailGeneration, useCrewAIRequest } from "@/hooks/useCrewAI";
+import { useEmailGeneration, useLangGraphRequest as useCrewAIRequest } from "@/hooks/useLangGraph";
 import { useProfile } from "@/hooks/useProfile";
 import type { Id } from "@genni/convex-types/dataModel";
 

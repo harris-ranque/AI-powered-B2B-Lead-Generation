@@ -22,12 +22,14 @@ import {
   AlertTriangle,
   Bell
 } from "lucide-react";
-import { GenniLeadSearch } from "./GenniLeadSearch";\nimport { SearchProgressTracker } from "./SearchProgressTracker";
+import { GenniLeadSearch } from "./GenniLeadSearch";
+import { SearchProgressTracker } from "./SearchProgressTracker";
 import type { Lead } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { useSearches, useGoogleMapsSearch } from "@/hooks/useSearches";
 import { useUser, useUserCredits } from "@/hooks/useUser";
-import { useProfile } from "@/hooks/useProfile";\nimport { useStatusBroadcasts, useCreditBroadcasts, getPriorityDisplay, formatBroadcastTime } from "@/hooks/useStatusBroadcasts";
+import { useProfile } from "@/hooks/useProfile";
+import { useStatusBroadcasts, useCreditBroadcasts, getPriorityDisplay, formatBroadcastTime } from "@/hooks/useStatusBroadcasts";
 import type { SearchParams as ConvexSearchParams } from "@/lib/types";
 
 interface LocalSearchParams {
@@ -72,7 +74,22 @@ export function EnhancedLeadSearch({
   const { credits, isLoading: creditsLoading } = useUserCredits();
   const { profile } = useProfile();
   const { searches, createSearch, cancelSearch, isLoading: searchesLoading } = useSearches();
-  const { searchGoogleMaps } = useGoogleMapsSearch();\n  \n  // Real-time broadcasting integration\n  const {\n    urgentBroadcasts,\n    searchBroadcasts,\n    rateLimitWarnings,\n    acknowledgeBroadcast,\n    hasUrgent\n  } = useStatusBroadcasts();\n  \n  const {\n    lowCreditWarnings,\n    hasLowCredits,\n    currentBalance\n  } = useCreditBroadcasts();
+  const { searchGoogleMaps } = useGoogleMapsSearch();
+  
+  // Real-time broadcasting integration
+  const {
+    urgentBroadcasts,
+    searchBroadcasts,
+    rateLimitWarnings,
+    acknowledgeBroadcast,
+    hasUrgent
+  } = useStatusBroadcasts();
+  
+  const {
+    lowCreditWarnings,
+    hasLowCredits,
+    currentBalance
+  } = useCreditBroadcasts();
   
   // Get real user data or fallback to props
   const userCredits = credits ?? 100;

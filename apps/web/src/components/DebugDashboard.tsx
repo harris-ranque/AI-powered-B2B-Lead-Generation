@@ -320,7 +320,7 @@ export function DebugDashboard({ className }: DebugDashboardProps) {
                   
                   {slowOperations.length > 0 && (
                     <div className="space-y-2">
-                      <h4 className="font-medium">Slow Operations (>5s)</h4>
+                      <h4 className="font-medium">Slow Operations (&gt;5s)</h4>
                       {slowOperations.slice(0, 10).map((log) => (
                         <div key={log._id} className="p-2 border rounded bg-yellow-50">
                           <div className="flex items-center justify-between">

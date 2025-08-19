@@ -9,8 +9,10 @@ import { useSearches } from "@/hooks/useSearches";
 import { useLangGraphRequests } from "@/hooks/useLangGraph";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useStatusBroadcasts, getPriorityDisplay, formatBroadcastTime } from "@/hooks/useStatusBroadcasts";
-import { SearchProgressTracker } from "@/components/SearchProgressTracker";\nimport { CorrelationDebugPanel } from "@/components/CorrelationDebugPanel";
-import { useState } from "react";\nimport { useAuth } from "@/hooks/useAuth";
+import { SearchProgressTracker } from "@/components/SearchProgressTracker";
+import { CorrelationDebugPanel } from "@/components/CorrelationDebugPanel";
+import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
 export function Dashboard() {
   // Real Convex hooks
@@ -18,7 +20,8 @@ export function Dashboard() {
   const { stats: userLeadStats } = useUserLeads();
   const { searches } = useSearches();
   const { requests: emailRequests } = useLangGraphRequests();
-  const { notifications } = useNotifications();\n  const { user } = useAuth();
+  const { notifications } = useNotifications();
+  const { user } = useAuth();
   
   // Real-time broadcasting system
   const {
