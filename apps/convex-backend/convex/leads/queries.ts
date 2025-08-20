@@ -595,8 +595,21 @@ export const getLeadStats = query({
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const recentlyCreated = allLeads.filter(lead => lead.createdAt > weekAgo).length;
 
+    // Count leads with emails from FindyMail enrichment
+    const withEmails = allLeads.filter(lead => 
+      lead.contactInfo?.emails && lead.contactInfo.emails.length > 0
+    ).length;
+
+    // Count leads with contact names
+    const withContacts = allLeads.filter(lead => 
+      lead.contactInfo?.contacts && lead.contactInfo.contacts.length > 0
+    ).length;
+
     return {
       total: allLeads.length,
+      withEmails,
+      withContacts,
+      thisWeek: recentlyCreated,
       byStatus,
       byEnrichment,
       averageRelevanceScore,

@@ -232,7 +232,7 @@ export const broadcastSearchStatus = internalMutation({
     }
 
     // Import status translation functions
-    const { translateSearchStatus, calculateProgressPercentage, getNextActionSuggestion } = await import("../search/statusTranslation");
+    const { translateSearchStatus, calculateProgressPercentage, getNextActionSuggestion } = require("../search/statusTranslation");
     
     // Generate user-friendly status
     const userStatus = translateSearchStatus(

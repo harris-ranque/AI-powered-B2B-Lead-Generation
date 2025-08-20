@@ -178,4 +178,18 @@ crons.interval(
   internal.lib.logging.cleanupOldLogs
 );
 
+// Cleanup expired FindyMail domain cache every 6 hours
+crons.interval(
+  "cleanup-findymail-cache",
+  { hours: 6 },
+  internal.leads.enrichment.cleanupExpiredDomainCache
+);
+
+// Cleanup expired orchestration locks every 10 minutes
+crons.interval(
+  "cleanup-orchestration-locks",
+  { minutes: 10 },
+  internal.search.orchestrator.cleanupExpiredLocks
+);
+
 export default crons;

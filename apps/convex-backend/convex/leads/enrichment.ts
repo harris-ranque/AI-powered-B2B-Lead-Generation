@@ -100,6 +100,24 @@ export const enrichLead = internalAction({
         location: lead.location?.formattedAddress || lead.address,
         industry: lead.industry || lead.primaryType
       });
+
+      // Check for cached domain results first to avoid duplicate API calls
+      if (domain) {
+        const cachedResult = await checkDomainCache(ctx, domain, lead.searchId);
+        if (cachedResult) {
+          console.log(`🎯 Using cached FindyMail result for domain: ${domain}`);
+          
+          await ctx.runMutation(internal.leads.internal.updateLeadEnrichment, {
+            leadId: args.leadId,
+            contactInfo: cachedResult,
+            enrichmentStatus: "completed",
+          });
+
+          // Record partial credit usage for cached result
+          await recordSuccessfulEnrichment(ctx, lead, { ...cachedResult, cachedResult: true });
+          return;
+        }
+      }
       
       let response: any = null;
       let searchType = 'none';
@@ -229,6 +247,12 @@ export const enrichLead = internalAction({
       // Process successful response
       if (response) {
         const enrichmentData = processFindymailResponse(response, searchType);
+        
+        // Cache the successful domain result for reuse within this search
+        if (domain && enrichmentData.emails.length > 0) {
+          await cacheDomainResult(ctx, domain, lead.searchId, enrichmentData);
+          console.log(`💾 Cached FindyMail result for domain: ${domain}`);
+        }
         
         await ctx.runMutation(internal.leads.internal.updateLeadEnrichment, {
           leadId: args.leadId,
@@ -574,10 +598,14 @@ function extractContactsFromBusinessData(lead: any): any[] {
 // Record successful enrichment and update progress
 async function recordSuccessfulEnrichment(ctx: any, lead: any, enrichmentData: any) {
   try {
-    // Record credit usage (reduced for fallback)
-    const creditCost = enrichmentData.fallbackUsed ? 
-      Math.floor(CREDIT_COSTS.LEAD_ENRICHMENT * 0.5) : 
-      CREDIT_COSTS.LEAD_ENRICHMENT;
+    // Record credit usage (reduced for fallback and cached results)
+    let creditCost = CREDIT_COSTS.LEAD_ENRICHMENT;
+    
+    if (enrichmentData.fallbackUsed) {
+      creditCost = Math.floor(CREDIT_COSTS.LEAD_ENRICHMENT * 0.5);
+    } else if (enrichmentData.cachedResult) {
+      creditCost = Math.floor(CREDIT_COSTS.LEAD_ENRICHMENT * 0.1); // Only 10% cost for cached results
+    }
 
     await ctx.runMutation(internal.search.internal.recordSearchCredits, {
       searchId: lead.searchId,
@@ -799,5 +827,70 @@ export const handleEnrichmentWebhook = internalMutation({
     } catch (error) {
       console.error("Error processing enrichment webhook:", error);
     }
+  },
+});
+
+// Domain caching functions to prevent duplicate FindyMail API calls
+async function checkDomainCache(ctx: any, domain: string, searchId: string) {
+  try {
+    // Check if we have cached results for this domain within this search
+    const cacheEntry = await ctx.db
+      .query("findymailDomainCache")
+      .withIndex("by_domain_search", (q) => q.eq("domain", domain).eq("searchId", searchId))
+      .first();
+    
+    if (cacheEntry && cacheEntry.expiresAt > Date.now()) {
+      return cacheEntry.enrichmentData;
+    }
+    
+    return null;
+  } catch (error) {
+    console.warn("Error checking domain cache:", error);
+    return null;
+  }
+}
+
+async function cacheDomainResult(ctx: any, domain: string, searchId: string, enrichmentData: any) {
+  try {
+    // Cache results for 1 hour within this search session
+    const expiresAt = Date.now() + (60 * 60 * 1000);
+    
+    await ctx.db.insert("findymailDomainCache", {
+      domain,
+      searchId,
+      enrichmentData,
+      createdAt: Date.now(),
+      expiresAt,
+    });
+  } catch (error) {
+    console.warn("Error caching domain result:", error);
+    // Don't fail the enrichment if caching fails
+  }
+}
+
+// Cleanup expired domain cache entries
+export const cleanupExpiredDomainCache = internalMutation({
+  args: {},
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    
+    // Find expired entries
+    const expiredEntries = await ctx.db
+      .query("findymailDomainCache")
+      .withIndex("by_expires", (q) => q.lt("expiresAt", now))
+      .take(100); // Process in batches
+    
+    let deletedCount = 0;
+    
+    for (const entry of expiredEntries) {
+      await ctx.db.delete(entry._id);
+      deletedCount++;
+    }
+    
+    if (deletedCount > 0) {
+      console.log(`🧹 Cleaned up ${deletedCount} expired FindyMail cache entries`);
+    }
+    
+    return { deletedCount };
   },
 });

@@ -98,6 +98,9 @@ export default defineSchema({
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
     lastOrchestrationAt: v.optional(v.number()),
+    orchestrationLock: v.optional(v.string()),
+    orchestrationLockExpiry: v.optional(v.number()),
+    lastWarningAt: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])
@@ -737,4 +740,35 @@ export default defineSchema({
     .index("by_lead", ["leadId"])
     .index("by_level", ["level"])
     .index("by_created", ["createdAt"]),
+
+  // FindyMail domain cache to prevent duplicate API calls within same search
+  findymailDomainCache: defineTable({
+    domain: v.string(),
+    searchId: v.id("searches"),
+    enrichmentData: v.object({
+      emails: v.array(v.object({
+        email: v.string(),
+        type: v.string(),
+        confidence: v.number(),
+      })),
+      contacts: v.array(v.object({
+        name: v.string(),
+        title: v.optional(v.string()),
+        email: v.optional(v.string()),
+        linkedin: v.optional(v.string()),
+        confidence: v.number(),
+        domain: v.optional(v.string()),
+      })),
+      socialProfiles: v.optional(v.object({
+        linkedin: v.optional(v.string()),
+        twitter: v.optional(v.string()),
+        facebook: v.optional(v.string()),
+      })),
+    }),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_domain_search", ["domain", "searchId"])
+    .index("by_search", ["searchId"])
+    .index("by_expires", ["expiresAt"]),
 });

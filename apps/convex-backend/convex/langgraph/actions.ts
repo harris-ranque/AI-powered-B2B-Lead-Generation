@@ -234,6 +234,24 @@ export const analyzeLead = internalAction({
     }
 
     if (!hasCredits(user, CREDIT_COSTS.AI_ANALYSIS)) {
+      // Mark lead as failed to prevent infinite retry loops
+      await ctx.runMutation(internal.leads.mutations.updateLeadAnalysis, {
+        leadId: args.leadId,
+        analysis: {
+          relevanceScore: 0,
+          confidence: 0,
+          summary: "Analysis skipped - insufficient credits",
+          ratingTags: [],
+          emailStrategy: {
+            tone: "professional",
+            approach: "standard",
+            painPoints: [],
+            valueProps: []
+          }
+        },
+        status: "failed"
+      });
+      
       throw createError(
         `Insufficient credits. Lead analysis requires ${CREDIT_COSTS.AI_ANALYSIS} credits.`,
         ERROR_CODES.INSUFFICIENT_CREDITS,

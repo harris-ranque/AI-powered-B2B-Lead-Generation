@@ -526,8 +526,9 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      <Card>
-        <Table>
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <Table>
           <TableHeader>
             <TableRow>
               <TableHead>User</TableHead>
@@ -577,7 +578,8 @@ export function AdminDashboard() {
               </TableRow>
             ))}
           </TableBody>
-        </Table>
+          </Table>
+        </div>
       </Card>
     </div>
   );
@@ -595,8 +597,9 @@ export function AdminDashboard() {
         </Button>
       </div>
 
-      <Card>
-        <Table>
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Company</TableHead>
@@ -632,7 +635,8 @@ export function AdminDashboard() {
               </TableRow>
             ))}
           </TableBody>
-        </Table>
+          </Table>
+        </div>
       </Card>
     </div>
   );

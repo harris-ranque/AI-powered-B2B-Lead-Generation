@@ -148,9 +148,9 @@ export function GenniLeadSearch({ searchId, onGenerateEmail }: LeadSearchProps) 
             </Button>
           </div>
               
-              <Card className="p-4">
-                
-                <Table>
+              <Card className="p-4 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Company</TableHead>
@@ -224,7 +224,8 @@ export function GenniLeadSearch({ searchId, onGenerateEmail }: LeadSearchProps) 
                       </TableRow>
                     ))}
                   </TableBody>
-                </Table>
+                  </Table>
+                </div>
                 
                 {searchResults.length > 10 && (
                   <div className="mt-4 text-center text-muted-foreground">

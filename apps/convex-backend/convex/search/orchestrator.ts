@@ -137,8 +137,8 @@ export const orchestrateSearchPipeline = internalMutation({
 
       // Release orchestration lock on successful completion
       await ctx.db.patch(args.searchId, {
-        orchestrationLock: null,
-        orchestrationLockExpiry: null,
+        orchestrationLock: undefined,
+        orchestrationLockExpiry: undefined,
       });
 
       return { success: true, correlationId: correlation.correlationId };
@@ -149,8 +149,8 @@ export const orchestrateSearchPipeline = internalMutation({
       
       // Release orchestration lock on error
       await ctx.db.patch(args.searchId, {
-        orchestrationLock: null,
-        orchestrationLockExpiry: null,
+        orchestrationLock: undefined,
+        orchestrationLockExpiry: undefined,
         status: STATUS.SEARCH.FAILED,
         error: error instanceof Error ? error.message : "Orchestration failed",
         completedAt: Date.now(),
@@ -387,11 +387,16 @@ export const startAnalysisPhase = internalAction({
       console.log(`Starting AI analysis for ${enrichedLeads.length} leads with email addresses`);
       await broadcastSearchUpdate(ctx, args.searchId, "analysis_phase", `Starting AI analysis for ${enrichedLeads.length} leads with emails`);
 
-      // Trigger bulk analysis for the leads
+      // Trigger analysis with error handling to prevent infinite loops
       for (const lead of enrichedLeads) {
-        await ctx.runAction(internal.langgraph.actions.analyzeLead, {
-          leadId: lead._id,
-        });
+        try {
+          await ctx.runAction(internal.langgraph.actions.analyzeLead, {
+            leadId: lead._id,
+          });
+        } catch (error) {
+          console.error(`Failed to analyze lead ${lead._id}:`, error);
+          // Continue with other leads even if one fails
+        }
       }
 
       // Schedule a check for completion in 60 seconds
@@ -651,6 +656,43 @@ export const processPriorityQueues = internalMutation({
       console.error("Error in priority queue processing:", error);
       return { error: error instanceof Error ? error.message : "Unknown error" };
     }
+  },
+});
+
+// Cleanup expired orchestration locks
+export const cleanupExpiredLocks = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    
+    // Find searches with expired locks
+    const stalledSearches = await ctx.db
+      .query("searches")
+      .filter((q) => 
+        q.and(
+          q.neq(q.field("orchestrationLock"), null),
+          q.lt(q.field("orchestrationLockExpiry"), now)
+        )
+      )
+      .take(10);
+
+    let cleanedCount = 0;
+
+    for (const search of stalledSearches) {
+      await ctx.db.patch(search._id, {
+        orchestrationLock: undefined,
+        orchestrationLockExpiry: undefined,
+      });
+      
+      // Re-trigger orchestration for unlocked search
+      await ctx.scheduler.runAfter(0, internal.search.orchestrator.orchestrateSearchPipeline, {
+        searchId: search._id,
+      });
+      
+      cleanedCount++;
+    }
+
+    return { cleanedCount };
   },
 });
 

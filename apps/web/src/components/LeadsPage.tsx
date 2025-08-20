@@ -79,10 +79,13 @@ export function LeadsPage() {
               <Card key={lead._id} className="glass-card p-5 hover-slide transition-smooth cursor-pointer hover-accent">
                 <div className="flex justify-between items-start mb-3">
                   <div>
-                    <h3 className="font-semibold text-base mb-1">{lead.contactName || 'No Contact Name'}</h3>
-                    <p className="text-sm text-muted-foreground">{lead.companyName}</p>
+                    <h3 className="font-semibold text-base mb-1">
+                      {lead.contactInfo?.contacts?.[0]?.name || 'No Contact Name'}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">{lead.businessName}</p>
                     <p className="text-xs text-muted-foreground">
-                      {lead.title && `${lead.title} • `}{lead.location}
+                      {lead.contactInfo?.contacts?.[0]?.title && `${lead.contactInfo.contacts[0].title} • `}
+                      {lead.location?.formattedAddress || lead.address}
                     </p>
                   </div>
                   <div className="flex flex-col gap-2">
@@ -92,9 +95,9 @@ export function LeadsPage() {
                     >
                       {lead.status}
                     </Badge>
-                    {lead.enrichmentScore && (
+                    {lead.aiAnalysis?.relevanceScore && (
                       <Badge className="bg-primary/10 text-primary border border-primary/20 font-semibold">
-                        {Math.round(lead.enrichmentScore * 100)}% Match
+                        {Math.round(lead.aiAnalysis.relevanceScore * 100)}% Match
                       </Badge>
                     )}
                   </div>
@@ -111,12 +114,12 @@ export function LeadsPage() {
                     <Eye className="h-3 w-3 mr-1" />
                     View Details
                   </Button>
-                  {lead.email && (
+                  {lead.contactInfo?.emails?.[0]?.email && (
                     <Button 
                       variant="secondary" 
                       size="sm" 
                       className="transition-smooth"
-                      onClick={() => handleCopyEmail(lead.email!)}
+                      onClick={() => handleCopyEmail(lead.contactInfo.emails[0].email)}
                     >
                       <Mail className="h-3 w-3 mr-1" />
                       Copy Email
@@ -136,18 +139,18 @@ export function LeadsPage() {
                 </div>
 
                 {/* Company Info */}
-                {(lead.industry || lead.companySize || lead.technologies?.length) && (
+                {(lead.category || lead.website) && (
                   <div className="mt-3 p-3 bg-muted/5 border border-border/50 rounded-lg">
                     <div className="flex flex-wrap gap-2 text-xs">
-                      {lead.industry && (
-                        <Badge variant="outline">{lead.industry}</Badge>
+                      {lead.category && (
+                        <Badge variant="outline">{lead.category}</Badge>
                       )}
-                      {lead.companySize && (
-                        <Badge variant="outline">{lead.companySize}</Badge>
+                      {lead.rating && (
+                        <Badge variant="outline">★ {lead.rating}</Badge>
                       )}
-                      {lead.technologies?.map((tech) => (
-                        <Badge key={tech} variant="outline">{tech}</Badge>
-                      ))}
+                      {lead.enrichmentStatus === 'completed' && (
+                        <Badge variant="outline" className="text-green-600">Enriched</Badge>
+                      )}
                     </div>
                   </div>
                 )}
