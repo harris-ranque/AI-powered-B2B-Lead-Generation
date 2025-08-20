@@ -168,6 +168,7 @@ CTA: {strategy.cta_progression[i] if i < len(strategy.cta_progression) else 'Sch
         
         return {
             "follow_up_sequence": follow_up_sequence,
+            "current_stage": "followup_strategy",
             "intermediate_results": {
                 **state.get("intermediate_results", {}),
                 "followup_strategy": {
@@ -208,6 +209,7 @@ CTA: {strategy.cta_progression[i] if i < len(strategy.cta_progression) else 'Sch
         # No follow-up sequence on error
         return {
             "follow_up_sequence": None,
+            "current_stage": "followup_strategy",
             "agent_results": [*state.get("agent_results", []), agent_result],
             "errors": [*state.get("errors", []), f"Follow-up strategist error: {str(e)}"],
             "processing_times": {

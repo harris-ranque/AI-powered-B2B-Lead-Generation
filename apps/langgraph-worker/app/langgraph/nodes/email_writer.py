@@ -198,6 +198,7 @@ async def email_writer_node(state: EmailGenerationState) -> Dict[str, Any]:
         
         return {
             "primary_email": primary_email,
+            "current_stage": "email_writing",
             "agent_results": [*state.get("agent_results", []), agent_result],
             "processing_times": {
                 **state.get("processing_times", {}),
@@ -247,6 +248,7 @@ Best regards,
         
         return {
             "primary_email": fallback_email,
+            "current_stage": "email_writing",
             "agent_results": [*state.get("agent_results", []), agent_result],
             "errors": [*state.get("errors", []), f"Email writer error: {str(e)}"],
             "processing_times": {

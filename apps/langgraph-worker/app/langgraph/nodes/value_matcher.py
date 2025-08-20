@@ -137,6 +137,7 @@ async def value_matcher_node(state: EmailGenerationState) -> Dict[str, Any]:
         
         return {
             "value_matches": alignment.value_matches,
+            "current_stage": "value_matching",
             "intermediate_results": {
                 **state.get("intermediate_results", {}),
                 "value_alignment": {
@@ -185,6 +186,7 @@ async def value_matcher_node(state: EmailGenerationState) -> Dict[str, Any]:
         
         return {
             "value_matches": generic_matches,
+            "current_stage": "value_matching",
             "agent_results": [*state.get("agent_results", []), agent_result],
             "errors": [*state.get("errors", []), f"Value matcher error: {str(e)}"],
             "processing_times": {

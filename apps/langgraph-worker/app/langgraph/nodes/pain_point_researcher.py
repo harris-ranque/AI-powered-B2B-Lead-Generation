@@ -150,6 +150,7 @@ async def pain_point_researcher_node(state: EmailGenerationState) -> Dict[str, A
         
         return {
             "pain_points": main_pain_points,
+            "current_stage": "pain_point_research",
             "intermediate_results": {
                 **state.get("intermediate_results", {}),
                 "pain_point_analysis": {
@@ -199,6 +200,7 @@ async def pain_point_researcher_node(state: EmailGenerationState) -> Dict[str, A
         
         return {
             "pain_points": generic_pain_points,
+            "current_stage": "pain_point_research",
             "agent_results": [*state.get("agent_results", []), agent_result],
             "errors": [*state.get("errors", []), f"Pain point researcher error: {str(e)}"],
             "processing_times": {
