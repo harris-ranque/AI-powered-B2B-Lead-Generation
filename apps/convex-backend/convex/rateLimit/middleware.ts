@@ -2,6 +2,7 @@ import { GenericMutationCtx, GenericActionCtx } from "convex/server";
 import { DataModel } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { getCurrentUser } from "../auth";
+import { Id } from "../_generated/dataModel";
 
 /**
  * Rate Limiting Middleware
@@ -129,11 +130,12 @@ export async function withBatchRateLimit<T>(
   }
 
   // Use the standard rate limiting with the batch size as request count
-  return await withRateLimit(ctx, operation, fn, {
+  const rateLimitOptions = {
     requestCount: batchSize,
-    customUserId: userId,
     skipAuthCheck: !!userId,
-  });
+    ...(userId && { customUserId: userId })
+  };
+  return await withRateLimit(ctx, operation, fn, rateLimitOptions);
 }
 
 // Smart rate limiting that adjusts based on operation cost
@@ -149,7 +151,7 @@ export async function withSmartRateLimit<T>(
 ): Promise<T> {
   // Get user
   const user = userId ? 
-    await ctx.db.get(userId) : 
+    await ctx.db.get(userId as Id<"users">) : 
     await getCurrentUser(ctx);
 
   if (!user) {
@@ -210,9 +212,19 @@ export async function getRateLimitInfo(
   ctx: GenericMutationCtx<DataModel> | GenericActionCtx<DataModel>,
   userId?: string
 ): Promise<any> {
-  const user = userId ? 
-    await ctx.db.get(userId) : 
-    await getCurrentUser(ctx);
+  let user;
+  if (userId) {
+    if ("db" in ctx) {
+      user = await ctx.db.get(userId as Id<"users">);
+    } else {
+      // Action context - use runQuery
+      user = await ctx.runQuery(internal.users.admin.getUserByIdInternal, { 
+        userId: userId as Id<"users"> 
+      });
+    }
+  } else {
+    user = await getCurrentUser(ctx);
+  }
 
   if (!user) {
     throw new Error("Authentication required");
@@ -244,7 +256,7 @@ export async function checkWouldExceedRateLimit(
   remainingRequests: number;
 }> {
   const user = userId ? 
-    await ctx.db.get(userId) : 
+    await ctx.db.get(userId as Id<"users">) : 
     await getCurrentUser(ctx);
 
   if (!user) {
@@ -274,7 +286,7 @@ export async function bypassRateLimit<T>(
   userId?: string
 ): Promise<T> {
   const user = userId ? 
-    await ctx.db.get(userId) : 
+    await ctx.db.get(userId as Id<"users">) : 
     await getCurrentUser(ctx);
 
   if (!user) {

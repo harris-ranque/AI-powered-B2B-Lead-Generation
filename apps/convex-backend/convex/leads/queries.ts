@@ -5,7 +5,7 @@ import { ERROR_CODES } from "../lib/constants";
 import { createError } from "../lib/helpers";
 
 // Get leads for a specific search
-export const getSearchLeads = query({
+export const getLeadsBySearch = query({
   args: {
     searchId: v.id("searches"),
     limit: v.optional(v.number()),
@@ -85,7 +85,7 @@ export const getSearchLeads = query({
 });
 
 // Get a specific lead by ID
-export const getLeadById = query({
+export const getLead = query({
   args: { leadId: v.id("leads") },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);

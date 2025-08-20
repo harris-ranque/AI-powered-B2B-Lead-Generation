@@ -81,15 +81,20 @@ export const updateLeadEnrichment = internalMutation({
         email: v.optional(v.string()),
         linkedin: v.optional(v.string()),
         confidence: v.number(),
+        domain: v.optional(v.string()),
       })),
       socialProfiles: v.optional(v.object({
         linkedin: v.optional(v.string()),
         twitter: v.optional(v.string()),
         facebook: v.optional(v.string()),
       })),
+      // Fallback system tracking
+      fallbackUsed: v.optional(v.boolean()),
+      fallbackReason: v.optional(v.string()),
     }),
     enrichmentStatus: v.union(
       v.literal("completed"),
+      v.literal("completed_fallback"),
       v.literal("failed"),
       v.literal("in_progress")
     ),
@@ -189,7 +194,7 @@ export const getSearchProgressData = internalQuery({
       .collect();
 
     const totalLeads = leads.length;
-    const enrichedLeads = leads.filter(l => l.enrichmentStatus === "completed").length;
+    const enrichedLeads = leads.filter(l => l.enrichmentStatus === "completed" || l.enrichmentStatus === "completed_fallback").length;
     const analyzedLeads = leads.filter(l => l.aiAnalysis).length;
 
     // Calculate average relevance score
@@ -224,11 +229,21 @@ export const getLeadsPendingEnrichment = internalQuery({
       query = query.filter((q) => q.eq(q.field("searchId"), args.searchId));
     }
     
-    return await query.take(limit);
+    // Get all pending leads first, then filter out those with emails in code
+    const allPendingLeads = await query.collect();
+    
+    // Filter out leads that already have email addresses from enrichment
+    const leadsNeedingEnrichment = allPendingLeads.filter(lead => {
+      if (!lead.contactInfo) return true;
+      if (!lead.contactInfo.emails) return true;
+      return lead.contactInfo.emails.length === 0;
+    });
+    
+    return leadsNeedingEnrichment.slice(0, limit);
   },
 });
 
-// Get enriched leads ready for analysis
+// Get enriched leads ready for analysis (must have emails)
 export const getEnrichedLeadsForAnalysis = internalQuery({
   args: { 
     searchId: v.id("searches"),
@@ -237,16 +252,31 @@ export const getEnrichedLeadsForAnalysis = internalQuery({
   handler: async (ctx, args) => {
     const limit = args.limit || 20;
     
-    return await ctx.db
+    const candidateLeads = await ctx.db
       .query("leads")
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
       .filter((q) => 
         q.and(
-          q.eq(q.field("enrichmentStatus"), "completed"),
-          q.eq(q.field("aiAnalysis"), undefined)
+          q.or(
+            q.eq(q.field("enrichmentStatus"), "completed"),
+            q.eq(q.field("enrichmentStatus"), "completed_fallback")
+          ),
+          q.eq(q.field("aiAnalysis"), undefined),
+          // Only analyze leads that have email addresses
+          q.and(
+            q.neq(q.field("contactInfo"), undefined),
+            q.neq(q.field("contactInfo.emails"), undefined)
+          )
         )
       )
-      .take(limit);
+      .collect();
+    
+    // Filter to ensure emails array has actual content
+    const enrichedLeads = candidateLeads.filter(lead => 
+      lead.contactInfo?.emails && lead.contactInfo.emails.length > 0
+    );
+    
+    return enrichedLeads.slice(0, limit);
   },
 });
 
@@ -261,8 +291,13 @@ export const getLeadsPendingAnalysis = internalQuery({
     
     let query = ctx.db
       .query("leads")
-      .withIndex("by_enrichment_status", (q) => q.eq("enrichmentStatus", "completed"))
-      .filter((q) => q.eq(q.field("aiAnalysis"), undefined));
+      .filter((q) => q.and(
+        q.or(
+          q.eq(q.field("enrichmentStatus"), "completed"),
+          q.eq(q.field("enrichmentStatus"), "completed_fallback")
+        ),
+        q.eq(q.field("aiAnalysis"), undefined)
+      ));
     
     if (args.searchId) {
       query = query.filter((q) => q.eq(q.field("searchId"), args.searchId));
@@ -295,7 +330,7 @@ export const getSearchStatistics = internalQuery({
       .collect();
 
     const totalLeads = leads.length;
-    const enrichedLeads = leads.filter(l => l.enrichmentStatus === "completed").length;
+    const enrichedLeads = leads.filter(l => l.enrichmentStatus === "completed" || l.enrichmentStatus === "completed_fallback").length;
     const analyzedLeads = leads.filter(l => l.aiAnalysis).length;
 
     // Calculate average relevance score

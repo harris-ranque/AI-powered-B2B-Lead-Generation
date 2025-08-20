@@ -12,14 +12,16 @@ export const API_CONFIG = {
   },
   
   FINDYMAIL: {
-    BASE_URL: "https://api.findymail.com/v1",
+    BASE_URL: "https://app.findymail.com/api",
     ENDPOINTS: {
-      SEARCH_EMAILS: "/search",
+      SEARCH_NAME: "/search/name",
+      SEARCH_DOMAIN: "/search/domain",
+      SEARCH_LINKEDIN: "/search/linkedin",
       VERIFY_EMAIL: "/verify",
-      BULK_SEARCH: "/bulk-search",
+      GET_CREDITS: "/credits",
     },
-    RATE_LIMIT: 100, // requests per minute
-    TIMEOUT: 30000, // 30 seconds
+    RATE_LIMIT: 300, // concurrent requests limit per documentation
+    TIMEOUT: 30000, // 30 seconds for domain search, 15 seconds for name search
   },
   
   LANGGRAPH_WORKER: {

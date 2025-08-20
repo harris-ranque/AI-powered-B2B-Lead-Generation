@@ -208,7 +208,7 @@ export const acknowledgeBroadcast = internalMutation({
   },
 });
 
-// Broadcast search status update
+// Broadcast search status update with user-friendly translation
 export const broadcastSearchStatus = internalMutation({
   args: {
     searchId: v.id("searches"),
@@ -221,6 +221,9 @@ export const broadcastSearchStatus = internalMutation({
       total: v.number(),
     })),
     priority: v.optional(v.number()),
+    leadCount: v.optional(v.number()),
+    enrichedCount: v.optional(v.number()),
+    analyzedCount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const search = await ctx.db.get(args.searchId);
@@ -228,12 +231,27 @@ export const broadcastSearchStatus = internalMutation({
       throw new Error("Search not found");
     }
 
-    const progressPercent = args.progress 
-      ? Math.round(((args.progress.discovered + args.progress.enriched + args.progress.analyzed) / (args.progress.total * 3)) * 100)
-      : 0;
+    // Import status translation functions
+    const { translateSearchStatus, calculateProgressPercentage, getNextActionSuggestion } = await import("../search/statusTranslation");
+    
+    // Generate user-friendly status
+    const userStatus = translateSearchStatus(
+      search, 
+      args.leadCount, 
+      args.enrichedCount, 
+      args.analyzedCount
+    );
 
-    const message = args.message || `Search status updated: ${args.status}`;
-    const title = `Search "${search.name}" Update`;
+    // Use calculated progress or fallback to weighted calculation
+    const progressPercent = args.progress ? 
+      calculateProgressPercentage(args.progress) : 
+      userStatus.progressPercent;
+
+    // Generate actionable next step
+    const nextAction = getNextActionSuggestion(userStatus, search);
+
+    const title = `${userStatus.stage}${progressPercent > 0 ? ` (${progressPercent}%)` : ''}`;
+    const message = args.message || userStatus.message;
 
     return await ctx.runMutation(internal.realtime.broadcaster.broadcastStatus, {
       userId: search.userId,
@@ -244,12 +262,16 @@ export const broadcastSearchStatus = internalMutation({
         searchId: args.searchId,
         searchName: search.name,
         status: args.status,
+        userStatus,
         progress: args.progress,
         progressPercent,
+        nextAction,
+        estimatedTimeRemaining: userStatus.estimatedTimeRemaining,
         timestamp: Date.now(),
       },
-      priority: args.priority || PRIORITY_LEVELS.NORMAL,
-      tags: ["search", "status"],
+      priority: args.priority || (userStatus.actionRequired ? PRIORITY_LEVELS.HIGH : PRIORITY_LEVELS.NORMAL),
+      tags: ["search", "status", userStatus.stage.toLowerCase().replace(/\s+/g, '_')],
+      requiresAck: userStatus.actionRequired,
     });
   },
 });

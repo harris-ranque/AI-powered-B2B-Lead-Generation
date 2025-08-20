@@ -1,4 +1,4 @@
-import { query, mutation } from "../_generated/server";
+import { query, mutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { getCurrentUser } from "../auth";
 import { ERROR_CODES } from "../lib/constants";
@@ -523,5 +523,19 @@ export const updatePlanLimits = mutation({
     });
 
     return { success: true };
+  },
+});
+
+// Internal query to get user by ID (for internal actions)
+export const getUserByIdInternal = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    return user;
   },
 });

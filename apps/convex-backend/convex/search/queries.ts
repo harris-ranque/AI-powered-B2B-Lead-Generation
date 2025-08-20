@@ -141,6 +141,31 @@ export const getSearchResults = query({
   },
 });
 
+// Get search by ID (alias for getSearchById)
+export const getSearch = query({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+
+    if (!user) {
+      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+    }
+
+    const search = await ctx.db.get(args.searchId);
+    
+    if (!search) {
+      throw createError("Search not found", ERROR_CODES.RESOURCE_NOT_FOUND, 404);
+    }
+
+    // Check if user owns this search
+    if (search.userId !== user._id) {
+      throw createError("Access denied", ERROR_CODES.FORBIDDEN, 403);
+    }
+
+    return search;
+  },
+});
+
 // Get search analytics
 export const getSearchAnalytics = query({
   args: { searchId: v.id("searches") },
@@ -509,7 +534,7 @@ export const getSearchStats = query({
 
     // Get total leads from completed searches
     const totalLeads = completedSearches.reduce((total, search) => 
-      total + (search.results?.totalResults || 0), 0
+      total + (search.results?.totalFound || 0), 0
     );
 
     // Calculate average completion time for completed searches

@@ -68,11 +68,11 @@ export const createBatchPlan = internalMutation({
     const config = BATCH_CONFIG[user.plan];
     
     // Adjust batch size based on system load
-    let adjustedBatchSize = config.maxBatchSize;
+    let adjustedBatchSize = config.maxBatchSize as number;
     if (systemLoad > SYSTEM_LOAD_THRESHOLDS.high) {
-      adjustedBatchSize = Math.floor(config.maxBatchSize * 0.5);
+      adjustedBatchSize = Math.floor((config.maxBatchSize as number) * 0.5);
     } else if (systemLoad > SYSTEM_LOAD_THRESHOLDS.medium) {
-      adjustedBatchSize = Math.floor(config.maxBatchSize * 0.75);
+      adjustedBatchSize = Math.floor((config.maxBatchSize as number) * 0.75);
     }
 
     // Calculate optimal batch configuration
@@ -153,7 +153,7 @@ export const processNextBatch = internalAction({
     const maxBatches = args.maxBatches || 1;
     
     // Get highest priority pending batches
-    const availableBatches = await ctx.runQuery(internal.search.batchProcessor.getPendingBatches, {
+    const availableBatches: any[] = await ctx.runQuery(internal.search.batchProcessor.getPendingBatches, {
       batchPlanId: args.batchPlanId,
       limit: maxBatches * 2, // Get more than needed for priority sorting
     });
@@ -163,14 +163,14 @@ export const processNextBatch = internalAction({
     }
 
     // Sort by priority and take only what we can process
-    const batchesToProcess = availableBatches
+    const batchesToProcess: any[] = availableBatches
       .sort((a: any, b: any) => (b.priorityScore || 0) - (a.priorityScore || 0))
       .slice(0, maxBatches);
 
     let processed = 0;
-    const results = [];
+    const results: any[] = [];
 
-    for (const batch of batchesToProcess) {
+    for (const batch: any of batchesToProcess) {
       try {
         // Check if we can start this batch (respect concurrency limits)
         const canStart = await ctx.runMutation(internal.search.batchProcessor.checkBatchConcurrency, {

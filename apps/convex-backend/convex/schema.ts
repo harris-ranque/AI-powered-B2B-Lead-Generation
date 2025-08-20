@@ -97,6 +97,7 @@ export default defineSchema({
     creditsRefunded: v.optional(v.number()),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
+    lastOrchestrationAt: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])
@@ -134,6 +135,7 @@ export default defineSchema({
       v.literal("pending"),
       v.literal("in_progress"),
       v.literal("completed"),
+      v.literal("completed_fallback"),
       v.literal("failed")
     ),
     
@@ -156,6 +158,9 @@ export default defineSchema({
         twitter: v.optional(v.string()),
         facebook: v.optional(v.string()),
       })),
+      // Fallback system tracking
+      fallbackUsed: v.optional(v.boolean()),
+      fallbackReason: v.optional(v.string()),
     })),
     
     // AI Analysis from CrewAI

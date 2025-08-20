@@ -1,0 +1,956 @@
+openapi: 3.0.3
+info:
+  title: 'Findymail API documentation'
+  description: "This documentation aims to provide all the information you need to work with our API.\n\n<b>Rate limit</b>: all endpoints have a concurrent rate limit of 300 simultaneous requests, unless stated otherwise."
+  version: 1.0.0
+servers:
+  -
+    url: 'https://app.findymail.com'
+paths:
+  /api/verify:
+    post:
+      summary: 'Verify an email for potential bounce'
+      operationId: verifyAnEmailForPotentialBounce
+      description: 'Uses one verifier credit on all attempted verification'
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: '{ "email": "john@example.com", "verified" : true, "provider": ''Google''}'
+        402:
+          description: 'Error : Not enough credits'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Not enough credits'
+                properties:
+                  error:
+                    type: string
+                    example: 'Not enough credits'
+        423:
+          description: 'Error : Subscription is paused'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Subscription is paused'
+                properties:
+                  error:
+                    type: string
+                    example: 'Subscription is paused'
+      tags:
+        - 'Email Verifier'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  description: 'Email to verify'
+                  example: jannie.reinger@example.com
+                  nullable: false
+              required:
+                - email
+  /api/lists:
+    get:
+      summary: 'Get the list of contact lists'
+      operationId: getTheListOfContactLists
+      description: ''
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  lists:
+                    -
+                      id: 1
+                      name: 'my list'
+                      created_at: '2022-08-23T16:46:43.000000Z'
+                      updated_at: '2022-08-23T16:46:43.000000Z'
+                      shared_with_team: false
+                      is_owner: true
+                properties:
+                  lists:
+                    type: array
+                    example:
+                      -
+                        id: 1
+                        name: 'my list'
+                        created_at: '2022-08-23T16:46:43.000000Z'
+                        updated_at: '2022-08-23T16:46:43.000000Z'
+                        shared_with_team: false
+                        is_owner: true
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        name:
+                          type: string
+                          example: 'my list'
+                        created_at:
+                          type: string
+                          example: '2022-08-23T16:46:43.000000Z'
+                        updated_at:
+                          type: string
+                          example: '2022-08-23T16:46:43.000000Z'
+                        shared_with_team:
+                          type: boolean
+                          example: false
+                        is_owner:
+                          type: boolean
+                          example: true
+      tags:
+        - Contacts
+    post:
+      summary: 'Create a new list'
+      operationId: createANewList
+      description: ''
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  list:
+                    id: 1
+                    name: 'new list'
+                    created_at: '2022-08-23T16:46:43.000000Z'
+                    updated_at: '2022-08-23T16:46:43.000000Z'
+                    shared_with_team: false
+                    is_owner: true
+                properties:
+                  list:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      name:
+                        type: string
+                        example: 'new list'
+                      created_at:
+                        type: string
+                        example: '2022-08-23T16:46:43.000000Z'
+                      updated_at:
+                        type: string
+                        example: '2022-08-23T16:46:43.000000Z'
+                      shared_with_team:
+                        type: boolean
+                        example: false
+                      is_owner:
+                        type: boolean
+                        example: true
+      tags:
+        - Contacts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'Name of the list'
+                  example: nam
+                  nullable: false
+              required:
+                - name
+  '/api/lists/{id}':
+    put:
+      summary: 'Update a contact list'
+      operationId: updateAContactList
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Contacts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'New name of the list'
+                  example: adipisci
+                  nullable: false
+                isShared:
+                  type: boolean
+                  description: 'Enable/disable list sharing with the team'
+                  example: false
+                  nullable: false
+              required:
+                - name
+                - isShared
+    delete:
+      summary: 'Delete a given list'
+      operationId: deleteAGivenList
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Contacts
+    parameters:
+      -
+        in: path
+        name: id
+        description: 'The ID of the list.'
+        example: 53
+        required: true
+        schema:
+          type: integer
+  '/api/contacts/get/{id}':
+    get:
+      summary: 'Get contacts saved'
+      operationId: getContactsSaved
+      description: ''
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n      \"draw\": 0,\n      \"recordsTotal\": 1,\n      \"recordsFiltered\": 1,\n      \"data\": [\n          {\n              \"id\": 1,\n              \"name\": \"John Doe\",\n              \"email\": \"john@company.com\",\n              \"linkedin_url\": \"https://linkedin.com/in/linkedin\",\n              \"company\": \"MyCompany\",\n              \"job_title\": \"CEO\"\n          },\n      ],\n}"
+      tags:
+        - Contacts
+    parameters:
+      -
+        in: path
+        name: id
+        description: 'Optional parameter. Get contacts from a specified list. If 0, no list used ("All contacts").'
+        required: true
+        schema:
+          type: integer
+        examples:
+          omitted:
+            summary: 'When the value is omitted'
+            value: ''
+          present:
+            summary: 'When the value is present'
+            value: 1
+  /api/search/name:
+    post:
+      summary: 'Find from name'
+      operationId: findFromName
+      description: "Find someone's email from name and website. Uses one finder credit if a verified email is found."
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  -
+                    description: Success
+                    type: object
+                    example:
+                      contact:
+                        name: 'John Doe'
+                        domain: website.com
+                        email: john@website.com
+                    properties:
+                      contact:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            example: 'John Doe'
+                          domain:
+                            type: string
+                            example: website.com
+                          email:
+                            type: string
+                            example: john@website.com
+                  -
+                    description: 'Webhook URL provided process asynchronous'
+                    type: object
+                    example:
+                      payload:
+                        contact:
+                          name: 'john doe'
+                          email: email@website.com
+                          domain: website.com
+                    properties:
+                      payload:
+                        type: object
+                        properties:
+                          contact:
+                            type: object
+                            properties:
+                              name:
+                                type: string
+                                example: 'john doe'
+                              email:
+                                type: string
+                                example: email@website.com
+                              domain:
+                                type: string
+                                example: website.com
+                        description: '(when using webhook_url) object POST method callback request triggered when webhook_url provided. See example response'
+        402:
+          description: 'Error : Not enough credits'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Not enough credits'
+                properties:
+                  error:
+                    type: string
+                    example: 'Not enough credits'
+        423:
+          description: 'Error : Subscription is paused'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Subscription is paused'
+                properties:
+                  error:
+                    type: string
+                    example: 'Subscription is paused'
+      tags:
+        - 'Email Finder'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: "Person's full name"
+                  example: 'John Doe'
+                  nullable: false
+                domain:
+                  type: string
+                  description: 'Email domain (best) or company name'
+                  example: website.com
+                  nullable: false
+                webhook_url:
+                  type: string
+                  description: 'Webhook URL that will receive the result as callback. If submitted, email search will happen in the background and notify this URL upon completion.'
+                  example: null
+                  nullable: false
+              required:
+                - name
+                - domain
+  /api/search/domain:
+    post:
+      summary: 'Find from domain'
+      operationId: findFromDomain
+      description: "Try finding a contact with a valid email at a given domain with a given role.\nA contact is only returned if we found a valid email.\n\nDue to the heavy processing involved (real-time search), this endpoint is limited to 5 concurrent requests (when used synchronously)\nand async jobs can take up to 24 hours to be processed depending on our workload (usually sooner)."
+      parameters: []
+      responses:
+        0:
+          description: 'Webhook URL provided process asynchronous'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  payload:
+                    contacts:
+                      -
+                        name: 'say my name'
+                        email: email@findymail.com
+                        domain: domain.com
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      contacts:
+                        type: array
+                        example:
+                          -
+                            name: 'say my name'
+                            email: email@findymail.com
+                            domain: domain.com
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                              example: 'say my name'
+                            email:
+                              type: string
+                              example: email@findymail.com
+                            domain:
+                              type: string
+                              example: domain.com
+                    description: '(when using webhook_url) object POST method callback request triggered when webhook_url provided. See example response'
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  contacts:
+                    -
+                      domain: website.com
+                      email: john@website.com
+                      name: 'john doe'
+                properties:
+                  contacts:
+                    type: array
+                    example:
+                      -
+                        domain: website.com
+                        email: john@website.com
+                        name: 'john doe'
+                    items:
+                      type: object
+                      properties:
+                        domain:
+                          type: string
+                          example: website.com
+                        email:
+                          type: string
+                          example: john@website.com
+                        name:
+                          type: string
+                          example: 'john doe'
+        402:
+          description: 'Error : Not enough credits'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Not enough credits'
+                properties:
+                  error:
+                    type: string
+                    example: 'Not enough credits'
+        423:
+          description: 'Error : Subscription is paused'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Subscription is paused'
+                properties:
+                  error:
+                    type: string
+                    example: 'Subscription is paused'
+      tags:
+        - 'Email Finder'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                domain:
+                  type: string
+                  description: 'Email domain'
+                  example: domain.com
+                  nullable: false
+                roles:
+                  type: array
+                  description: 'Target roles related to the given domain (max 3 roles)'
+                  example:
+                    - CEO
+                    - Founder
+                  items:
+                    type: string
+                webhook_url:
+                  type: string
+                  description: 'Webhook URL that will receive the result as callback. If submitted, search will happen in the background and notify this URL upon completion.'
+                  example: 'http://www.hegmann.com/nobis-omnis-consequatur-quis-labore-labore-pariatur.html'
+                  nullable: false
+              required:
+                - domain
+                - roles
+  /api/search/linkedin:
+    post:
+      summary: 'Find from Linkedin'
+      operationId: findFromLinkedin
+      description: "Find someone's email from a Linkedin URL. Uses one finder credit if a verified email is found.\n\nThis endpoint is limited to 30 concurrent requests (when used synchronously)"
+      parameters: []
+      responses:
+        0:
+          description: 'Webhook URL provided process asynchronous'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  payload:
+                    contact:
+                      name: 'john doe'
+                      email: email@website.com
+                      domain: website.com
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      contact:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            example: 'john doe'
+                          email:
+                            type: string
+                            example: email@website.com
+                          domain:
+                            type: string
+                            example: website.com
+                    description: '(when using webhook_url) object POST method callback request triggered when webhook_url provided. See example response'
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  contact:
+                    name: 'John Doe'
+                    domain: website.com
+                    email: john@website.com
+                properties:
+                  contact:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        example: 'John Doe'
+                      domain:
+                        type: string
+                        example: website.com
+                      email:
+                        type: string
+                        example: john@website.com
+        402:
+          description: 'Error : Not enough credits'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Not enough credits'
+                properties:
+                  error:
+                    type: string
+                    example: 'Not enough credits'
+        423:
+          description: 'Error : Subscription is paused'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Subscription is paused'
+                properties:
+                  error:
+                    type: string
+                    example: 'Subscription is paused'
+      tags:
+        - 'Email Finder'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                linkedin_url:
+                  type: string
+                  description: 'Person''s Linkedin URL. (can be full URL "https://linkedin.com/in/johndoe" or username only "johndoe")'
+                  example: 'https://linkedin.com/in/johndoe'
+                  nullable: false
+                webhook_url:
+                  type: string
+                  description: 'Webhook URL that will receive the result as callback. If submitted, email search will happen in the background and notify this URL upon completion.'
+                  example: null
+                  nullable: false
+              required:
+                - linkedin_url
+  /api/linkedin/profile:
+    post:
+      summary: 'Get Linkedin Profile'
+      operationId: getLinkedinProfile
+      description: "Get information from a Linkedin profile.\n\nThis endpoint uses 1 credit per request (warning: this uses a credit even if the profile does not exist. Please make sure the input is correct)\n\nThis endpoint does NOT return an email.\nTo find email from a Linkedin profile, please use \"Email Finder > Find from Linkedin\" instead."
+      parameters: []
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  linkedInId: '123'
+                  fullName: 'John Doe'
+                  username: johndoe
+                  headline: 'CEO at Example'
+                  jobTitle: CEO
+                  summary: Summary
+                  city: City
+                  region: Region
+                  country: Country
+                  companyLinkedinUrl: 'https://linkedin.com/company/example'
+                  companyName: Example
+                  companyWebsite: example.com
+                  isPremium: true
+                  isOpenProfile: true
+                  skills: []
+                  jobs:
+                    -
+                      jobTitle: CEO
+                      companyName: Example
+                      companyWebsite: 'https://linkedin.com/company/example'
+                      jobDescription: Description
+                      startDate: '2020-01-01'
+                      endDate: ''
+                    -
+                      jobTitle: CTO
+                      companyName: Example
+                      companyWebsite: 'https://linkedin.com/company/example'
+                      jobDescription: Description
+                      startDate: '2020-01-01'
+                      endDate: '2021-01-01'
+                properties:
+                  linkedInId:
+                    type: string
+                    example: '123'
+                  fullName:
+                    type: string
+                    example: 'John Doe'
+                  username:
+                    type: string
+                    example: johndoe
+                  headline:
+                    type: string
+                    example: 'CEO at Example'
+                  jobTitle:
+                    type: string
+                    example: CEO
+                  summary:
+                    type: string
+                    example: Summary
+                  city:
+                    type: string
+                    example: City
+                  region:
+                    type: string
+                    example: Region
+                  country:
+                    type: string
+                    example: Country
+                  companyLinkedinUrl:
+                    type: string
+                    example: 'https://linkedin.com/company/example'
+                  companyName:
+                    type: string
+                    example: Example
+                  companyWebsite:
+                    type: string
+                    example: example.com
+                  isPremium:
+                    type: boolean
+                    example: true
+                  isOpenProfile:
+                    type: boolean
+                    example: true
+                  skills:
+                    type: array
+                    example: []
+                  jobs:
+                    type: array
+                    example:
+                      -
+                        jobTitle: CEO
+                        companyName: Example
+                        companyWebsite: 'https://linkedin.com/company/example'
+                        jobDescription: Description
+                        startDate: '2020-01-01'
+                        endDate: ''
+                      -
+                        jobTitle: CTO
+                        companyName: Example
+                        companyWebsite: 'https://linkedin.com/company/example'
+                        jobDescription: Description
+                        startDate: '2020-01-01'
+                        endDate: '2021-01-01'
+                    items:
+                      type: object
+                      properties:
+                        jobTitle:
+                          type: string
+                          example: CEO
+                        companyName:
+                          type: string
+                          example: Example
+                        companyWebsite:
+                          type: string
+                          example: 'https://linkedin.com/company/example'
+                        jobDescription:
+                          type: string
+                          example: Description
+                        startDate:
+                          type: string
+                          example: '2020-01-01'
+                        endDate:
+                          type: string
+                          example: ''
+        402:
+          description: 'Error : Not enough credits'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Not enough credits'
+                properties:
+                  error:
+                    type: string
+                    example: 'Not enough credits'
+        423:
+          description: 'Error : Subscription is paused'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Subscription is paused'
+                properties:
+                  error:
+                    type: string
+                    example: 'Subscription is paused'
+      tags:
+        - Misc
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                linkedin_url:
+                  type: string
+                  description: 'Person''s Linkedin URL. (can be full URL "https://linkedin.com/in/johndoe" or username only "johndoe")'
+                  example: 'https://linkedin.com/in/johndoe'
+                  nullable: false
+              required:
+                - linkedin_url
+  /api/search/employees:
+    post:
+      summary: 'Find Employees'
+      operationId: findEmployees
+      description: "Find one or more employees using the company website and job title.\n\nThis endpoint uses 1 credit per found contact.\n\nThis endpoint does NOT return an email."
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                example:
+                  -
+                    name: 'John Done'
+                    linkedinUrl: 'https://www.linkedin.com/in/john-doe/'
+                    companyWebsite: 'https://www.findymail.com'
+                    companyName: Findymail
+                    jobTitle: 'Software Engineer'
+        402:
+          description: 'Error : Not enough credits'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Not enough credits'
+                properties:
+                  error:
+                    type: string
+                    example: 'Not enough credits'
+        423:
+          description: 'Error : Subscription is paused'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Subscription is paused'
+                properties:
+                  error:
+                    type: string
+                    example: 'Subscription is paused'
+      tags:
+        - Misc
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                website:
+                  type: string
+                  description: 'company website'
+                  example: google.com
+                  nullable: false
+                job_titles:
+                  type: array
+                  description: 'target job titles (max 10)'
+                  example:
+                    - 'Software Engineer'
+                    - CEO
+                  items:
+                    type: string
+                count:
+                  type: integer
+                  description: 'Number of contacts to return (max 5). Default 1.'
+                  example: 2
+                  nullable: false
+              required:
+                - website
+                - job_titles
+  /api/search/phone:
+    post:
+      summary: 'Find phone'
+      operationId: findPhone
+      description: "Find someone's phone number from a Linkedin URL. Uses 10 finder credits if a phone is found.\n\nFor legal reasons, requests for EU citizens will not return any result."
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  phone: '+1234567890'
+                properties:
+                  phone:
+                    type: string
+                    example: '+1234567890'
+        402:
+          description: 'Error : Not enough credits'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Not enough credits'
+                properties:
+                  error:
+                    type: string
+                    example: 'Not enough credits'
+        423:
+          description: 'Error : Subscription is paused'
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Subscription is paused'
+                properties:
+                  error:
+                    type: string
+                    example: 'Subscription is paused'
+      tags:
+        - 'Phone Finder'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                linkedin_url:
+                  type: string
+                  description: 'Person''s Linkedin URL. (can be full URL "https://linkedin.com/in/johndoe" or username only "johndoe")'
+                  example: 'https://linkedin.com/in/johndoe'
+                  nullable: false
+              required:
+                - linkedin_url
+  /api/credits:
+    get:
+      summary: 'Get remaining credits'
+      operationId: getRemainingCredits
+      description: ''
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  credits: 150
+                  verifier_credits: 100
+                properties:
+                  credits:
+                    type: integer
+                    example: 150
+                  verifier_credits:
+                    type: integer
+                    example: 100
+      tags:
+        - User
+tags:
+  -
+    name: 'Email Verifier'
+    description: ''
+  -
+    name: Contacts
+    description: ''
+  -
+    name: 'Email Finder'
+    description: ''
+  -
+    name: Misc
+    description: ''
+  -
+    name: 'Phone Finder'
+    description: ''
+  -
+    name: User
+    description: ''
+components:
+  securitySchemes:
+    default:
+      type: http
+      scheme: bearer
+      description: 'You can retrieve your token by visiting <a href="/user/api-tokens">API page</a>.'
+security:
+  -
+    default: []

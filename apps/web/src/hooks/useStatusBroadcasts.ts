@@ -33,12 +33,12 @@ export interface StatusBroadcast {
  * Integrates with the enterprise broadcasting system for live updates
  */
 export function useStatusBroadcasts() {
-  const broadcasts = useQuery(api.realtime.broadcaster.getUserBroadcasts, {
+  const broadcasts = useQuery(api.realtime.queries.getUserBroadcasts, {
     includeDelivered: false,
     limit: 20,
   });
 
-  const acknowledgeAction = useMutation(api.realtime.broadcaster.acknowledgeBroadcast);
+  const acknowledgeAction = useMutation(api.realtime.mutations.acknowledgeBroadcast);
 
   useEffect(() => {
     if (broadcasts) {
@@ -53,7 +53,7 @@ export function useStatusBroadcasts() {
   const acknowledgeBroadcast = useCallback(async (broadcastId: Id<"statusBroadcasts">) => {
     logger.info('Acknowledging broadcast', { broadcastId });
     return timeOperation('acknowledgeBroadcast', () => 
-      acknowledgeAction({ broadcastId, userId: "placeholder" as Id<"users"> })
+      acknowledgeAction({ broadcastId })
     );
   }, [acknowledgeAction]);
 

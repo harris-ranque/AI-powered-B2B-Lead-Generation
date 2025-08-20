@@ -183,7 +183,7 @@ export function EnhancedLeadSearch({
       // Convert local search params to Convex format
       const convexSearchParams: ConvexSearchParams = {
         location: searchParams.location,
-        radius: searchParams.radius,
+        radius: searchParams.radius * 1000, // Convert km to meters for Google Maps API
         keywords: [searchParams.industry],
         industries: [searchParams.industry],
         maxResults: searchParams.leadsCount,
@@ -291,6 +291,8 @@ export function EnhancedLeadSearch({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="5">5 leads</SelectItem>
+              <SelectItem value="10">10 leads</SelectItem>
               <SelectItem value="25">25 leads</SelectItem>
               <SelectItem value="50">50 leads</SelectItem>
               <SelectItem value="100">100 leads</SelectItem>

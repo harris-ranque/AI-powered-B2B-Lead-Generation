@@ -44,7 +44,7 @@ export const getUserRequests = query({
 
 // Get a specific CrewAI request
 export const getRequest = query({
-  args: { requestId: v.id("langgraphRequests") },
+  args: { requestId: v.string() },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
 
@@ -52,7 +52,10 @@ export const getRequest = query({
       throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
     }
 
-    const request = await ctx.db.get(args.requestId);
+    const request = await ctx.db
+      .query("langgraphRequests")
+      .withIndex("by_request_id", (q) => q.eq("requestId", args.requestId))
+      .unique();
 
     if (!request) {
       throw createError("Request not found", ERROR_CODES.RESOURCE_NOT_FOUND, 404);

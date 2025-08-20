@@ -152,19 +152,19 @@ export const getAdaptiveRecommendations = internalQuery({
         if (!operationStats[record.operation]) {
           operationStats[record.operation] = { requests: 0, violations: 0, avgDaily: 0 };
         }
-        operationStats[record.operation].requests += record.requestCount;
+        operationStats[record.operation]!.requests += record.requestCount;
       }
 
       for (const violation of violations) {
         if (!operationStats[violation.operation]) {
           operationStats[violation.operation] = { requests: 0, violations: 0, avgDaily: 0 };
         }
-        operationStats[violation.operation].violations++;
+        operationStats[violation.operation]!.violations++;
       }
 
       // Calculate average daily usage
       for (const op in operationStats) {
-        operationStats[op].avgDaily = operationStats[op].requests / lookbackDays;
+        operationStats[op]!.avgDaily = operationStats[op]!.requests / lookbackDays;
       }
 
       // Generate recommendations

@@ -1,6 +1,7 @@
 import { GenericMutationCtx, GenericActionCtx } from "convex/server";
 import { DataModel } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
+import { Id } from "../_generated/dataModel";
 
 /**
  * Real-time Broadcasting Integration Helpers
@@ -12,7 +13,7 @@ import { internal } from "../_generated/api";
 // Helper to broadcast search status from any context
 export async function broadcastSearchUpdate(
   ctx: GenericMutationCtx<DataModel> | GenericActionCtx<DataModel>,
-  searchId: string,
+  searchId: Id<"searches">,
   status: string,
   message?: string,
   additionalData?: any
@@ -103,7 +104,7 @@ export async function broadcastBatchUpdate(
 // Helper to broadcast lead discovery updates
 export async function broadcastLeadUpdate(
   ctx: GenericMutationCtx<DataModel> | GenericActionCtx<DataModel>,
-  searchId: string,
+  searchId: Id<"searches">,
   type: "discovered" | "enriched",
   count: number,
   total?: number

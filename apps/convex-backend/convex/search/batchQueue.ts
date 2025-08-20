@@ -202,16 +202,16 @@ export const getPendingBatchPlans = internalQuery({
     
     let plans = await ctx.db
       .query("batchPlans")
-      .withIndex("by_status", (q) => q.eq("status", "pending"))
+      .withIndex("by_status", (q: any) => q.eq("status", "pending"))
       .take(limit * 2); // Get more than needed for priority sorting
 
     // Filter by priority if requested
     if (args.priorityOnly) {
-      plans = plans.filter(plan => plan.priorityScore >= 2.0); // Only pro+ users
+      plans = plans.filter((plan: any) => plan.priorityScore >= 2.0); // Only pro+ users
     }
 
     // Sort by priority score (higher is better)
-    plans.sort((a, b) => b.priorityScore - a.priorityScore);
+    plans.sort((a: any, b: any) => b.priorityScore - a.priorityScore);
 
     return plans.slice(0, limit);
   },

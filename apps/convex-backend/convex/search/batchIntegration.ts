@@ -11,7 +11,7 @@ import { STATUS } from "../lib/constants";
  */
 
 // Enhanced search creation with automatic batch processing
-export const createSearchWithBatchProcessing = internalAction({
+export const createSearchWithBatchProcessing: any = internalAction({
   args: {
     searchId: v.id("searches"),
   },
@@ -39,7 +39,7 @@ export const createSearchWithBatchProcessing = internalAction({
       console.log(`Creating batch processing plan for search ${args.searchId} (${search.parameters.maxResults} results)`);
       
       // Create batch processing plan
-      const batchPlan = await ctx.runMutation(internal.search.batchProcessor.createBatchPlan, {
+      const batchPlan: any = await ctx.runMutation(internal.search.batchProcessor.createBatchPlan, {
         searchId: args.searchId,
         totalItems: search.parameters.maxResults,
         estimatedProcessingTime: estimateProcessingTime(search, user),
@@ -48,7 +48,7 @@ export const createSearchWithBatchProcessing = internalAction({
       // Update search status to indicate batch processing
       await ctx.runMutation(internal.search.internal.updateSearchStatus, {
         searchId: args.searchId,
-        status: "batch_processing" as any,
+        status: "batch_processing" as "pending" | "in_progress" | "completed" | "failed" | "cancelled",
       });
 
       return {
@@ -141,20 +141,20 @@ export const handleBatchPhaseCompletion = internalMutation({
     console.log(`Batch phase ${args.phase} completed for search ${search._id}`);
 
     // Determine next phase
-    let nextStatus: string;
+    let nextStatus: "pending" | "in_progress" | "completed" | "failed" | "cancelled";
     let shouldCreateNewBatchPlan = false;
 
     switch (args.phase) {
       case "discovery":
-        nextStatus = "enrichment_phase";
+        nextStatus = "in_progress"; // enrichment_phase
         shouldCreateNewBatchPlan = true;
         break;
       case "enrichment":
-        nextStatus = "analysis_phase";
+        nextStatus = "in_progress"; // analysis_phase
         shouldCreateNewBatchPlan = true;
         break;
       case "analysis":
-        nextStatus = STATUS.SEARCH.COMPLETED;
+        nextStatus = STATUS.SEARCH.COMPLETED as "completed";
         break;
       default:
         throw new Error(`Unknown phase: ${args.phase}`);
@@ -286,8 +286,8 @@ export const monitorBatchProgress = internalMutation({
 async function getLastBatchActivity(ctx: any, batchPlanId: string): Promise<number | null> {
   const recentBatches = await ctx.db
     .query("searchBatches")
-    .withIndex("by_batch_plan", (q) => q.eq("batchPlanId", batchPlanId))
-    .filter((q) => 
+    .withIndex("by_batch_plan", (q: any) => q.eq("batchPlanId", batchPlanId))
+    .filter((q: any) => 
       q.or(
         q.neq(q.field("startedAt"), undefined),
         q.neq(q.field("completedAt"), undefined)
@@ -309,8 +309,8 @@ async function recoverStalledBatches(ctx: any, batchPlanId: string): Promise<voi
   // Reset processing batches that have been stuck
   const stalledBatches = await ctx.db
     .query("searchBatches")
-    .withIndex("by_batch_plan", (q) => q.eq("batchPlanId", batchPlanId))
-    .filter((q) => q.eq(q.field("status"), "processing"))
+    .withIndex("by_batch_plan", (q: any) => q.eq("batchPlanId", batchPlanId))
+    .filter((q: any) => q.eq(q.field("status"), "processing"))
     .collect();
 
   const now = Date.now();

@@ -38,6 +38,47 @@ export const orchestrateSearchPipeline = internalMutation({
       return { success: false, error: "Search not found" };
     }
 
+    // Prevent spam by checking if search is in a terminal state
+    if (search.status === "completed" || search.status === "failed" || search.status === "cancelled") {
+      await logWithCorrelationPersistent(ctx, 'debug', 
+        { correlationId: args.correlationId || "none", operationType: OPERATION_TYPES.SEARCH_ORCHESTRATE, userId: search.userId, searchId: args.searchId, createdAt: Date.now() },
+        `Search ${args.searchId} is in terminal state (${search.status}), skipping orchestration`
+      );
+      return { success: true, message: `Search already in terminal state: ${search.status}` };
+    }
+
+    // Prevent orchestration loops with atomic lock mechanism
+    const now = Date.now();
+    const lastOrchestration = search.lastOrchestrationAt || 0;
+    const orchestrationCooldown = 15000; // Reduced to 15 seconds for better responsiveness
+    
+    if (now - lastOrchestration < orchestrationCooldown) {
+      await logWithCorrelationPersistent(ctx, 'debug',
+        { correlationId: args.correlationId || "none", operationType: OPERATION_TYPES.SEARCH_ORCHESTRATE, userId: search.userId, searchId: args.searchId, createdAt: Date.now() },
+        `Orchestration cooldown active for search ${args.searchId}, skipping (last: ${lastOrchestration}, now: ${now})`
+      );
+      return { success: true, message: "Orchestration in cooldown period" };
+    }
+
+    // Generate unique orchestration ID for atomic locking
+    const orchestrationId = crypto.randomUUID();
+    
+    // Atomic update with orchestration lock to prevent race conditions
+    try {
+      await ctx.db.patch(args.searchId, {
+        lastOrchestrationAt: now,
+        orchestrationLock: orchestrationId,
+        orchestrationLockExpiry: now + 300000, // 5 minute lock expiry
+      });
+    } catch (error) {
+      // If patch fails due to concurrent modification, another orchestration is running
+      await logWithCorrelationPersistent(ctx, 'debug',
+        { correlationId: args.correlationId || "none", operationType: OPERATION_TYPES.SEARCH_ORCHESTRATE, userId: search.userId, searchId: args.searchId, createdAt: Date.now() },
+        `Concurrent orchestration detected for search ${args.searchId}, aborting this instance`
+      );
+      return { success: true, message: "Concurrent orchestration in progress" };
+    }
+
     // Create correlation context for this orchestration
     const correlation = args.correlationId 
       ? createChildContext(
@@ -67,9 +108,9 @@ export const orchestrateSearchPipeline = internalMutation({
           break;
 
         case STATUS.SEARCH.IN_PROGRESS:
-          // Check if discoveries are complete, trigger enrichment
-          const discoveryComplete = await checkDiscoveryComplete(ctx, args.searchId);
-          if (discoveryComplete) {
+                  // Check if discoveries are complete, trigger enrichment
+          const discoveryResult = await checkDiscoveryComplete(ctx, args.searchId);
+          if (discoveryResult.isComplete) {
             await logWithCorrelationPersistent(ctx, 'info', correlation, 'Discovery complete, triggering enrichment phase');
             await ctx.scheduler.runAfter(0, internal.search.orchestrator.startEnrichmentPhase, {
               searchId: args.searchId,
@@ -77,6 +118,13 @@ export const orchestrateSearchPipeline = internalMutation({
             });
           } else {
             await logWithCorrelationPersistent(ctx, 'debug', correlation, 'Discovery still in progress, waiting for completion');
+            
+            // Send user warning if discovery is taking too long
+            if (discoveryResult.shouldWarnUser) {
+              await broadcastSearchUpdate(ctx, args.searchId, "discovery_delayed", 
+                `Your search is taking longer than expected. We're still finding leads - this may take up to ${Math.ceil(discoveryResult.timeRemaining / 60000)} more minutes.`
+              );
+            }
           }
           break;
 
@@ -87,17 +135,34 @@ export const orchestrateSearchPipeline = internalMutation({
       const perfData = endPerformanceTracking(perf);
       await logWithCorrelationPersistent(ctx, 'info', correlation, 'Orchestration completed successfully', { status: search.status }, undefined, perfData);
 
+      // Release orchestration lock on successful completion
+      await ctx.db.patch(args.searchId, {
+        orchestrationLock: null,
+        orchestrationLockExpiry: null,
+      });
+
       return { success: true, correlationId: correlation.correlationId };
 
     } catch (error) {
       const perfData = endPerformanceTracking(perf);
       await logWithCorrelationPersistent(ctx, 'error', correlation, 'Orchestration failed', { status: search.status }, error as Error, perfData);
       
-      // Update search status to failed
+      // Release orchestration lock on error
       await ctx.db.patch(args.searchId, {
+        orchestrationLock: null,
+        orchestrationLockExpiry: null,
         status: STATUS.SEARCH.FAILED,
         error: error instanceof Error ? error.message : "Orchestration failed",
         completedAt: Date.now(),
+      });
+
+      // Trigger enhanced error recovery
+      await ctx.runMutation(internal.search.errorRecovery.handleSearchError, {
+        searchId: args.searchId,
+        errorType: error instanceof Error ? error.name : "UNKNOWN",
+        errorMessage: error instanceof Error ? error.message : "Orchestration failed",
+        attemptCount: 1,
+        context: { phase: "orchestration", correlation: correlation.correlationId },
       });
 
       return { success: false, error: error instanceof Error ? error.message : "Unknown error", correlationId: correlation.correlationId };
@@ -152,13 +217,14 @@ export const startGoogleMapsDiscovery = internalAction({
         location: search.parameters.location,
         radius: search.parameters.radius,
         keywords: search.parameters.keywords,
+        userId: search.userId, // Pass userId for internal call authentication
       });
 
       const perfData = endPerformanceTracking(perf);
       await logWithCorrelationPersistent(ctx, 'info', correlation, 'Google Maps discovery completed successfully', undefined, undefined, perfData);
       
-      // Trigger next phase check
-      await ctx.runMutation(internal.search.orchestrator.orchestrateSearchPipeline, {
+      // Trigger next phase check with delay to prevent rapid cycling
+      await ctx.scheduler.runAfter(2000, internal.search.orchestrator.orchestrateSearchPipeline, {
         searchId: args.searchId,
         correlationId: correlation.correlationId,
       });
@@ -180,9 +246,27 @@ export const startGoogleMapsDiscovery = internalAction({
 export const startEnrichmentPhase = internalAction({
   args: {
     searchId: v.id("searches"),
+    parentCorrelationId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    console.log(`Starting enrichment phase for search: ${args.searchId}`);
+    const search = await ctx.runQuery(internal.search.internal.getSearchById, {
+      searchId: args.searchId,
+    });
+
+    if (!search) {
+      throw new Error("Search not found");
+    }
+
+    // Create correlation context for enrichment phase
+    const parentCorrelation = args.parentCorrelationId 
+      ? { correlationId: args.parentCorrelationId, operationType: OPERATION_TYPES.SEARCH_ORCHESTRATE, userId: search.userId, searchId: args.searchId, createdAt: Date.now() }
+      : undefined;
+    
+    const correlation = parentCorrelation 
+      ? createChildContext(parentCorrelation, OPERATION_TYPES.LEAD_ENRICHMENT, { searchId: args.searchId })
+      : createCorrelationContext(OPERATION_TYPES.LEAD_ENRICHMENT, search.userId, { searchId: args.searchId });
+
+    await logWithCorrelationPersistent(ctx, 'info', correlation, `Starting enrichment phase for search: ${args.searchId}`);
     
     try {
       // Get all leads for this search that need enrichment
@@ -191,16 +275,31 @@ export const startEnrichmentPhase = internalAction({
         limit: 50, // Process in batches
       });
 
+      // Also get count of leads already enriched (for logging purposes)
+      const totalLeads = await ctx.runQuery(internal.leads.internal.getLeadCount, {
+        searchId: args.searchId,
+      });
+
       if (pendingLeads.length === 0) {
-        console.log(`No leads need enrichment for search: ${args.searchId}`);
+        const alreadyEnrichedLeads = totalLeads - pendingLeads.length;
+        await logWithCorrelationPersistent(ctx, 'info', correlation, 
+          `No leads need enrichment for search: ${args.searchId}. Total leads: ${totalLeads}, skipping enrichment (${alreadyEnrichedLeads} leads already have emails or are completed)`
+        );
         await ctx.runMutation(internal.search.orchestrator.checkAnalysisPhase, {
           searchId: args.searchId,
         });
         return;
       }
 
-      console.log(`Starting enrichment for ${pendingLeads.length} leads`);
-      await broadcastSearchUpdate(ctx, args.searchId, "enrichment_phase", `Starting email enrichment for ${pendingLeads.length} leads`);
+      const leadsAlreadyWithEmails = totalLeads - pendingLeads.length;
+      
+      await logWithCorrelationPersistent(ctx, 'info', correlation, 
+        `Starting enrichment for ${pendingLeads.length} leads (${leadsAlreadyWithEmails} leads already have emails and will be skipped)`
+      );
+      
+      await broadcastSearchUpdate(ctx, args.searchId, "enrichment_phase", 
+        `Starting email enrichment for ${pendingLeads.length} leads${leadsAlreadyWithEmails > 0 ? ` (${leadsAlreadyWithEmails} already have emails)` : ''}`
+      );
       
       // Trigger immediate enrichment queue processing
       await ctx.runMutation(internal.leads.enrichment.processEnrichmentQueue, {
@@ -218,7 +317,7 @@ export const startEnrichmentPhase = internalAction({
       });
 
     } catch (error) {
-      console.error(`Enrichment phase failed for search ${args.searchId}:`, error);
+      await logWithCorrelationPersistent(ctx, 'error', correlation, `Enrichment phase failed for search ${args.searchId}`, undefined, error as Error);
       
       await ctx.runMutation(internal.search.internal.updateSearchStatus, {
         searchId: args.searchId,
@@ -278,15 +377,15 @@ export const startAnalysisPhase = internalAction({
       });
 
       if (enrichedLeads.length === 0) {
-        console.log(`No enriched leads need analysis for search: ${args.searchId}`);
+        console.log(`No enriched leads need analysis for search: ${args.searchId} (leads without emails are skipped)`);
         await ctx.runMutation(internal.search.orchestrator.completeSearch, {
           searchId: args.searchId,
         });
         return;
       }
 
-      console.log(`Starting AI analysis for ${enrichedLeads.length} leads`);
-      await broadcastSearchUpdate(ctx, args.searchId, "analysis_phase", `Starting AI analysis for ${enrichedLeads.length} leads`);
+      console.log(`Starting AI analysis for ${enrichedLeads.length} leads with email addresses`);
+      await broadcastSearchUpdate(ctx, args.searchId, "analysis_phase", `Starting AI analysis for ${enrichedLeads.length} leads with emails`);
 
       // Trigger bulk analysis for the leads
       for (const lead of enrichedLeads) {
@@ -434,12 +533,17 @@ export const completeSearch = internalMutation({
   },
 });
 
-// Helper function to check if discovery is complete
-async function checkDiscoveryComplete(ctx: any, searchId: string): Promise<boolean> {
+// Helper function to check if discovery is complete with user warning logic
+async function checkDiscoveryComplete(ctx: any, searchId: string): Promise<{
+  isComplete: boolean;
+  shouldWarnUser: boolean;
+  timeRemaining: number;
+  leadCount: number;
+}> {
   const search = await ctx.db.get(searchId);
   
   if (!search) {
-    return false;
+    return { isComplete: false, shouldWarnUser: false, timeRemaining: 0, leadCount: 0 };
   }
 
   // Check if we have discovered any leads
@@ -447,12 +551,33 @@ async function checkDiscoveryComplete(ctx: any, searchId: string): Promise<boole
     searchId,
   });
 
-  // Discovery is considered complete if we have leads or if enough time has passed
-  const hasLeads = leadCount > 0;
   const timeSinceStart = Date.now() - search.createdAt;
   const maxDiscoveryTime = 5 * 60 * 1000; // 5 minutes
+  const warningThreshold = 2 * 60 * 1000; // Warn after 2 minutes
+  const timeRemaining = maxDiscoveryTime - timeSinceStart;
 
-  return hasLeads || timeSinceStart > maxDiscoveryTime;
+  // Discovery is complete if we have leads or if enough time has passed
+  const hasLeads = leadCount > 0;
+  const timeExpired = timeSinceStart > maxDiscoveryTime;
+  const isComplete = hasLeads || timeExpired;
+
+  // Should warn user if discovery is taking longer than 2 minutes and still in progress
+  const shouldWarnUser = !isComplete && timeSinceStart > warningThreshold && 
+    !(search.lastWarningAt && (Date.now() - search.lastWarningAt) < 60000); // Don't spam warnings
+
+  // Update last warning time if we're sending a warning
+  if (shouldWarnUser) {
+    await ctx.db.patch(searchId, {
+      lastWarningAt: Date.now(),
+    });
+  }
+
+  return { 
+    isComplete, 
+    shouldWarnUser, 
+    timeRemaining: Math.max(0, timeRemaining),
+    leadCount 
+  };
 }
 
 // Manual trigger for stuck searches
@@ -493,16 +618,24 @@ export const processPriorityQueues = internalMutation({
       let processedSearches = 0;
 
       for (const search of activeSearches) {
-        // Check if this search has been idle for more than 2 minutes
-        const lastUpdate = search.completedAt || search.startedAt || search.createdAt;
-        const idleTime = Date.now() - lastUpdate;
-        
-        if (idleTime > 2 * 60 * 1000) { // 2 minutes
-          // Trigger orchestration to check pipeline status
-          await ctx.scheduler.runAfter(0, internal.search.orchestrator.orchestrateSearchPipeline, {
-            searchId: search._id,
-          });
-          processedSearches++;
+        try {
+          // Check if this search has been idle for more than 2 minutes
+          const lastUpdate = search.completedAt || search.startedAt || search.createdAt;
+          const lastOrchestration = search.lastOrchestrationAt || 0;
+          const idleTime = Date.now() - lastUpdate;
+          const orchestrationGap = Date.now() - lastOrchestration;
+          
+          // Only trigger if idle for >2 minutes AND no orchestration in last 30 seconds
+          if (idleTime > 2 * 60 * 1000 && orchestrationGap > 30 * 1000) {
+            // Trigger orchestration to check pipeline status
+            await ctx.scheduler.runAfter(0, internal.search.orchestrator.orchestrateSearchPipeline, {
+              searchId: search._id,
+            });
+            processedSearches++;
+          }
+        } catch (error) {
+          console.error(`Error processing search ${search._id} in priority queue:`, error);
+          // Continue with other searches even if one fails
         }
       }
 

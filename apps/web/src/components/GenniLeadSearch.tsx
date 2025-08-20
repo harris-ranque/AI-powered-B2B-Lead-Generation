@@ -52,18 +52,18 @@ export function GenniLeadSearch({ searchId, onGenerateEmail }: LeadSearchProps) 
   // Convert Convex leads to expected Lead format
   const searchResults = leads?.map(lead => ({
     id: lead._id,
-    company_name: lead.companyName,
-    contact_name: lead.contactName || '',
-    title: lead.title || '',
-    industry: lead.industry || '',
-    company_size: lead.companySize || '',
-    location: lead.location || '',
+    company_name: lead.businessName || '',
+    contact_name: lead.contactInfo?.contacts?.[0]?.name || '',
+    title: lead.contactInfo?.contacts?.[0]?.title || '',
+    industry: lead.category || '',
+    company_size: '', // Not available in current schema
+    location: lead.location?.formattedAddress || lead.address || '',
     description: lead.description || '',
     website: lead.website || '',
     contact_info: {
-      email: lead.email || '',
+      email: lead.contactInfo?.emails?.[0]?.email || '',
       phone: lead.phone || '',
-      linkedin: lead.linkedinUrl || ''
+      linkedin: lead.contactInfo?.socialProfiles?.linkedin || ''
     },
     status: lead.status,
     technologies: lead.technologies || [],
@@ -79,17 +79,17 @@ export function GenniLeadSearch({ searchId, onGenerateEmail }: LeadSearchProps) 
       searchId 
     });
     const csvContent = [
-      ['Company Name', 'Contact Name', 'Title', 'Email', 'Phone', 'Location', 'Industry', 'Company Size', 'Website'],
+      ['Company Name', 'Domain', 'Phone', 'Contact Name', 'Title', 'Email', 'Location', 'Industry', 'Status'],
       ...searchResults.map(result => [
         result.company_name,
+        result.website ? result.website.replace(/^https?:\/\//, '').replace(/\/$/, '') : '',
+        result.contact_info?.phone || '',
         result.contact_name || '',
         result.title || '',
         result.contact_info?.email || '',
-        result.contact_info?.phone || '',
         result.location || '',
         result.industry || '',
-        result.company_size || '',
-        result.website || ''
+        result.status || ''
       ])
     ].map(row => row.join(',')).join('\n');
 
@@ -154,11 +154,12 @@ export function GenniLeadSearch({ searchId, onGenerateEmail }: LeadSearchProps) 
                   <TableHeader>
                     <TableRow>
                       <TableHead>Company</TableHead>
+                      <TableHead>Domain</TableHead>
+                      <TableHead>Phone</TableHead>
                       <TableHead>Contact</TableHead>
                       <TableHead>Title</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Location</TableHead>
-                      <TableHead>Company Size</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
@@ -172,16 +173,33 @@ export function GenniLeadSearch({ searchId, onGenerateEmail }: LeadSearchProps) 
                             <div className="text-xs text-muted-foreground">{result.industry}</div>
                           </div>
                         </TableCell>
-                        <TableCell>{result.contact_name}</TableCell>
-                        <TableCell>{result.title}</TableCell>
                         <TableCell>
-                          <div className="text-sm">
-                            <div>{result.contact_info?.email}</div>
-                            <div className="text-xs text-muted-foreground">{result.contact_info?.phone}</div>
+                          {result.website ? (
+                            <a 
+                              href={result.website.startsWith('http') ? result.website : `https://${result.website}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800 hover:underline text-sm"
+                            >
+                              {result.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {result.contact_info?.phone || <span className="text-muted-foreground">-</span>}
+                        </TableCell>
+                        <TableCell>{result.contact_name || <span className="text-muted-foreground">-</span>}</TableCell>
+                        <TableCell>{result.title || <span className="text-muted-foreground">-</span>}</TableCell>
+                        <TableCell>
+                          {result.contact_info?.email || <span className="text-muted-foreground">-</span>}
+                        </TableCell>
+                        <TableCell className="max-w-[200px]">
+                          <div className="truncate" title={result.location}>
+                            {result.location}
                           </div>
                         </TableCell>
-                        <TableCell>{result.location}</TableCell>
-                        <TableCell>{result.company_size}</TableCell>
                         <TableCell>
                           <Badge variant="secondary" className="bg-green-100 text-green-800">
                             {result.status}

@@ -377,33 +377,45 @@ export const getRateLimitAnalytics = internalQuery({
       end: now,
     };
 
-    // Build query based on user filter
-    let recordsQuery = ctx.db.query("rateLimitRecords");
-    let violationsQuery = ctx.db.query("rateLimitViolations");
+    // Get records and violations with optional user filtering
+    const records = args.userId 
+      ? await ctx.db.query("rateLimitRecords")
+          .withIndex("by_user_operation", (q) => q.eq("userId", args.userId!))
+          .filter((q) => 
+            q.and(
+              q.gte(q.field("timestamp"), timeRange.start),
+              q.lte(q.field("timestamp"), timeRange.end)
+            )
+          )
+          .collect()
+      : await ctx.db.query("rateLimitRecords")
+          .filter((q) => 
+            q.and(
+              q.gte(q.field("timestamp"), timeRange.start),
+              q.lte(q.field("timestamp"), timeRange.end)
+            )
+          )
+          .collect();
 
-    if (args.userId) {
-      recordsQuery = recordsQuery.withIndex("by_user_operation", (q) => q.eq("userId", args.userId));
-      violationsQuery = violationsQuery.withIndex("by_user", (q) => q.eq("userId", args.userId));
-    }
+    const violations = args.userId
+      ? await ctx.db.query("rateLimitViolations")
+          .withIndex("by_user", (q) => q.eq("userId", args.userId!))
+          .filter((q) => 
+            q.and(
+              q.gte(q.field("timestamp"), timeRange.start),
+              q.lte(q.field("timestamp"), timeRange.end)
+            )
+          )
+          .collect()
+      : await ctx.db.query("rateLimitViolations")
+          .filter((q) => 
+            q.and(
+              q.gte(q.field("timestamp"), timeRange.start),
+              q.lte(q.field("timestamp"), timeRange.end)
+            )
+          )
+          .collect();
 
-    // Filter by time range
-    const records = await recordsQuery
-      .filter((q) => 
-        q.and(
-          q.gte(q.field("timestamp"), timeRange.start),
-          q.lte(q.field("timestamp"), timeRange.end)
-        )
-      )
-      .collect();
-
-    const violations = await violationsQuery
-      .filter((q) => 
-        q.and(
-          q.gte(q.field("timestamp"), timeRange.start),
-          q.lte(q.field("timestamp"), timeRange.end)
-        )
-      )
-      .collect();
 
     // Aggregate statistics
     const stats = {
@@ -470,14 +482,14 @@ export const getRateLimitAnalytics = internalQuery({
         if (!userStats[record.userId]) {
           userStats[record.userId] = { requests: 0, violations: 0 };
         }
-        userStats[record.userId].requests += record.requestCount;
+        userStats[record.userId]!.requests += record.requestCount;
       }
 
       for (const violation of violations) {
         if (!userStats[violation.userId]) {
           userStats[violation.userId] = { requests: 0, violations: 0 };
         }
-        userStats[violation.userId].violations++;
+        userStats[violation.userId]!.violations++;
       }
 
       // Sort by total activity

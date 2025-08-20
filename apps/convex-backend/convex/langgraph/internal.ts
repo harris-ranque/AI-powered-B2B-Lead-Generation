@@ -85,3 +85,48 @@ export const processAnalysisQueue = internalMutation({
     }
   },
 });
+
+// Update request status
+export const updateRequestStatus = internalMutation({
+  args: {
+    requestId: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    outputData: v.optional(v.any()),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const request = await ctx.db
+      .query("langgraphRequests")
+      .withIndex("by_request_id", (q) => q.eq("requestId", args.requestId))
+      .unique();
+
+    if (!request) {
+      throw new Error(`Request ${args.requestId} not found`);
+    }
+
+    const updateData: any = {
+      status: args.status,
+    };
+
+    if (args.outputData !== undefined) {
+      updateData.outputData = args.outputData;
+    }
+
+    if (args.error !== undefined) {
+      updateData.error = args.error;
+    }
+
+    if (args.status === "completed" || args.status === "failed") {
+      updateData.completedAt = Date.now();
+    }
+
+    await ctx.db.patch(request._id, updateData);
+
+    return request._id;
+  },
+});

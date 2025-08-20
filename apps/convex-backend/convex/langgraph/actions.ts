@@ -1,4 +1,4 @@
-import { action } from "../_generated/server";
+import { action, internalAction } from "../_generated/server";
 import { v } from "convex/values";
 import { getCurrentUser } from "../auth";
 import { API_CONFIG, ERROR_CODES, CREDIT_COSTS } from "../lib/constants";
@@ -95,8 +95,10 @@ export const generateEmail = action({
         creditsUsed: CREDIT_COSTS.EMAIL_GENERATION,
       });
 
-      // Prepare payload for LangGraph worker
+      // Prepare payload for LangGraph worker with flat structure (API expects top-level fields)
       const payload = {
+        id: lead._id,
+        company_name: lead.businessName,
         request_id: requestId,
         lead: {
           id: lead._id,
@@ -167,8 +169,10 @@ export const generateEmail = action({
       });
 
       // Deduct credits immediately for processing request
-      await ctx.runMutation(internal.users.mutations.deductCredits, {
-        amount: CREDIT_COSTS.EMAIL_GENERATION,
+      await ctx.runMutation(internal.credits.transactions.createCreditTransaction, {
+        userId: lead.userId,
+        type: "usage",
+        amount: -CREDIT_COSTS.EMAIL_GENERATION,
         description: `Email generation for ${lead.businessName}`,
         relatedEntity: {
           type: "crewai_request",
@@ -206,15 +210,27 @@ export const generateEmail = action({
 });
 
 // Analyze lead relevance and fit
-export const analyzeLead = action({
+export const analyzeLead = internalAction({
   args: {
     leadId: v.id("leads"),
   },
   handler: async (ctx, args) => {
-    const user = await getCurrentUser(ctx);
+    // Get lead and extract user information from the lead record
+    const lead = await ctx.runQuery(internal.leads.internal.getLeadForProcessing, {
+      leadId: args.leadId,
+    });
+
+    if (!lead) {
+      throw createError("Lead not found", ERROR_CODES.LEAD_NOT_FOUND, 404);
+    }
+
+    // Get user information from the lead via internal query
+    const user = await ctx.runQuery(internal.users.admin.getUserByIdInternal, {
+      userId: lead.userId,
+    });
 
     if (!user) {
-      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+      throw createError("User not found", ERROR_CODES.USER_NOT_FOUND, 404);
     }
 
     if (!hasCredits(user, CREDIT_COSTS.AI_ANALYSIS)) {
@@ -225,18 +241,9 @@ export const analyzeLead = action({
       );
     }
 
-    // Get lead and verify ownership
-    const lead = await ctx.runQuery(internal.leads.internal.getLeadForProcessing, {
-      leadId: args.leadId,
-    });
-
-    if (!lead || lead.userId !== user._id) {
-      throw createError("Lead not found or access denied", ERROR_CODES.FORBIDDEN, 403);
-    }
-
     // Get business profile
     const profile = await ctx.runQuery(internal.profile.queries.getProfileByUserId, {
-      userId: user._id,
+      userId: lead.userId,
     });
     if (!profile) {
       throw createError("Business profile required for analysis", ERROR_CODES.VALIDATION_ERROR, 400);
@@ -264,28 +271,62 @@ export const analyzeLead = action({
         creditsUsed: CREDIT_COSTS.AI_ANALYSIS,
       });
 
-      // Prepare payload for LangGraph worker
+      // Prepare payload for LangGraph worker with flat structure (API expects top-level fields)
       const payload = {
+        id: lead._id,
+        company_name: lead.businessName || "Unknown Company",
         request_id: requestId,
         lead: {
           id: lead._id,
-          company_name: lead.businessName,
-          industry: lead.category,
-          location: lead.location.formattedAddress,
-          description: `${lead.businessName} - ${lead.category || 'Business'}`,
-          website: lead.website,
-          rating: lead.rating,
-          review_count: lead.reviewCount,
+          company_name: lead.businessName || "Unknown Company",
+          industry: lead.category || "General Business",
+          location: lead.location?.formattedAddress || "Location not available",
+          description: `${lead.businessName || "Unknown Company"} - ${lead.category || 'Business'}`,
+          website: lead.website || null,
+          rating: typeof lead.rating === 'number' ? lead.rating : null,
+          review_count: typeof lead.reviewCount === 'number' ? lead.reviewCount : null,
+          // Add additional fields that LangGraph might expect
+          phone: lead.phone || null,
+          address: lead.address || lead.location?.formattedAddress || null,
+          place_id: lead.placeId || null,
         },
         business_profile: {
-          company_name: profile.companyName,
-          industry: profile.industry,
-          value_proposition: profile.valueProposition,
-          services: profile.services,
-          target_markets: profile.targetMarkets,
-          key_differentiators: profile.keyDifferentiators,
+          company_name: profile.companyName || "Company",
+          industry: profile.industry || "General",
+          value_proposition: profile.valueProposition || "",
+          services: Array.isArray(profile.services) ? profile.services : [],
+          target_markets: Array.isArray(profile.targetMarkets) ? profile.targetMarkets : [],
+          key_differentiators: Array.isArray(profile.keyDifferentiators) ? profile.keyDifferentiators : [],
+          // Ensure all required profile fields are present
+          contact_info: profile.contactInfo || {},
         },
       };
+
+      // Validate payload before sending to LangGraph
+      if (!payload.company_name || payload.company_name === "Unknown Company") {
+        console.warn(`Lead ${lead._id} has missing or invalid business name: ${lead.businessName}`);
+      }
+      
+      if (!payload.lead.location || payload.lead.location === "Location not available") {
+        console.warn(`Lead ${lead._id} has missing or invalid location: ${lead.location?.formattedAddress}`);
+      }
+      
+      if (!payload.business_profile.value_proposition) {
+        console.warn(`Business profile for user ${user._id} has empty value proposition`);
+      }
+
+      console.log(`Sending LangGraph analysis request for lead ${lead._id}:`, {
+        topLevelId: payload.id,
+        topLevelCompanyName: payload.company_name,
+        leadCompany: payload.lead.company_name,
+        leadIndustry: payload.lead.industry,
+        leadLocation: payload.lead.location,
+        hasWebsite: !!payload.lead.website,
+        hasRating: payload.lead.rating !== null,
+        profileCompany: payload.business_profile.company_name,
+        profileIndustry: payload.business_profile.industry,
+        servicesCount: payload.business_profile.services.length,
+      });
 
       // Send request to LangGraph worker with enhanced retry
       const result = await retryApiCall(async () => {
@@ -300,7 +341,19 @@ export const analyzeLead = action({
         });
 
         if (!response.ok) {
-          throw new Error(`LangGraph API error: ${response.status} ${response.statusText}`);
+          // Try to get detailed error information from response body
+          let errorDetails = `${response.status} ${response.statusText}`;
+          try {
+            const errorBody = await response.text();
+            if (errorBody) {
+              console.error(`LangGraph API error details for lead analysis:`, errorBody);
+              errorDetails += ` - ${errorBody}`;
+            }
+          } catch (e) {
+            console.warn(`Could not parse LangGraph error response body:`, e);
+          }
+          
+          throw new Error(`LangGraph API error: ${errorDetails}`);
         }
 
         const jsonData = await response.json();
@@ -314,8 +367,8 @@ export const analyzeLead = action({
         outputData: result,
       });
 
-      // Store analysis results in lead
-      if (result.analysis) {
+      // Store analysis results in lead - handle direct response structure
+      if (result && result.analysis && (result.analysis.relevance_score !== undefined || result.analysis.fit_assessment)) {
         await ctx.runMutation(internal.leads.internal.updateLeadAnalysis, {
           leadId: args.leadId,
           aiAnalysis: {
@@ -330,8 +383,10 @@ export const analyzeLead = action({
       }
 
       // Deduct credits
-      await ctx.runMutation(internal.users.mutations.deductCredits, {
-        amount: CREDIT_COSTS.AI_ANALYSIS,
+      await ctx.runMutation(internal.credits.transactions.createCreditTransaction, {
+        userId: lead.userId,
+        type: "usage",
+        amount: -CREDIT_COSTS.AI_ANALYSIS,
         description: `Lead analysis for ${lead.businessName}`,
         relatedEntity: {
           type: "crewai_request",
@@ -342,7 +397,7 @@ export const analyzeLead = action({
       return {
         success: true,
         requestId,
-        analysis: result.analysis,
+        analysis: result,
         message: "Lead analysis completed successfully!",
       };
 

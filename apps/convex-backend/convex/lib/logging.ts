@@ -1,4 +1,5 @@
 import { internalMutation, internalQuery } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { 
   CorrelationContext, 
@@ -122,8 +123,8 @@ export async function logWithCorrelationPersistent(
   // Store to database for persistence (async, non-blocking)
   try {
     if ("runMutation" in ctx) {
-      // From action context
-      await ctx.runMutation(storeLogEntry, {
+      // From action context - use internal API
+      await ctx.runMutation(internal.lib.logging.storeLogEntry, {
         correlationId: correlation.correlationId,
         operationType: correlation.operationType,
         parentId: correlation.parentId,
@@ -142,9 +143,9 @@ export async function logWithCorrelationPersistent(
         performance,
         metadata: correlation.metadata,
       });
-    } else {
-      // From mutation context - direct call
-      await ctx.runMutation(storeLogEntry, {
+    } else if ("scheduler" in ctx) {
+      // From mutation context - schedule asynchronously to avoid function reference issues
+      await ctx.scheduler.runAfter(0, internal.lib.logging.storeLogEntry, {
         correlationId: correlation.correlationId,
         operationType: correlation.operationType,
         parentId: correlation.parentId,
@@ -164,6 +165,7 @@ export async function logWithCorrelationPersistent(
         metadata: correlation.metadata,
       });
     }
+    // If neither, skip database storage (fallback to console only)
   } catch (storageError) {
     // Don't let logging errors break the main operation
     console.warn(`Failed to store log entry: ${storageError}`);

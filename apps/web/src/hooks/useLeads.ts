@@ -7,10 +7,12 @@ import { createLogger, timeOperation } from "@/utils/logger";
 const logger = createLogger('useLeads');
 
 export function useLeads(searchId?: Id<"searches">) {
-  const leads = useQuery(
+  const leadsResult = useQuery(
     api.leads.queries.getLeadsBySearch,
     searchId ? { searchId } : "skip"
   );
+  
+  const leads = leadsResult?.leads;
   
   const updateLeadMutation = useMutation(api.leads.mutations.updateLead);
   const updateLeadStatusMutation = useMutation(api.leads.mutations.updateLeadStatus);
@@ -56,7 +58,7 @@ export function useLeads(searchId?: Id<"searches">) {
     updateLeadStatus,
     addLeadNotes,
     deleteLead,
-    isLoading: leads === undefined && searchId !== undefined,
+    isLoading: leadsResult === undefined && searchId !== undefined,
   };
 }
 
