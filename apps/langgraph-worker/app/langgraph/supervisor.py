@@ -64,14 +64,13 @@ def supervisor_router(state: EmailGenerationState) -> str:
         return "relevance_analyzer"
     
     elif current_stage == "relevance_analysis":
-        # Check relevance score to determine if we should continue
+        # TODO: Implement proper relevance threshold logic and scoring system
+        # Currently allowing ALL leads through for testing - should be configurable threshold
+        # Original threshold was 0.3, consider making this user-configurable or dynamic
         relevance_score = state.get("relevance_score", 0)
         
-        if relevance_score < 0.3:  # Low relevance threshold
-            logger.warning(f"Low relevance score ({relevance_score}), ending workflow")
-            return "aggregator"
-        
-        logger.info(f"Relevance score ({relevance_score}) acceptable, proceeding to pain point research")
+        # Temporarily allow all leads through for testing
+        logger.info(f"Relevance score ({relevance_score}), proceeding to pain point research (all leads allowed)")
         return "pain_point_researcher"
     
     elif current_stage == "pain_point_research":
