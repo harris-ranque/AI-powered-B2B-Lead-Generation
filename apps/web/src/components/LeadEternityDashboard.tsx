@@ -22,6 +22,8 @@ import {
   Activity
 } from "lucide-react";
 import { EnhancedLeadSearch } from "./EnhancedLeadSearch";
+import { PipelineOrchestrator } from "./pipeline/PipelineOrchestrator";
+import { PipelineProvider } from "@/pipeline/context";
 import { AIEmailGenerator } from "./AIEmailGenerator";
 import { BusinessProfileWizard } from "./BusinessProfileWizard";
 import { CreditManager } from "./CreditManager";
@@ -40,7 +42,7 @@ import { useSearches } from "@/hooks/useSearches";
 import { useUserLeads } from "@/hooks/useLeads";
 
 export function LeadEternityDashboard() {
-  const [currentTab, setCurrentTab] = useState("onboarding");
+  const [currentTab, setCurrentTab] = useState("pipeline");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   
   // Real backend integration
@@ -141,57 +143,57 @@ export function LeadEternityDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="border-b border-border bg-card">
-        <div className="flex h-16 items-center px-6">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <Bot className="h-8 w-8 text-primary" />
-              <div>
-                <h1 className="text-xl font-bold">Genni</h1>
-                <p className="text-xs text-muted-foreground">AI-Powered Lead Generation</p>
+    <PipelineProvider>
+      <div className="min-h-screen bg-background">
+        <div className="border-b border-border bg-card">
+          <div className="flex h-16 items-center px-6">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <Bot className="h-8 w-8 text-primary" />
+                <div>
+                  <h1 className="text-xl font-bold">Genni</h1>
+                  <p className="text-xs text-muted-foreground">AI-Powered Lead Generation</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="ml-auto flex items-center space-x-4">
+              <Badge variant="secondary" className="bg-green-100 text-green-800">
+                <Sparkles className="h-3 w-3 mr-1" />
+                AI System Active
+              </Badge>
+              
+              <div className="text-right text-sm">
+                <div className="font-medium">5 AI Agents</div>
+                <div className="text-xs text-muted-foreground">Ready for personalization</div>
               </div>
             </div>
           </div>
-          
-          <div className="ml-auto flex items-center space-x-4">
-            <Badge variant="secondary" className="bg-green-100 text-green-800">
-              <Sparkles className="h-3 w-3 mr-1" />
-              AI System Active
-            </Badge>
-            
-            <div className="text-right text-sm">
-              <div className="font-medium">5 AI Agents</div>
-              <div className="text-xs text-muted-foreground">Ready for personalization</div>
-            </div>
-          </div>
         </div>
-      </div>
 
-      <div className="flex">
-        <div className="w-64 border-r border-border bg-card">
-          <nav className="p-4 space-y-2">
+        <div className="flex">
+          <div className="w-64 border-r border-border bg-card">
+            <nav className="p-4 space-y-2">
             <Button
-              variant={currentTab === "search" ? "default" : "ghost"}
+              variant={currentTab === "pipeline" ? "default" : "ghost"}
               className="w-full justify-start"
-              onClick={() => setCurrentTab("search")}
+              onClick={() => setCurrentTab("pipeline")}
             >
               <Search className="h-4 w-4 mr-2" />
-              Lead Discovery
+              Lead Pipeline
             </Button>
             
             <Button
               variant={currentTab === "email-generator" ? "default" : "ghost"}
               className="w-full justify-start"
               onClick={() => setCurrentTab("email-generator")}
+              disabled={true}
             >
               <Bot className="h-4 w-4 mr-2" />
               AI Email Generator
-              {selectedLead && (
-                <Badge variant="secondary" className="ml-auto text-xs">
-                  Lead Selected
-                </Badge>
-              )}
+              <Badge variant="outline" className="ml-auto text-xs">
+                Coming Soon
+              </Badge>
             </Button>
             
             <Button
@@ -310,9 +312,9 @@ export function LeadEternityDashboard() {
         </div>
 
         <div className="flex-1">
-          {currentTab === "search" && (
+          {currentTab === "pipeline" && (
             <div className="p-6">
-              <EnhancedLeadSearch 
+              <PipelineOrchestrator 
                 onGenerateEmail={handleGenerateEmail}
                 userCredits={userCredits}
                 userPlan={userPlan}
@@ -451,7 +453,8 @@ export function LeadEternityDashboard() {
             </div>
           )}
         </div>
+        </div>
       </div>
-    </div>
+    </PipelineProvider>
   );
 }

@@ -19,8 +19,16 @@ export async function broadcastSearchUpdate(
   additionalData?: any
 ) {
   try {
-    // Get search details
-    const search = await ctx.db.get(searchId);
+    // Get search details - handle both mutation and action contexts
+    let search;
+    if ("runQuery" in ctx) {
+      // Action context - use runQuery
+      search = await ctx.runQuery(internal.search.internal.getSearchById, { searchId });
+    } else {
+      // Mutation context - direct database access
+      search = await ctx.db.get(searchId);
+    }
+    
     if (!search) {
       console.error(`Cannot broadcast - search ${searchId} not found`);
       return;
@@ -45,7 +53,7 @@ export async function broadcastSearchUpdate(
       priority = 4; // Urgent for cancellation
     }
 
-    // Use runMutation if in action context, direct call if in mutation context
+    // Use runMutation if in action context, scheduler if in mutation context
     if ("runMutation" in ctx) {
       await ctx.runMutation(internal.realtime.broadcaster.broadcastSearchStatus, {
         searchId,
@@ -54,8 +62,9 @@ export async function broadcastSearchUpdate(
         progress,
         priority,
       });
-    } else {
-      await ctx.runMutation(internal.realtime.broadcaster.broadcastSearchStatus, {
+    } else if ("scheduler" in ctx) {
+      // In mutation context, use scheduler to call the mutation
+      await ctx.scheduler.runAfter(0, internal.realtime.broadcaster.broadcastSearchStatus, {
         searchId,
         status,
         message,
@@ -86,8 +95,8 @@ export async function broadcastBatchUpdate(
         totalBatches,
         phase,
       });
-    } else {
-      await ctx.runMutation(internal.realtime.broadcaster.broadcastBatchProgress, {
+    } else if ("scheduler" in ctx) {
+      await ctx.scheduler.runAfter(0, internal.realtime.broadcaster.broadcastBatchProgress, {
         batchPlanId,
         completedBatches,
         totalBatches,
@@ -117,8 +126,8 @@ export async function broadcastLeadUpdate(
           leadCount: count,
           newLeads: 1, // Assuming 1 new lead per call - adjust as needed
         });
-      } else {
-        await ctx.runMutation(internal.realtime.broadcaster.broadcastLeadDiscovered, {
+      } else if ("scheduler" in ctx) {
+        await ctx.scheduler.runAfter(0, internal.realtime.broadcaster.broadcastLeadDiscovered, {
           searchId,
           leadCount: count,
           newLeads: 1,
@@ -131,8 +140,8 @@ export async function broadcastLeadUpdate(
           enrichedCount: count,
           totalLeads: total,
         });
-      } else {
-        await ctx.runMutation(internal.realtime.broadcaster.broadcastLeadEnriched, {
+      } else if ("scheduler" in ctx) {
+        await ctx.scheduler.runAfter(0, internal.realtime.broadcaster.broadcastLeadEnriched, {
           searchId,
           enrichedCount: count,
           totalLeads: total,
@@ -337,8 +346,8 @@ export async function broadcast(
 
     if ("runMutation" in ctx) {
       await ctx.runMutation(internal.realtime.broadcaster.broadcastStatus, broadcastArgs);
-    } else {
-      await ctx.runMutation(internal.realtime.broadcaster.broadcastStatus, broadcastArgs);
+    } else if ("scheduler" in ctx) {
+      await ctx.scheduler.runAfter(0, internal.realtime.broadcaster.broadcastStatus, broadcastArgs);
     }
 
     console.log(`Broadcast sent: ${config.type} - ${config.title}`);

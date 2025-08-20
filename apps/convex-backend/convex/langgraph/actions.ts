@@ -223,6 +223,13 @@ export const analyzeLead = internalAction({
     if (!lead) {
       throw createError("Lead not found", ERROR_CODES.LEAD_NOT_FOUND, 404);
     }
+    
+    // Increment analysis attempt counter to prevent infinite retries
+    const currentAttempts = lead.analysisAttempts || 0;
+    await ctx.runMutation(internal.leads.internal.updateLeadAnalysisAttempt, {
+      leadId: args.leadId,
+      attempt: currentAttempts + 1,
+    });
 
     // Get user information from the lead via internal query
     const user = await ctx.runQuery(internal.users.admin.getUserByIdInternal, {
@@ -426,6 +433,12 @@ export const analyzeLead = internalAction({
       await ctx.runMutation(internal.langgraph.internal.updateRequestStatus, {
         requestId,
         status: "failed",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+      
+      // Track analysis error for debugging
+      await ctx.runMutation(internal.leads.internal.updateLeadAnalysisError, {
+        leadId: args.leadId,
         error: error instanceof Error ? error.message : "Unknown error",
       });
 

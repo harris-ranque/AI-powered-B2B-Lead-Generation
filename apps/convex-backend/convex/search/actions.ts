@@ -246,10 +246,13 @@ export const searchGoogleMaps: any = action({
           totalFound: search.results.totalFound,
         });
         
-        // Mark search as completed since no further processing is needed
-        logWithCorrelation('info', correlation, 'Triggering search orchestrator to complete search with zero results');
-        await ctx.runMutation(internal.search.orchestrator.orchestrateSearchPipeline, {
+        // Complete search with zero results using dedicated function
+        logWithCorrelation('info', correlation, 'Completing search using dedicated zero results handler');
+        await ctx.runMutation(internal.search.orchestrator.completeSearchWithZeroResults, {
           searchId: args.searchId,
+          location: args.location,
+          keywords: args.keywords,
+          radius: args.radius,
         });
         
         const overallPerfData = endPerformanceTracking(overallPerf);

@@ -66,6 +66,10 @@ export default defineSchema({
       excludeTerms: v.optional(v.array(v.string())),
       minRating: v.optional(v.number()),
       maxResults: v.number(),
+      filters: v.optional(v.object({
+        minEmployees: v.optional(v.number()),
+        maxEmployees: v.optional(v.number()),
+      })),
     }),
     status: v.union(
       v.literal("pending"),
@@ -100,6 +104,7 @@ export default defineSchema({
     lastOrchestrationAt: v.optional(v.number()),
     orchestrationLock: v.optional(v.string()),
     orchestrationLockExpiry: v.optional(v.number()),
+    orchestrationAttempts: v.optional(v.number()),
     lastWarningAt: v.optional(v.number()),
     createdAt: v.number(),
   })
@@ -175,6 +180,11 @@ export default defineSchema({
       recommendedApproach: v.string(),
       confidence: v.number(),
     })),
+    
+    // Analysis retry tracking
+    analysisAttempts: v.optional(v.number()),
+    lastAnalysisAttempt: v.optional(v.number()),
+    analysisError: v.optional(v.string()),
     
     // Generated content
     generatedEmails: v.optional(v.array(v.id("emailSequences"))),
@@ -771,4 +781,19 @@ export default defineSchema({
     .index("by_domain_search", ["domain", "searchId"])
     .index("by_search", ["searchId"])
     .index("by_expires", ["expiresAt"]),
+
+  // System Control State - Emergency admin controls for lead generation
+  systemControlState: defineTable({
+    systemPaused: v.boolean(),
+    leadGenerationDisabled: v.boolean(),
+    maintenanceMode: v.boolean(),
+    pausedAt: v.optional(v.number()),
+    pausedBy: v.optional(v.id("users")),
+    reason: v.optional(v.string()),
+    resumedAt: v.optional(v.number()),
+    resumedBy: v.optional(v.id("users")),
+    resumeReason: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }),
 });

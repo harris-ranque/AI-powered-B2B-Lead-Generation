@@ -1,4 +1,4 @@
-import { internalMutation, internalQuery } from "../_generated/server";
+import { internalMutation, internalQuery, query, mutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { 
@@ -91,8 +91,12 @@ export async function logWithCorrelationPersistent(
   // Console logging
   switch (level) {
     case 'debug':
-      if (data || error) {
-        console.debug(fullMessage, { data, error: error?.message, stack: error?.stack });
+      if (data && error) {
+        console.debug(fullMessage, { data, error: error.message, stack: error.stack });
+      } else if (data) {
+        console.debug(fullMessage, data);
+      } else if (error) {
+        console.debug(fullMessage, { error: error.message, stack: error.stack });
       } else {
         console.debug(fullMessage);
       }
@@ -105,15 +109,23 @@ export async function logWithCorrelationPersistent(
       }
       break;
     case 'warn':
-      if (data || error) {
-        console.warn(fullMessage, { data, error: error?.message });
+      if (data && error) {
+        console.warn(fullMessage, { data, error: error.message });
+      } else if (data) {
+        console.warn(fullMessage, data);
+      } else if (error) {
+        console.warn(fullMessage, { error: error.message });
       } else {
         console.warn(fullMessage);
       }
       break;
     case 'error':
-      if (data || error) {
-        console.error(fullMessage, { data, error: error?.message, stack: error?.stack });
+      if (data && error) {
+        console.error(fullMessage, { data, error: error.message, stack: error.stack });
+      } else if (data) {
+        console.error(fullMessage, data);
+      } else if (error) {
+        console.error(fullMessage, { error: error.message, stack: error.stack });
       } else {
         console.error(fullMessage);
       }
@@ -375,6 +387,192 @@ export const cleanupOldLogs = internalMutation({
       deletedCount, 
       cutoffTime, 
       retentionDays,
+      hasMore: oldLogs.length === maxLogsToDelete 
+    };
+  },
+});
+
+// Public query functions for frontend access
+
+// Get recent logs for performance monitoring (public query)
+export const getRecentLogs = query({
+  args: {
+    limit: v.optional(v.number()),
+    includeDebug: v.optional(v.boolean()),
+    timeWindowHours: v.optional(v.number()),
+    level: v.optional(v.union(v.literal("debug"), v.literal("info"), v.literal("warn"), v.literal("error"))),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit || 1000;
+    const includeDebug = args.includeDebug !== false; // Default to true
+    const timeWindowHours = args.timeWindowHours || 24;
+    const cutoffTime = Date.now() - (timeWindowHours * 60 * 60 * 1000);
+
+    let query = ctx.db
+      .query("correlationLogs")
+      .withIndex("by_created", (q) => q.gte("createdAt", cutoffTime));
+
+    // Filter by level if specified
+    if (args.level) {
+      query = query.filter((q) => q.eq(q.field("level"), args.level));
+    } else if (!includeDebug) {
+      // Exclude debug logs unless specifically requested
+      query = query.filter((q) => q.neq(q.field("level"), "debug"));
+    }
+
+    const logs = await query
+      .order("desc")
+      .take(limit);
+
+    return logs.map(log => ({
+      _id: log._id,
+      _creationTime: log.createdAt,
+      correlationId: log.correlationId,
+      operationType: log.operationType,
+      level: log.level,
+      message: log.message,
+      userId: log.userId,
+      searchId: log.searchId,
+      metadata: log.metadata || {},
+      error: log.error,
+      performance: log.performance,
+      createdAt: log.createdAt,
+    }));
+  },
+});
+
+// Get performance-specific logs (public query)
+export const getPerformanceLogs = query({
+  args: {
+    limit: v.optional(v.number()),
+    timeWindowHours: v.optional(v.number()),
+    operationType: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit || 500;
+    const timeWindowHours = args.timeWindowHours || 24;
+    const cutoffTime = Date.now() - (timeWindowHours * 60 * 60 * 1000);
+
+    let query = ctx.db
+      .query("correlationLogs")
+      .withIndex("by_created", (q) => q.gte("createdAt", cutoffTime))
+      .filter((q) => q.neq(q.field("performance"), null));
+
+    // Filter by operation type if specified
+    if (args.operationType) {
+      query = query.filter((q) => q.eq(q.field("operationType"), args.operationType));
+    }
+
+    const logs = await query
+      .order("desc")
+      .take(limit);
+
+    return logs.map(log => ({
+      _id: log._id,
+      _creationTime: log.createdAt,
+      correlationId: log.correlationId,
+      operation: log.operationType,
+      level: log.level,
+      message: log.message,
+      userId: log.userId,
+      searchId: log.searchId,
+      metadata: {
+        ...log.metadata,
+        duration: log.performance?.duration,
+        startTime: log.performance?.startTime,
+        endTime: log.performance?.endTime,
+      },
+      performance: log.performance,
+      createdAt: log.createdAt,
+    }));
+  },
+});
+
+// Get search logs for debugging (public query for debugging dashboard)
+export const getDebugSearchLogs = query({
+  args: {
+    searchId: v.optional(v.id("searches")),
+    level: v.optional(v.union(v.literal("debug"), v.literal("info"), v.literal("warn"), v.literal("error"))),
+    limit: v.optional(v.number()),
+    timeWindowHours: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit || 50;
+    const timeWindowHours = args.timeWindowHours || 24;
+    const cutoffTime = Date.now() - (timeWindowHours * 60 * 60 * 1000);
+
+    let query = ctx.db
+      .query("correlationLogs")
+      .withIndex("by_created", (q) => q.gte("createdAt", cutoffTime));
+
+    // Filter by search ID if specified
+    if (args.searchId) {
+      query = query.filter((q) => q.eq(q.field("searchId"), args.searchId));
+    }
+
+    // Filter by level if specified
+    if (args.level) {
+      query = query.filter((q) => q.eq(q.field("level"), args.level));
+    }
+
+    const logs = await query
+      .order("desc")
+      .take(limit);
+
+    return logs.map(log => ({
+      _id: log._id,
+      _creationTime: log.createdAt,
+      correlationId: log.correlationId,
+      parentCorrelationId: log.parentId,
+      operation: log.operationType,
+      phase: log.operationType, // Using operationType as phase for compatibility
+      level: log.level,
+      message: log.message,
+      data: log.data,
+      metadata: {
+        userId: log.userId,
+        searchId: log.searchId,
+        leadId: log.leadId,
+        duration: log.performance?.duration,
+        startTime: log.performance?.startTime,
+        endTime: log.performance?.endTime,
+        error: log.error?.message,
+        stackTrace: log.error?.stack,
+        ...log.metadata,
+      },
+    }));
+  },
+});
+
+// Clear old logs (public mutation for debugging dashboard)
+export const clearOldLogs = mutation({
+  args: {
+    olderThanHours: v.optional(v.number()),
+    maxLogsToDelete: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const olderThanHours = args.olderThanHours || 24;
+    const maxLogsToDelete = args.maxLogsToDelete || 500;
+    const cutoffTime = Date.now() - (olderThanHours * 60 * 60 * 1000);
+
+    const oldLogs = await ctx.db
+      .query("correlationLogs")
+      .withIndex("by_created", (q) => q.lt("createdAt", cutoffTime))
+      .take(maxLogsToDelete);
+
+    let deletedCount = 0;
+    
+    for (const log of oldLogs) {
+      await ctx.db.delete(log._id);
+      deletedCount++;
+    }
+
+    console.log(`Manually cleared ${deletedCount} old correlation logs (older than ${olderThanHours} hours)`);
+    
+    return { 
+      success: true,
+      deletedCount, 
+      olderThanHours,
       hasMore: oldLogs.length === maxLogsToDelete 
     };
   },

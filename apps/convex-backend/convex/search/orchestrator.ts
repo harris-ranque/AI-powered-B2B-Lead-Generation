@@ -38,12 +38,36 @@ export const orchestrateSearchPipeline = internalMutation({
       return { success: false, error: "Search not found" };
     }
 
+    // Check if system is paused - stop all orchestration
+    const systemControlState = await ctx.db
+      .query("systemControlState")
+      .unique();
+    
+    if (systemControlState?.systemPaused) {
+      await logWithCorrelationPersistent(ctx, 'info', 
+        { correlationId: args.correlationId || "none", operationType: OPERATION_TYPES.SEARCH_ORCHESTRATE, userId: search.userId, searchId: args.searchId, createdAt: Date.now() },
+        `System is paused, orchestration blocked for search ${args.searchId}. Reason: ${systemControlState.reason || 'System paused by admin'}`
+      );
+      return { success: false, error: "System is currently paused for maintenance" };
+    }
+
     // Prevent spam by checking if search is in a terminal state
     if (search.status === "completed" || search.status === "failed" || search.status === "cancelled") {
-      await logWithCorrelationPersistent(ctx, 'debug', 
-        { correlationId: args.correlationId || "none", operationType: OPERATION_TYPES.SEARCH_ORCHESTRATE, userId: search.userId, searchId: args.searchId, createdAt: Date.now() },
-        `Search ${args.searchId} is in terminal state (${search.status}), skipping orchestration`
-      );
+      // Only log terminal state skips at info level for first time, then suppress
+      const logLevel = search.orchestrationAttempts && search.orchestrationAttempts > 1 ? null : 'debug';
+      
+      if (logLevel) {
+        await logWithCorrelationPersistent(ctx, logLevel, 
+          { correlationId: args.correlationId || "none", operationType: OPERATION_TYPES.SEARCH_ORCHESTRATE, userId: search.userId, searchId: args.searchId, createdAt: Date.now() },
+          `Search ${args.searchId} is in terminal state (${search.status}), skipping orchestration`
+        );
+      }
+      
+      // Increment attempt counter to suppress future logs
+      await ctx.db.patch(args.searchId, {
+        orchestrationAttempts: (search.orchestrationAttempts || 0) + 1,
+      });
+      
       return { success: true, message: `Search already in terminal state: ${search.status}` };
     }
 
@@ -108,22 +132,48 @@ export const orchestrateSearchPipeline = internalMutation({
           break;
 
         case STATUS.SEARCH.IN_PROGRESS:
-                  // Check if discoveries are complete, trigger enrichment
-          const discoveryResult = await checkDiscoveryComplete(ctx, args.searchId);
-          if (discoveryResult.isComplete) {
-            await logWithCorrelationPersistent(ctx, 'info', correlation, 'Discovery complete, triggering enrichment phase');
-            await ctx.scheduler.runAfter(0, internal.search.orchestrator.startEnrichmentPhase, {
+          // First check if discovery has been started, if not start it
+          const leadCount = await ctx.runQuery(internal.leads.internal.getLeadCount, { searchId: args.searchId });
+          
+          if (leadCount === 0) {
+            // Check if search was started more than 5 minutes ago with no results
+            const searchAge = now - search.createdAt;
+            if (searchAge > 300000) { // 5 minutes
+              // Search is old with no results, likely completed with zero results
+              await logWithCorrelationPersistent(ctx, 'info', correlation, 'Search aged with no results, completing search');
+              await ctx.db.patch(args.searchId, {
+                status: STATUS.SEARCH.COMPLETED,
+              });
+              await broadcastSearchUpdate(ctx, args.searchId, "completed", 
+                `Search completed - No results found for your search criteria`
+              );
+              break;
+            }
+            
+            // Discovery hasn't started yet, trigger Google Maps discovery
+            await logWithCorrelationPersistent(ctx, 'info', correlation, 'Starting Google Maps discovery for in-progress search');
+            await ctx.scheduler.runAfter(0, internal.search.orchestrator.startGoogleMapsDiscovery, {
               searchId: args.searchId,
               parentCorrelationId: correlation.correlationId,
             });
           } else {
-            await logWithCorrelationPersistent(ctx, 'debug', correlation, 'Discovery still in progress, waiting for completion');
-            
-            // Send user warning if discovery is taking too long
-            if (discoveryResult.shouldWarnUser) {
-              await broadcastSearchUpdate(ctx, args.searchId, "discovery_delayed", 
-                `Your search is taking longer than expected. We're still finding leads - this may take up to ${Math.ceil(discoveryResult.timeRemaining / 60000)} more minutes.`
-              );
+            // Check if discoveries are complete, trigger enrichment
+            const discoveryResult = await checkDiscoveryComplete(ctx, args.searchId);
+            if (discoveryResult.isComplete) {
+              await logWithCorrelationPersistent(ctx, 'info', correlation, 'Discovery complete, triggering enrichment phase');
+              await ctx.scheduler.runAfter(0, internal.search.orchestrator.startEnrichmentPhase, {
+                searchId: args.searchId,
+                parentCorrelationId: correlation.correlationId,
+              });
+            } else {
+              await logWithCorrelationPersistent(ctx, 'debug', correlation, 'Discovery still in progress, waiting for completion');
+              
+              // Send user warning if discovery is taking too long
+              if (discoveryResult.shouldWarnUser) {
+                await broadcastSearchUpdate(ctx, args.searchId, "discovery_delayed", 
+                  `Your search is taking longer than expected. We're still finding leads - this may take up to ${Math.ceil(discoveryResult.timeRemaining / 60000)} more minutes.`
+                );
+              }
             }
           }
           break;
@@ -459,6 +509,70 @@ export const checkAnalysisPhase = internalMutation({
     await ctx.scheduler.runAfter(0, internal.search.orchestrator.startAnalysisPhase, {
       searchId: args.searchId,
     });
+  },
+});
+
+// Complete search with zero results
+export const completeSearchWithZeroResults = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    location: v.string(),
+    keywords: v.array(v.string()),
+    radius: v.number(),
+  },
+  handler: async (ctx, args) => {
+    console.log(`Completing search with zero results: ${args.searchId}`);
+    
+    try {
+      const search = await ctx.db.get(args.searchId);
+      
+      if (!search) {
+        console.error(`Search not found during zero results completion: ${args.searchId}`);
+        return;
+      }
+
+      // Update search status to completed
+      await ctx.db.patch(args.searchId, {
+        status: STATUS.SEARCH.COMPLETED,
+        endedAt: Date.now(),
+        results: {
+          totalFound: 0,
+          totalEnriched: 0,
+          totalAnalyzed: 0,
+          successfullyAnalyzed: 0,
+        },
+        progress: {
+          discovered: 0,
+          enriched: 0,
+          analyzed: 0,
+          total: 0,
+        },
+      });
+
+      // Send completion broadcast to user
+      await ctx.scheduler.runAfter(0, internal.realtime.broadcaster.broadcastSearchStatus, {
+        searchId: args.searchId,
+        status: "completed",
+        message: `Search completed - No ${args.keywords[0]} found in ${args.location} within ${args.radius} miles`,
+        progress: {
+          discovered: 0,
+          enriched: 0,
+          analyzed: 0,
+          total: 0,
+        },
+        priority: 3,
+      });
+
+      console.log(`Search with zero results completed successfully: ${args.searchId}`);
+      
+    } catch (error) {
+      console.error(`Failed to complete search with zero results ${args.searchId}:`, error);
+      
+      await ctx.db.patch(args.searchId, {
+        status: STATUS.SEARCH.FAILED,
+        error: error instanceof Error ? error.message : "Failed to complete search",
+      });
+    }
   },
 });
 

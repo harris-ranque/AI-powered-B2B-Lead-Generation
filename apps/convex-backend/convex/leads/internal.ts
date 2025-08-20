@@ -131,6 +131,33 @@ export const updateLeadAnalysis = internalMutation({
 
 // Moved duplicate functions to bottom with enhanced functionality
 
+// Update lead analysis attempt counter
+export const updateLeadAnalysisAttempt = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+    attempt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.leadId, {
+      analysisAttempts: args.attempt,
+      lastAnalysisAttempt: Date.now(),
+    });
+  },
+});
+
+// Update lead analysis error
+export const updateLeadAnalysisError = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+    error: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.leadId, {
+      analysisError: args.error,
+    });
+  },
+});
+
 // Internal function to get lead by ID for processing
 export const getLeadForProcessing = internalQuery({
   args: { leadId: v.id("leads") },
@@ -251,6 +278,7 @@ export const getEnrichedLeadsForAnalysis = internalQuery({
   },
   handler: async (ctx, args) => {
     const limit = args.limit || 20;
+    const MAX_ANALYSIS_ATTEMPTS = 3; // Maximum retry attempts
     
     const candidateLeads = await ctx.db
       .query("leads")
@@ -271,10 +299,22 @@ export const getEnrichedLeadsForAnalysis = internalQuery({
       )
       .collect();
     
-    // Filter to ensure emails array has actual content
-    const enrichedLeads = candidateLeads.filter(lead => 
-      lead.contactInfo?.emails && lead.contactInfo.emails.length > 0
-    );
+    // Filter to ensure emails array has actual content and hasn't exceeded retry limits
+    const enrichedLeads = candidateLeads.filter(lead => {
+      // Check if lead has emails
+      if (!lead.contactInfo?.emails || lead.contactInfo.emails.length === 0) {
+        return false;
+      }
+      
+      // Check if lead has exceeded retry attempts
+      const attempts = lead.analysisAttempts || 0;
+      if (attempts >= MAX_ANALYSIS_ATTEMPTS) {
+        console.log(`Lead ${lead._id} has exceeded max analysis attempts (${attempts}/${MAX_ANALYSIS_ATTEMPTS})`);
+        return false;
+      }
+      
+      return true;
+    });
     
     return enrichedLeads.slice(0, limit);
   },

@@ -49,7 +49,7 @@ export function useCorrelationLogs() {
     includeDebug: true,
   });
 
-  const searchLogs = useQuery(api.lib.logging.getSearchLogs, {
+  const searchLogs = useQuery(api.lib.logging.getDebugSearchLogs, {
     limit: 50,
   });
 

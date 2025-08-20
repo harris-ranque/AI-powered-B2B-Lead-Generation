@@ -175,8 +175,21 @@ export const processPendingSearches = internalMutation({
         startedAt: Date.now(),
       });
 
-      // TODO: Trigger actual search processing
+      // Trigger orchestration pipeline
       console.log(`Processing search: ${search.name}`);
+      
+      try {
+        await ctx.scheduler.runAfter(1000, internal.search.orchestrator.orchestrateSearchPipeline, {
+          searchId: search._id,
+        });
+      } catch (error) {
+        console.error(`Failed to schedule orchestration for search ${search._id}:`, error);
+        await ctx.db.patch(search._id, {
+          status: "failed",
+          error: `Failed to start orchestration: ${error}`,
+          completedAt: Date.now(),
+        });
+      }
     }
   },
 });
@@ -185,19 +198,74 @@ export const checkStaleSearches = internalMutation({
   args: {},
   handler: async (ctx) => {
     const oneHourAgo = Date.now() - (60 * 60 * 1000);
+    const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
     
+    // Find searches that have been in progress for over an hour
     const staleSearches = await ctx.db
       .query("searches")
       .withIndex("by_status", (q) => q.eq("status", "in_progress"))
       .filter((q) => q.lt(q.field("startedAt"), oneHourAgo))
       .collect();
-
+      
+    // Mark stale searches as failed
     for (const search of staleSearches) {
       await ctx.db.patch(search._id, {
         status: "failed",
         error: "Search timed out after 1 hour",
         completedAt: Date.now(),
       });
+      console.log(`Marked stale search ${search._id} as failed`);
+    }
+    
+    // Find searches that have been in progress for 5+ minutes with no leads
+    const stuckSearches = await ctx.db
+      .query("searches")
+      .withIndex("by_status", (q) => q.eq("status", "in_progress"))
+      .filter((q) => q.lt(q.field("startedAt"), fiveMinutesAgo))
+      .collect();
+      
+    // Check if any of these have zero leads and should be completed
+    for (const search of stuckSearches) {
+      const leadCount = await ctx.db
+        .query("leads")
+        .withIndex("by_search", (q) => q.eq("searchId", search._id))
+        .collect();
+        
+      if (leadCount.length === 0) {
+        // Complete search with zero results
+        await ctx.db.patch(search._id, {
+          status: "completed",
+          endedAt: Date.now(),
+          results: {
+            totalFound: 0,
+            totalEnriched: 0,
+            totalAnalyzed: 0,
+            successfullyAnalyzed: 0,
+          },
+          progress: {
+            discovered: 0,
+            enriched: 0,
+            analyzed: 0,
+            total: 0,
+          },
+        });
+        
+        // Send completion broadcast
+        await ctx.scheduler.runAfter(0, internal.realtime.broadcaster.broadcastSearchStatus, {
+          searchId: search._id,
+          status: "completed",
+          message: `Search completed - No results found for your search criteria`,
+          progress: {
+            discovered: 0,
+            enriched: 0,
+            analyzed: 0,
+            total: 0,
+          },
+          priority: 3,
+        });
+        
+        console.log(`Completed stuck search ${search._id} with zero results`);
+      }
     }
   },
 });

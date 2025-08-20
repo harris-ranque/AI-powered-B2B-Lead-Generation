@@ -183,8 +183,12 @@ export function logWithCorrelation(
   // Log to console with appropriate level
   switch (level) {
     case 'debug':
-      if (data || error) {
-        console.debug(fullMessage, { data, error: error?.message, stack: error?.stack });
+      if (data && error) {
+        console.debug(fullMessage, { data, error: error.message, stack: error.stack });
+      } else if (data) {
+        console.debug(fullMessage, data);
+      } else if (error) {
+        console.debug(fullMessage, { error: error.message, stack: error.stack });
       } else {
         console.debug(fullMessage);
       }
@@ -197,15 +201,23 @@ export function logWithCorrelation(
       }
       break;
     case 'warn':
-      if (data || error) {
-        console.warn(fullMessage, { data, error: error?.message });
+      if (data && error) {
+        console.warn(fullMessage, { data, error: error.message });
+      } else if (data) {
+        console.warn(fullMessage, data);
+      } else if (error) {
+        console.warn(fullMessage, { error: error.message });
       } else {
         console.warn(fullMessage);
       }
       break;
     case 'error':
-      if (data || error) {
-        console.error(fullMessage, { data, error: error?.message, stack: error?.stack });
+      if (data && error) {
+        console.error(fullMessage, { data, error: error.message, stack: error.stack });
+      } else if (data) {
+        console.error(fullMessage, data);
+      } else if (error) {
+        console.error(fullMessage, { error: error.message, stack: error.stack });
       } else {
         console.error(fullMessage);
       }

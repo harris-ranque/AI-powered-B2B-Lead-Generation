@@ -70,3 +70,20 @@ export function useAdminConfiguration() {
     isLoading: configuration === undefined,
   };
 }
+
+export function useAdminSystemControl() {
+  const systemStatus = useQuery(api.admin.systemControl.getSystemControlStatus);
+  const systemActivity = useQuery(api.admin.systemControl.getSystemActivity);
+  const pauseAllLeadGeneration = useMutation(api.admin.systemControl.pauseAllLeadGeneration);
+  const resumeAllLeadGeneration = useMutation(api.admin.systemControl.resumeAllLeadGeneration);
+  const clearAllActiveSearches = useMutation(api.admin.systemControl.clearAllActiveSearches);
+  
+  return {
+    systemStatus,
+    systemActivity,
+    pauseAllLeadGeneration,
+    resumeAllLeadGeneration,
+    clearAllActiveSearches,
+    isLoading: systemStatus === undefined || systemActivity === undefined,
+  };
+}

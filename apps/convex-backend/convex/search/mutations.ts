@@ -17,6 +17,23 @@ export const createSearch = mutation({
         throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
       }
 
+      // Check if system is paused
+      const systemControlState = await ctx.db
+        .query("systemControlState")
+        .unique();
+      
+      if (systemControlState?.systemPaused || systemControlState?.leadGenerationDisabled) {
+        const message = systemControlState.maintenanceMode 
+          ? "System is temporarily under maintenance. Please try again later."
+          : `Lead generation is currently paused. ${systemControlState.reason || 'Please try again later.'}`;
+          
+        throw createError(
+          message,
+          ERROR_CODES.SYSTEM_MAINTENANCE,
+          503
+        );
+      }
+
       // Validate search parameters
       const { parameters } = args;
       

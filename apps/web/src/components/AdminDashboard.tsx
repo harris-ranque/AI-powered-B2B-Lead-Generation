@@ -26,10 +26,16 @@ import {
   Eye,
   Shield,
   Settings,
-  Save
+  Save,
+  Power,
+  Square,
+  Pause,
+  Play,
+  AlertTriangle,
+  Trash2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAdminDashboard, useAdminUsers, useAdminAnalytics, useAdminConfiguration } from "@/hooks/useAdmin";
+import { useAdminDashboard, useAdminUsers, useAdminAnalytics, useAdminConfiguration, useAdminSystemControl } from "@/hooks/useAdmin";
 
 interface AdminMetrics {
   totalUsers: number;
@@ -105,16 +111,16 @@ export function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
 
-  // Configuration data from backend
-  const creditCosts = configuration?.creditCosts || {
+  // Editable configuration state
+  const [creditCosts, setCreditCosts] = useState({
     leadDiscovery: 1,
     contactEnrichment: 2,
     aiAnalysis: 3,
     emailGeneration: 5,
     bulkAnalysis: 10,
-  };
+  });
 
-  const planLimits = configuration?.planLimits || {
+  const [planLimits, setPlanLimits] = useState({
     free: {
       monthlyCredits: 50,
       maxLeadsPerSearch: 25,
@@ -130,13 +136,21 @@ export function AdminDashboard() {
       maxLeadsPerSearch: 500,
       maxSearches: -1, // Unlimited
     },
-  };
+  });
 
   // Real Convex hooks
   const { metrics, systemHealth, isLoading: metricsLoading } = useAdminDashboard();
   const { users, updateUserStatus, updateUserPlan, isLoading: usersLoading } = useAdminUsers();
   const { analytics, revenueStats, isLoading: analyticsLoading } = useAdminAnalytics();
   const { configuration, updateCreditCosts, updatePlanLimits, isLoading: configLoading } = useAdminConfiguration();
+  const { 
+    systemStatus, 
+    systemActivity, 
+    pauseAllLeadGeneration, 
+    resumeAllLeadGeneration, 
+    clearAllActiveSearches,
+    isLoading: systemControlLoading 
+  } = useAdminSystemControl();
 
   // Companies data from backend (placeholder for future implementation)
   const companies: Company[] = [];
@@ -299,6 +313,108 @@ export function AdminDashboard() {
     }
   };
 
+  // System Control Handlers
+  const handlePauseAllLeadGeneration = async () => {
+    if (!confirm("Are you sure you want to pause ALL lead generation activities? This will cancel all active searches and refund credits to users.")) {
+      return;
+    }
+
+    const reason = prompt("Enter reason for pause (optional):") || "Emergency pause by admin";
+    
+    try {
+      const result = await pauseAllLeadGeneration({ 
+        reason,
+        maintenanceMode: false 
+      });
+      
+      if (result.success) {
+        toast({
+          title: "System Paused",
+          description: `Lead generation paused. Cancelled ${result.cancelledSearches} searches, cleared ${result.clearedBatches} batches, notified ${result.notifiedUsers} users.`,
+        });
+      } else {
+        toast({
+          title: "Pause Failed",
+          description: result.message || "Failed to pause system",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Pause Failed",
+        description: "Failed to pause lead generation. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleResumeAllLeadGeneration = async () => {
+    if (!confirm("Are you sure you want to resume all lead generation activities?")) {
+      return;
+    }
+
+    const reason = prompt("Enter reason for resume (optional):") || "System resumed by admin";
+    
+    try {
+      const result = await resumeAllLeadGeneration({ reason });
+      
+      if (result.success) {
+        toast({
+          title: "System Resumed",
+          description: `Lead generation resumed. Notified ${result.notifiedUsers} users. System was paused for ${Math.round(result.pausedDuration / 60000)} minutes.`,
+        });
+      } else {
+        toast({
+          title: "Resume Failed",
+          description: result.message || "Failed to resume system",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Resume Failed",
+        description: "Failed to resume lead generation. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleClearAllActiveSearches = async () => {
+    if (!confirm("Are you sure you want to CLEAR all active searches? This action cannot be undone.")) {
+      return;
+    }
+
+    const reason = prompt("Enter reason for clearing searches (required):");
+    if (!reason) {
+      toast({
+        title: "Action Cancelled",
+        description: "Reason is required to clear all searches.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const refundCredits = confirm("Refund credits to users? (Recommended: Yes)");
+    
+    try {
+      const result = await clearAllActiveSearches({ 
+        reason,
+        refundCredits 
+      });
+      
+      toast({
+        title: "Searches Cleared",
+        description: `Cleared ${result.clearedSearches} searches, cleared ${result.batchesCleared} batches${refundCredits ? `, refunded ${result.totalCreditsRefunded} credits` : ''}.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Clear Failed",
+        description: "Failed to clear active searches. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const statusConfig = {
       active: { variant: "default" as const, color: "bg-green-100 text-green-800" },
@@ -436,6 +552,105 @@ export function AdminDashboard() {
             <Progress value={Math.max(0, 100 - (adminMetrics.systemHealth.avgResponseTime / 10))} className="h-2" />
           </div>
         </div>
+      </Card>
+
+      {/* System Emergency Controls */}
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Emergency System Controls</h3>
+          <div className="flex items-center gap-2">
+            {systemStatus?.systemPaused && (
+              <Badge variant="destructive" className="animate-pulse">
+                <AlertTriangle className="h-3 w-3 mr-1" />
+                SYSTEM PAUSED
+              </Badge>
+            )}
+            {systemStatus?.maintenanceMode && (
+              <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
+                <Settings className="h-3 w-3 mr-1" />
+                MAINTENANCE MODE
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div>
+              <p className="text-sm font-medium">System Status</p>
+              <p className="text-lg font-bold text-green-600">
+                {systemStatus?.systemPaused ? 'PAUSED' : 'OPERATIONAL'}
+              </p>
+            </div>
+            <Power className={`h-8 w-8 ${systemStatus?.systemPaused ? 'text-red-500' : 'text-green-500'}`} />
+          </div>
+
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div>
+              <p className="text-sm font-medium">Active Searches</p>
+              <p className="text-lg font-bold">
+                {systemActivity?.activeSearches?.total || 0}
+              </p>
+            </div>
+            <Activity className="h-8 w-8 text-blue-500" />
+          </div>
+
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div>
+              <p className="text-sm font-medium">Queue Status</p>
+              <p className="text-lg font-bold">
+                {(systemActivity?.queueStatus?.batchPlans || 0) + (systemActivity?.queueStatus?.searchBatches || 0)}
+              </p>
+            </div>
+            <Clock className="h-8 w-8 text-orange-500" />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          {!systemStatus?.systemPaused ? (
+            <>
+              <Button
+                variant="destructive"
+                onClick={handlePauseAllLeadGeneration}
+                className="flex-1 min-w-[200px]"
+              >
+                <Pause className="h-4 w-4 mr-2" />
+                Emergency Pause All
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleClearAllActiveSearches}
+                className="flex-1 min-w-[200px] border-orange-300 text-orange-700 hover:bg-orange-50"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clear Active Searches
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="default"
+              onClick={handleResumeAllLeadGeneration}
+              className="flex-1 min-w-[200px] bg-green-600 hover:bg-green-700"
+            >
+              <Play className="h-4 w-4 mr-2" />
+              Resume All Operations
+            </Button>
+          )}
+        </div>
+
+        {systemStatus?.systemPaused && systemStatus.reason && (
+          <Alert className="mt-4">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Paused:</strong> {systemStatus.reason}
+              {systemStatus.pausedAt && (
+                <span className="block text-xs text-muted-foreground mt-1">
+                  Paused on {new Date(systemStatus.pausedAt).toLocaleString()}
+                </span>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
       </Card>
 
       {/* Recent Activity */}
@@ -962,7 +1177,7 @@ export function AdminDashboard() {
   );
 
   // Show loading state
-  if (metricsLoading || usersLoading || analyticsLoading || configLoading) {
+  if (metricsLoading || usersLoading || analyticsLoading || configLoading || systemControlLoading) {
     return (
       <div className="p-6 max-w-7xl mx-auto">
         <div className="mb-8">
