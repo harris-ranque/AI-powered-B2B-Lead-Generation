@@ -75,7 +75,8 @@
       "Bash(nslookup:*)",
       "WebFetch(domain:findymail.com)",
       "WebFetch(domain:app.findymail.com)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(git pull:*)"
     ],
     "deny": []
   }

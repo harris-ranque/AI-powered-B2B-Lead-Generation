@@ -24,12 +24,12 @@ crons.interval(
   internal.leads.enrichment.processEnrichmentQueue
 );
 
-// High-frequency queue processing for real-time responsiveness (every 30 seconds)
-crons.interval(
-  "process-priority-queues",
-  { seconds: 30 },
-  internal.search.orchestrator.processPriorityQueues
-);
+// Priority queue processing disabled
+// crons.interval(
+//   "process-priority-queues",
+//   { seconds: 30 },
+//   internal.search.orchestrator.processPriorityQueues
+// );
 
 // Process AI analysis queue every 3 minutes
 crons.interval(

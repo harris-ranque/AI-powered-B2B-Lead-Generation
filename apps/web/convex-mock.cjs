@@ -8,106 +8,72 @@ const srcGenDir = path.join(__dirname, 'src', 'convex', '_generated');
 fs.mkdirSync(genDir, { recursive: true });
 fs.mkdirSync(srcGenDir, { recursive: true });
 
-// Create mock api.ts
-const apiContent = `
-// Auto-generated mock for Railway build
-export const api = {
-  users: {
-    queries: {
-      getCurrentUserData: "users:queries:getCurrentUserData",
-      getUserById: "users:queries:getUserById", 
-      getUserStats: "users:queries:getUserStats",
-      getUserActivity: "users:queries:getUserActivity",
-      getUserByEmail: "users:queries:getUserByEmail",
-      getUserPreferences: "users:queries:getUserPreferences",
-      getUserCredits: "users:queries:getUserCredits",
-      listUsers: "users:queries:listUsers"
-    },
-    mutations: {
-      updateProfile: "users:mutations:updateProfile",
-      deleteAccount: "users:mutations:deleteAccount",
-      addCredits: "users:mutations:addCredits"
-    }
-  },
-  profile: {
-    queries: {
-      getProfile: "profile:queries:getProfile"
-    },
-    mutations: {
-      updateProfile: "profile:mutations:updateProfile"
-    }
-  },
-  search: {
-    queries: {
-      getSearch: "search:queries:getSearch",
-      getUserSearches: "search:queries:getUserSearches",
-      getSearchById: "search:queries:getSearchById",
-      getSearchResults: "search:queries:getSearchResults",
-      getSearchAnalytics: "search:queries:getSearchAnalytics"
-    },
-    mutations: {
-      createSearch: "search:mutations:createSearch",
-      updateSearchStatus: "search:mutations:updateSearchStatus",
-      updateSearchProgress: "search:mutations:updateSearchProgress",
-      cancelSearch: "search:mutations:cancelSearch",
-      deleteSearch: "search:mutations:deleteSearch",
-      duplicateSearch: "search:mutations:duplicateSearch"
-    },
-    actions: {
-      startSearch: "search:actions:startSearch",
-      searchGoogleMaps: "search:actions:searchGoogleMaps"
-    }
-  },
-  leads: {
-    queries: {
-      getLead: "leads:queries:getLead",
-      getLeads: "leads:queries:getLeads"
-    },
-    mutations: {
-      updateLead: "leads:mutations:updateLead"
-    }
-  },
-  crewai: {
-    actions: {
-      generateEmail: "crewai:actions:generateEmail"
-    }
-  },
-  billing: {
-    queries: {
-      getBilling: "billing:queries:getBilling"
-    },
-    mutations: {
-      updateSubscription: "billing:mutations:updateSubscription",
-      purchaseCredits: "billing:mutations:purchaseCredits",
-      createCheckoutSession: "billing:mutations:createCheckoutSession"
-    }
-  },
-  royalty: {
-    config: {
-      getDeveloperConfig: "royalty:config:getDeveloperConfig"
-    },
-    dashboard: {
-      getStats: "royalty:dashboard:getStats",
-      getPayments: "royalty:dashboard:getPayments"
-    }
-  },
-  admin: {
-    queries: {
-      getMetrics: "admin:queries:getMetrics"
-    }
-  },
-  notifications: {
-    queries: {
-      getUserNotifications: "notifications:queries:getUserNotifications",
-      getNotificationCounts: "notifications:queries:getNotificationCounts"
-    },
-    mutations: {
-      markAsRead: "notifications:mutations:markAsRead",
-      markAllAsRead: "notifications:mutations:markAllAsRead",
-      deleteNotification: "notifications:mutations:deleteNotification"
-    }
+// Create mock api.ts for TypeScript
+const apiTsContent = `/* eslint-disable */
+/**
+ * Generated \`api\` utility mock for Railway build.
+ *
+ * This mock file allows the frontend to build without the Convex backend running.
+ * The actual API will be connected at runtime via environment variables.
+ */
+
+// Convex uses a proxy-based API that creates function references dynamically
+// We need to replicate this structure for the build to succeed
+
+const anyApi = new Proxy({} as any, {
+  get(_, moduleName: string) {
+    return new Proxy({}, {
+      get(_, functionName: string) {
+        return \`\${moduleName}:\${functionName}\`;
+      }
+    });
   }
-};
+});
+
+/**
+ * A utility for referencing Convex functions in your app's API.
+ *
+ * Usage:
+ * \`\`\`js
+ * const myFunctionReference = api.myModule.myFunction;
+ * \`\`\`
+ */
+export const api = anyApi;
+export const internal = anyApi;
+`;
+
+// Create mock api.js for JavaScript
+const apiJsContent = `/* eslint-disable */
+/**
+ * Generated \`api\` utility mock for Railway build.
+ *
+ * This mock file allows the frontend to build without the Convex backend running.
+ * The actual API will be connected at runtime via environment variables.
+ */
+
+// Convex uses a proxy-based API that creates function references dynamically
+// We need to replicate this structure for the build to succeed
+
+const anyApi = new Proxy({}, {
+  get(_, moduleName) {
+    return new Proxy({}, {
+      get(_, functionName) {
+        return \`\${moduleName}:\${functionName}\`;
+      }
+    });
+  }
+});
+
+/**
+ * A utility for referencing Convex functions in your app's API.
+ *
+ * Usage:
+ * \`\`\`js
+ * const myFunctionReference = api.myModule.myFunction;
+ * \`\`\`
+ */
+export const api = anyApi;
+export const internal = anyApi;
 `;
 
 // Create mock dataModel.ts
@@ -118,13 +84,13 @@ export type Doc<TableName extends string = string> = any;
 `;
 
 // Write files to both locations
-fs.writeFileSync(path.join(genDir, 'api.ts'), apiContent);
-fs.writeFileSync(path.join(genDir, 'api.js'), apiContent);
+fs.writeFileSync(path.join(genDir, 'api.ts'), apiTsContent);
+fs.writeFileSync(path.join(genDir, 'api.js'), apiJsContent);
 fs.writeFileSync(path.join(genDir, 'dataModel.ts'), dataModelContent);
 fs.writeFileSync(path.join(genDir, 'dataModel.js'), dataModelContent);
 
-fs.writeFileSync(path.join(srcGenDir, 'api.ts'), apiContent);
-fs.writeFileSync(path.join(srcGenDir, 'api.js'), apiContent);
+fs.writeFileSync(path.join(srcGenDir, 'api.ts'), apiTsContent);
+fs.writeFileSync(path.join(srcGenDir, 'api.js'), apiJsContent);
 fs.writeFileSync(path.join(srcGenDir, 'dataModel.ts'), dataModelContent);
 fs.writeFileSync(path.join(srcGenDir, 'dataModel.js'), dataModelContent);
 

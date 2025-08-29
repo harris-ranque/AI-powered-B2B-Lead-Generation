@@ -235,12 +235,11 @@ export const checkStaleSearches = internalMutation({
         // Complete search with zero results
         await ctx.db.patch(search._id, {
           status: "completed",
-          endedAt: Date.now(),
+          completedAt: Date.now(),
           results: {
             totalFound: 0,
-            totalEnriched: 0,
-            totalAnalyzed: 0,
-            successfullyAnalyzed: 0,
+            enrichedCount: 0,
+            avgRelevanceScore: 0,
           },
           progress: {
             discovered: 0,

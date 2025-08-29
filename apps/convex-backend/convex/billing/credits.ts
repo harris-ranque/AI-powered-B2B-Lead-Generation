@@ -65,7 +65,7 @@ export const refreshMonthlyCredits = internalMutation({
           userId: user._id,
           title: "Credits Refreshed",
           message: `Your ${user.plan} plan credits have been refreshed. You now have ${newBalance} credits available.`,
-          type: "credit_alert",
+          type: "system_alert",
           data: {
             creditsAdded: monthlyCredits,
             newBalance,

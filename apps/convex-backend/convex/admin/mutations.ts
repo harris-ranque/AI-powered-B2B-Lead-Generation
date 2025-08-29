@@ -136,7 +136,7 @@ export const addUserCredits = mutation({
     // Record transaction
     await ctx.db.insert("creditTransactions", {
       userId: args.userId,
-      type: "admin_credit",
+      type: "bonus",
       amount: args.amount,
       description: `Admin credit: ${args.reason}`,
       balanceAfter: newBalance,

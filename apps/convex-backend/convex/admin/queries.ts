@@ -156,7 +156,7 @@ export const getAnalytics = query({
 
     // Get completed email requests (from LangGraph)
     const emailRequests = await ctx.db
-      .query("langGraphRequests")
+      .query("langgraphRequests")
       .filter((q) => q.eq(q.field("status"), "completed"))
       .collect();
     const emailsGenerated = emailRequests.length;
@@ -211,7 +211,7 @@ export const getUsageStats = query({
     const recentTransactions = creditTransactions.filter(t => t.createdAt > oneMonthAgo);
     
     const creditsSpent = recentTransactions
-      .filter(t => t.type === "deduction")
+      .filter(t => t.type === "usage")
       .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
     return {

@@ -70,10 +70,7 @@ export const pauseAllLeadGeneration = mutation({
       .query("searches")
       .filter((q) => q.or(
         q.eq(q.field("status"), "pending"),
-        q.eq(q.field("status"), "in_progress"),
-        q.eq(q.field("status"), "google_maps"),
-        q.eq(q.field("status"), "enriching"),
-        q.eq(q.field("status"), "ai_analysis")
+        q.eq(q.field("status"), "in_progress")
       ))
       .collect();
 
@@ -81,9 +78,8 @@ export const pauseAllLeadGeneration = mutation({
     for (const search of activeSearches) {
       await ctx.db.patch(search._id, {
         status: "cancelled",
-        errorMessage: `System paused by admin: ${reason}`,
+        error: `System paused by admin: ${reason}`,
         completedAt: now,
-        updatedAt: now,
       });
 
       // Refund reserved credits
@@ -244,7 +240,7 @@ export const resumeAllLeadGeneration = mutation({
       userId: currentUser._id,
       data: {
         reason,
-        pausedDuration: now - controlState.pausedAt,
+        pausedDuration: controlState.pausedAt ? now - controlState.pausedAt : 0,
         pausedBy: controlState.pausedBy,
         originalPauseReason: controlState.reason,
       },
@@ -278,7 +274,7 @@ export const resumeAllLeadGeneration = mutation({
       success: true, 
       notifiedUsers: activeUsers.length,
       resumedAt: now,
-      pausedDuration: now - controlState.pausedAt,
+      pausedDuration: controlState.pausedAt ? now - controlState.pausedAt : 0,
     };
   },
 });
@@ -304,10 +300,7 @@ export const clearAllActiveSearches = mutation({
       .query("searches")
       .filter((q) => q.or(
         q.eq(q.field("status"), "pending"),
-        q.eq(q.field("status"), "in_progress"),
-        q.eq(q.field("status"), "google_maps"),
-        q.eq(q.field("status"), "enriching"),
-        q.eq(q.field("status"), "ai_analysis")
+        q.eq(q.field("status"), "in_progress")
       ))
       .collect();
 
@@ -318,9 +311,8 @@ export const clearAllActiveSearches = mutation({
       // Update search status
       await ctx.db.patch(search._id, {
         status: "cancelled",
-        errorMessage: `Cleared by admin: ${args.reason}`,
+        error: `Cleared by admin: ${args.reason}`,
         completedAt: now,
-        updatedAt: now,
       });
 
       // Refund reserved credits if requested
@@ -404,8 +396,7 @@ export const getSystemActivity = query({
     const searches = await ctx.db.query("searches").collect();
     
     const activeSearches = searches.filter(s => 
-      s.status === "pending" || s.status === "in_progress" || 
-      s.status === "google_maps" || s.status === "enriching" || s.status === "ai_analysis"
+      s.status === "pending" || s.status === "in_progress"
     );
     
     const recentSearches = searches.filter(s => s.startedAt && s.startedAt > oneHourAgo);
@@ -428,9 +419,9 @@ export const getSystemActivity = query({
         byStatus: {
           pending: activeSearches.filter(s => s.status === "pending").length,
           in_progress: activeSearches.filter(s => s.status === "in_progress").length,
-          google_maps: activeSearches.filter(s => s.status === "google_maps").length,
-          enriching: activeSearches.filter(s => s.status === "enriching").length,
-          ai_analysis: activeSearches.filter(s => s.status === "ai_analysis").length,
+          google_maps: 0,
+          enriching: 0,
+          ai_analysis: 0,
         },
       },
       searchActivity: {
