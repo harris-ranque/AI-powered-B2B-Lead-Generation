@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -25,7 +25,9 @@ export function EnrichmentStage() {
   const { leads: searchLeads, isLoading } = useLeads(state.searchId!);
   
   // Use leads from context (for uploads) or from search
-  const leads = state.leads.length > 0 ? state.leads : (searchLeads || []);
+  const leads = useMemo(() => {
+    return state.leads.length > 0 ? state.leads : (searchLeads || []);
+  }, [state.leads, searchLeads]);
   
   const enrichedCount = leads.filter(lead => lead.email).length;
   const enrichmentProgress = leads.length > 0 ? (enrichedCount / leads.length) * 100 : 0;

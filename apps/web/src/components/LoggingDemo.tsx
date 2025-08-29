@@ -21,7 +21,7 @@ export const LoggingDemo: React.FC = () => {
     return () => {
       logger.componentUnmount('LoggingDemo');
     };
-  }, []);
+  }, [counter, logger]);
 
   const handleApiCall = async () => {
     logger.userAction('API call button clicked');

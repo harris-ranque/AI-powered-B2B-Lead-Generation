@@ -14,7 +14,7 @@ export interface StatusBroadcast {
   type: string;
   title: string;
   message: string;
-  data?: any;
+  data?: unknown;
   priority: BroadcastPriority;
   tags: string[];
   status: "pending" | "delivered" | "failed";
@@ -266,7 +266,7 @@ export function formatBroadcastTime(timestamp: number): string {
 /**
  * Type guard for broadcast data
  */
-export function isBroadcastType<T = any>(
+export function isBroadcastType<T = unknown>(
   broadcast: StatusBroadcast, 
   type: string
 ): broadcast is StatusBroadcast & { data: T } {

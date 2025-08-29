@@ -14,7 +14,7 @@ export interface CorrelationLog {
   phase: string;
   level: "debug" | "info" | "warn" | "error";
   message: string;
-  data?: any;
+  data?: unknown;
   metadata: {
     userId?: Id<"users">;
     searchId?: Id<"searches">;

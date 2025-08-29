@@ -5,7 +5,7 @@
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 interface LogContext {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 interface LogEntry {
@@ -113,11 +113,11 @@ class Logger {
   }
 
   // Convenience methods for common scenarios
-  apiRequest(endpoint: string, method: string, data?: any) {
+  apiRequest(endpoint: string, method: string, data?: unknown) {
     this.debug(`API Request: ${method} ${endpoint}`, { data });
   }
 
-  apiResponse(endpoint: string, status: number, data?: any, duration?: number) {
+  apiResponse(endpoint: string, status: number, data?: unknown, duration?: number) {
     const level = status >= 400 ? 'error' : status >= 300 ? 'warn' : 'info';
     this.log(level, `API Response: ${status} ${endpoint}`, {
       data: this.isDevelopment ? data : undefined,

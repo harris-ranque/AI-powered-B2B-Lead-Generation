@@ -28,7 +28,7 @@ export function ResetPasswordForm() {
     { text: "Contains uppercase letter", met: /[A-Z]/.test(formData.password) },
     { text: "Contains lowercase letter", met: /[a-z]/.test(formData.password) },
     { text: "Contains number", met: /[0-9]/.test(formData.password) },
-    { text: "Contains special character", met: /[!@#$%^&*(),.?\":{}|<>]/.test(formData.password) }
+    { text: "Contains special character", met: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password) }
   ];
 
   const isPasswordValid = passwordRequirements.every(req => req.met);

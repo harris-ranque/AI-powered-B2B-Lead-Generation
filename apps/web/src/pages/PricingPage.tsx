@@ -19,6 +19,18 @@ import {
 import { Link } from "react-router-dom";
 import { useState } from "react";
 
+interface PricingPlan {
+  name: string;
+  description: string;
+  monthlyPrice: number;
+  annualPrice: number;
+  features: string[];
+  limitations?: string[];
+  cta: string;
+  highlighted: boolean;
+  popular: boolean;
+}
+
 export default function PricingPage() {
   const [isAnnual, setIsAnnual] = useState(false);
 
@@ -157,7 +169,7 @@ export default function PricingPage() {
     }
   ];
 
-  const getPrice = (plan: any) => {
+  const getPrice = (plan: PricingPlan) => {
     return isAnnual ? plan.annualPrice : plan.monthlyPrice;
   };
 

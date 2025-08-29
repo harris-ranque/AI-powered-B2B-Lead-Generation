@@ -76,7 +76,7 @@ export function CorrelationDebugPanel({
     let filtered = logs;
 
     if (searchId) {
-      filtered = getSearchLogs(searchId as any);
+      filtered = getSearchLogs(searchId as Id<"searches">);
     }
 
     if (showOnlyErrors) {

@@ -29,7 +29,7 @@ export function SourceSelector() {
   
   const availableSources = SourceRegistry.getAvailableSources();
 
-  const handleSourceSelect = (sourceType: any) => {
+  const handleSourceSelect = (sourceType: LeadSourceType) => {
     setSource(sourceType);
     markStageComplete('source_selection');
     

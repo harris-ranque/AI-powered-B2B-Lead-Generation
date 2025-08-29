@@ -31,9 +31,9 @@ export function PipelineStepper() {
   const { state, setStage, canProgressToStage } = usePipeline();
 
   const getStageStatus = (stage: string) => {
-    if (state.completedStages.includes(stage as any)) return 'completed';
+    if (state.completedStages.includes(stage as PipelineStage)) return 'completed';
     if (state.currentStage === stage) return 'active';
-    if (canProgressToStage(stage as any)) return 'available';
+    if (canProgressToStage(stage as PipelineStage)) return 'available';
     return 'disabled';
   };
 

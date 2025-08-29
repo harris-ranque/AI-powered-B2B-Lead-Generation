@@ -34,7 +34,7 @@ export function GenniLeadSearch({ searchId, onGenerateEmail }: LeadSearchProps) 
     return () => {
       logger.componentUnmount('GenniLeadSearch');
     };
-  }, []);
+  }, [logger, profile, searchId]);
 
   useEffect(() => {
     if (leads) {
@@ -47,7 +47,7 @@ export function GenniLeadSearch({ searchId, onGenerateEmail }: LeadSearchProps) 
         }, {} as Record<string, number>)
       });
     }
-  }, [leads, searchId]);
+  }, [leads, searchId, logger]);
 
   // Convert Convex leads to expected Lead format
   const searchResults = leads?.map(lead => ({

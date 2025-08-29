@@ -12,7 +12,7 @@ export function GenniApp() {
     return () => {
       logger.componentUnmount('GenniApp');
     };
-  }, []);
+  }, [logger]);
 
   return (
     <div className="min-h-screen bg-background">

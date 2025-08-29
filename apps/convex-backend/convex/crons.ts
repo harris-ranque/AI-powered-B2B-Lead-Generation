@@ -143,12 +143,12 @@ crons.interval(
   internal.search.batchQueue.processBatchQueues
 );
 
-// High-priority batch processing every 30 seconds
-crons.interval(
-  "process-priority-batches",
-  { seconds: 30 },
-  internal.search.batchQueue.processPriorityBatches
-);
+// High-priority batch processing disabled
+// crons.interval(
+//   "process-priority-batches",
+//   { seconds: 30 },
+//   internal.search.batchQueue.processPriorityBatches
+// );
 
 // Cleanup completed batches weekly
 crons.cron(

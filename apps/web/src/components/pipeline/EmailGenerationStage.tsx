@@ -17,7 +17,7 @@ import {
 import { cn } from '@/lib/utils';
 
 interface EmailGenerationStageProps {
-  onGenerateEmail?: (lead: any) => void;
+  onGenerateEmail?: (lead: Lead) => void;
 }
 
 export function EmailGenerationStage({ onGenerateEmail }: EmailGenerationStageProps) {
@@ -62,7 +62,7 @@ export function EmailGenerationStage({ onGenerateEmail }: EmailGenerationStagePr
     }
   };
 
-  const handlePreviewEmail = (lead: any) => {
+  const handlePreviewEmail = (lead: Lead) => {
     setSelectedLead(lead);
     onGenerateEmail?.(lead);
   };
