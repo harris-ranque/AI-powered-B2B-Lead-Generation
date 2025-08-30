@@ -174,15 +174,15 @@ export const testCorrelationTrace = internalMutation({
   args: {
     correlationId: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     try {
       // Get the full correlation trace
-      const trace = await ctx.runQuery(internal.lib.logging.getCorrelationTrace, {
+      const trace: any = await ctx.runQuery(internal.lib.logging.getCorrelationTrace, {
         correlationId: args.correlationId,
       });
 
       // Get operation metrics
-      const metrics = await ctx.runQuery(internal.lib.logging.getOperationMetrics, {
+      const metrics: any = await ctx.runQuery(internal.lib.logging.getOperationMetrics, {
         operationType: OPERATION_TYPES.SEARCH_CREATE,
         timeRange: {
           start: Date.now() - (60 * 60 * 1000), // Last hour
@@ -218,7 +218,7 @@ export const testPerformanceMonitoring = internalMutation({
   args: {
     timeRangeHours: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     const timeRangeHours = args.timeRangeHours || 1;
     const now = Date.now();
     const timeRange = {
@@ -239,7 +239,7 @@ export const testPerformanceMonitoring = internalMutation({
       const metricsResults = [];
       
       for (const operationType of operationTypes) {
-        const metrics = await ctx.runQuery(internal.lib.logging.getOperationMetrics, {
+        const metrics: any = await ctx.runQuery(internal.lib.logging.getOperationMetrics, {
           operationType,
           timeRange,
         });

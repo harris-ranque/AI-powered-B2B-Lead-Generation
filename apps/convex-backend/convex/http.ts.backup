@@ -62,22 +62,44 @@ http.route({
       switch (event.type) {
         case "user.created":
           console.log(`Processing user.created event for user ${event.data.id}`);
-          await ctx.runMutation(internal.auth.handleUserCreated, {
-            clerkUser: event.data,
-          });
+          const userData: any = {
+            clerkId: event.data.id,
+            email: event.data.email_addresses[0]?.email_address,
+          };
+          
+          if (event.data.first_name && event.data.last_name) {
+            userData.name = `${event.data.first_name} ${event.data.last_name}`;
+          }
+          if (event.data.image_url) {
+            userData.avatar = event.data.image_url;
+          }
+          
+          await ctx.runMutation(internal.auth.index.handleUserCreated, userData);
           break;
 
         case "user.updated":
           console.log(`Processing user.updated event for user ${event.data.id}`);
-          await ctx.runMutation(internal.auth.handleUserUpdated, {
-            clerkUser: event.data,
-          });
+          const updateData: any = {
+            clerkId: event.data.id,
+          };
+          
+          if (event.data.email_addresses[0]?.email_address) {
+            updateData.email = event.data.email_addresses[0].email_address;
+          }
+          if (event.data.first_name && event.data.last_name) {
+            updateData.name = `${event.data.first_name} ${event.data.last_name}`;
+          }
+          if (event.data.image_url) {
+            updateData.avatar = event.data.image_url;
+          }
+          
+          await ctx.runMutation(internal.auth.index.handleUserUpdated, updateData);
           break;
 
         case "user.deleted":
           console.log(`Processing user.deleted event for user ${event.data.id}`);
-          await ctx.runMutation(internal.auth.handleUserDeleted, {
-            clerkUserId: event.data.id,
+          await ctx.runMutation(internal.auth.index.handleUserDeleted, {
+            clerkId: event.data.id,
           });
           break;
 
@@ -194,12 +216,10 @@ http.route({
       }
 
       // Process the webhook
-      await ctx.runMutation(internal.langgraph.webhooks.handleEmailGenerationWebhook, {
-        requestId: payload.request_id,
-        status: payload.status,
-        result: payload.result,
-        error: payload.error,
-        processingTime: payload.processing_time,
+      await ctx.runMutation(internal.langgraph.webhooks.handleAnalysisCompleted, {
+        searchId: payload.search_id,
+        leadId: payload.lead_id,
+        result: payload,
       });
 
       return new Response(
@@ -264,13 +284,10 @@ http.route({
       const payload = await request.json() as any;
       
       // Process the webhook
-      await ctx.runMutation(internal.langgraph.webhooks.handleAnalysisWebhook, {
-        requestId: payload.request_id,
+      await ctx.runMutation(internal.langgraph.webhooks.handleAnalysisCompleted, {
+        searchId: payload.search_id,
         leadId: payload.lead_id,
-        status: payload.status,
-        analysis: payload.analysis,
-        error: payload.error,
-        processingTime: payload.processing_time,
+        result: payload,
       });
 
       return new Response(
@@ -340,27 +357,30 @@ http.route({
       switch (event.type) {
         case WEBHOOK_EVENTS.STRIPE.CUSTOMER_SUBSCRIPTION_CREATED:
         case WEBHOOK_EVENTS.STRIPE.CUSTOMER_SUBSCRIPTION_UPDATED:
-          await ctx.runMutation(internal.billing.webhooks.handleSubscriptionUpdate, {
-            subscription: event.data.object,
-            eventType: event.type,
+          await ctx.runMutation(internal.billing.webhooks.handleSubscriptionUpdated, {
+            subscriptionId: event.data.object.id,
+            plan: event.data.object.items.data[0]?.price?.nickname || "unknown",
           });
           break;
 
         case WEBHOOK_EVENTS.STRIPE.CUSTOMER_SUBSCRIPTION_DELETED:
-          await ctx.runMutation(internal.billing.webhooks.handleSubscriptionCancellation, {
-            subscription: event.data.object,
+          await ctx.runMutation(internal.billing.webhooks.handleSubscriptionDeleted, {
+            subscriptionId: event.data.object.id,
           });
           break;
 
         case WEBHOOK_EVENTS.STRIPE.INVOICE_PAYMENT_SUCCEEDED:
-          await ctx.runMutation(internal.billing.webhooks.handlePaymentSuccess, {
-            invoice: event.data.object,
+          await ctx.runMutation(internal.billing.webhooks.handlePaymentSucceeded, {
+            paymentIntentId: event.data.object.id,
+            amount: event.data.object.amount_paid,
+            currency: event.data.object.currency,
           });
           break;
 
         case WEBHOOK_EVENTS.STRIPE.INVOICE_PAYMENT_FAILED:
           await ctx.runMutation(internal.billing.webhooks.handlePaymentFailure, {
-            invoice: event.data.object,
+            paymentIntentId: event.data.object.id,
+            error: "Payment failed",
           });
           break;
 
@@ -414,9 +434,7 @@ http.route({
       // Process enrichment result
       await ctx.runMutation(internal.leads.enrichment.handleEnrichmentWebhook, {
         leadId: payload.lead_id,
-        status: payload.status,
-        data: payload.data,
-        error: payload.error,
+        result: payload,
       });
 
       return new Response(
@@ -478,7 +496,7 @@ http.route({
       }
 
       // Validate API key and get user
-      const user = await ctx.runQuery(internal.auth.validateApiKey, { apiKey });
+      const user = await ctx.runQuery(internal.auth.index.validateApiKey, { apiKey });
       
       if (!user) {
         return new Response(

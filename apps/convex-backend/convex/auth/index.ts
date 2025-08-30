@@ -22,29 +22,80 @@ export const getUserByClerkId = internalQuery({
 export const validateApiKey = internalQuery({
   args: { apiKey: v.string() },
   handler: async (ctx, args) => {
-    // In a real implementation, you would hash the API key
-    // For now, we'll do a simple lookup
-    const apiKeyRecord = await ctx.db
-      .query("apiKeys")
-      .filter((q) => 
-        q.and(
-          q.eq(q.field("keyHash"), args.apiKey), // In production, hash this
-          q.eq(q.field("isActive"), true)
-        )
-      )
+    // For now, return null - API key system will be implemented later
+    return null;
+  },
+});
+
+// User webhook handlers for Clerk integration
+export const handleUserCreated = internalMutation({
+  args: { 
+    clerkId: v.string(),
+    email: v.string(),
+    name: v.optional(v.string()),
+    avatar: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Create new user in database
+    const userInsert: any = {
+      clerkId: args.clerkId,
+      email: args.email,
+      credits: 100, // Welcome credits
+      plan: "free" as const,
+      role: "user" as const,
+      isActive: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    
+    // Only add optional fields if they exist
+    if (args.name) userInsert.name = args.name;
+    if (args.avatar) userInsert.avatar = args.avatar;
+    
+    const userId = await ctx.db.insert("users", userInsert);
+    
+    return userId;
+  },
+});
+
+export const handleUserUpdated = internalMutation({
+  args: { 
+    clerkId: v.string(),
+    email: v.optional(v.string()),
+    name: v.optional(v.string()),
+    avatar: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
       .unique();
-
-    if (!apiKeyRecord) {
-      return null;
+    
+    if (user) {
+      const updateData: any = {
+        updatedAt: Date.now(),
+      };
+      
+      if (args.email) updateData.email = args.email;
+      if (args.name) updateData.name = args.name;
+      if (args.avatar) updateData.avatar = args.avatar;
+      
+      await ctx.db.patch(user._id, updateData);
     }
+  },
+});
 
-    // Get the user associated with this API key
-    // For now, we'll assume the API key belongs to a specific user
-    // In a more complex system, you might have service-to-service keys
-    const users = await ctx.db.query("users").collect();
-    const user = users.find(u => u.email === "api@genni.com"); // Mock user for API access
-
-    return user;
+export const handleUserDeleted = internalMutation({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .unique();
+    
+    if (user) {
+      await ctx.db.delete(user._id);
+    }
   },
 });
 

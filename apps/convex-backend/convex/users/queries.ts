@@ -12,9 +12,8 @@ export const getCurrentUserData = query({
       return null;
     }
 
-    // Don't return sensitive information
-    const { ...safeUser } = user;
-    return safeUser;
+    // Return user data (excluding sensitive fields if needed)
+    return user;
   },
 });
 
@@ -39,6 +38,9 @@ export const getUserStats = query({
   args: {},
   handler: async (ctx) => {
     const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
 
     // Get search count
     const searches = await ctx.db
@@ -104,6 +106,9 @@ export const getUserActivity = query({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
 
     const limit = args.limit || 20;
     const offset = args.offset || 0;
@@ -180,6 +185,9 @@ export const getUserPreferences = query({
   args: {},
   handler: async (ctx) => {
     const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
 
     return user.preferences || {
       emailNotifications: true,
@@ -194,6 +202,9 @@ export const getUserCredits = query({
   args: {},
   handler: async (ctx) => {
     const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
     return user.credits || 0;
   },
 });

@@ -1,17 +1,16 @@
 import { internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 
-// Record credit transaction
-export const recordTransaction = internalMutation({
+// Update user credits (stub implementation)
+export const updateUserCredits = internalMutation({
   args: {
     userId: v.id("users"),
     amount: v.number(),
     operation: v.string(),
-    description: v.string(),
   },
   handler: async (ctx, args) => {
-    // Stub implementation
-    console.log(`Credit transaction: ${args.operation} ${args.amount} for user ${args.userId}`);
+    // Stub implementation - will be restored later
+    console.log(`Updating credits for user ${args.userId}: ${args.amount} (${args.operation})`);
     return { success: true };
   },
 });
