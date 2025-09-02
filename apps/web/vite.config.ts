@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
       "@/convex": path.resolve(__dirname, "../../convex"),
       "@shared": path.resolve(__dirname, "../../packages/shared-types/src"),
+      "@genni/convex-types": path.resolve(__dirname, "./convex/_generated"),
     },
   },
 }));

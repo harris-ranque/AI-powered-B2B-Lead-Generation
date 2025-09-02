@@ -24,7 +24,9 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@shared/*": ["../../packages/shared-types/src/*"]
+      "@shared/*": ["../../packages/shared-types/src/*"],
+      "@genni/convex-types": ["./src/convex/_generated"],
+      "@genni/convex-types/*": ["./src/convex/_generated/*"]
     }
   },
   "include": ["src"]

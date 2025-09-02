@@ -5,11 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "pnpm -C ../convex-backend install --silent --no-frozen-lockfile && pnpm -C ../convex-backend exec convex codegen",
     "build": "node convex-mock.cjs && vite build",
-    "prebuild:dev": "pnpm -C ../convex-backend install --silent --no-frozen-lockfile && pnpm -C ../convex-backend exec convex codegen",
     "build:dev": "node convex-mock.cjs && vite build --mode development",
-    "prebuild:staging": "pnpm -C ../convex-backend install --silent --no-frozen-lockfile && pnpm -C ../convex-backend exec convex codegen",
     "build:staging": "node convex-mock.cjs && vite build --mode staging",
     "start": "./start.sh",
     "lint": "eslint .",
