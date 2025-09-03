@@ -26,11 +26,12 @@ RUN echo -e "packages:\n  - 'packages/*'" > pnpm-workspace.yaml
 # Install dependencies
 RUN pnpm install
 
-# Copy source code
+# Copy source code and scripts
 COPY . .
 
-# Make prebuild script executable if it exists
-RUN if [ -f prebuild.sh ]; then chmod +x prebuild.sh; fi
+# Make scripts executable if they exist
+RUN if [ -f prebuild.sh ]; then chmod +x prebuild.sh; fi && \
+    if [ -f start.sh ]; then chmod +x start.sh; fi
 
 # Accept build-time environment variables for Vite
 ARG VITE_CONVEX_URL
@@ -63,9 +64,5 @@ RUN npm install -g serve
 # Expose port (Railway will override with $PORT)
 EXPOSE 3000
 
-# Copy and make start script executable
-COPY start.sh ./
-RUN chmod +x start.sh
-
-# Start command (Railway will provide $PORT)
+# Start command (start.sh was already copied and made executable above)
 CMD ["./start.sh"]
