@@ -17,6 +17,3 @@ const createApi = () => new Proxy({}, {
 
 export const api = createApi();
 export const internal = createApi();
-
-// Re-export dataModel types
-export * from './dataModel.d.ts';
