@@ -17,10 +17,10 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "@/convex": path.resolve(__dirname, "../../convex"),
+      "@/convex": path.resolve(__dirname, "../convex-backend/convex"),
       "@shared": path.resolve(__dirname, "../../packages/shared-types/src"),
-      "@genni/convex-types": path.resolve(__dirname, "./convex/_generated/index.js"),
-      "@genni/convex-types/dataModel": path.resolve(__dirname, "./convex/_generated/dataModel.d.ts"),
+      "@genni/convex-types": path.resolve(__dirname, "../convex-backend/convex/_generated/api.js"),
+      "@genni/convex-types/dataModel": path.resolve(__dirname, "../convex-backend/convex/_generated/dataModel.d.ts"),
     },
   },
 }));

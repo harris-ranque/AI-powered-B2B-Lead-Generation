@@ -23,8 +23,5 @@ dist-ssr
 *.sln
 *.sw?
 
-# Convex generated files (copied from backend during build)
-# But allow the index files needed for build
-convex/_generated/*
-!convex/_generated/index.js
-!convex/_generated/index.d.ts
+# Convex generated files (now using real files from convex-backend)
+convex/_generated
