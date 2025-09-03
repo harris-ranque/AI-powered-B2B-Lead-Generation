@@ -11,20 +11,11 @@ RUN npm install -g pnpm@latest
 COPY package.json ./
 COPY pnpm-lock-real.yaml ./pnpm-lock.yaml
 
-# Create workspace packages with mock content for build
-RUN mkdir -p packages/convex-types packages/shared-types
+# Create workspace structure for packages (Railway builds from apps/web)
+RUN mkdir -p packages/shared-types/src
 
-# Create mock convex-types package with required files
-RUN echo '{"name":"@genni/convex-types","version":"1.0.0","main":"./src/_generated/api.js","types":"./src/_generated/api.d.ts","exports":{".":{"types":"./src/_generated/api.d.ts","default":"./src/_generated/api.js"},"./dataModel":{"types":"./src/_generated/dataModel.d.ts","default":"./src/_generated/dataModel.js"}}}' > packages/convex-types/package.json && \
-    mkdir -p packages/convex-types/src/_generated && \
-    echo 'export const api = {};' > packages/convex-types/src/_generated/api.js && \
-    echo 'export declare const api: any;' > packages/convex-types/src/_generated/api.d.ts && \
-    echo 'export {};' > packages/convex-types/src/_generated/dataModel.js && \
-    echo 'export {};' > packages/convex-types/src/_generated/dataModel.d.ts
-
-# Create mock shared-types package  
+# Create minimal shared-types package (we don't need convex-types since we have local files)
 RUN echo '{"name":"@genni/shared-types","version":"1.0.0","main":"./src/index.js","types":"./src/index.d.ts"}' > packages/shared-types/package.json && \
-    mkdir -p packages/shared-types/src && \
     echo 'export {};' > packages/shared-types/src/index.ts && \
     echo 'export {};' > packages/shared-types/src/index.js && \
     echo 'export {};' > packages/shared-types/src/index.d.ts
@@ -37,6 +28,9 @@ RUN pnpm install
 
 # Copy source code
 COPY . .
+
+# Make prebuild script executable if it exists
+RUN if [ -f prebuild.sh ]; then chmod +x prebuild.sh; fi
 
 # Accept build-time environment variables for Vite
 ARG VITE_CONVEX_URL
@@ -56,9 +50,8 @@ ENV VITE_POSTHOG_HOST=$VITE_POSTHOG_HOST
 ENV ENVIRONMENT=$ENVIRONMENT
 ENV NODE_ENV=$NODE_ENV
 
-# Create mock Convex files and build with proper mode
-RUN node convex-mock.cjs && \
-    if [ "$NODE_ENV" = "development" ] || [ "$ENVIRONMENT" = "development" ]; then \
+# Build with proper mode (Convex types are already in convex/_generated)
+RUN if [ "$NODE_ENV" = "development" ] || [ "$ENVIRONMENT" = "development" ]; then \
         pnpm build:dev; \
     else \
         pnpm build; \

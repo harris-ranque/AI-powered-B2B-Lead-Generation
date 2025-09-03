@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Convex generated files (copied from backend during build)
+convex/_generated

@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node convex-mock.cjs && vite build",
-    "build:dev": "node convex-mock.cjs && vite build --mode development",
-    "build:staging": "node convex-mock.cjs && vite build --mode staging",
+    "prebuild": "./prebuild.sh",
+    "build": "vite build",
+    "build:dev": "vite build --mode development",
+    "build:staging": "vite build --mode staging",
     "start": "./start.sh",
     "lint": "eslint .",
     "preview": "vite preview",
