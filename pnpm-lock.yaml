@@ -47,9 +47,6 @@ importers:
       '@clerk/clerk-react':
         specifier: ^5.0.0
         version: 5.41.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@genni/convex-types':
-        specifier: workspace:*
-        version: link:../../packages/convex-types
       '@genni/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
