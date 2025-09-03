@@ -1,4 +1,5 @@
 import { internalMutation } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { v } from "convex/values";
 
 // Handle Stripe subscription created
@@ -45,6 +46,8 @@ export const handleSubscriptionCreated = internalMutation({
       }
 
       if (creditsToAdd > 0) {
+        const newBalance = (user.credits || 0) + creditsToAdd;
+        
         await ctx.db.insert("creditTransactions", {
           userId: user._id,
           type: "purchase",
@@ -54,12 +57,13 @@ export const handleSubscriptionCreated = internalMutation({
             type: "subscription",
             id: args.subscriptionId,
           },
+          balanceAfter: newBalance,
           createdAt: Date.now(),
         });
 
         // Update user's credit balance
         await ctx.db.patch(user._id, {
-          credits: (user.credits || 0) + creditsToAdd,
+          credits: newBalance,
         });
       }
 
@@ -118,6 +122,8 @@ export const handleSubscriptionUpdated = internalMutation({
       }
 
       if (creditAdjustment > 0) {
+        const newBalance = (user.credits || 0) + creditAdjustment;
+        
         await ctx.db.insert("creditTransactions", {
           userId: user._id,
           type: "purchase",
@@ -127,11 +133,12 @@ export const handleSubscriptionUpdated = internalMutation({
             type: "subscription",
             id: args.subscriptionId,
           },
+          balanceAfter: newBalance,
           createdAt: Date.now(),
         });
 
         await ctx.db.patch(user._id, {
-          credits: (user.credits || 0) + creditAdjustment,
+          credits: newBalance,
         });
       }
 
@@ -170,6 +177,8 @@ export const handleSubscriptionDeleted = internalMutation({
       });
 
       // Record the subscription cancellation
+      const currentBalance = user.credits || 0;
+      
       await ctx.db.insert("creditTransactions", {
         userId: user._id,
         type: "refund", // Using refund to indicate subscription ended
@@ -179,6 +188,7 @@ export const handleSubscriptionDeleted = internalMutation({
           type: "subscription",
           id: args.subscriptionId,
         },
+        balanceAfter: currentBalance,
         createdAt: Date.now(),
       });
 
@@ -219,6 +229,8 @@ export const handlePaymentSucceeded = internalMutation({
       const creditsToAdd = Math.floor(args.amount / 10); // 10 cents per credit
 
       // Create credit transaction
+      const newBalance = (user.credits || 0) + creditsToAdd;
+      
       await ctx.db.insert("creditTransactions", {
         userId: user._id,
         type: "purchase",
@@ -228,12 +240,13 @@ export const handlePaymentSucceeded = internalMutation({
           type: "payment",
           id: args.paymentIntentId,
         },
+        balanceAfter: newBalance,
         createdAt: Date.now(),
       });
 
       // Update user's credit balance
       await ctx.db.patch(user._id, {
-        credits: (user.credits || 0) + creditsToAdd,
+        credits: newBalance,
         updatedAt: Date.now(),
       });
 
@@ -252,9 +265,9 @@ export const handleSubscriptionUpdate = internalMutation({
     subscriptionId: v.string(),
     plan: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     // This is a duplicate of handleSubscriptionUpdated, call that function
-    return await ctx.runMutation("billing/webhooks:handleSubscriptionUpdated", {
+    return await ctx.runMutation(internal.billing.webhooks.handleSubscriptionUpdated, {
       subscriptionId: args.subscriptionId,
       plan: args.plan,
     });
@@ -265,9 +278,9 @@ export const handleSubscriptionCancellation = internalMutation({
   args: {
     subscriptionId: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     // This is a duplicate of handleSubscriptionDeleted, call that function
-    return await ctx.runMutation("billing/webhooks:handleSubscriptionDeleted", {
+    return await ctx.runMutation(internal.billing.webhooks.handleSubscriptionDeleted, {
       subscriptionId: args.subscriptionId,
     });
   },
@@ -279,9 +292,9 @@ export const handlePaymentSuccess = internalMutation({
     amount: v.number(),
     stripeCustomerId: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     // This is a duplicate of handlePaymentSucceeded, call that function
-    return await ctx.runMutation("billing/webhooks:handlePaymentSucceeded", {
+    return await ctx.runMutation(internal.billing.webhooks.handlePaymentSucceeded, {
       paymentIntentId: args.paymentIntentId,
       amount: args.amount,
       currency: "usd", // Default currency
@@ -309,6 +322,8 @@ export const handlePaymentFailure = internalMutation({
 
       // Log the payment failure
       if (user) {
+        const currentBalance = user.credits || 0;
+        
         await ctx.db.insert("creditTransactions", {
           userId: user._id,
           type: "refund", // Using refund type to indicate failed payment
@@ -318,6 +333,7 @@ export const handlePaymentFailure = internalMutation({
             type: "payment",
             id: args.paymentIntentId,
           },
+          balanceAfter: currentBalance,
           createdAt: Date.now(),
         });
 

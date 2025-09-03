@@ -159,7 +159,7 @@ export const commitReservation = internalMutation({
       }
 
       // Record the usage transaction
-      const transactionResult = await ctx.runMutation(internal.credits.transactions.recordTransaction, {
+      const transactionResult: any = await ctx.runMutation(internal.credits.transactions.recordTransaction, {
         userId: reservation.userId,
         amount: reservation.amount,
         operation: "usage",

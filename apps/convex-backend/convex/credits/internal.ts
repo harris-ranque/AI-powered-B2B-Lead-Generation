@@ -7,13 +7,13 @@ export const updateUserCredits = internalMutation({
   args: {
     userId: v.id("users"),
     amount: v.number(),
-    operation: v.union(v.literal("usage"), v.literal("purchase"), v.literal("refund"), v.literal("adjustment")),
+    operation: v.union(v.literal("usage"), v.literal("purchase"), v.literal("refund"), v.literal("bonus"), v.literal("rollback")),
     description: v.string(),
   },
   handler: async (ctx, args) => {
     try {
       // Use the credit transaction system for consistency
-      const result = await ctx.runMutation(internal.credits.transactions.recordTransaction, {
+      const result: any = await ctx.runMutation(internal.credits.transactions.recordTransaction, {
         userId: args.userId,
         amount: args.amount,
         operation: args.operation,

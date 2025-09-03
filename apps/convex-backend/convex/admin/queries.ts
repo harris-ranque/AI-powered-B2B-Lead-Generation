@@ -199,3 +199,149 @@ export const getSystemHealth = query({
     };
   },
 });
+
+// Get all users for admin dashboard
+export const getAllUsers = query({
+  args: {
+    limit: v.optional(v.number()),
+    offset: v.optional(v.number()),
+    plan: v.optional(v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise"))),
+    role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
+    isActive: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    const limit = args.limit || 50;
+    const offset = args.offset || 0;
+
+    // Apply filters and get users
+    let users;
+    if (args.plan !== undefined) {
+      const planFilter = args.plan;
+      users = await ctx.db
+        .query("users")
+        .withIndex("by_plan", (q) => q.eq("plan", planFilter))
+        .collect();
+    } else if (args.role !== undefined) {
+      const roleFilter = args.role;
+      users = await ctx.db
+        .query("users")
+        .withIndex("by_role", (q) => q.eq("role", roleFilter))
+        .collect();
+    } else {
+      users = await ctx.db.query("users").collect();
+    }
+
+    // Apply additional filters
+    if (args.isActive !== undefined) {
+      users = users.filter(user => user.isActive === args.isActive);
+    }
+
+    // Apply pagination
+    const paginatedUsers = users.slice(offset, offset + limit);
+
+    return {
+      users: paginatedUsers,
+      total: users.length,
+      hasMore: offset + limit < users.length,
+    };
+  },
+});
+
+// Get analytics data
+export const getAnalytics = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+
+    const now = Date.now();
+    const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+
+    // Get user growth over time
+    const users = await ctx.db.query("users").collect();
+    const searches = await ctx.db.query("searches").collect();
+    const transactions = await ctx.db.query("creditTransactions").collect();
+
+    return {
+      userGrowth: users.length,
+      searchVolume: searches.length,
+      revenueGrowth: transactions
+        .filter(t => t.type === "purchase" && t.createdAt > thirtyDaysAgo)
+        .reduce((sum, t) => sum + t.amount, 0),
+      engagement: {
+        activeUsers: users.filter(u => u.isActive).length,
+        averageSearchesPerUser: users.length > 0 ? searches.length / users.length : 0,
+      },
+    };
+  },
+});
+
+// Get revenue statistics
+export const getRevenueStats = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+
+    const transactions = await ctx.db
+      .query("creditTransactions")
+      .filter((q) => q.eq(q.field("type"), "purchase"))
+      .collect();
+
+    const now = Date.now();
+    const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+
+    return {
+      totalRevenue: transactions.reduce((sum, t) => sum + t.amount, 0),
+      revenueThisMonth: transactions
+        .filter(t => t.createdAt > thirtyDaysAgo)
+        .reduce((sum, t) => sum + t.amount, 0),
+      revenueThisWeek: transactions
+        .filter(t => t.createdAt > sevenDaysAgo)
+        .reduce((sum, t) => sum + t.amount, 0),
+      transactionCount: transactions.length,
+    };
+  },
+});
+
+// Get usage statistics
+export const getUsageStats = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+
+    const searches = await ctx.db.query("searches").collect();
+    const leads = await ctx.db.query("leads").collect();
+    const creditTransactions = await ctx.db
+      .query("creditTransactions")
+      .filter((q) => q.eq(q.field("type"), "usage"))
+      .collect();
+
+    return {
+      totalSearches: searches.length,
+      totalLeads: leads.length,
+      totalCreditsSpent: creditTransactions.reduce((sum, t) => sum + t.amount, 0),
+      averageLeadsPerSearch: searches.length > 0 ? leads.length / searches.length : 0,
+    };
+  },
+});
+
+// Get admin settings
+export const getAdminSettings = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+
+    const systemConfig = await ctx.db
+      .query("systemConfiguration")
+      .unique();
+
+    return {
+      maintenanceMode: systemConfig?.settings?.maintenanceMode || false,
+      registrationEnabled: systemConfig?.settings?.registrationEnabled ?? true,
+      maxDailySearches: systemConfig?.settings?.maxDailySearches || 100,
+      systemMessage: systemConfig?.settings?.systemMessage || "",
+    };
+  },
+});
