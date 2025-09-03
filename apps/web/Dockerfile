@@ -61,9 +61,9 @@ RUN echo 'server { \
     } \
 }' > /etc/nginx/conf.d/default.conf.template
 
-# Create startup script that substitutes PORT and starts nginx
-RUN echo '#!/bin/sh\nenvsubst '"'"'${PORT}'"'"' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf\nexec nginx -g "daemon off;"' > /docker-entrypoint.sh && \
-    chmod +x /docker-entrypoint.sh
+# Copy and setup startup script that substitutes PORT and starts nginx
+COPY apps/web/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 # Railway will set PORT environment variable
 ENV PORT=80
