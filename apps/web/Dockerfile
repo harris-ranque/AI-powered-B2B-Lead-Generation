@@ -47,9 +47,9 @@ RUN cd apps/web && \
 FROM nginx:alpine
 COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
 
-# Create nginx config for SPA
+# Create nginx config template that uses Railway's $PORT
 RUN echo 'server { \
-    listen 80; \
+    listen ${PORT}; \
     server_name localhost; \
     root /usr/share/nginx/html; \
     index index.html; \
@@ -59,7 +59,14 @@ RUN echo 'server { \
     location /api { \
         return 404; \
     } \
-}' > /etc/nginx/conf.d/default.conf
+}' > /etc/nginx/conf.d/default.conf.template
 
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+# Create startup script that substitutes PORT and starts nginx
+RUN echo '#!/bin/sh\nenvsubst '"'"'${PORT}'"'"' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf\nexec nginx -g "daemon off;"' > /docker-entrypoint.sh && \
+    chmod +x /docker-entrypoint.sh
+
+# Railway will set PORT environment variable
+ENV PORT=80
+EXPOSE $PORT
+
+CMD ["/docker-entrypoint.sh"]

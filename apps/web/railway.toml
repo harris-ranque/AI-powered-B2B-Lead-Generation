@@ -3,10 +3,9 @@
 builder = "DOCKERFILE"
 # Build from monorepo root to access convex-backend for codegen
 context = "../.."
-dockerfile = "apps/web/Dockerfile.railway"
+dockerfile = "apps/web/Dockerfile"
 
 [deploy]
-startCommand = "nginx -g 'daemon off;'"
 healthcheckPath = "/"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
