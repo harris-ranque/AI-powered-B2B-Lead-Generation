@@ -22,8 +22,44 @@ export const getUserByClerkId = internalQuery({
 export const validateApiKey = internalQuery({
   args: { apiKey: v.string() },
   handler: async (ctx, args) => {
-    // For now, return null - API key system will be implemented later
-    return null;
+    try {
+      // Look for API key in the database
+      const apiKeyRecord = await ctx.db
+        .query("apiKeys")
+        .filter((q) => 
+          q.and(
+            q.eq(q.field("keyHash"), args.apiKey),
+            q.eq(q.field("isActive"), true)
+          )
+        )
+        .unique();
+
+      if (!apiKeyRecord) {
+        return null; // Invalid or non-existent key
+      }
+
+      // Check if key is expired
+      if (apiKeyRecord.expiresAt && Date.now() > apiKeyRecord.expiresAt) {
+        return null; // Expired key
+      }
+
+      // Get the associated user
+      const user = await ctx.db.get(apiKeyRecord.userId);
+      if (!user || !user.isActive) {
+        return null; // Invalid or inactive user
+      }
+
+      return {
+        keyId: apiKeyRecord._id,
+        userId: apiKeyRecord.userId,
+        user: user,
+        permissions: apiKeyRecord.permissions || ["read"],
+        rateLimit: apiKeyRecord.rateLimit,
+      };
+    } catch (error) {
+      console.error("Error validating API key:", error);
+      return null;
+    }
   },
 });
 
@@ -101,23 +137,44 @@ export const handleUserDeleted = internalMutation({
 
 // Update API key usage (mutation)
 export const updateApiKeyUsage = internalMutation({
-  args: { apiKey: v.string() },
+  args: { 
+    apiKey: v.string(),
+    operation: v.optional(v.string()),
+    resourcesUsed: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
-    const apiKeyRecord = await ctx.db
-      .query("apiKeys")
-      .filter((q) => 
-        q.and(
-          q.eq(q.field("keyHash"), args.apiKey),
-          q.eq(q.field("isActive"), true)
+    try {
+      const apiKeyRecord = await ctx.db
+        .query("apiKeys")
+        .filter((q) => 
+          q.and(
+            q.eq(q.field("keyHash"), args.apiKey),
+            q.eq(q.field("isActive"), true)
+          )
         )
-      )
-      .unique();
+        .unique();
 
-    if (apiKeyRecord) {
-      await ctx.db.patch(apiKeyRecord._id, {
-        lastUsed: Date.now(),
-        usageCount: apiKeyRecord.usageCount + 1,
-      });
+      if (apiKeyRecord) {
+        const updateData: any = {
+          lastUsed: Date.now(),
+          usageCount: (apiKeyRecord.usageCount || 0) + 1,
+        };
+
+        // Update daily usage if tracking
+        if (apiKeyRecord.rateLimit?.dailyLimit) {
+          const today = new Date().toDateString();
+          const dailyUsage = apiKeyRecord.dailyUsage || {};
+          dailyUsage[today] = (dailyUsage[today] || 0) + 1;
+          updateData.dailyUsage = dailyUsage;
+        }
+
+        await ctx.db.patch(apiKeyRecord._id, updateData);
+
+        // Log usage for monitoring
+        console.log(`API key usage: ${apiKeyRecord.name || 'unnamed'} - ${args.operation || 'unknown'} (total: ${updateData.usageCount})`);
+      }
+    } catch (error) {
+      console.error("Error updating API key usage:", error);
     }
   },
 });

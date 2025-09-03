@@ -11,8 +11,19 @@ export const getLeadsBySearch = query({
       throw new Error("Authentication required");
     }
 
-    // Stub implementation
-    return [];
+    // Verify user owns the search
+    const search = await ctx.db.get(args.searchId);
+    if (!search || search.userId !== user._id) {
+      throw new Error("Search not found or access denied");
+    }
+
+    const leads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .order("desc")
+      .collect();
+
+    return leads;
   },
 });
 
@@ -23,8 +34,34 @@ export const exportLeads = query({
     searchId: v.optional(v.id("searches")),
   },
   handler: async (ctx, args) => {
-    // Stub implementation
-    return [];
+    // This is an internal export function, used by other backend functions
+    let query = ctx.db.query("leads").withIndex("by_user", (q) => q.eq("userId", args.userId));
+
+    if (args.searchId) {
+      const searchId = args.searchId;
+      query = ctx.db
+        .query("leads")
+        .withIndex("by_search", (q) => q.eq("searchId", searchId))
+        .filter((q) => q.eq(q.field("userId"), args.userId));
+    }
+
+    const leads = await query.collect();
+
+    // Format leads for export
+    return leads.map(lead => ({
+      id: lead._id,
+      name: lead.businessName,
+      address: lead.location.formattedAddress,
+      phone: lead.phone,
+      website: lead.website,
+      rating: lead.rating,
+      reviewCount: lead.reviewCount,
+      placeId: lead.placeId,
+      enrichedEmails: lead.contactInfo?.emails || [],
+      enrichmentStatus: lead.enrichmentStatus,
+      createdAt: new Date(lead.createdAt || lead._creationTime).toISOString(),
+      updatedAt: new Date(lead.updatedAt || lead._creationTime).toISOString(),
+    }));
   },
 });
 
@@ -49,9 +86,11 @@ export const getUserLeads = query({
       .withIndex("by_user", (q) => q.eq("userId", user._id));
 
     if (args.searchId) {
+      const searchId = args.searchId;
       query = ctx.db
         .query("leads")
-        .withIndex("by_search", (q) => q.eq("searchId", args.searchId));
+        .withIndex("by_search", (q) => q.eq("searchId", searchId))
+        .filter((q) => q.eq(q.field("userId"), user._id));
     }
 
     const leads = await query

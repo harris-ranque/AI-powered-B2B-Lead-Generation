@@ -13,6 +13,9 @@ export default defineSchema({
     credits: v.number(),
     role: v.union(v.literal("user"), v.literal("admin")),
     isActive: v.boolean(),
+    // Stripe integration fields
+    stripeCustomerId: v.optional(v.string()),
+    stripeSubscriptionId: v.optional(v.string()),
     preferences: v.optional(v.object({
       emailNotifications: v.boolean(),
       language: v.string(),
@@ -170,6 +173,9 @@ export default defineSchema({
       fallbackUsed: v.optional(v.boolean()),
       fallbackReason: v.optional(v.string()),
     })),
+    
+    // Raw enrichment data from FindyMail API
+    enrichmentData: v.optional(v.any()), // Flexible storage for API response data
     
     // AI Analysis from CrewAI
     aiAnalysis: v.optional(v.object({
@@ -446,15 +452,23 @@ export default defineSchema({
 
   // API Keys - For external service integrations
   apiKeys: defineTable({
+    userId: v.id("users"), // Associate with a user
     name: v.string(),
     service: v.string(),
     keyHash: v.string(), // Hashed version for security
     isActive: v.boolean(),
     lastUsed: v.optional(v.number()),
     usageCount: v.number(),
+    permissions: v.optional(v.array(v.string())), // Array of permissions
+    rateLimit: v.optional(v.object({
+      dailyLimit: v.number(),
+      monthlyLimit: v.optional(v.number()),
+    })),
+    dailyUsage: v.optional(v.any()), // Record for tracking daily usage
     createdAt: v.number(),
     expiresAt: v.optional(v.number()),
   })
+    .index("by_user", ["userId"])
     .index("by_service", ["service"])
     .index("by_active", ["isActive"]),
 
@@ -684,20 +698,32 @@ export default defineSchema({
   // Real-time status broadcasts
   statusBroadcasts: defineTable({
     userId: v.id("users"),
+    entityType: v.string(), // Type of entity (search, lead, system, etc.)
+    entityId: v.optional(v.string()), // ID of related entity
     type: v.string(),
     title: v.string(),
     message: v.string(),
     data: v.optional(v.any()),
-    priority: v.number(),
+    priority: v.union(
+      v.literal("low"),
+      v.literal("normal"), 
+      v.literal("high"),
+      v.literal("urgent"),
+      v.literal("critical")
+    ),
+    category: v.string(), // Category for filtering (search_update, system_alert, etc.)
     tags: v.array(v.string()),
     status: v.union(
       v.literal("pending"),
+      v.literal("active"),
       v.literal("delivered"),
-      v.literal("failed")
+      v.literal("failed"),
+      v.literal("expired")
     ),
     delivered: v.boolean(),
     acknowledged: v.boolean(),
     requiresAck: v.boolean(),
+    metadata: v.optional(v.any()), // Additional metadata
     createdAt: v.number(),
     expiresAt: v.number(),
     deliveredAt: v.optional(v.number()),
@@ -705,8 +731,10 @@ export default defineSchema({
     error: v.optional(v.string()),
   })
     .index("by_user", ["userId"])
+    .index("by_entity", ["entityType", "entityId"])
     .index("by_status", ["status"])
     .index("by_priority", ["priority"])
+    .index("by_category", ["category"])
     .index("by_expires", ["expiresAt"])
     .index("by_type", ["type"])
     .index("by_delivered", ["delivered"])

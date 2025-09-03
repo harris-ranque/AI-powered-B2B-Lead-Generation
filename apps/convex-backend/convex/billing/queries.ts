@@ -183,3 +183,34 @@ export const getSpendingBreakdown = query({
     };
   },
 });
+
+// Get credit usage summary
+export const getCreditUsage = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    // Get recent usage transactions
+    const now = Date.now();
+    const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+
+    const recentTransactions = await ctx.db
+      .query("creditTransactions")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .filter((q) => q.gte(q.field("createdAt"), thirtyDaysAgo))
+      .collect();
+
+    const usageTransactions = recentTransactions.filter(tx => tx.type === "usage");
+    const totalUsed = usageTransactions.reduce((sum, tx) => sum + tx.amount, 0);
+
+    return {
+      currentBalance: user.credits || 0,
+      totalUsed30Days: totalUsed,
+      recentTransactions: usageTransactions.slice(0, 10),
+      plan: user.plan,
+    };
+  },
+});

@@ -66,7 +66,7 @@ export const getRequestStats = query({
     const completedRequests = requests.filter(r => r.status === "completed");
     const failedRequests = requests.filter(r => r.status === "failed");
     const pendingRequests = requests.filter(r => 
-      r.status === "pending" || r.status === "in_progress"
+      r.status === "pending" || r.status === "processing"
     );
 
     // Group by request type
