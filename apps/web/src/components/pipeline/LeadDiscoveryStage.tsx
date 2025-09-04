@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
 import { usePipeline } from '@/pipeline/context';
 import { SourceRegistry } from '@/pipeline/sources/SourceRegistry';
 import { FileUploadArea } from './FileUploadArea';
@@ -183,9 +184,9 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
                     <MapPin className="h-4 w-4" />
                     Location
                   </Label>
-                  <Input
+                  <LocationAutocomplete
                     value={location}
-                    onChange={(e) => setLocation(e.target.value)}
+                    onValueChange={setLocation}
                     placeholder="e.g., San Francisco, Austin TX, 90210"
                     className="transition-neo"
                   />
