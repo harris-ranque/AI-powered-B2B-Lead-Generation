@@ -100,10 +100,10 @@ export const deductCredits = mutation({
     }
 
     // Use atomic transaction system for credit deduction
-    const transactionResult: any = await ctx.runMutation(internal.credits.transactions.recordTransaction, {
+    const transactionResult: any = await ctx.runMutation(internal["credits/transactions"].recordTransaction, {
       userId: user._id,
       operation: "usage",
-      amount: -args.amount,
+      amount: args.amount,
       description: args.description,
     });
 

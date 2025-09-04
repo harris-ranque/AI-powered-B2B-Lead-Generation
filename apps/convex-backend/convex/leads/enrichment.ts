@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 
 // Enrich lead with FindyMail data
-export const enrichLead = internalAction({
+export const enrichLead: any = internalAction({
   args: {
     leadId: v.id("leads"),
     searchId: v.id("searches"),
@@ -15,7 +15,7 @@ export const enrichLead = internalAction({
     
     try {
       // Properly retrieve lead from database
-      const lead = await ctx.runQuery(internal.leads.queries.getLeadInternal, {
+      const lead = await ctx.runQuery(internal["leads/queries"].getLeadInternal, {
         leadId: args.leadId,
       });
       
@@ -26,7 +26,7 @@ export const enrichLead = internalAction({
       console.log(`Enriching lead ${args.leadId} for search ${args.searchId}`);
       
       // Update lead status to in_progress
-      await ctx.runMutation(internal.leads.mutations.updateEnrichmentStatus, {
+      await ctx.runMutation(internal["leads/mutations"].updateEnrichmentStatus, {
         leadId: args.leadId,
         status: "in_progress",
       });
@@ -39,7 +39,7 @@ export const enrichLead = internalAction({
         // Use fallback enrichment
         const fallbackResult = await enrichWithFallback(ctx, lead);
         
-        await ctx.runMutation(internal.leads.mutations.updateLeadEnrichment, {
+        await ctx.runMutation(internal["leads/mutations"].updateLeadEnrichment, {
           leadId: args.leadId,
           enrichmentData: fallbackResult,
           status: "completed_fallback",
@@ -51,7 +51,7 @@ export const enrichLead = internalAction({
       // Check domain cache first
       if (lead.website) {
         const domain = extractDomain(lead.website);
-        const cachedData = await ctx.runQuery(internal.leads.queries.getDomainCache, {
+        const cachedData: any = await ctx.runQuery(internal["leads/queries"].getDomainCache, {
           domain,
           searchId: args.searchId,
         });
@@ -59,7 +59,7 @@ export const enrichLead = internalAction({
         if (cachedData) {
           console.log(`Using cached enrichment data for domain: ${domain}`);
           
-          await ctx.runMutation(internal.leads.mutations.updateLeadEnrichment, {
+          await ctx.runMutation(internal["leads/mutations"].updateLeadEnrichment, {
             leadId: args.leadId,
             enrichmentData: cachedData.enrichmentData,
             status: "completed",
@@ -120,7 +120,7 @@ export const enrichLead = internalAction({
       }
 
       // Properly update lead in database
-      await ctx.runMutation(internal.leads.mutations.updateLeadEnrichment, {
+      await ctx.runMutation(internal["leads/mutations"].updateLeadEnrichment, {
         leadId: args.leadId,
         enrichmentData: updateData,
         status: "completed",
@@ -129,7 +129,7 @@ export const enrichLead = internalAction({
       // Cache domain data if we have a website
       if (lead.website && enrichmentResult.emails?.length > 0) {
         const domain = extractDomain(lead.website);
-        await ctx.runMutation(internal.leads.mutations.cacheDomainData, {
+        await ctx.runMutation(internal["leads/mutations"].cacheDomainData, {
           domain,
           searchId: args.searchId,
           enrichmentData: {
@@ -152,7 +152,7 @@ export const enrichLead = internalAction({
       console.error(`Error enriching lead ${args.leadId}:`, error);
       
       // Update lead with error status
-      await ctx.runMutation(internal.leads.mutations.updateEnrichmentStatus, {
+      await ctx.runMutation(internal["leads/mutations"].updateEnrichmentStatus, {
         leadId: args.leadId,
         status: "failed",
         error: error instanceof Error ? error.message : "Unknown error",
@@ -160,14 +160,14 @@ export const enrichLead = internalAction({
       
       // Try fallback enrichment
       try {
-        const lead = await ctx.runQuery(internal.leads.queries.getLeadInternal, {
+        const lead = await ctx.runQuery(internal["leads/queries"].getLeadInternal, {
           leadId: args.leadId,
         });
         
         if (lead) {
           const fallbackResult = await enrichWithFallback(ctx, lead);
           
-          await ctx.runMutation(internal.leads.mutations.updateLeadEnrichment, {
+          await ctx.runMutation(internal["leads/mutations"].updateLeadEnrichment, {
             leadId: args.leadId,
             enrichmentData: fallbackResult,
             status: "completed_fallback",
@@ -185,7 +185,7 @@ export const enrichLead = internalAction({
 });
 
 // Batch enrich leads for a search
-export const batchEnrichLeads = internalAction({
+export const batchEnrichLeads: any = internalAction({
   args: {
     searchId: v.id("searches"),
     correlationId: v.optional(v.string()),
@@ -197,7 +197,7 @@ export const batchEnrichLeads = internalAction({
     
     try {
       // Get all leads for this search that need enrichment
-      const leads = await ctx.runQuery(internal.leads.queries.getUnenrichedLeads, {
+      const leads: any = await ctx.runQuery(internal["leads/queries"].getUnenrichedLeads, {
         searchId: args.searchId,
       });
       
@@ -211,8 +211,8 @@ export const batchEnrichLeads = internalAction({
         const batch = leads.slice(i, Math.min(i + batchSize, leads.length));
         
         // Process batch in parallel
-        const batchPromises = batch.map(lead => 
-          enrichLead(ctx, {
+        const batchPromises = batch.map((lead: any) => 
+          ctx.runAction(internal["leads/enrichment"].enrichLead, {
             leadId: lead._id,
             searchId: args.searchId,
             correlationId: `${correlationId}_${lead._id}`,
@@ -222,7 +222,7 @@ export const batchEnrichLeads = internalAction({
         const results = await Promise.allSettled(batchPromises);
         
         // Count results
-        results.forEach(result => {
+        results.forEach((result: any) => {
           if (result.status === "fulfilled" && result.value.enriched) {
             enrichedCount++;
           } else {
@@ -267,9 +267,9 @@ export const batchEnrichLeads = internalAction({
 function extractDomain(url: string): string {
   try {
     const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
-    return urlObj.hostname.replace('www.', '');
+    return urlObj.hostname?.replace('www.', '') || url;
   } catch {
-    return url.replace('www.', '').split('/')[0];
+    return url?.replace('www.', '').split('/')[0] || url;
   }
 }
 

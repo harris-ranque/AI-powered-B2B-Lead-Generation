@@ -87,7 +87,7 @@ export function createConvexError(
     retryable?: boolean;
     originalError?: Error;
   } = {}
-): ConvexError {
+): ConvexError<any> {
   const {
     code,
     severity = "medium",
@@ -129,7 +129,7 @@ export function createConvexError(
     // await errorTracker.capture(enhancedError);
   }
 
-  return new ConvexError({
+  return new ConvexError<any>({
     type: category,
     message,
     code,
@@ -425,7 +425,7 @@ export async function withRetry<T>(
     maxDelayMs = 10000 
   } = context;
   
-  let lastError: Error | ConvexError | undefined;
+  let lastError: Error | ConvexError<any> | undefined;
   
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
     try {

@@ -266,8 +266,8 @@ export const handleSubscriptionUpdate = internalMutation({
     plan: v.string(),
   },
   handler: async (ctx, args): Promise<any> => {
-    // This is a duplicate of handleSubscriptionUpdated, call that function
-    return await ctx.runMutation(internal.billing.webhooks.handleSubscriptionUpdated, {
+    // This is a duplicate of handleSubscriptionUpdated, call the handler directly
+    return await handleSubscriptionUpdated.handler(ctx, {
       subscriptionId: args.subscriptionId,
       plan: args.plan,
     });
@@ -279,8 +279,8 @@ export const handleSubscriptionCancellation = internalMutation({
     subscriptionId: v.string(),
   },
   handler: async (ctx, args): Promise<any> => {
-    // This is a duplicate of handleSubscriptionDeleted, call that function
-    return await ctx.runMutation(internal.billing.webhooks.handleSubscriptionDeleted, {
+    // This is a duplicate of handleSubscriptionDeleted, call the handler directly
+    return await handleSubscriptionDeleted.handler(ctx, {
       subscriptionId: args.subscriptionId,
     });
   },
@@ -293,8 +293,8 @@ export const handlePaymentSuccess = internalMutation({
     stripeCustomerId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<any> => {
-    // This is a duplicate of handlePaymentSucceeded, call that function
-    return await ctx.runMutation(internal.billing.webhooks.handlePaymentSucceeded, {
+    // This is a duplicate of handlePaymentSucceeded, call the handler directly
+    return await handlePaymentSucceeded.handler(ctx, {
       paymentIntentId: args.paymentIntentId,
       amount: args.amount,
       currency: "usd", // Default currency

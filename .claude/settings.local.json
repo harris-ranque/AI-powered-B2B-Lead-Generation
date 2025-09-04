@@ -77,7 +77,8 @@
       "WebFetch(domain:app.findymail.com)",
       "Bash(grep:*)",
       "Bash(git pull:*)",
-      "Bash(npm run prebuild:*)"
+      "Bash(npm run prebuild:*)",
+      "Bash(pnpm add:*)"
     ],
     "deny": []
   }

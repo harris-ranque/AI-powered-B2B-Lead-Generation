@@ -1,7 +1,7 @@
 import { internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 
-// Broadcast pipeline update to user
+// Broadcast pipeline update to user (OPTIMIZED - REDUCED DB WRITES)
 export const broadcastPipelineUpdate = internalMutation({
   args: {
     userId: v.id("users"),
@@ -13,32 +13,41 @@ export const broadcastPipelineUpdate = internalMutation({
     error: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Create broadcast record
-    await ctx.db.insert("statusBroadcasts", {
-      userId: args.userId,
-      entityType: "search",
-      entityId: args.searchId,
-      type: "pipeline_update",
-      title: `Pipeline ${args.stage}`,
-      message: args.message,
-      data: {
-        stage: args.stage,
-        progress: args.progress,
-        ...args.data,
-      },
-      priority: args.error ? "high" : "normal",
-      category: "search_update",
-      tags: ["pipeline", args.stage],
-      status: "pending",
-      delivered: false,
-      acknowledged: false,
-      requiresAck: false,
-      error: args.error,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + 60 * 60 * 1000, // Expire in 1 hour
-    });
+    // OPTIMIZATION: Store important updates to balance performance vs UX
+    const shouldStore = args.error || 
+                       args.stage === "completed" || 
+                       args.stage === "failed" ||
+                       args.stage === "started" ||
+                       args.progress % 10 === 0; // Store every 10% progress (better UX)
     
-    // In a real implementation, this would trigger WebSocket/SSE push
+    if (shouldStore) {
+      // Create broadcast record only for important updates
+      await ctx.db.insert("statusBroadcasts", {
+        userId: args.userId,
+        entityType: "search",
+        entityId: args.searchId,
+        type: "pipeline_update",
+        title: `Pipeline ${args.stage}`,
+        message: args.message,
+        data: {
+          stage: args.stage,
+          progress: args.progress,
+          ...args.data,
+        },
+        priority: args.error ? "high" : "normal",
+        category: "search_update",
+        tags: ["pipeline", args.stage],
+        status: "pending",
+        delivered: false,
+        acknowledged: false,
+        requiresAck: false,
+        error: args.error,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 60 * 60 * 1000, // Expire in 1 hour
+      });
+    }
+    
+    // Always log to console for development/debugging
     console.log(`Broadcasting pipeline update: ${args.stage} - ${args.progress}%`);
   },
 });

@@ -53,6 +53,9 @@ importers:
       '@genni/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
+      '@googlemaps/js-api-loader':
+        specifier: ^1.16.10
+        version: 1.16.10
       '@hookform/resolvers':
         specifier: ^3.9.0
         version: 3.10.0(react-hook-form@7.61.1(react@18.3.1))
@@ -827,6 +830,9 @@ packages:
 
   '@floating-ui/utils@0.2.10':
     resolution: {integrity: sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ==}
+
+  '@googlemaps/js-api-loader@1.16.10':
+    resolution: {integrity: sha512-c2erv2k7P2ilYzMmtYcMgAR21AULosQuUHJbStnrvRk2dG93k5cqptDrh9A8p+ZNlyhiqEOgHW7N9PAizdUM7Q==}
 
   '@hookform/resolvers@3.10.0':
     resolution: {integrity: sha512-79Dv+3mDF7i+2ajj7SkypSKHhl1cbln1OGavqrsF7p6mbUv11xpqpacPsGDCTRvCSjEEIez2ef1NveSVL3b0Ag==}
@@ -4158,6 +4164,8 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
 
   '@floating-ui/utils@0.2.10': {}
+
+  '@googlemaps/js-api-loader@1.16.10': {}
 
   '@hookform/resolvers@3.10.0(react-hook-form@7.61.1(react@18.3.1))':
     dependencies:

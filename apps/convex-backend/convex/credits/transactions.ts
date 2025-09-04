@@ -158,15 +158,64 @@ export const commitReservation = internalMutation({
         throw new Error("Reservation has expired");
       }
 
-      // Record the usage transaction
-      const transactionResult: any = await ctx.runMutation(internal.credits.transactions.recordTransaction, {
-        userId: reservation.userId,
-        amount: reservation.amount,
-        operation: "usage",
-        description: args.description,
-        relatedEntityType: args.relatedEntityType,
-        relatedEntityId: args.relatedEntityId,
-      });
+      // Record the usage transaction (direct handler call for same-file function)
+      const transactionResult: {
+        success: boolean;
+        transactionId: any;
+        newBalance: number;
+        operation: "usage";
+        amount: number;
+        error?: string;
+      } = {
+        success: true,
+        transactionId: null as any,
+        newBalance: 0,
+        operation: "usage" as const,
+        amount: reservation.amount
+      };
+
+      try {
+        // Get the user to update credits directly since we're in the same module
+        const user = await ctx.db.get(reservation.userId);
+        if (!user) {
+          throw new Error("User not found during commit");
+        }
+
+        // Calculate new balance
+        let newBalance = (user.credits || 0) - reservation.amount;
+        if (newBalance < 0) {
+          newBalance = 0;
+        }
+
+        // Create the transaction record
+        const transactionId = await ctx.db.insert("creditTransactions", {
+          userId: reservation.userId,
+          type: "usage",
+          amount: reservation.amount,
+          description: args.description,
+          balanceAfter: newBalance,
+          relatedEntity: args.relatedEntityType && args.relatedEntityId ? {
+            type: args.relatedEntityType,
+            id: args.relatedEntityId,
+          } : undefined,
+          createdAt: Date.now(),
+        });
+
+        // Update user's credit balance
+        await ctx.db.patch(reservation.userId, {
+          credits: newBalance,
+          updatedAt: Date.now(),
+        });
+
+        transactionResult.transactionId = transactionId;
+        transactionResult.newBalance = newBalance;
+        
+        console.log(`Credit transaction recorded during commit: usage ${reservation.amount} for user ${reservation.userId} (balance: ${newBalance})`);
+      } catch (error) {
+        console.error(`Error recording transaction during commit:`, error);
+        transactionResult.success = false;
+        transactionResult.error = error instanceof Error ? error.message : "Unknown error";
+      }
 
       if (!transactionResult.success) {
         throw new Error(transactionResult.error || "Failed to record transaction");

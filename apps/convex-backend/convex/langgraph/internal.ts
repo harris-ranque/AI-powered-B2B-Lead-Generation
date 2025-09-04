@@ -3,7 +3,7 @@ import { internal, api } from "../_generated/api";
 import { v } from "convex/values";
 
 // Batch analyze leads using LangGraph
-export const batchAnalyzeLeads = internalAction({
+export const batchAnalyzeLeads: any = internalAction({
   args: {
     searchId: v.id("searches"),
     correlationId: v.optional(v.string()),
@@ -15,12 +15,12 @@ export const batchAnalyzeLeads = internalAction({
     
     try {
       // Get all enriched leads for this search
-      const leads = await ctx.runQuery(internal.leads.queries.getSearchLeadsInternal, {
+      const leads: any = await ctx.runQuery(internal["leads/queries"].getSearchLeadsInternal, {
         searchId: args.searchId,
       });
       
       // Filter to only enriched leads without analysis
-      const leadsToAnalyze = leads.filter(l => 
+      const leadsToAnalyze: any = leads.filter((l: any) => 
         (l.enrichmentStatus === "completed" || l.enrichmentStatus === "completed_fallback") &&
         !l.aiAnalysis
       );
@@ -35,7 +35,7 @@ export const batchAnalyzeLeads = internalAction({
         const batch = leadsToAnalyze.slice(i, Math.min(i + batchSize, leadsToAnalyze.length));
         
         // Process batch in parallel
-        const batchPromises = batch.map(lead => 
+        const batchPromises = batch.map((lead: any) => 
           ctx.runAction(api.langgraph.actions.analyzeLead, {
             leadId: lead._id,
           })
@@ -44,7 +44,7 @@ export const batchAnalyzeLeads = internalAction({
         const results = await Promise.allSettled(batchPromises);
         
         // Count results
-        results.forEach(result => {
+        results.forEach((result: any) => {
           if (result.status === "fulfilled") {
             analyzedCount++;
           } else {
@@ -58,7 +58,7 @@ export const batchAnalyzeLeads = internalAction({
           searchId: args.searchId,
           progress: {
             discovered: leads.length,
-            enriched: leads.filter(l => 
+            enriched: leads.filter((l: any) => 
               l.enrichmentStatus === "completed" || l.enrichmentStatus === "completed_fallback"
             ).length,
             analyzed: analyzedCount,

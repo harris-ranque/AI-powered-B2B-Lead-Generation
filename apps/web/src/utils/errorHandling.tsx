@@ -17,7 +17,7 @@ export interface ErrorState {
 }
 
 // Safe render wrapper function
-export function safeRender<T extends any[]>(
+export function safeRender<T extends unknown[]>(
   renderFunction: (...args: T) => JSX.Element,
   fallbackMessage: string,
   onError?: (error: Error) => void
@@ -137,7 +137,7 @@ export const safeArray = {
   },
 
   // Safe array length
-  length(array: any[] | undefined | null): number {
+  length(array: unknown[] | undefined | null): number {
     try {
       return (array && Array.isArray(array)) ? array.length : 0;
     } catch (error) {
@@ -149,7 +149,7 @@ export const safeArray = {
 
 // Safe object property access
 export function safeGet<T>(
-  object: any,
+  object: Record<string, unknown>,
   path: string | string[],
   fallback?: T
 ): T | undefined {
@@ -318,7 +318,7 @@ export function validateData<T>(
 export function logError(
   context: string,
   error: Error,
-  additionalData?: Record<string, any>
+  additionalData?: Record<string, unknown>
 ) {
   const errorData = {
     context,

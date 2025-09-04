@@ -3,6 +3,7 @@ import { api } from "@genni/convex-types"
 import type { Id } from "@genni/convex-types/dataModel";
 
 export function useUser() {
+  // OPTIMIZATION: This query is called frequently but user data rarely changes
   const user = useQuery(api.users.queries.getCurrentUserData);
   const updateUser = useMutation(api.users.mutations.updateProfile);
   const deleteUser = useMutation(api.users.mutations.deleteAccount);

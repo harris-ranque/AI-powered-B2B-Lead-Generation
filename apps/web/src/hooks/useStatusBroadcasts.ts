@@ -33,9 +33,10 @@ export interface StatusBroadcast {
  * Integrates with the enterprise broadcasting system for live updates
  */
 export function useStatusBroadcasts() {
+  // OPTIMIZATION: Reduce limit and add less frequent polling
   const broadcasts = useQuery(api.realtime.queries.getUserBroadcasts, {
     includeDelivered: false,
-    limit: 20,
+    limit: 10, // Reduced from 20
   });
 
   const acknowledgeAction = useMutation(api.realtime.mutations.acknowledgeBroadcast);

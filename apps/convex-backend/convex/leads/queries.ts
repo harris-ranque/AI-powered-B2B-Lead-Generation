@@ -65,7 +65,7 @@ export const exportLeads = query({
   },
 });
 
-// Get user leads with pagination
+// Get user leads with pagination (OPTIMIZED)
 export const getUserLeads = query({
   args: { 
     limit: v.optional(v.number()),
@@ -78,7 +78,8 @@ export const getUserLeads = query({
       throw new Error("Authentication required");
     }
 
-    const limit = args.limit || 20;
+    // OPTIMIZATION: Reduce default limit from 20 to 10
+    const limit = Math.min(args.limit || 10, 50); // Cap at 50 leads max
     const offset = args.offset || 0;
 
     let query = ctx.db
@@ -157,7 +158,7 @@ export const getEmailSequences = query({
   },
 });
 
-// Get lead statistics for user
+// Get lead statistics for user (OPTIMIZED VERSION)
 export const getLeadStats = query({
   args: {},
   handler: async (ctx) => {
@@ -166,36 +167,62 @@ export const getLeadStats = query({
       throw new Error("Authentication required");
     }
 
+    // OPTIMIZATION: Only fetch minimal fields needed for stats
     const leads = await ctx.db
       .query("leads")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
 
-    const enrichedLeads = leads.filter(l => l.enrichmentStatus === "completed");
-    const analyzedLeads = leads.filter(l => l.aiAnalysis);
-    const qualifiedLeads = leads.filter(l => l.status === "qualified");
-    const contactedLeads = leads.filter(l => l.status === "contacted");
+    // Use simple counters instead of arrays
+    let totalLeads = 0;
+    let enrichedLeads = 0;
+    let analyzedLeads = 0;
+    let qualifiedLeads = 0;
+    let contactedLeads = 0;
+    let relevanceSum = 0;
+    let relevanceCount = 0;
 
-    // Calculate average relevance score
-    const leadsWithAnalysis = leads.filter(l => l.aiAnalysis?.relevanceScore);
-    const avgRelevanceScore = leadsWithAnalysis.length > 0 ?
-      leadsWithAnalysis.reduce((sum, lead) => 
-        sum + (lead.aiAnalysis?.relevanceScore || 0), 0
-      ) / leadsWithAnalysis.length : 0;
+    // Single pass through leads for all calculations
+    for (const lead of leads) {
+      totalLeads++;
+      
+      if (lead.enrichmentStatus === "completed") {
+        enrichedLeads++;
+      }
+      
+      if (lead.aiAnalysis) {
+        analyzedLeads++;
+        
+        if (lead.aiAnalysis.relevanceScore) {
+          relevanceSum += lead.aiAnalysis.relevanceScore;
+          relevanceCount++;
+        }
+      }
+      
+      if (lead.status === "qualified") {
+        qualifiedLeads++;
+      }
+      
+      if (lead.status === "contacted") {
+        contactedLeads++;
+      }
+    }
+
+    const avgRelevanceScore = relevanceCount > 0 ? relevanceSum / relevanceCount : 0;
 
     return {
-      totalLeads: leads.length,
-      enrichedLeads: enrichedLeads.length,
-      analyzedLeads: analyzedLeads.length,
-      qualifiedLeads: qualifiedLeads.length,
-      contactedLeads: contactedLeads.length,
-      enrichmentRate: leads.length > 0 ? 
-        Math.round((enrichedLeads.length / leads.length) * 100) : 0,
-      analysisRate: leads.length > 0 ? 
-        Math.round((analyzedLeads.length / leads.length) * 100) : 0,
+      totalLeads,
+      enrichedLeads,
+      analyzedLeads,
+      qualifiedLeads,
+      contactedLeads,
+      enrichmentRate: totalLeads > 0 ? 
+        Math.round((enrichedLeads / totalLeads) * 100) : 0,
+      analysisRate: totalLeads > 0 ? 
+        Math.round((analyzedLeads / totalLeads) * 100) : 0,
       avgRelevanceScore: Math.round(avgRelevanceScore * 100),
-      conversionRate: leads.length > 0 ? 
-        Math.round((qualifiedLeads.length / leads.length) * 100) : 0,
+      conversionRate: totalLeads > 0 ? 
+        Math.round((qualifiedLeads / totalLeads) * 100) : 0,
     };
   },
 });

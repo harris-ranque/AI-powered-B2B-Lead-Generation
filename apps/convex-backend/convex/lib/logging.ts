@@ -136,7 +136,7 @@ export async function logWithCorrelationPersistent(
   try {
     if ("runMutation" in ctx) {
       // From action context - use internal API
-      await ctx.runMutation(internal.lib.logging.storeLogEntry, {
+      await ctx.runMutation(internal["lib/logging"].storeLogEntry, {
         correlationId: correlation.correlationId,
         operationType: correlation.operationType,
         parentId: correlation.parentId,
@@ -157,7 +157,7 @@ export async function logWithCorrelationPersistent(
       });
     } else if ("scheduler" in ctx) {
       // From mutation context - schedule asynchronously to avoid function reference issues
-      await ctx.scheduler.runAfter(0, internal.lib.logging.storeLogEntry, {
+      await ctx.scheduler.runAfter(0, internal["lib/logging"].storeLogEntry, {
         correlationId: correlation.correlationId,
         operationType: correlation.operationType,
         parentId: correlation.parentId,

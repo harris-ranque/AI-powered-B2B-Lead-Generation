@@ -47,7 +47,7 @@ export const createSearch = mutation({
     
     // If autoStart is true, schedule the orchestration
     if (args.autoStart) {
-      await ctx.scheduler.runAfter(0, internal.search.orchestrator.orchestrateSearch, {
+      await ctx.scheduler.runAfter(0, internal["search/orchestrator"].orchestrateSearch, {
         searchId,
       });
     }

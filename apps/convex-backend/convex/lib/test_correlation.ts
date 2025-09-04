@@ -177,12 +177,12 @@ export const testCorrelationTrace = internalMutation({
   handler: async (ctx, args): Promise<any> => {
     try {
       // Get the full correlation trace
-      const trace: any = await ctx.runQuery(internal.lib.logging.getCorrelationTrace, {
+      const trace: any = await ctx.runQuery(internal["lib/logging"].getCorrelationTrace, {
         correlationId: args.correlationId,
       });
 
       // Get operation metrics
-      const metrics: any = await ctx.runQuery(internal.lib.logging.getOperationMetrics, {
+      const metrics: any = await ctx.runQuery(internal["lib/logging"].getOperationMetrics, {
         operationType: OPERATION_TYPES.SEARCH_CREATE,
         timeRange: {
           start: Date.now() - (60 * 60 * 1000), // Last hour
@@ -239,7 +239,7 @@ export const testPerformanceMonitoring = internalMutation({
       const metricsResults = [];
       
       for (const operationType of operationTypes) {
-        const metrics: any = await ctx.runQuery(internal.lib.logging.getOperationMetrics, {
+        const metrics: any = await ctx.runQuery(internal["lib/logging"].getOperationMetrics, {
           operationType,
           timeRange,
         });

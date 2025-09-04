@@ -7,12 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
 import { 
   Search, 
   Play, 
   Clock, 
   CreditCard, 
-  MapPin, 
   Building, 
   Users,
   Settings,
@@ -260,16 +260,16 @@ export function EnhancedLeadSearch({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label htmlFor="location">Location *</Label>
-          <div className="relative">
-            <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              id="location"
-              value={searchParams.location}
-              onChange={(e) => setSearchParams(prev => ({ ...prev, location: e.target.value }))}
-              placeholder="e.g., San Francisco, CA"
-              className="pl-10"
-            />
-          </div>
+          <LocationAutocomplete
+            id="location"
+            value={searchParams.location}
+            placeholder="e.g., San Francisco, CA"
+            onValueChange={(value) => setSearchParams(prev => ({ ...prev, location: value }))}
+            onLocationSelect={(location) => {
+              // Update location with the selected place description
+              setSearchParams(prev => ({ ...prev, location: location.description }));
+            }}
+          />
         </div>
 
         <div>

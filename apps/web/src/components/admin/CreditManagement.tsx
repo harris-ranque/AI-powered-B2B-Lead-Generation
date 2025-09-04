@@ -172,10 +172,11 @@ export function CreditManagement() {
       setTargetEmail("");
       setUseCurrentUser(false);
       
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "An error occurred while granting credits";
       toast({
         title: "Failed to Grant Credits",
-        description: error.message || "An error occurred while granting credits",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
