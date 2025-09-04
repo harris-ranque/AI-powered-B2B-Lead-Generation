@@ -108,7 +108,7 @@ export function useStatusBroadcasts() {
 export function useSearchBroadcasts(searchId?: Id<"searches">) {
   const { broadcasts, acknowledgeBroadcast } = useStatusBroadcasts();
   
-  const searchSpecificBroadcasts = broadcasts.filter(b => 
+  const searchSpecificBroadcasts = (broadcasts || []).filter(b => 
     b.type === 'search_status' && 
     b.data?.searchId === searchId
   );
@@ -141,7 +141,7 @@ export function useSearchBroadcasts(searchId?: Id<"searches">) {
 export function useBatchBroadcasts(batchPlanId?: string) {
   const { broadcasts, acknowledgeBroadcast } = useStatusBroadcasts();
   
-  const batchBroadcasts = broadcasts.filter(b => 
+  const batchBroadcasts = (broadcasts || []).filter(b => 
     b.type === 'batch_progress' && 
     b.data?.batchPlanId === batchPlanId
   );

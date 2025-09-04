@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAdminDashboard, useAdminUsers, useAdminAnalytics, useAdminConfiguration, useAdminSystemControl } from "@/hooks/useAdmin";
+import { CreditManagement } from "./admin/CreditManagement";
 
 interface AdminMetrics {
   totalUsers: number;
@@ -1202,9 +1203,10 @@ export function AdminDashboard() {
       </div>
 
       <Tabs value={currentTab} onValueChange={setCurrentTab}>
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="users">User Management</TabsTrigger>
+          <TabsTrigger value="credits">Credit Management</TabsTrigger>
           <TabsTrigger value="configuration">
             <Settings className="h-4 w-4 mr-2" />
             Configuration
@@ -1218,6 +1220,10 @@ export function AdminDashboard() {
 
         <TabsContent value="users" className="mt-6">
           {renderUserManagement()}
+        </TabsContent>
+
+        <TabsContent value="credits" className="mt-6">
+          <CreditManagement />
         </TabsContent>
 
         <TabsContent value="configuration" className="mt-6">

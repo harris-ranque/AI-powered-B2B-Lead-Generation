@@ -348,6 +348,38 @@ export const getAdminSettings = query({
   },
 });
 
+// Get recent credit transactions
+export const getRecentCreditTransactions = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    const limit = args.limit || 20;
+
+    // Get recent credit transactions
+    const transactions = await ctx.db
+      .query("creditTransactions")
+      .order("desc")
+      .take(limit);
+
+    // Get user information for each transaction
+    const transactionsWithUsers = await Promise.all(
+      transactions.map(async (transaction) => {
+        const user = await ctx.db.get(transaction.userId);
+        return {
+          ...transaction,
+          userEmail: user?.email || "Unknown",
+          userName: user?.name || "Unknown User",
+        };
+      })
+    );
+
+    return transactionsWithUsers;
+  },
+});
+
 // Get system status for admin monitoring
 export const getSystemStatus = query({
   args: {},
