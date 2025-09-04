@@ -28,6 +28,7 @@ import type { Lead } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { useSearches, useGoogleMapsSearch } from "@/hooks/useSearches";
 import { useUser, useUserCredits } from "@/hooks/useUser";
+import { safeArray, safeRender, withErrorBoundary, useErrorBoundary, logError } from "@/utils/errorHandling";
 import { useProfile } from "@/hooks/useProfile";
 import { useStatusBroadcasts, useCreditBroadcasts, getPriorityDisplay, formatBroadcastTime } from "@/hooks/useStatusBroadcasts";
 import type { SearchParams as ConvexSearchParams } from "@/lib/types";
@@ -95,9 +96,15 @@ export function EnhancedLeadSearch({
   const userCredits = credits ?? 100;
   const userPlan = user?.plan ?? 'free';
 
-  // Get active and completed searches from Convex
-  const activeSearches = searches?.filter(s => s.status === 'in_progress' || s.status === 'pending') ?? [];
-  const completedSearches = searches?.filter(s => s.status === 'completed' || s.status === 'failed') ?? [];
+  // Get active and completed searches from Convex with bulletproof error handling
+  const activeSearches = safeArray.filter(
+    searches, 
+    (s) => s.status === 'in_progress' || s.status === 'pending'
+  );
+  const completedSearches = safeArray.filter(
+    searches, 
+    (s) => s.status === 'completed' || s.status === 'failed'
+  );
 
   const calculateCreditsCost = () => {
     let baseCost = searchParams.leadsCount;
@@ -483,11 +490,14 @@ export function EnhancedLeadSearch({
                       {urgentBroadcasts.length} urgent alert{urgentBroadcasts.length > 1 ? 's' : ''} require attention
                     </span>
                     <div className="flex gap-2">
-                      {urgentBroadcasts.slice(0, 2).map((alert) => (
-                        <Badge key={alert._id} variant="destructive" className="text-xs">
-                          {alert.title}
-                        </Badge>
-                      ))}
+                      {safeArray.map(
+                        safeArray.filter(urgentBroadcasts, (_, index) => index < 2),
+                        (alert) => (
+                          <Badge key={alert._id} variant="destructive" className="text-xs">
+                            {alert.title}
+                          </Badge>
+                        )
+                      )}
                     </div>
                   </div>
                 </AlertDescription>
@@ -529,7 +539,7 @@ export function EnhancedLeadSearch({
               <>
                 {/* Real-time Progress Tracking */}
                 <div className="space-y-4">
-                  {activeSearches.map(search => (
+                  {safeArray.map(activeSearches, search => (
                     <SearchProgressTracker
                       key={search._id}
                       searchId={search._id}

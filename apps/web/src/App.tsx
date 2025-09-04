@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ConvexProvider } from "@/components/providers/ConvexProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { GlobalErrorBoundary } from "@/components/GlobalErrorBoundary";
 
 // Public Pages
 import LandingPage from "./pages/LandingPage";
@@ -31,8 +32,9 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const App = () => (
-  <ErrorBoundary>
-    <ConvexProvider>
+  <GlobalErrorBoundary>
+    <ErrorBoundary>
+      <ConvexProvider>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <Toaster />
@@ -96,8 +98,9 @@ const App = () => (
           </BrowserRouter>
         </TooltipProvider>
       </QueryClientProvider>
-    </ConvexProvider>
-  </ErrorBoundary>
+      </ConvexProvider>
+    </ErrorBoundary>
+  </GlobalErrorBoundary>
 );
 
 export default App;
