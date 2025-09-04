@@ -110,6 +110,7 @@ interface PlanLimits {
 export function AdminDashboard() {
   const [currentTab, setCurrentTab] = useState("overview");
   const [searchTerm, setSearchTerm] = useState("");
+  const [renderError, setRenderError] = useState<string | null>(null);
   const { toast } = useToast();
 
   // Editable configuration state
@@ -156,55 +157,94 @@ export function AdminDashboard() {
   // Companies data from backend (placeholder for future implementation)
   const companies: Company[] = [];
 
-  // Use real data or fallback to defaults
-  const adminMetrics: AdminMetrics = {
-    totalUsers: metrics?.totalUsers || 0,
-    activeUsers: metrics?.activeUsers || 0,
-    totalRevenue: revenueStats?.totalRevenue || 0,
-    monthlyRevenue: revenueStats?.monthlyRevenue || 0,
-    searchesDaily: analytics?.searchesDaily || 0,
-    leadsGenerated: analytics?.leadsGenerated || 0,
-    emailsGenerated: analytics?.emailsGenerated || 0,
-    averageResponseRate: analytics?.averageResponseRate || 0,
-    systemHealth: {
-      apiUptime: systemHealth?.apiUptime || 0,
-      queueHealth: systemHealth?.queueHealth || 0,
-      errorRate: systemHealth?.errorRate || 0,
-      avgResponseTime: systemHealth?.avgResponseTime || 0
+  // Use real data or fallback to defaults with bulletproof error handling
+  const adminMetrics: AdminMetrics = (() => {
+    try {
+      return {
+        totalUsers: (metrics?.totalUsers && typeof metrics.totalUsers === 'number') ? metrics.totalUsers : 0,
+        activeUsers: (metrics?.activeUsers && typeof metrics.activeUsers === 'number') ? metrics.activeUsers : 0,
+        totalRevenue: (revenueStats?.totalRevenue && typeof revenueStats.totalRevenue === 'number') ? revenueStats.totalRevenue : 0,
+        monthlyRevenue: (revenueStats?.monthlyRevenue && typeof revenueStats.monthlyRevenue === 'number') ? revenueStats.monthlyRevenue : 0,
+        searchesDaily: (analytics?.searchesDaily && typeof analytics.searchesDaily === 'number') ? analytics.searchesDaily : 0,
+        leadsGenerated: (analytics?.leadsGenerated && typeof analytics.leadsGenerated === 'number') ? analytics.leadsGenerated : 0,
+        emailsGenerated: (analytics?.emailsGenerated && typeof analytics.emailsGenerated === 'number') ? analytics.emailsGenerated : 0,
+        averageResponseRate: (analytics?.averageResponseRate && typeof analytics.averageResponseRate === 'number') ? analytics.averageResponseRate : 0,
+        systemHealth: {
+          apiUptime: (systemHealth?.apiUptime && typeof systemHealth.apiUptime === 'number') ? systemHealth.apiUptime : 0,
+          queueHealth: (systemHealth?.queueHealth && typeof systemHealth.queueHealth === 'number') ? systemHealth.queueHealth : 0,
+          errorRate: (systemHealth?.errorRate && typeof systemHealth.errorRate === 'number') ? systemHealth.errorRate : 0,
+          avgResponseTime: (systemHealth?.avgResponseTime && typeof systemHealth.avgResponseTime === 'number') ? systemHealth.avgResponseTime : 0
+        }
+      };
+    } catch (error) {
+      console.error('Error constructing adminMetrics:', error);
+      setRenderError('Failed to load admin metrics data');
+      return {
+        totalUsers: 0,
+        activeUsers: 0,
+        totalRevenue: 0,
+        monthlyRevenue: 0,
+        searchesDaily: 0,
+        leadsGenerated: 0,
+        emailsGenerated: 0,
+        averageResponseRate: 0,
+        systemHealth: {
+          apiUptime: 0,
+          queueHealth: 0,
+          errorRate: 0,
+          avgResponseTime: 0
+        }
+      };
     }
-  };
+  })();
 
-  // Initialize configuration state from loaded data
+  // Initialize configuration state from loaded data with bulletproof error handling
   React.useEffect(() => {
-    if (configuration) {
-      if (configuration.creditCosts) {
-        setCreditCosts({
-          leadDiscovery: configuration.creditCosts.LEAD_DISCOVERY,
-          contactEnrichment: configuration.creditCosts.EMAIL_ENRICHMENT,
-          aiAnalysis: configuration.creditCosts.AI_ANALYSIS,
-          emailGeneration: configuration.creditCosts.EMAIL_GENERATION,
-          bulkAnalysis: configuration.creditCosts.BULK_ANALYSIS,
-        });
+    try {
+      if (configuration && typeof configuration === 'object') {
+        // Safe credit costs update
+        if (configuration.creditCosts && typeof configuration.creditCosts === 'object') {
+          try {
+            setCreditCosts({
+              leadDiscovery: (typeof configuration.creditCosts.LEAD_DISCOVERY === 'number') ? configuration.creditCosts.LEAD_DISCOVERY : 1,
+              contactEnrichment: (typeof configuration.creditCosts.EMAIL_ENRICHMENT === 'number') ? configuration.creditCosts.EMAIL_ENRICHMENT : 2,
+              aiAnalysis: (typeof configuration.creditCosts.AI_ANALYSIS === 'number') ? configuration.creditCosts.AI_ANALYSIS : 3,
+              emailGeneration: (typeof configuration.creditCosts.EMAIL_GENERATION === 'number') ? configuration.creditCosts.EMAIL_GENERATION : 5,
+              bulkAnalysis: (typeof configuration.creditCosts.BULK_ANALYSIS === 'number') ? configuration.creditCosts.BULK_ANALYSIS : 10,
+            });
+          } catch (error) {
+            console.error('Error setting credit costs:', error);
+          }
+        }
+        
+        // Safe plan limits update
+        if (configuration.planLimits && typeof configuration.planLimits === 'object') {
+          try {
+            setPlanLimits({
+              free: {
+                monthlyCredits: (configuration.planLimits.free?.monthlyCredits && typeof configuration.planLimits.free.monthlyCredits === 'number') ? configuration.planLimits.free.monthlyCredits : 100,
+                maxLeadsPerSearch: (configuration.planLimits.free?.maxLeadsPerSearch && typeof configuration.planLimits.free.maxLeadsPerSearch === 'number') ? configuration.planLimits.free.maxLeadsPerSearch : 50,
+                maxSearches: (configuration.planLimits.free?.maxSearches && typeof configuration.planLimits.free.maxSearches === 'number') ? configuration.planLimits.free.maxSearches : 5,
+              },
+              pro: {
+                monthlyCredits: (configuration.planLimits.pro?.monthlyCredits && typeof configuration.planLimits.pro.monthlyCredits === 'number') ? configuration.planLimits.pro.monthlyCredits : 500,
+                maxLeadsPerSearch: (configuration.planLimits.pro?.maxLeadsPerSearch && typeof configuration.planLimits.pro.maxLeadsPerSearch === 'number') ? configuration.planLimits.pro.maxLeadsPerSearch : 200,
+                maxSearches: (configuration.planLimits.pro?.maxSearches && typeof configuration.planLimits.pro.maxSearches === 'number') ? configuration.planLimits.pro.maxSearches : 25,
+              },
+              enterprise: {
+                monthlyCredits: (configuration.planLimits.enterprise?.monthlyCredits && typeof configuration.planLimits.enterprise.monthlyCredits === 'number') ? configuration.planLimits.enterprise.monthlyCredits : 2000,
+                maxLeadsPerSearch: (configuration.planLimits.enterprise?.maxLeadsPerSearch && typeof configuration.planLimits.enterprise.maxLeadsPerSearch === 'number') ? configuration.planLimits.enterprise.maxLeadsPerSearch : 1000,
+                maxSearches: (configuration.planLimits.enterprise?.maxSearches && typeof configuration.planLimits.enterprise.maxSearches === 'number') ? configuration.planLimits.enterprise.maxSearches : -1,
+              }
+            });
+          } catch (error) {
+            console.error('Error setting plan limits:', error);
+          }
+        }
       }
-      if (configuration.planLimits) {
-        setPlanLimits({
-          free: {
-            monthlyCredits: configuration.planLimits.free.monthlyCredits,
-            maxLeadsPerSearch: configuration.planLimits.free.maxLeadsPerSearch,
-            maxSearches: configuration.planLimits.free.maxSearches,
-          },
-          pro: {
-            monthlyCredits: configuration.planLimits.pro.monthlyCredits,
-            maxLeadsPerSearch: configuration.planLimits.pro.maxLeadsPerSearch,
-            maxSearches: configuration.planLimits.pro.maxSearches,
-          },
-          enterprise: {
-            monthlyCredits: configuration.planLimits.enterprise.monthlyCredits,
-            maxLeadsPerSearch: configuration.planLimits.enterprise.maxLeadsPerSearch,
-            maxSearches: configuration.planLimits.enterprise.maxSearches,
-          },
-        });
-      }
+    } catch (error) {
+      console.error('Error in configuration useEffect:', error);
+      setRenderError('Failed to initialize configuration data');
     }
   }, [configuration]);
 
@@ -451,11 +491,46 @@ export function AdminDashboard() {
     );
   };
 
-  // Filter users based on search term
-  const filteredUsers = users?.filter(user => 
-    user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  ) || [];
+  // Safe render wrapper to catch any render errors
+  const safeRender = (renderFunction: () => JSX.Element, fallbackMessage: string) => {
+    try {
+      return renderFunction();
+    } catch (error) {
+      console.error('Render error in AdminDashboard:', error);
+      setRenderError(`${fallbackMessage}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return (
+        <Alert className="m-4">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Render Error:</strong> {fallbackMessage}
+            <br />
+            <small>Error: {error instanceof Error ? error.message : 'Unknown error'}</small>
+          </AlertDescription>
+        </Alert>
+      );
+    }
+  };
+
+  // Filter users based on search term with bulletproof error handling  
+  const filteredUsers = (() => {
+    try {
+      if (!users || !Array.isArray(users)) return [];
+      return users.filter(user => {
+        try {
+          const name = user?.name?.toLowerCase() || '';
+          const email = user?.email?.toLowerCase() || '';
+          const term = searchTerm?.toLowerCase() || '';
+          return name.includes(term) || email.includes(term);
+        } catch (error) {
+          console.error('Error filtering user:', user, error);
+          return false;
+        }
+      });
+    } catch (error) {
+      console.error('Error in filteredUsers:', error);
+      return [];
+    }
+  })();
 
   const renderOverview = () => (
     <div className="space-y-6">
@@ -1195,48 +1270,97 @@ export function AdminDashboard() {
     );
   }
 
-  return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <p className="text-muted-foreground">Monitor system performance and manage users</p>
+  // Bulletproof render with comprehensive error handling
+  try {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        {/* Global error display */}
+        {renderError && (
+          <Alert className="mb-6">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Admin Dashboard Error:</strong> {renderError}
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="ml-4"
+                onClick={() => {
+                  setRenderError(null);
+                  window.location.reload();
+                }}
+              >
+                Refresh Page
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+          <p className="text-muted-foreground">Monitor system performance and manage users</p>
+        </div>
+
+        <Tabs value={currentTab} onValueChange={setCurrentTab}>
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="users">User Management</TabsTrigger>
+            <TabsTrigger value="credits">Credit Management</TabsTrigger>
+            <TabsTrigger value="configuration">
+              <Settings className="h-4 w-4 mr-2" />
+              Configuration
+            </TabsTrigger>
+            <TabsTrigger value="system">System Health</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="mt-6">
+            {safeRender(renderOverview, "Overview tab failed to render")}
+          </TabsContent>
+
+          <TabsContent value="users" className="mt-6">
+            {safeRender(renderUserManagement, "User management tab failed to render")}
+          </TabsContent>
+
+          <TabsContent value="credits" className="mt-6">
+            {safeRender(() => <CreditManagement />, "Credit management tab failed to render")}
+          </TabsContent>
+
+          <TabsContent value="configuration" className="mt-6">
+            {safeRender(renderConfiguration, "Configuration tab failed to render")}
+          </TabsContent>
+
+          <TabsContent value="system" className="mt-6">
+            {safeRender(() => (
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold mb-4">System Health Details</h3>
+                <p className="text-muted-foreground">Detailed system monitoring and logs will be implemented here.</p>
+              </Card>
+            ), "System health tab failed to render")}
+          </TabsContent>
+        </Tabs>
       </div>
-
-      <Tabs value={currentTab} onValueChange={setCurrentTab}>
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="users">User Management</TabsTrigger>
-          <TabsTrigger value="credits">Credit Management</TabsTrigger>
-          <TabsTrigger value="configuration">
-            <Settings className="h-4 w-4 mr-2" />
-            Configuration
-          </TabsTrigger>
-          <TabsTrigger value="system">System Health</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview" className="mt-6">
-          {renderOverview()}
-        </TabsContent>
-
-        <TabsContent value="users" className="mt-6">
-          {renderUserManagement()}
-        </TabsContent>
-
-        <TabsContent value="credits" className="mt-6">
-          <CreditManagement />
-        </TabsContent>
-
-        <TabsContent value="configuration" className="mt-6">
-          {renderConfiguration()}
-        </TabsContent>
-
-        <TabsContent value="system" className="mt-6">
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">System Health Details</h3>
-            <p className="text-muted-foreground">Detailed system monitoring and logs will be implemented here.</p>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
+    );
+  } catch (error) {
+    // Ultimate fallback for any unhandled render errors
+    console.error('Critical error in AdminDashboard render:', error);
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Critical Admin Dashboard Error:</strong>
+            <br />
+            {error instanceof Error ? error.message : 'Unknown error occurred'}
+            <br />
+            <Button 
+              variant="outline" 
+              className="mt-4"
+              onClick={() => window.location.reload()}
+            >
+              Refresh Page
+            </Button>
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 }
