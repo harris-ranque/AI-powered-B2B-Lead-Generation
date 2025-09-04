@@ -49,7 +49,7 @@ export function LeadEternityDashboard() {
   const { user, isAuthenticated } = useAuth();
   const { profile, isComplete: hasCompletedOnboarding } = useProfile();
   const { balance } = useCredits();
-  const userCredits = balance?.balance || 0;
+  const userCredits = balance?.credits || 0;
   const { purchaseCredits, usage } = useBilling();
   const { requests: emailRequests } = useLangGraphRequests();
   const { searches } = useSearches();
