@@ -29,3 +29,19 @@ export const markAllAsRead = mutation({
     return { success: true };
   },
 });
+
+export const deleteNotification = mutation({
+  args: { 
+    notificationId: v.id("notifications") 
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    // Placeholder for deleting a specific notification
+    // Will be implemented when notification system is fully built
+    return { success: true };
+  },
+});

@@ -88,7 +88,7 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
 
     try {
       if (state.selectedSource === 'google_maps') {
-        // Create search using existing Convex integration
+        // Create search using existing Convex integration with auto-start
         const searchResult = await createSearch({
           name: `${industry} in ${location}`,
           parameters: {
@@ -100,7 +100,8 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
               minEmployees: employeeRange[0],
               maxEmployees: employeeRange[1],
             }
-          }
+          },
+          autoStart: true // This will trigger the orchestrator automatically
         });
         
         if (searchResult) {

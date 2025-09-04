@@ -115,3 +115,22 @@ export const getActiveSearches = query({
       .take(10);
   },
 });
+
+// Get search by ID (alias for getSearchById to match frontend expectations)
+export const getSearch = query({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    const search = await ctx.db.get(args.searchId);
+    
+    if (!search || search.userId !== user._id) {
+      throw new Error("Search not found or access denied");
+    }
+
+    return search;
+  },
+});

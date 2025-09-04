@@ -7,6 +7,7 @@ export const getUserBroadcasts = query({
   args: {
     limit: v.optional(v.number()),
     offset: v.optional(v.number()),
+    includeDelivered: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
@@ -16,12 +17,20 @@ export const getUserBroadcasts = query({
 
     const limit = args.limit || 20;
     const offset = args.offset || 0;
+    const includeDelivered = args.includeDelivered ?? true;
 
     // Check if statusBroadcasts table exists
     try {
-      const broadcasts = await ctx.db
+      let query = ctx.db
         .query("statusBroadcasts")
-        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .withIndex("by_user", (q) => q.eq("userId", user._id));
+
+      // Filter by delivery status if specified
+      if (!includeDelivered) {
+        query = query.filter((q) => q.neq(q.field("status"), "delivered"));
+      }
+
+      const broadcasts = await query
         .order("desc")
         .take(limit + offset);
 

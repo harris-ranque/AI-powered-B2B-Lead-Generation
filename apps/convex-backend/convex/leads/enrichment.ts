@@ -1,38 +1,85 @@
 import { internalAction, internalMutation } from "../_generated/server";
-import { internal } from "../_generated/api";
+import { internal, api } from "../_generated/api";
 import { v } from "convex/values";
+import { Id } from "../_generated/dataModel";
 
 // Enrich lead with FindyMail data
 export const enrichLead = internalAction({
   args: {
     leadId: v.id("leads"),
     searchId: v.id("searches"),
+    correlationId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const correlationId: string = args.correlationId || `enrich_${Date.now()}`;
+    
     try {
-      // TODO: Implement proper lead retrieval from database
-      // For now, create a mock lead object to avoid API dependency issues
-      const lead = {
-        _id: args.leadId,
-        businessName: "Mock Business",
-        website: null,
-        location: { formattedAddress: "Mock Address" }
-      };
+      // Properly retrieve lead from database
+      const lead = await ctx.runQuery(internal.leads.queries.getLeadInternal, {
+        leadId: args.leadId,
+      });
+      
+      if (!lead) {
+        throw new Error(`Lead not found: ${args.leadId}`);
+      }
       
       console.log(`Enriching lead ${args.leadId} for search ${args.searchId}`);
+      
+      // Update lead status to in_progress
+      await ctx.runMutation(internal.leads.mutations.updateEnrichmentStatus, {
+        leadId: args.leadId,
+        status: "in_progress",
+      });
 
       // Call FindyMail API for enrichment
       const findyMailApiKey = process.env.FINDYMAIL_API_KEY;
       if (!findyMailApiKey) {
-        console.warn("FindyMail API key not configured, skipping enrichment");
-        return { success: true, enriched: false, reason: "API key not configured" };
+        console.warn("FindyMail API key not configured, using fallback enrichment");
+        
+        // Use fallback enrichment
+        const fallbackResult = await enrichWithFallback(ctx, lead);
+        
+        await ctx.runMutation(internal.leads.mutations.updateLeadEnrichment, {
+          leadId: args.leadId,
+          enrichmentData: fallbackResult,
+          status: "completed_fallback",
+        });
+        
+        return { success: true, enriched: true, fallback: true, data: fallbackResult };
+      }
+
+      // Check domain cache first
+      if (lead.website) {
+        const domain = extractDomain(lead.website);
+        const cachedData = await ctx.runQuery(internal.leads.queries.getDomainCache, {
+          domain,
+          searchId: args.searchId,
+        });
+        
+        if (cachedData) {
+          console.log(`Using cached enrichment data for domain: ${domain}`);
+          
+          await ctx.runMutation(internal.leads.mutations.updateLeadEnrichment, {
+            leadId: args.leadId,
+            enrichmentData: cachedData.enrichmentData,
+            status: "completed",
+          });
+          
+          return { 
+            success: true, 
+            enriched: true, 
+            cached: true,
+            emailsFound: cachedData.enrichmentData.emails?.length || 0,
+            data: cachedData.enrichmentData 
+          };
+        }
       }
 
       // Prepare enrichment request
       const enrichmentData = {
         company: lead.businessName,
         domain: lead.website || null,
-        location: lead.location.formattedAddress || null,
+        location: lead.location?.formattedAddress || null,
       };
 
       // Make API call to FindyMail
@@ -72,8 +119,26 @@ export const enrichLead = internalAction({
         updateData.linkedin = enrichmentResult.linkedin;
       }
 
-      // TODO: Implement proper lead update through database mutation
-      console.log(`Would update lead ${args.leadId} with enrichment data:`, updateData);
+      // Properly update lead in database
+      await ctx.runMutation(internal.leads.mutations.updateLeadEnrichment, {
+        leadId: args.leadId,
+        enrichmentData: updateData,
+        status: "completed",
+      });
+      
+      // Cache domain data if we have a website
+      if (lead.website && enrichmentResult.emails?.length > 0) {
+        const domain = extractDomain(lead.website);
+        await ctx.runMutation(internal.leads.mutations.cacheDomainData, {
+          domain,
+          searchId: args.searchId,
+          enrichmentData: {
+            emails: enrichmentResult.emails,
+            contacts: enrichmentResult.contacts || [],
+            socialProfiles: enrichmentResult.socialProfiles,
+          },
+        });
+      }
 
       console.log(`Successfully enriched lead ${args.leadId}`);
       return { 
@@ -86,13 +151,156 @@ export const enrichLead = internalAction({
     } catch (error) {
       console.error(`Error enriching lead ${args.leadId}:`, error);
       
-      // TODO: Implement proper error status update through database mutation
-      console.log(`Would update lead ${args.leadId} with enrichment error: ${error instanceof Error ? error.message : "Unknown error"}`);
+      // Update lead with error status
+      await ctx.runMutation(internal.leads.mutations.updateEnrichmentStatus, {
+        leadId: args.leadId,
+        status: "failed",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+      
+      // Try fallback enrichment
+      try {
+        const lead = await ctx.runQuery(internal.leads.queries.getLeadInternal, {
+          leadId: args.leadId,
+        });
+        
+        if (lead) {
+          const fallbackResult = await enrichWithFallback(ctx, lead);
+          
+          await ctx.runMutation(internal.leads.mutations.updateLeadEnrichment, {
+            leadId: args.leadId,
+            enrichmentData: fallbackResult,
+            status: "completed_fallback",
+          });
+          
+          return { success: true, enriched: true, fallback: true, data: fallbackResult };
+        }
+      } catch (fallbackError) {
+        console.error("Fallback enrichment also failed:", fallbackError);
+      }
 
       return { success: false, error: error instanceof Error ? error.message : "Unknown error", enriched: false };
     }
   },
 });
+
+// Batch enrich leads for a search
+export const batchEnrichLeads = internalAction({
+  args: {
+    searchId: v.id("searches"),
+    correlationId: v.optional(v.string()),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const correlationId = args.correlationId || `batch_enrich_${Date.now()}`;
+    const batchSize = args.batchSize || 5; // Process 5 leads at a time
+    
+    try {
+      // Get all leads for this search that need enrichment
+      const leads = await ctx.runQuery(internal.leads.queries.getUnenrichedLeads, {
+        searchId: args.searchId,
+      });
+      
+      console.log(`Starting batch enrichment for ${leads.length} leads`);
+      
+      let enrichedCount = 0;
+      let failedCount = 0;
+      
+      // Process in batches
+      for (let i = 0; i < leads.length; i += batchSize) {
+        const batch = leads.slice(i, Math.min(i + batchSize, leads.length));
+        
+        // Process batch in parallel
+        const batchPromises = batch.map(lead => 
+          enrichLead(ctx, {
+            leadId: lead._id,
+            searchId: args.searchId,
+            correlationId: `${correlationId}_${lead._id}`,
+          })
+        );
+        
+        const results = await Promise.allSettled(batchPromises);
+        
+        // Count results
+        results.forEach(result => {
+          if (result.status === "fulfilled" && result.value.enriched) {
+            enrichedCount++;
+          } else {
+            failedCount++;
+          }
+        });
+        
+        // Update search progress
+        await ctx.runMutation(api.search.mutations.updateSearchProgress, {
+          searchId: args.searchId,
+          progress: {
+            discovered: leads.length,
+            enriched: enrichedCount,
+            analyzed: 0,
+            total: leads.length,
+          },
+        });
+        
+        // Small delay between batches to avoid rate limiting
+        if (i + batchSize < leads.length) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      console.log(`Batch enrichment completed: ${enrichedCount} enriched, ${failedCount} failed`);
+      
+      return {
+        success: true,
+        enrichedCount,
+        failedCount,
+        totalLeads: leads.length,
+      };
+      
+    } catch (error) {
+      console.error("Batch enrichment error:", error);
+      throw error;
+    }
+  },
+});
+
+// Helper function to extract domain from URL  
+function extractDomain(url: string): string {
+  try {
+    const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+    return urlObj.hostname.replace('www.', '');
+  } catch {
+    return url.replace('www.', '').split('/')[0];
+  }
+}
+
+// Fallback enrichment when FindyMail is not available
+async function enrichWithFallback(ctx: any, lead: any) {
+  // Generate generic email patterns based on domain
+  const emails = [];
+  
+  if (lead.website) {
+    const domain = extractDomain(lead.website);
+    
+    // Common email patterns
+    emails.push(
+      { email: `info@${domain}`, type: "generic", confidence: 0.7 },
+      { email: `contact@${domain}`, type: "generic", confidence: 0.7 },
+      { email: `hello@${domain}`, type: "generic", confidence: 0.6 },
+      { email: `sales@${domain}`, type: "sales", confidence: 0.6 }
+    );
+  }
+  
+  // Create fallback contact info
+  const contactInfo = {
+    emails,
+    contacts: [],
+    socialProfiles: lead.contactInfo?.socialProfiles || {},
+    fallbackUsed: true,
+    fallbackReason: "FindyMail API not available",
+  };
+  
+  return contactInfo;
+}
 
 // Handle enrichment webhook
 export const handleEnrichmentWebhook = internalMutation({

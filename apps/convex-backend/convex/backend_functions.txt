@@ -1,0 +1,232 @@
+=== ./langgraph/webhooks.ts ===
+handleAnalysisCompleted
+handleAnalysisError
+handleEmailGenerationWebhook
+handleAnalysisWebhook
+=== ./langgraph/queries.ts ===
+getUserRequests
+getRequestById
+getRequestStats
+getActiveRequests
+getRequestsByLead
+getRequest
+=== ./crewai/queries.ts ===
+getEmailGenerationStats
+getAgentPerformanceStats
+getRecentAIActivity
+=== ./testQuery.ts ===
+hello
+=== ./auth/index.ts ===
+auth
+getUserByClerkId
+validateApiKey
+handleUserCreated
+handleUserUpdated
+handleUserDeleted
+updateApiKeyUsage
+=== ./leads/queries.ts ===
+getLeadsBySearch
+exportLeads
+getUserLeads
+getLeadStats
+=== ./leads/mutations.ts ===
+updateLead
+updateLeadStatus
+addLeadNotes
+deleteLead
+=== ./leads/enrichment.ts ===
+enrichLead
+handleEnrichmentWebhook
+=== ./debug.ts ===
+debugAuth
+=== ./admin/queries.ts ===
+getAdminMetrics
+getRecentActivity
+getSystemHealth
+getAllUsers
+getAnalytics
+getRevenueStats
+getUsageStats
+getAdminSettings
+getSystemStatus
+=== ./admin/mutations.ts ===
+updateUserStatus
+updateUserPlan
+addUserCredits
+exportUsers
+      exportData
+      exportData
+resetSystemCache
+runSystemMaintenance
+=== ./admin/systemControl.ts ===
+getSystemControlStatus
+getSystemActivity
+pauseAllLeadGeneration
+resumeAllLeadGeneration
+clearAllActiveSearches
+=== ./search/queries.ts ===
+getUserSearches
+getSearchById
+getSearchStats
+getActiveSearches
+=== ./search/actions.ts ===
+searchGoogleMaps
+=== ./search/mutations.ts ===
+createSearch
+updateSearchStatus
+updateSearchProgress
+cancelSearch
+deleteSearch
+duplicateSearch
+=== ./realtime/queries.ts ===
+getUserBroadcasts
+getSearchStatusUpdates
+getActiveNotificationsCount
+getSystemAnnouncements
+=== ./realtime/mutations.ts ===
+acknowledgeBroadcast
+=== ./profile/queries.ts ===
+getCurrentProfile
+getProfileCompleteness
+getProfileByCompany
+getProfileTemplate
+getIndustrySuggestions
+validateProfileData
+getProfileByUserId
+getBusinessProfile
+=== ./profile/validators.ts ===
+profileCompletenessValidator
+importDataValidator
+sectionUpdateValidator
+profileQualityMetrics
+industryRequirements
+profileAnalytics
+=== ./profile/mutations.ts ===
+createOrUpdateProfile
+updateProfileSection
+deleteProfile
+importProfile
+=== ./users/queries.ts ===
+getCurrentUserData
+getUserById
+getUserStats
+getUserActivity
+getUserByEmail
+getUserPreferences
+getUserCredits
+listUsers
+=== ./users/admin.ts ===
+getAllUsers
+getUserStatistics
+updateUserRole
+suspendUser
+reactivateUser
+grantBonusCredits
+searchUsers
+getSystemConfiguration
+updateCreditCosts
+updatePlanLimits
+getUserByIdInternal
+=== ./users/mutations.ts ===
+updateProfile
+updatePreferences
+deductCredits
+addCredits
+upgradePlan
+deleteAccount
+resetUserPassword
+=== ./lib/helpers.ts ===
+export type User
+export type Lead
+export type Search
+export type BusinessProfile
+export type EmailSequence
+CREDIT_COSTS
+PLAN_LIMITS
+RETRY_CONFIGS
+export async function retryApiCall<T>(fn: () => Promise<T>): Promise<T> {
+export async function retryDatabaseOperation<T>(fn: () => Promise<T>): Promise<T> {
+export async function retryWebhookCall<T>(fn: () => Promise<T>): Promise<T> {
+=== ./lib/correlation.ts ===
+OPERATION_TYPES
+=== ./lib/env_validation.ts ===
+REQUIRED_ENV_VARS: RequiredEnvVar[]
+=== ./lib/test_correlation.ts ===
+testCorrelationLogging
+testCorrelationTrace
+testPerformanceMonitoring
+=== ./lib/constants.ts ===
+API_CONFIG
+CREDIT_COSTS
+BUSINESS_RULES
+STATUS
+ERROR_CODES
+EMAIL_TEMPLATES
+AI_CONFIG
+WEBHOOK_EVENTS
+UPLOAD_CONFIG
+CACHE_CONFIG
+=== ./lib/validators.ts ===
+createUserValidator
+updateUserValidator
+businessProfileValidator
+searchParametersValidator
+createSearchValidator
+leadBasicInfoValidator
+enrichmentDataValidator
+aiAnalysisValidator
+emailRequirementsValidator
+agentResultValidator
+creditTransactionValidator
+notificationValidator
+crewaiRequestValidator
+=== ./lib/logging.ts ===
+storeLogEntry
+getCorrelationLogs
+getSearchLogs
+getUserLogs
+getOperationMetrics
+cleanupOldLogs
+getRecentLogs
+getPerformanceLogs
+getDebugSearchLogs
+clearOldLogs
+getCorrelationTrace
+=== ./apps/convex-backend/convex/langgraph/actions.ts ===
+generateEmail
+analyzeLead
+=== ./credits/transactions.ts ===
+recordTransaction
+reserveCredits
+commitReservation
+=== ./credits/internal.ts ===
+updateUserCredits
+=== ./notifications/queries.ts ===
+getUserNotifications
+getNotificationCounts
+=== ./notifications/mutations.ts ===
+markAsRead
+markAllAsRead
+deleteNotification
+=== ./billing/webhooks.ts ===
+handleSubscriptionCreated
+handleSubscriptionUpdated
+handleSubscriptionDeleted
+handlePaymentSucceeded
+handleSubscriptionUpdate
+handleSubscriptionCancellation
+handlePaymentSuccess
+handlePaymentFailure
+=== ./billing/queries.ts ===
+getCreditBalance
+getUserBilling
+getCreditTransactions
+getUsageStats
+getSpendingBreakdown
+getCreditUsage
+=== ./billing/mutations.ts ===
+createCheckoutSession
+purchaseCredits
+updateSubscription
+=== ./auth.ts ===
+auth

@@ -143,3 +143,25 @@ export const getRequestsByLead = query({
       .collect();
   },
 });
+
+// Get request by ID (alias for getRequestById to match frontend expectations)
+export const getRequest = query({
+  args: { requestId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    const request = await ctx.db
+      .query("langgraphRequests")
+      .withIndex("by_request_id", (q) => q.eq("requestId", args.requestId))
+      .unique();
+    
+    if (!request || request.userId !== user._id) {
+      throw new Error("Request not found or access denied");
+    }
+
+    return request;
+  },
+});

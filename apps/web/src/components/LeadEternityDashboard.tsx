@@ -187,13 +187,9 @@ export function LeadEternityDashboard() {
               variant={currentTab === "email-generator" ? "default" : "ghost"}
               className="w-full justify-start"
               onClick={() => setCurrentTab("email-generator")}
-              disabled={true}
             >
               <Bot className="h-4 w-4 mr-2" />
               AI Email Generator
-              <Badge variant="outline" className="ml-auto text-xs">
-                Coming Soon
-              </Badge>
             </Button>
             
             <Button

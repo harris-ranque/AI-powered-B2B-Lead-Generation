@@ -101,6 +101,62 @@ export const getUserLeads = query({
   },
 });
 
+// Get single lead by ID
+export const getLead = query({
+  args: { leadId: v.id("leads") },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    const lead = await ctx.db.get(args.leadId);
+    if (!lead || lead.userId !== user._id) {
+      throw new Error("Lead not found or access denied");
+    }
+
+    return lead;
+  },
+});
+
+// Get email sequences for a lead
+export const getEmailSequences = query({
+  args: { leadId: v.id("leads") },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    // Verify lead belongs to user
+    const lead = await ctx.db.get(args.leadId);
+    if (!lead || lead.userId !== user._id) {
+      throw new Error("Lead not found or access denied");
+    }
+
+    // Get email sequences (LangGraph requests) for this lead
+    const emailRequests = await ctx.db
+      .query("langgraphRequests")
+      .withIndex("by_lead", (q) => q.eq("leadId", args.leadId))
+      .filter((q) => q.eq(q.field("type"), "email_generation"))
+      .order("desc")
+      .collect();
+
+    // Format as email sequences
+    return emailRequests.map(request => ({
+      id: request._id,
+      requestId: request.requestId,
+      status: request.status,
+      emailType: request.inputData?.emailType || "initial",
+      subject: request.outputData?.subject || null,
+      content: request.outputData?.content || null,
+      createdAt: request.createdAt,
+      completedAt: request.completedAt || null,
+      error: request.error || null,
+    }));
+  },
+});
+
 // Get lead statistics for user
 export const getLeadStats = query({
   args: {},

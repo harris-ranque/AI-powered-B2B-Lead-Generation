@@ -338,10 +338,128 @@ export const getAdminSettings = query({
       .unique();
 
     return {
-      maintenanceMode: systemConfig?.settings?.maintenanceMode || false,
-      registrationEnabled: systemConfig?.settings?.registrationEnabled ?? true,
-      maxDailySearches: systemConfig?.settings?.maxDailySearches || 100,
-      systemMessage: systemConfig?.settings?.systemMessage || "",
+      maintenanceMode: false, // Not available in current schema
+      registrationEnabled: true, // Not available in current schema
+      maxDailySearches: 100, // Not available in current schema
+      systemMessage: "", // Not available in current schema
+      creditCosts: systemConfig?.creditCosts || null,
+      planLimits: systemConfig?.planLimits || null,
     };
+  },
+});
+
+// Get system status for admin monitoring
+export const getSystemStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+
+    const now = Date.now();
+    const oneHourAgo = now - (60 * 60 * 1000);
+
+    try {
+      // Get processing queue status
+      const processingSearches = await ctx.db
+        .query("searches")
+        .filter((q) => q.eq(q.field("status"), "processing"))
+        .collect();
+
+      const queuedSearches = await ctx.db
+        .query("searches")
+        .filter((q) => q.eq(q.field("status"), "queued"))
+        .collect();
+
+      const failedSearches = await ctx.db
+        .query("searches")
+        .filter((q) => q.eq(q.field("status"), "failed"))
+        .filter((q) => q.gte(q.field("createdAt"), oneHourAgo))
+        .collect();
+
+      // Check for stuck operations (processing for more than 30 minutes)
+      const stuckSearches = processingSearches.filter(search => 
+        (now - (search.lastOrchestrationAt || search.createdAt)) > (30 * 60 * 1000)
+      );
+
+      // Get system resource status
+      const totalUsers = await ctx.db.query("users").collect().then(users => users.length);
+      const activeUsers = await ctx.db
+        .query("users")
+        .filter((q) => q.eq(q.field("isActive"), true))
+        .collect()
+        .then(users => users.length);
+
+      // Check LangGraph worker status
+      const recentLangGraphRequests = await ctx.db
+        .query("langgraphRequests")
+        .filter((q) => q.gte(q.field("createdAt"), oneHourAgo))
+        .collect();
+
+      const failedLangGraphRequests = recentLangGraphRequests.filter(req => req.status === "failed");
+
+      // Determine overall system health
+      let systemHealth: "healthy" | "degraded" | "critical";
+      const issues = [];
+
+      if (stuckSearches.length > 5 || failedSearches.length > 10) {
+        systemHealth = "critical";
+        if (stuckSearches.length > 5) issues.push(`${stuckSearches.length} stuck searches`);
+        if (failedSearches.length > 10) issues.push(`${failedSearches.length} failed searches`);
+      } else if (stuckSearches.length > 0 || failedSearches.length > 5) {
+        systemHealth = "degraded";
+        if (stuckSearches.length > 0) issues.push(`${stuckSearches.length} stuck searches`);
+        if (failedSearches.length > 5) issues.push(`${failedSearches.length} failed searches`);
+      } else {
+        systemHealth = "healthy";
+      }
+
+      // Calculate success rates
+      const searchSuccessRate = recentLangGraphRequests.length > 0
+        ? Math.round(((recentLangGraphRequests.length - failedLangGraphRequests.length) / recentLangGraphRequests.length) * 100)
+        : 100;
+
+      return {
+        systemHealth,
+        issues,
+        processing: {
+          queuedSearches: queuedSearches.length,
+          processingSearches: processingSearches.length,
+          stuckSearches: stuckSearches.length,
+          failedSearchesLastHour: failedSearches.length,
+        },
+        users: {
+          total: totalUsers,
+          active: activeUsers,
+          activePercentage: totalUsers > 0 ? Math.round((activeUsers / totalUsers) * 100) : 0,
+        },
+        aiService: {
+          requestsLastHour: recentLangGraphRequests.length,
+          failedRequests: failedLangGraphRequests.length,
+          successRate: searchSuccessRate,
+        },
+        timestamp: now,
+      };
+    } catch (error) {
+      return {
+        systemHealth: "critical" as const,
+        issues: ["Unable to fetch system status"],
+        processing: {
+          queuedSearches: 0,
+          processingSearches: 0,
+          stuckSearches: 0,
+          failedSearchesLastHour: 0,
+        },
+        users: {
+          total: 0,
+          active: 0,
+          activePercentage: 0,
+        },
+        aiService: {
+          requestsLastHour: 0,
+          failedRequests: 0,
+          successRate: 0,
+        },
+        timestamp: now,
+      };
+    }
   },
 });
