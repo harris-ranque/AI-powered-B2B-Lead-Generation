@@ -31,7 +31,7 @@ export const orchestrateSearch: any = internalAction({
     const correlationId = `orch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     // Get search details (moved outside try block for error handling)
-    const searchRecord = await ctx.runQuery(internal["search/queries"].getSearchInternal, {
+    const searchRecord = await ctx.runQuery(internal["search/internal"].getSearchInternal, {
       searchId 
     });
     
@@ -42,7 +42,7 @@ export const orchestrateSearch: any = internalAction({
     try { 
 
       // Log orchestration start
-      await ctx.runMutation(internal["search/mutations"].logCorrelation, {
+      await ctx.runMutation(internal["search/internal"].logCorrelation, {
         correlationId,
         operationType: "search_orchestration",
         userId: searchRecord.userId,
@@ -118,7 +118,7 @@ export const orchestrateSearch: any = internalAction({
           console.error("Discovery stage error:", error);
           pipelineSuccess = false;
           
-          await ctx.runMutation(internal["search/mutations"].logCorrelation, {
+          await ctx.runMutation(internal["search/internal"].logCorrelation, {
             correlationId,
             operationType: "search_orchestration",
             userId: searchRecord.userId as Id<"users">,
@@ -165,7 +165,7 @@ export const orchestrateSearch: any = internalAction({
           // Continue pipeline even if enrichment partially fails
           currentStage = "analysis";
           
-          await ctx.runMutation(internal["search/mutations"].logCorrelation, {
+          await ctx.runMutation(internal["search/internal"].logCorrelation, {
             correlationId,
             operationType: "search_orchestration", 
             userId: searchRecord.userId as Id<"users">,
@@ -223,7 +223,7 @@ export const orchestrateSearch: any = internalAction({
           // Continue to completion even if analysis fails
           // All stages are done
           
-          await ctx.runMutation(internal["search/mutations"].logCorrelation, {
+          await ctx.runMutation(internal["search/internal"].logCorrelation, {
             correlationId,
             operationType: "search_orchestration",
             userId: searchRecord.userId as Id<"users">,
@@ -249,7 +249,7 @@ export const orchestrateSearch: any = internalAction({
         });
 
         // Calculate final results
-        const results: any = await ctx.runQuery(internal["search/queries"].getSearchResults, {
+        const results: any = await ctx.runQuery(internal["search/internal"].getSearchResults, {
           searchId,
         });
 
@@ -266,7 +266,7 @@ export const orchestrateSearch: any = internalAction({
         });
 
         // Log completion
-        await ctx.runMutation(internal["search/mutations"].logCorrelation, {
+        await ctx.runMutation(internal["search/internal"].logCorrelation, {
           correlationId,
           operationType: "search_orchestration",
           userId: searchRecord.userId as Id<"users">,
@@ -319,7 +319,7 @@ export const resumeSearch: any = internalAction({
     searchId: v.id("searches"),
   },
   handler: async (ctx, args) => {
-    const search = await ctx.runQuery(internal["search/queries"].getSearchInternal, {
+    const search = await ctx.runQuery(internal["search/internal"].getSearchInternal, {
       searchId: args.searchId,
     });
 
@@ -365,7 +365,7 @@ export const checkStuckSearches: any = internalAction({
     // Find searches that are in_progress but haven't been updated in 10 minutes
     const stuckThreshold = Date.now() - 10 * 60 * 1000; // 10 minutes ago
     
-    const stuckSearches: any = await ctx.runQuery(internal["search/queries"].getStuckSearches, {
+    const stuckSearches: any = await ctx.runQuery(internal["search/internal"].getStuckSearches, {
       stuckThreshold,
     });
 
