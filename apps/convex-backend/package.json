@@ -10,10 +10,12 @@
   "dependencies": {
     "convex": "^1.24.0",
     "stripe": "^18.4.0",
-    "svix": "^1.73.0"
+    "svix": "^1.73.0",
+    "uuid": "^9.0.0"
   },
   "devDependencies": {
     "@types/node": "^18.17.0",
+    "@types/uuid": "^9.0.0",
     "typescript": "~5.0.3"
   }
 }

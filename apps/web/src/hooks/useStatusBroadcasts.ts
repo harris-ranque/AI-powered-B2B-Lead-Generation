@@ -1,15 +1,16 @@
-import { useQuery, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@genni/convex-types";
 import type { Id } from "@genni/convex-types/dataModel";
-import { useEffect, useCallback } from "react";
+import { useCallback } from "react";
 import { createLogger, timeOperation } from "@/utils/logger";
+import { useSSEBroadcasts, type SSEBroadcastMessage } from "./useSSEBroadcasts";
 
 const logger = createLogger('useStatusBroadcasts');
 
 export type BroadcastPriority = 1 | 2 | 3 | 4 | 5;
 
 export interface StatusBroadcast {
-  _id: Id<"statusBroadcasts">;
+  _id: Id<"statusBroadcasts"> | string;
   userId: Id<"users">;
   type: string;
   title: string;
@@ -29,27 +30,57 @@ export interface StatusBroadcast {
 }
 
 /**
- * Hook for managing real-time status broadcasts
- * Integrates with the enterprise broadcasting system for live updates
+ * Hook for managing real-time status broadcasts (SSE-POWERED)
+ * Now uses Server-Sent Events for true real-time updates instead of database polling
  */
 export function useStatusBroadcasts() {
-  // OPTIMIZATION: Reduce limit and add less frequent polling
-  const broadcasts = useQuery(api.realtime.queries.getUserBroadcasts, {
-    includeDelivered: false,
-    limit: 10, // Reduced from 20
-  });
+  // Use SSE for real-time updates instead of database polling
+  const { 
+    messages, 
+    urgentMessages, 
+    isConnected, 
+    getMessagesByType,
+    clearMessagesByType 
+  } = useSSEBroadcasts();
 
   const acknowledgeAction = useMutation(api.realtime.mutations.acknowledgeBroadcast);
 
-  useEffect(() => {
-    if (broadcasts) {
-      logger.debug('Status broadcasts loaded', {
-        count: broadcasts.length,
-        urgent: broadcasts.filter(b => b.priority >= 4).length,
-        requiresAck: broadcasts.filter(b => b.requiresAck && !b.acknowledged).length,
-      });
+  // Convert SSE messages to StatusBroadcast format for backward compatibility
+  const convertToStatusBroadcast = useCallback((message: SSEBroadcastMessage): StatusBroadcast => {
+    return {
+      _id: message.messageId || `sse_${message.timestamp}`,
+      userId: "" as Id<"users">, // Will be filled by the current user
+      type: message.type.replace('queued_', ''), // Remove queued prefix
+      title: message.data?.title || message.type,
+      message: message.message,
+      data: message.data,
+      priority: mapSSEPriorityToBroadcast(message.priority),
+      tags: message.data?.category ? [message.data.category] : [],
+      status: "delivered" as const,
+      delivered: true,
+      acknowledged: false,
+      requiresAck: false,
+      createdAt: message.timestamp,
+      expiresAt: message.timestamp + (60 * 60 * 1000), // 1 hour from creation
+      error: message.error,
+    };
+  }, []);
+
+  // Map SSE priority to broadcast priority
+  const mapSSEPriorityToBroadcast = (priority?: string): BroadcastPriority => {
+    switch (priority) {
+      case 'critical': return 5;
+      case 'urgent': return 4;
+      case 'high': return 3;
+      case 'normal': return 2;
+      case 'low': return 1;
+      default: return 2;
     }
-  }, [broadcasts]);
+  };
+
+  // Convert SSE messages to StatusBroadcast format
+  const broadcasts = messages.map(convertToStatusBroadcast);
+  const urgentBroadcasts = urgentMessages.map(convertToStatusBroadcast);
 
   const acknowledgeBroadcast = useCallback(async (broadcastId: Id<"statusBroadcasts">) => {
     logger.info('Acknowledging broadcast', { broadcastId });
@@ -60,23 +91,19 @@ export function useStatusBroadcasts() {
 
   // Filter broadcasts by type
   const getByType = useCallback((type: string) => {
-    return broadcasts?.filter(b => b.type === type) || [];
-  }, [broadcasts]);
+    const sseMessages = getMessagesByType(type);
+    return sseMessages.map(convertToStatusBroadcast);
+  }, [getMessagesByType, convertToStatusBroadcast]);
 
-  // Filter broadcasts by tags
+  // Filter broadcasts by tags (limited in SSE version)
   const getByTags = useCallback((tags: string[]) => {
-    return broadcasts?.filter(b => 
+    return broadcasts.filter(b => 
       tags.some(tag => b.tags.includes(tag))
-    ) || [];
+    );
   }, [broadcasts]);
 
-  // Get urgent broadcasts (high priority, not acknowledged)
-  const urgentBroadcasts = broadcasts?.filter(b => 
-    b.priority >= 4 && (!b.requiresAck || !b.acknowledged)
-  ) || [];
-
-  // Get search-related broadcasts
-  const searchBroadcasts = getByType('search_status');
+  // Get search-related broadcasts 
+  const searchBroadcasts = getByType('pipeline_update');
 
   // Get credit-related broadcasts
   const creditBroadcasts = getByType('credit_update');
@@ -88,7 +115,7 @@ export function useStatusBroadcasts() {
   const systemAlerts = getByType('system_alert');
 
   return {
-    broadcasts: broadcasts || [],
+    broadcasts,
     urgentBroadcasts,
     searchBroadcasts,
     creditBroadcasts,
@@ -97,24 +124,44 @@ export function useStatusBroadcasts() {
     getByType,
     getByTags,
     acknowledgeBroadcast,
-    isLoading: broadcasts === undefined,
+    isLoading: false, // SSE is always "loaded"
     hasUrgent: urgentBroadcasts.length > 0,
-    needsAcknowledgment: broadcasts?.filter(b => b.requiresAck && !b.acknowledged).length || 0,
+    needsAcknowledgment: 0, // SSE messages don't require acknowledgment in this version
+    
+    // SSE-specific additions
+    isConnected,
+    clearMessagesByType,
   };
 }
 
 /**
- * Hook for broadcasts related to a specific search
+ * Hook for broadcasts related to a specific search (SSE-POWERED)
  */
 export function useSearchBroadcasts(searchId?: Id<"searches">) {
   const { broadcasts, acknowledgeBroadcast } = useStatusBroadcasts();
+  const { getPipelineMessages } = useSSEBroadcasts();
   
-  const searchSpecificBroadcasts = (broadcasts || []).filter(b => 
-    b.type === 'search_status' && 
-    b.data?.searchId === searchId
-  );
+  // Use SSE pipeline messages for real-time updates
+  const pipelineMessages = getPipelineMessages(searchId);
+  const searchSpecificBroadcasts = pipelineMessages.map(msg => ({
+    _id: msg.messageId || `sse_${msg.timestamp}`,
+    userId: "" as Id<"users">,
+    type: 'pipeline_update',
+    title: `Pipeline ${msg.data?.stage}`,
+    message: msg.message,
+    data: msg.data,
+    priority: mapSSEPriorityToBroadcast(msg.priority),
+    tags: ['pipeline', msg.data?.stage].filter(Boolean),
+    status: "delivered" as const,
+    delivered: true,
+    acknowledged: false,
+    requiresAck: false,
+    createdAt: msg.timestamp,
+    expiresAt: msg.timestamp + (60 * 60 * 1000),
+    error: msg.error,
+  }));
 
-  // Sort by creation time (newest first)
+  // Sort by creation time (newest first) 
   const sortedBroadcasts = searchSpecificBroadcasts.sort((a, b) => 
     b.createdAt - a.createdAt
   );
@@ -124,8 +171,20 @@ export function useSearchBroadcasts(searchId?: Id<"searches">) {
 
   // Get progress updates
   const progressUpdates = sortedBroadcasts.filter(b => 
-    b.data?.progress || b.message.includes('progress') || b.message.includes('%')
+    b.data?.progress !== undefined || b.message.includes('%')
   );
+
+  // Helper function for SSE priority mapping (duplicate from above for this function)
+  function mapSSEPriorityToBroadcast(priority?: string): BroadcastPriority {
+    switch (priority) {
+      case 'critical': return 5;
+      case 'urgent': return 4; 
+      case 'high': return 3;
+      case 'normal': return 2;
+      case 'low': return 1;
+      default: return 2;
+    }
+  }
 
   return {
     broadcasts: sortedBroadcasts,
@@ -133,6 +192,10 @@ export function useSearchBroadcasts(searchId?: Id<"searches">) {
     progressUpdates,
     acknowledgeBroadcast,
     hasUpdates: sortedBroadcasts.length > 0,
+    
+    // SSE-specific additions
+    currentProgress: latestStatus?.data?.progress || 0,
+    currentStage: latestStatus?.data?.stage || 'pending',
   };
 }
 
