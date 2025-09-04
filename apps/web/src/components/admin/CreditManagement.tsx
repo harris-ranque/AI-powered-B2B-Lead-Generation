@@ -34,6 +34,16 @@ interface CreditTransaction {
   userName?: string;
 }
 
+interface UserSearchResult {
+  _id: string;
+  email: string;
+  name?: string;
+  credits: number;
+  plan: "free" | "pro" | "enterprise" | "admin";
+  role?: "user" | "admin";
+  isActive?: boolean;
+}
+
 export function CreditManagement() {
   const [activeTab, setActiveTab] = useState("grant");
   const [targetEmail, setTargetEmail] = useState("");
@@ -47,52 +57,71 @@ export function CreditManagement() {
   
   // Admin functions
   const grantBonusCredits = useMutation(api.users.admin.grantBonusCredits);
-  const searchUsers = useMutation(api.users.admin.searchUsers);
   
   // Queries for recent transactions and user lookup
   const recentTransactions = useQuery(api.admin.queries.getRecentCreditTransactions, { limit: 10 });
   
+  // Query to get current user data (for admin granting credits to themselves)
+  const currentUserData = useQuery(api.users.queries.getCurrentUserData);
+  
   // State for user lookup
-  const [foundUser, setFoundUser] = useState<any>(null);
+  const [foundUser, setFoundUser] = useState<UserSearchResult | null>(null);
   const [searchError, setSearchError] = useState("");
+  const [searchQuery, setSearchQuery] = useState<string | null>(null);
+  
+  // Query for user search (only executes when searchQuery is set)
+  const searchResults = useQuery(
+    searchQuery ? api.users.admin.searchUsers : "skip",
+    searchQuery ? { query: searchQuery, limit: 1 } : undefined
+  );
 
-  const handleUserLookup = async () => {
+  const handleUserLookup = () => {
     if (!targetEmail && !useCurrentUser) {
       setSearchError("Please enter an email address or select current user");
       return;
     }
 
-    try {
-      setIsLoading(true);
-      setSearchError("");
-      
-      if (useCurrentUser && currentUser?.emailAddresses?.[0]?.emailAddress) {
-        // Use current admin user
-        setFoundUser({
-          _id: "current_user",
-          email: currentUser.emailAddresses[0].emailAddress,
-          name: currentUser.fullName || currentUser.firstName || "Admin User",
-          credits: "Loading...",
-          plan: "admin"
-        });
-      } else if (targetEmail) {
-        // Search for user by email
-        const users = await searchUsers({ query: targetEmail, limit: 1 });
-        
-        if (users && users.length > 0) {
-          setFoundUser(users[0]);
-        } else {
-          setSearchError("User not found. Please check the email address.");
-          setFoundUser(null);
-        }
+    setIsLoading(true);
+    setSearchError("");
+    
+    if (useCurrentUser && currentUser?.emailAddresses?.[0]?.emailAddress) {
+      // Use current admin user - need to get the actual database user ID
+      if (!currentUserData) {
+        setSearchError("Loading current user data...");
+        setIsLoading(false);
+        return;
       }
-    } catch (error) {
-      setSearchError("Failed to lookup user. Please try again.");
-      setFoundUser(null);
-    } finally {
+      
+      setFoundUser({
+        _id: currentUserData._id,
+        email: currentUserData.email,
+        name: currentUserData.name || currentUser.fullName || currentUser.firstName || "Admin User",
+        credits: currentUserData.credits,
+        plan: currentUserData.plan as "free" | "pro" | "enterprise" | "admin",
+        role: currentUserData.role,
+        isActive: currentUserData.isActive
+      });
       setIsLoading(false);
+    } else if (targetEmail) {
+      // Trigger the search query
+      setSearchQuery(targetEmail);
     }
   };
+
+  // Effect to handle search results
+  React.useEffect(() => {
+    if (searchQuery && searchResults !== undefined) {
+      if (searchResults && searchResults.length > 0) {
+        setFoundUser(searchResults[0]);
+        setSearchError("");
+      } else {
+        setSearchError("User not found. Please check the email address.");
+        setFoundUser(null);
+      }
+      setIsLoading(false);
+      setSearchQuery(null); // Reset search query
+    }
+  }, [searchResults, searchQuery]);
 
   const handleGrantCredits = async () => {
     if (!foundUser) {
