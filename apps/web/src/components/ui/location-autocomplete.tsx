@@ -46,7 +46,18 @@ const initializeGoogleMaps = async (): Promise<google.maps.places.AutocompleteSe
   }
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-  if (!apiKey) {
+  
+  // Debug logging for production
+  if (import.meta.env.MODE === 'production') {
+    console.log('Google Maps API Key check:', {
+      hasKey: !!apiKey,
+      keyLength: apiKey?.length,
+      keyPrefix: apiKey?.substring(0, 10) + '...',
+      allEnvKeys: Object.keys(import.meta.env)
+    });
+  }
+  
+  if (!apiKey || apiKey === 'undefined' || apiKey === 'your_google_maps_api_key_here') {
     throw new Error("Google Maps API key not configured. Please set VITE_GOOGLE_MAPS_API_KEY in your environment variables.");
   }
 
