@@ -77,13 +77,13 @@ export function Dashboard() {
     { 
       title: "Searches Completed", 
       value: totalSearches.toLocaleString(), 
-      change: searches?.filter(s => s.status === 'completed').length ? `${searches.filter(s => s.status === 'completed').length} completed` : "No searches yet", 
+      change: searches?.filter(s => s.status === 'completed').length ? `${searches?.filter(s => s.status === 'completed').length} completed` : "No searches yet", 
       icon: Search 
     },
     { 
       title: "AI Emails Generated", 
       value: emailsGenerated.toLocaleString(), 
-      change: emailRequests?.page?.filter(r => r.status === 'completed').length ? `${emailRequests.page.filter(r => r.status === 'completed').length} successful` : "None generated", 
+      change: emailRequests?.page?.filter(r => r.status === 'completed').length ? `${emailRequests?.page?.filter(r => r.status === 'completed').length} successful` : "None generated", 
       icon: Bot 
     },
   ];
