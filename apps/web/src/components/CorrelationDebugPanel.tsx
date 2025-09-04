@@ -73,7 +73,7 @@ export function CorrelationDebugPanel({
 
   // Filter logs based on current filters
   const filteredLogs = useMemo(() => {
-    let filtered = logs;
+    let filtered = logs || [];
 
     if (searchId) {
       filtered = getSearchLogs(searchId as Id<"searches">);

@@ -81,7 +81,7 @@ export function PerformanceMonitoringDashboard({
     setAcknowledgedAlerts(prev => new Set([...prev, alertId]));
   };
 
-  const visibleAlerts = systemAlerts.filter(alert => !acknowledgedAlerts.has(alert.id));
+  const visibleAlerts = (systemAlerts || []).filter(alert => !acknowledgedAlerts.has(alert.id));
   const criticalAlerts = visibleAlerts.filter(alert => alert.severity === 'critical');
   const highAlerts = visibleAlerts.filter(alert => alert.severity === 'high');
 
