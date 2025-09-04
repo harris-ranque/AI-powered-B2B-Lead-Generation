@@ -71,8 +71,8 @@ export function CreditManagement() {
   
   // Query for user search (only executes when searchQuery is set)
   const searchResults = useQuery(
-    searchQuery ? api.users.admin.searchUsers : "skip",
-    searchQuery ? { query: searchQuery, limit: 1 } : undefined
+    api.users.admin.searchUsers,
+    searchQuery ? { query: searchQuery, limit: 1 } : "skip"
   );
 
   const handleUserLookup = () => {
