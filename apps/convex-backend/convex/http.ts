@@ -70,7 +70,7 @@ http.route({
         return new Response("Invalid authentication token", { status: 401 });
       }
       
-      const tokenTimestamp = parseInt(tokenData[1]);
+      const tokenTimestamp = parseInt(tokenData[1]!);
       const tokenAge = Date.now() - tokenTimestamp;
       
       // Token expires after 1 hour

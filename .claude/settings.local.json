@@ -78,7 +78,9 @@
       "Bash(grep:*)",
       "Bash(git pull:*)",
       "Bash(npm run prebuild:*)",
-      "Bash(pnpm add:*)"
+      "Bash(pnpm add:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }

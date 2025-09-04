@@ -259,49 +259,8 @@ export const handlePaymentSucceeded = internalMutation({
   },
 });
 
-// Additional webhook handlers referenced in http.ts
-export const handleSubscriptionUpdate = internalMutation({
-  args: {
-    subscriptionId: v.string(),
-    plan: v.string(),
-  },
-  handler: async (ctx, args): Promise<any> => {
-    // This is a duplicate of handleSubscriptionUpdated, call the handler directly
-    return await handleSubscriptionUpdated.handler(ctx, {
-      subscriptionId: args.subscriptionId,
-      plan: args.plan,
-    });
-  },
-});
-
-export const handleSubscriptionCancellation = internalMutation({
-  args: {
-    subscriptionId: v.string(),
-  },
-  handler: async (ctx, args): Promise<any> => {
-    // This is a duplicate of handleSubscriptionDeleted, call the handler directly
-    return await handleSubscriptionDeleted.handler(ctx, {
-      subscriptionId: args.subscriptionId,
-    });
-  },
-});
-
-export const handlePaymentSuccess = internalMutation({
-  args: {
-    paymentIntentId: v.string(),
-    amount: v.number(),
-    stripeCustomerId: v.optional(v.string()),
-  },
-  handler: async (ctx, args): Promise<any> => {
-    // This is a duplicate of handlePaymentSucceeded, call the handler directly
-    return await handlePaymentSucceeded.handler(ctx, {
-      paymentIntentId: args.paymentIntentId,
-      amount: args.amount,
-      currency: "usd", // Default currency
-      stripeCustomerId: args.stripeCustomerId,
-    });
-  },
-});
+// Removed duplicate handlers that were causing circular type inference.
+// Use the original handlers directly: handleSubscriptionUpdated, handleSubscriptionDeleted, handlePaymentSucceeded
 
 export const handlePaymentFailure = internalMutation({
   args: {
