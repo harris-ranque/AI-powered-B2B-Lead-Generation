@@ -32,7 +32,19 @@ import {
   Pause,
   Play,
   AlertTriangle,
-  Trash2
+  Trash2,
+  ExternalLink,
+  Globe,
+  Server,
+  Database,
+  BarChart3,
+  Code,
+  CreditCard,
+  Key,
+  Cloud,
+  GitBranch,
+  Bug,
+  MapPin
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAdminDashboard, useAdminUsers, useAdminAnalytics, useAdminConfiguration, useAdminSystemControl } from "@/hooks/useAdmin";
@@ -106,6 +118,190 @@ interface PlanLimits {
     maxSearches: number;
   };
 }
+
+// External Services Configuration
+interface ExternalService {
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  url: string;
+  status?: 'operational' | 'degraded' | 'down' | 'maintenance';
+  category: 'infrastructure' | 'monitoring' | 'api' | 'development';
+  quickActions?: Array<{
+    label: string;
+    url: string;
+    icon?: React.ComponentType<{ className?: string }>;
+  }>;
+}
+
+// URL Validation Helper
+const validateUrl = (url: string): boolean => {
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.protocol === 'https:' && parsedUrl.hostname.length > 0;
+  } catch {
+    return false;
+  }
+};
+
+// Safe External Services Configuration with Production URLs
+const getExternalServices = (): ExternalService[] => {
+  try {
+    const services: ExternalService[] = [
+      // Infrastructure & Deployment
+      {
+        id: 'railway',
+        name: 'Railway',
+        description: 'Application deployment platform hosting frontend and LangGraph worker',
+        icon: Server,
+        url: 'https://railway.app/dashboard',
+        status: 'operational',
+        category: 'infrastructure',
+        quickActions: [
+          { label: 'View Deployments', url: 'https://railway.app/project' },
+          { label: 'Check Logs', url: 'https://railway.app/project' },
+          { label: 'Variables', url: 'https://railway.app/project' },
+        ]
+      },
+      {
+        id: 'convex',
+        name: 'Convex',
+        description: 'Real-time backend database with functions and webhooks',
+        icon: Database,
+        url: 'https://dashboard.convex.dev',
+        status: 'operational',
+        category: 'infrastructure',
+        quickActions: [
+          { label: 'Dashboard', url: 'https://dashboard.convex.dev' },
+          { label: 'Functions', url: 'https://dashboard.convex.dev' },
+          { label: 'Data', url: 'https://dashboard.convex.dev' },
+        ]
+      },
+      {
+        id: 'github',
+        name: 'GitHub',
+        description: 'Source code repository, CI/CD, and project management',
+        icon: GitBranch,
+        url: 'https://github.com/settings/repositories',
+        status: 'operational',
+        category: 'development',
+        quickActions: [
+          { label: 'Repository', url: 'https://github.com' },
+          { label: 'Issues', url: 'https://github.com/issues' },
+          { label: 'Actions', url: 'https://github.com/actions' },
+        ]
+      },
+      
+      // Monitoring & Analytics
+      {
+        id: 'posthog',
+        name: 'PostHog',
+        description: 'User analytics, feature flags, and product insights',
+        icon: BarChart3,
+        url: 'https://app.posthog.com',
+        status: 'operational',
+        category: 'monitoring',
+        quickActions: [
+          { label: 'Analytics', url: 'https://app.posthog.com/insights' },
+          { label: 'Feature Flags', url: 'https://app.posthog.com/feature_flags' },
+          { label: 'Dashboards', url: 'https://app.posthog.com/dashboard' },
+        ]
+      },
+      {
+        id: 'sentry',
+        name: 'Sentry',
+        description: 'Error monitoring, performance tracking, and debugging',
+        icon: Bug,
+        url: 'https://sentry.io/organizations/',
+        status: 'operational',
+        category: 'monitoring',
+        quickActions: [
+          { label: 'Issues', url: 'https://sentry.io/organizations/' },
+          { label: 'Performance', url: 'https://sentry.io/organizations/' },
+          { label: 'Releases', url: 'https://sentry.io/organizations/' },
+        ]
+      },
+      
+      // APIs & External Services
+      {
+        id: 'google-cloud',
+        name: 'Google Cloud Console',
+        description: 'Google Maps API for business location discovery and geocoding',
+        icon: MapPin,
+        url: 'https://console.cloud.google.com',
+        status: 'operational',
+        category: 'api',
+        quickActions: [
+          { label: 'APIs & Services', url: 'https://console.cloud.google.com/apis' },
+          { label: 'Billing', url: 'https://console.cloud.google.com/billing' },
+          { label: 'IAM', url: 'https://console.cloud.google.com/iam-admin' },
+        ]
+      },
+      {
+        id: 'findymail',
+        name: 'FindyMail',
+        description: 'Email enrichment and contact data verification service',
+        icon: Mail,
+        url: 'https://app.findymail.com',
+        status: 'operational',
+        category: 'api',
+        quickActions: [
+          { label: 'Dashboard', url: 'https://app.findymail.com/dashboard' },
+          { label: 'Credits', url: 'https://app.findymail.com/credits' },
+          { label: 'API Docs', url: 'https://docs.findymail.com' },
+        ]
+      },
+      {
+        id: 'stripe',
+        name: 'Stripe',
+        description: 'Payment processing, subscriptions, and billing management',
+        icon: CreditCard,
+        url: 'https://dashboard.stripe.com',
+        status: 'operational',
+        category: 'api',
+        quickActions: [
+          { label: 'Dashboard', url: 'https://dashboard.stripe.com' },
+          { label: 'Customers', url: 'https://dashboard.stripe.com/customers' },
+          { label: 'Payments', url: 'https://dashboard.stripe.com/payments' },
+          { label: 'Subscriptions', url: 'https://dashboard.stripe.com/subscriptions' },
+        ]
+      },
+      {
+        id: 'clerk',
+        name: 'Clerk',
+        description: 'Authentication, user management, and session handling',
+        icon: Key,
+        url: 'https://dashboard.clerk.com',
+        status: 'operational',
+        category: 'api',
+        quickActions: [
+          { label: 'Dashboard', url: 'https://dashboard.clerk.com' },
+          { label: 'Users', url: 'https://dashboard.clerk.com/users' },
+          { label: 'Sessions', url: 'https://dashboard.clerk.com/sessions' },
+          { label: 'Webhooks', url: 'https://dashboard.clerk.com/webhooks' },
+        ]
+      },
+    ];
+
+    // Validate all URLs before returning
+    return services.filter(service => {
+      const isMainUrlValid = validateUrl(service.url);
+      const areQuickActionsValid = service.quickActions?.every(action => validateUrl(action.url)) ?? true;
+      
+      if (!isMainUrlValid || !areQuickActionsValid) {
+        console.warn(`Invalid URL configuration for service: ${service.name}`);
+        return false;
+      }
+      return true;
+    });
+  } catch (error) {
+    console.error('Error initializing external services configuration:', error);
+    return [];
+  }
+};
+
+const externalServices = getExternalServices();
 
 export function AdminDashboard() {
   const [currentTab, setCurrentTab] = useState("overview");
@@ -1252,6 +1448,264 @@ export function AdminDashboard() {
     </div>
   );
 
+  // Memoized external services render function for performance
+  const renderExternalServices = React.useMemo(() => {
+    // Bulletproof helper function to get status badge styling
+    const getStatusBadgeColor = (status?: string): string => {
+      try {
+        switch (status) {
+          case 'operational':
+            return 'bg-green-100 text-green-800 border-green-200';
+          case 'degraded':
+            return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+          case 'down':
+            return 'bg-red-100 text-red-800 border-red-200';
+          case 'maintenance':
+            return 'bg-blue-100 text-blue-800 border-blue-200';
+          default:
+            return 'bg-gray-100 text-gray-800 border-gray-200';
+        }
+      } catch (error) {
+        console.error('Error determining status badge color:', error);
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+      }
+    };
+
+    // Safe URL opener with error handling
+    const safeOpenUrl = (url: string, serviceName: string) => {
+      try {
+        if (!validateUrl(url)) {
+          toast({
+            title: "Invalid URL",
+            description: `Cannot open ${serviceName}: Invalid URL configuration.`,
+            variant: "destructive",
+          });
+          return;
+        }
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } catch (error) {
+        console.error(`Failed to open URL for ${serviceName}:`, error);
+        toast({
+          title: "Error Opening Service",
+          description: `Failed to open ${serviceName}. Please try again.`,
+          variant: "destructive",
+        });
+      }
+    };
+
+    return () => {
+      try {
+        // Early return if no services available
+        if (!externalServices || externalServices.length === 0) {
+          return (
+            <div className="space-y-6">
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  No external services configured. Please contact system administrator.
+                </AlertDescription>
+              </Alert>
+            </div>
+          );
+        }
+
+        // Safe grouping of services by category
+        const servicesByCategory = externalServices.reduce((acc, service) => {
+          try {
+            if (!service || !service.category) {
+              console.warn('Invalid service configuration:', service);
+              return acc;
+            }
+            if (!acc[service.category]) acc[service.category] = [];
+            acc[service.category].push(service);
+            return acc;
+          } catch (error) {
+            console.error('Error grouping service:', service, error);
+            return acc;
+          }
+        }, {} as Record<string, ExternalService[]>);
+
+        const categoryTitles: Record<string, string> = {
+          infrastructure: 'Infrastructure & Deployment',
+          monitoring: 'Monitoring & Analytics', 
+          api: 'APIs & External Services',
+          development: 'Development Tools'
+        };
+
+        // Calculate stats safely
+        const operationalServices = externalServices.filter(s => s?.status === 'operational').length;
+        const totalQuickActions = externalServices.reduce((sum, service) => {
+          try {
+            return sum + (service?.quickActions?.length || 0);
+          } catch {
+            return sum;
+          }
+        }, 0);
+
+        return (
+          <div className="space-y-8">
+            {/* Header Section */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">External Services</h3>
+                <p className="text-sm text-muted-foreground">
+                  Quick access to all external service dashboards and management consoles
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  {operationalServices} of {externalServices.length} Operational
+                </Badge>
+              </div>
+            </div>
+
+            {/* Services by Category */}
+            {Object.entries(servicesByCategory).map(([category, services]) => {
+              const categoryTitle = categoryTitles[category] || category;
+              
+              return (
+                <div key={category} className="space-y-4">
+                  <h4 className="text-md font-medium text-muted-foreground border-b pb-2">
+                    {categoryTitle} ({services.length})
+                  </h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {services.map((service) => {
+                      try {
+                        const IconComponent = service.icon;
+                        
+                        return (
+                          <Card key={service.id} className="p-6 hover:shadow-lg transition-shadow duration-200 border-2">
+                            <div className="space-y-4">
+                              {/* Header */}
+                              <div className="flex items-start justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">
+                                    <IconComponent className="h-6 w-6 text-blue-600" />
+                                  </div>
+                                  <div>
+                                    <h5 className="font-semibold text-lg">{service.name}</h5>
+                                    {service.status && (
+                                      <Badge 
+                                        variant="outline" 
+                                        className={`mt-1 text-xs ${getStatusBadgeColor(service.status)}`}
+                                      >
+                                        {service.status.charAt(0).toUpperCase() + service.status.slice(1)}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Description */}
+                              <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
+                                {service.description}
+                              </p>
+
+                              {/* Actions */}
+                              <div className="space-y-2">
+                                {/* Primary Action */}
+                                <Button 
+                                  className="w-full" 
+                                  onClick={() => safeOpenUrl(service.url, service.name)}
+                                  disabled={!validateUrl(service.url)}
+                                  aria-label={`Open ${service.name} in new tab`}
+                                >
+                                  <ExternalLink className="h-4 w-4 mr-2" aria-hidden="true" />
+                                  Open {service.name}
+                                </Button>
+
+                                {/* Quick Actions */}
+                                {service.quickActions && service.quickActions.length > 0 && (
+                                  <div className="flex flex-wrap gap-1">
+                                    {service.quickActions.map((action, index) => (
+                                      <Button
+                                        key={`${service.id}-${index}`}
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-xs h-7"
+                                        onClick={() => safeOpenUrl(action.url, `${service.name} ${action.label}`)}
+                                        disabled={!validateUrl(action.url)}
+                                        aria-label={`Open ${service.name} ${action.label} in new tab`}
+                                      >
+                                        {action.icon && <action.icon className="h-3 w-3 mr-1" aria-hidden="true" />}
+                                        {action.label}
+                                      </Button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </Card>
+                        );
+                      } catch (error) {
+                        console.error(`Error rendering service ${service?.name}:`, error);
+                        return (
+                          <Card key={service?.id || `error-${category}`} className="p-6 bg-red-50 border-red-200">
+                            <Alert>
+                              <AlertTriangle className="h-4 w-4" />
+                              <AlertDescription>
+                                Error loading service configuration
+                              </AlertDescription>
+                            </Alert>
+                          </Card>
+                        );
+                      }
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Service Summary Stats */}
+            <Card className="p-6 border-2">
+              <h4 className="text-lg font-semibold mb-4">Service Overview</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {externalServices.length}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Total Services</div>
+                </div>
+                <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
+                  <div className="text-2xl font-bold text-green-600">
+                    {operationalServices}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Operational</div>
+                </div>
+                <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {Object.keys(servicesByCategory).length}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Categories</div>
+                </div>
+                <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-200">
+                  <div className="text-2xl font-bold text-orange-600">
+                    {totalQuickActions}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Quick Actions</div>
+                </div>
+              </div>
+            </Card>
+          </div>
+        );
+      } catch (error) {
+        console.error('Critical error in renderExternalServices:', error);
+        return (
+          <div className="p-6">
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Error loading external services:</strong> {error instanceof Error ? error.message : 'Unknown error'}
+              </AlertDescription>
+            </Alert>
+          </div>
+        );
+      }
+    };
+  }, [toast]); // Dependency on toast for memoization
+
   // Show loading state
   if (metricsLoading || usersLoading || analyticsLoading || configLoading || systemControlLoading) {
     return (
@@ -1301,10 +1755,14 @@ export function AdminDashboard() {
         </div>
 
         <Tabs value={currentTab} onValueChange={setCurrentTab}>
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="users">User Management</TabsTrigger>
             <TabsTrigger value="credits">Credit Management</TabsTrigger>
+            <TabsTrigger value="services">
+              <Globe className="h-4 w-4 mr-2" />
+              Services
+            </TabsTrigger>
             <TabsTrigger value="configuration">
               <Settings className="h-4 w-4 mr-2" />
               Configuration
@@ -1322,6 +1780,10 @@ export function AdminDashboard() {
 
           <TabsContent value="credits" className="mt-6">
             {safeRender(() => <CreditManagement />, "Credit management tab failed to render")}
+          </TabsContent>
+
+          <TabsContent value="services" className="mt-6">
+            {safeRender(renderExternalServices(), "External services tab failed to render")}
           </TabsContent>
 
           <TabsContent value="configuration" className="mt-6">
