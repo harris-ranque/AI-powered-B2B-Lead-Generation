@@ -64,10 +64,10 @@ export default function AboutPage() {
   ];
 
   const milestones = [
-    { year: "2021", event: "Lead Eternity founded with a vision to democratize AI-powered sales" },
-    { year: "2022", event: "Launched beta version and onboarded first 100 customers" },
-    { year: "2023", event: "Raised $5M Series A, expanded team to 25 people" },
-    { year: "2024", event: "Reached 50,000+ users and 10M+ leads generated" }
+    { year: "2024", event: "Lead Eternity founded with a vision to democratize AI-powered sales" },
+    { year: "2024", event: "Launched beta version with AI-powered lead generation" },
+    { year: "2024", event: "Built enterprise-grade pipeline with real-time processing" },
+    { year: "2024", event: "Launched production platform for businesses worldwide" }
   ];
 
   return (
@@ -142,17 +142,17 @@ export default function AboutPage() {
                     <Bot className="h-24 w-24 text-primary" />
                   </div>
                   <div className="text-center">
-                    <div className="text-4xl font-bold mb-2">50,000+</div>
-                    <div className="text-muted-foreground">Happy Users</div>
+                    <div className="text-4xl font-bold mb-2">AI-Powered</div>
+                    <div className="text-muted-foreground">Lead Generation</div>
                   </div>
                   <div className="grid grid-cols-2 gap-4 mt-6">
                     <div className="text-center">
-                      <div className="text-2xl font-bold">10M+</div>
-                      <div className="text-sm text-muted-foreground">Leads Generated</div>
+                      <div className="text-2xl font-bold">Real-Time</div>
+                      <div className="text-sm text-muted-foreground">Processing</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-2xl font-bold">92%</div>
-                      <div className="text-sm text-muted-foreground">Satisfaction Rate</div>
+                      <div className="text-2xl font-bold">Smart</div>
+                      <div className="text-sm text-muted-foreground">Personalization</div>
                     </div>
                   </div>
                 </CardContent>
@@ -256,22 +256,22 @@ export default function AboutPage() {
             <Card>
               <CardContent className="p-6 text-center">
                 <Award className="h-12 w-12 text-primary mx-auto mb-4" />
-                <h3 className="font-semibold mb-2">Best AI Startup 2024</h3>
-                <p className="text-sm text-muted-foreground">TechCrunch Disrupt</p>
+                <h3 className="font-semibold mb-2">Enterprise-Grade</h3>
+                <p className="text-sm text-muted-foreground">Reliability & Security</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-6 text-center">
                 <Briefcase className="h-12 w-12 text-primary mx-auto mb-4" />
-                <h3 className="font-semibold mb-2">Top Sales Tool 2023</h3>
-                <p className="text-sm text-muted-foreground">G2 Crowd</p>
+                <h3 className="font-semibold mb-2">Advanced AI</h3>
+                <p className="text-sm text-muted-foreground">Multi-Agent System</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-6 text-center">
                 <Users className="h-12 w-12 text-primary mx-auto mb-4" />
-                <h3 className="font-semibold mb-2">Best Place to Work</h3>
-                <p className="text-sm text-muted-foreground">Built In SF</p>
+                <h3 className="font-semibold mb-2">Real-Time</h3>
+                <p className="text-sm text-muted-foreground">Live Updates</p>
               </CardContent>
             </Card>
           </div>

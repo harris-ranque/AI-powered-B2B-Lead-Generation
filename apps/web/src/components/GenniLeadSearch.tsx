@@ -203,19 +203,19 @@ export function GenniLeadSearch({ searchId, onGenerateEmail }: LeadSearchProps) 
             /* Enhanced Card View with Business Intelligence */
             <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
               {searchResults.slice(0, 12).map((result) => {
-                // Create mock business context for leads with research data
+                // Use real business context from search research results
                 const businessContext = search?.researchResults ? {
-                  company_overview: `${result.company_name} is a ${result.industry} company located in ${result.location}.`,
-                  industry_focus: result.industry || 'General Business',
-                  business_model: 'Business-to-Business Services',
-                  key_services: result.technologies?.slice(0, 3) || ['Professional Services'],
-                  target_customers: 'Mid-market and Enterprise clients',
+                  company_overview: search.researchResults.comprehensiveReport?.companyOverview || `${result.company_name} - ${result.industry} company in ${result.location}`,
+                  industry_focus: result.industry,
+                  business_model: search.researchResults.comprehensiveReport?.businessModel,
+                  key_services: search.researchResults.comprehensiveReport?.keyServices || result.technologies?.slice(0, 3),
+                  target_customers: search.researchResults.comprehensiveReport?.targetCustomers,
                   pain_points: result.pain_points || [],
                   technology_stack: result.technologies || [],
-                  competitive_landscape: 'Competitive market position',
-                  growth_stage: 'Growth Stage Company',
-                  recent_news: [],
-                  confidence_score: search.researchConfidence || 0.75,
+                  competitive_landscape: search.researchResults.comprehensiveReport?.competitiveLandscape,
+                  growth_stage: search.researchResults.comprehensiveReport?.growthStage,
+                  recent_news: search.researchResults.comprehensiveReport?.recentNews || [],
+                  confidence_score: search.researchConfidence || 0,
                   data_sources: ['Google Maps', 'FindyMail', search.researchTier || 'Standard Research'],
                   research_tier: search.researchTier,
                   escalation_reason: search.researchEscalationReason,

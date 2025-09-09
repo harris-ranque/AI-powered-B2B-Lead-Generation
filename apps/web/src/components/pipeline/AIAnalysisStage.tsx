@@ -175,10 +175,10 @@ export function AIAnalysisStage() {
                 
                 <div className="text-right">
                   <div className="text-sm font-medium text-green-600">
-                    {(Math.random() * 0.3 + 0.7).toFixed(1)} relevance
+                    {lead.relevanceScore?.toFixed(1) || '0.0'} relevance
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {Math.floor(Math.random() * 3 + 2)} pain points
+                    {lead.painPoints?.length || 0} pain points
                   </div>
                 </div>
               </div>

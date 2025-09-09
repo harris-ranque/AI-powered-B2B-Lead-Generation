@@ -1018,7 +1018,7 @@ export function AdminDashboard() {
                 <DollarSign className="h-4 w-4 text-orange-500" />
                 <span className="text-sm">Revenue Today</span>
               </div>
-              <span className="font-bold">$1,240</span>
+              <span className="font-bold">${adminMetrics.monthlyRevenue.toLocaleString()}</span>
             </div>
           </div>
         </Card>

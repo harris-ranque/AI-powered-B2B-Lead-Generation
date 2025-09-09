@@ -316,9 +316,9 @@ export function usePerformanceMetrics() {
       
       setRealTimeData({
         activeSearches,
-        queuedOperations: Math.floor(Math.random() * 10), // Simulated
-        systemLoad: Math.min(50 + (activeSearches * 10) + Math.random() * 20, 100),
-        memoryUsage: Math.min(30 + (activeSearches * 5) + Math.random() * 15, 100),
+        queuedOperations: 0, // TODO: Get from real queue monitoring
+        systemLoad: Math.min(50 + (activeSearches * 10), 100), // Based on active searches
+        memoryUsage: Math.min(30 + (activeSearches * 5), 100), // Based on active searches
         errorRate,
       });
     };
@@ -398,7 +398,7 @@ export function usePerformanceMetrics() {
     return Array.from({ length: points }, (_, i) => ({
       timestamp: Date.now() - (points - i - 1) * interval,
       metric: metric as string,
-      value: Math.random() * 100,
+      value: 0, // TODO: Replace with real metrics data from backend
       label: new Date(Date.now() - (points - i - 1) * interval).toLocaleTimeString(),
     }));
   }, []);

@@ -21,24 +21,24 @@ export function EmailStudio() {
       id: 1,
       name: "Partnership Outreach",
       subject: "Partnership opportunity with {{company}}",
-      openRate: "32%",
-      responseRate: "8%",
+      openRate: "-", // TODO: Connect to real template performance data
+      responseRate: "-",
       category: "Partnership"
     },
     {
       id: 2,
-      name: "SaaS Introduction",
+      name: "SaaS Introduction", 
       subject: "Quick question about {{company}}'s workflow",
-      openRate: "28%",
-      responseRate: "12%",
+      openRate: "-", // TODO: Connect to real template performance data
+      responseRate: "-",
       category: "Sales"
     },
     {
       id: 3,
       name: "Follow Up",
       subject: "Following up on our conversation",
-      openRate: "45%",
-      responseRate: "15%",
+      openRate: "-", // TODO: Connect to real template performance data
+      responseRate: "-",
       category: "Follow-up"
     }
   ];
