@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     api_key: str = os.getenv("API_KEY", "default-secure-key-change-in-production")
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     
+    # Research API Configuration
+    tavily_api_key: Optional[str] = os.getenv("TAVILY_API_KEY", None)
+    exa_api_key: Optional[str] = os.getenv("EXA_API_KEY", None)
+    perplexity_api_key: Optional[str] = os.getenv("PERPLEXITY_API_KEY", None)
+    
     # Convex Configuration
     convex_url: str = os.getenv("CONVEX_URL", "")
     
@@ -41,6 +46,14 @@ class Settings(BaseSettings):
     default_model: str = os.getenv("DEFAULT_MODEL_OPTIONAL", "gpt-4o-mini")
     temperature: float = float(os.getenv("TEMPERATURE_OPTIONAL", "0.7"))
     max_tokens: int = int(os.getenv("MAX_TOKENS_OPTIONAL", "2000"))
+    
+    # Research Configuration
+    default_research_tier: str = os.getenv("DEFAULT_RESEARCH_TIER", "tavily")
+    confidence_threshold_tier2: int = int(os.getenv("CONFIDENCE_THRESHOLD_TIER2", "60"))
+    confidence_threshold_tier3: int = int(os.getenv("CONFIDENCE_THRESHOLD_TIER3", "40"))
+    premium_research_min_value: float = float(os.getenv("PREMIUM_RESEARCH_MIN_VALUE", "1000"))
+    max_research_time: int = int(os.getenv("MAX_RESEARCH_TIME", "30"))
+    enable_competitor_discovery: bool = os.getenv("ENABLE_COMPETITOR_DISCOVERY", "true").lower() == "true"
     
     class Config:
         env_file = ".env"

@@ -14,7 +14,13 @@ import {
   Play,
   Pause,
   X,
-  Eye
+  Eye,
+  Zap,
+  Microscope,
+  FileText,
+  TrendingUp,
+  Users,
+  Brain
 } from "lucide-react";
 import { useSearchBroadcasts, getPriorityDisplay, formatBroadcastTime } from "@/hooks/useStatusBroadcasts";
 import { useSearch } from "@/hooks/useSearches";
@@ -98,7 +104,61 @@ export function SearchProgressTracker({
   const statusDisplay = getStatusDisplay(search.status);
   const StatusIcon = statusDisplay.icon;
 
-  // Pipeline stages
+  // Get research tier display
+  const getResearchTierDisplay = (tier?: string, confidence?: number) => {
+    switch (tier) {
+      case 'tavily':
+        return { 
+          icon: Zap, 
+          label: 'Standard', 
+          color: 'text-blue-500', 
+          bg: 'bg-blue-50',
+          description: 'Fast business context research (2-3s)',
+          variant: 'secondary' as const
+        };
+      case 'exa':
+        return { 
+          icon: Microscope, 
+          label: 'Enhanced', 
+          color: 'text-purple-500', 
+          bg: 'bg-purple-50',
+          description: 'Deep competitor & industry analysis (3-4s)',
+          variant: 'outline' as const
+        };
+      case 'perplexity':
+        return { 
+          icon: FileText, 
+          label: 'Premium', 
+          color: 'text-amber-600', 
+          bg: 'bg-amber-50',
+          description: 'Comprehensive research report (10-15s)',
+          variant: 'default' as const
+        };
+      case 'error':
+        return { 
+          icon: AlertCircle, 
+          label: 'Error', 
+          color: 'text-red-500', 
+          bg: 'bg-red-50',
+          description: 'Research failed',
+          variant: 'destructive' as const
+        };
+      default:
+        return { 
+          icon: Brain, 
+          label: 'Research', 
+          color: 'text-gray-500', 
+          bg: 'bg-gray-50',
+          description: 'Business context research',
+          variant: 'secondary' as const
+        };
+    }
+  };
+
+  const researchTierDisplay = getResearchTierDisplay(search.researchTier, search.researchConfidence);
+  const ResearchTierIcon = researchTierDisplay.icon;
+
+  // Enhanced pipeline stages with research tier
   const pipelineStages = [
     {
       name: 'Discovery',
@@ -106,6 +166,17 @@ export function SearchProgressTracker({
       status: currentStep >= 1 ? 'completed' : 'pending',
       description: 'Finding leads via Google Maps',
       count: search.progress?.discovered || 0,
+    },
+    {
+      name: 'Research',
+      icon: ResearchTierIcon,
+      status: search.researchStage === 'research_completed' ? 'completed' : 
+              search.researchStage && search.researchStage !== 'research_started' ? 'in_progress' : 'pending',
+      description: researchTierDisplay.description,
+      count: search.researchSourcesAnalyzed || 0,
+      tier: search.researchTier,
+      confidence: search.researchConfidence,
+      escalation: search.researchEscalationReason,
     },
     {
       name: 'Enrichment',
@@ -149,6 +220,12 @@ export function SearchProgressTracker({
                 <Progress value={progressPercent} className="mt-2 h-2" />
               )}
             </div>
+            {search.researchTier && (
+              <Badge variant={researchTierDisplay.variant} className="text-xs">
+                <ResearchTierIcon className="w-3 h-3 mr-1" />
+                {researchTierDisplay.label}
+              </Badge>
+            )}
             {latestStatus && (
               <Badge variant={getPriorityDisplay(latestStatus.priority).variant} className="text-xs">
                 {formatBroadcastTime(latestStatus.createdAt)}
@@ -169,6 +246,12 @@ export function SearchProgressTracker({
               <StatusIcon className={cn("h-5 w-5", statusDisplay.color, search.status === 'in_progress' && "animate-spin")} />
             </div>
             Search Progress: {search.name}
+            {search.researchTier && (
+              <Badge variant={researchTierDisplay.variant} className="ml-2">
+                <ResearchTierIcon className="w-3 h-3 mr-1" />
+                {researchTierDisplay.label} Research
+              </Badge>
+            )}
           </CardTitle>
           <Badge variant={search.status === 'completed' ? 'default' : search.status === 'failed' ? 'destructive' : 'secondary'}>
             {search.status.replace('_', ' ').toUpperCase()}
@@ -213,16 +296,113 @@ export function SearchProgressTracker({
                       )} />
                     </div>
                     <span className="font-medium text-sm">{stage.name}</span>
+                    {stage.tier && (
+                      <Badge variant="outline" className="text-xs px-1 py-0">
+                        {stage.tier}
+                      </Badge>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">{stage.description}</p>
                   {stage.count > 0 && (
-                    <p className="text-xs font-medium mt-1">Count: {stage.count}</p>
+                    <p className="text-xs font-medium mt-1">
+                      {stage.name === 'Research' ? 'Sources: ' : 'Count: '}{stage.count}
+                    </p>
+                  )}
+                  {stage.confidence && (
+                    <p className="text-xs font-medium mt-1">
+                      Confidence: {Math.round(stage.confidence * 100)}%
+                    </p>
+                  )}
+                  {stage.escalation && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      Escalated: {stage.escalation}
+                    </p>
                   )}
                 </Card>
               );
             })}
           </div>
         </div>
+
+        {/* Research Intelligence Section */}
+        {search.researchTier && (
+          <div className="space-y-3">
+            <h4 className="font-medium text-sm flex items-center gap-2">
+              <Brain className="h-4 w-4" />
+              Research Intelligence
+            </h4>
+            <Card className={cn("p-4", researchTierDisplay.bg)}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <ResearchTierIcon className={cn("h-5 w-5", researchTierDisplay.color)} />
+                  <span className="font-semibold">{researchTierDisplay.label} Research Tier</span>
+                </div>
+                <Badge variant={researchTierDisplay.variant}>
+                  {search.researchStage?.replace('_', ' ') || 'In Progress'}
+                </Badge>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                {search.researchConfidence && (
+                  <div className="text-center">
+                    <div className="font-semibold text-lg">{Math.round(search.researchConfidence * 100)}%</div>
+                    <div className="text-xs text-muted-foreground">Confidence</div>
+                  </div>
+                )}
+                {search.researchDataPoints && (
+                  <div className="text-center">
+                    <div className="font-semibold text-lg">{search.researchDataPoints}</div>
+                    <div className="text-xs text-muted-foreground">Data Points</div>
+                  </div>
+                )}
+                {search.researchSourcesAnalyzed && (
+                  <div className="text-center">
+                    <div className="font-semibold text-lg">{search.researchSourcesAnalyzed}</div>
+                    <div className="text-xs text-muted-foreground">Sources</div>
+                  </div>
+                )}
+                {search.researchResults?.competitors?.length && (
+                  <div className="text-center">
+                    <div className="font-semibold text-lg">{search.researchResults.competitors.length}</div>
+                    <div className="text-xs text-muted-foreground">Competitors</div>
+                  </div>
+                )}
+              </div>
+              
+              <p className="text-sm text-muted-foreground">{researchTierDisplay.description}</p>
+              
+              {search.researchEscalationReason && (
+                <Alert className="mt-3">
+                  <TrendingUp className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>Research Enhanced:</strong> {search.researchEscalationReason}
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              {search.researchResults?.competitors?.length > 0 && (
+                <div className="mt-3">
+                  <div className="text-sm font-medium mb-2 flex items-center gap-1">
+                    <Users className="h-3 w-3" />
+                    Discovered Competitors
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {search.researchResults.competitors.slice(0, 5).map((competitor: Record<string, unknown>, index: number) => (
+                      <Badge key={index} variant="outline" className="text-xs">
+                        {(competitor.name as string) || (competitor.title as string) || 'Competitor'}
+                      </Badge>
+                    ))}
+                    {search.researchResults.competitors.length > 5 && (
+                      <Badge variant="outline" className="text-xs">
+                        +{search.researchResults.competitors.length - 5} more
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
 
         {/* Latest Status Broadcast */}
         {latestStatus && (

@@ -44,7 +44,10 @@ import {
   Cloud,
   GitBranch,
   Bug,
-  MapPin
+  MapPin,
+  Brain,
+  Microscope,
+  FileText
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAdminDashboard, useAdminUsers, useAdminAnalytics, useAdminConfiguration, useAdminSystemControl } from "@/hooks/useAdmin";
@@ -280,6 +283,65 @@ const getExternalServices = (): ExternalService[] => {
           { label: 'Users', url: 'https://dashboard.clerk.com/users' },
           { label: 'Sessions', url: 'https://dashboard.clerk.com/sessions' },
           { label: 'Webhooks', url: 'https://dashboard.clerk.com/webhooks' },
+        ]
+      },
+      
+      // AI Research Services - Tiered Research System
+      {
+        id: 'openai',
+        name: 'OpenAI',
+        description: 'GPT models for AI analysis and email generation in LangGraph workflow',
+        icon: Brain,
+        url: 'https://platform.openai.com',
+        status: 'operational',
+        category: 'ai-research',
+        quickActions: [
+          { label: 'Dashboard', url: 'https://platform.openai.com/overview' },
+          { label: 'Usage', url: 'https://platform.openai.com/usage' },
+          { label: 'API Keys', url: 'https://platform.openai.com/api-keys' },
+          { label: 'Models', url: 'https://platform.openai.com/docs/models' },
+        ]
+      },
+      {
+        id: 'tavily',
+        name: 'Tavily Search',
+        description: 'Tier 1: Fast business context research and web search API (2-3s)',
+        icon: Search,
+        url: 'https://tavily.com',
+        status: 'operational',
+        category: 'ai-research',
+        quickActions: [
+          { label: 'Dashboard', url: 'https://app.tavily.com' },
+          { label: 'API Usage', url: 'https://app.tavily.com/usage' },
+          { label: 'Documentation', url: 'https://docs.tavily.com' },
+        ]
+      },
+      {
+        id: 'exa',
+        name: 'Exa Search',
+        description: 'Tier 2: Enhanced semantic search for competitor analysis (3-4s)',
+        icon: Microscope,
+        url: 'https://exa.ai',
+        status: 'operational',
+        category: 'ai-research',
+        quickActions: [
+          { label: 'Dashboard', url: 'https://dashboard.exa.ai' },
+          { label: 'API Usage', url: 'https://dashboard.exa.ai/usage' },
+          { label: 'Documentation', url: 'https://docs.exa.ai' },
+        ]
+      },
+      {
+        id: 'perplexity',
+        name: 'Perplexity API',
+        description: 'Tier 3: Premium comprehensive research reports and analysis (10-15s)',
+        icon: FileText,
+        url: 'https://perplexity.ai',
+        status: 'operational',
+        category: 'ai-research',
+        quickActions: [
+          { label: 'Lab', url: 'https://labs.perplexity.ai' },
+          { label: 'Pro Dashboard', url: 'https://perplexity.ai/pro' },
+          { label: 'API Docs', url: 'https://docs.perplexity.ai' },
         ]
       },
     ];
@@ -1529,7 +1591,8 @@ export function AdminDashboard() {
           infrastructure: 'Infrastructure & Deployment',
           monitoring: 'Monitoring & Analytics', 
           api: 'APIs & External Services',
-          development: 'Development Tools'
+          development: 'Development Tools',
+          'ai-research': 'AI Research Services (Tiered System)'
         };
 
         // Calculate stats safely

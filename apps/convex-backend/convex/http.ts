@@ -302,6 +302,68 @@ http.route({
   }),
 });
 
+// Research Progress Webhook (for LangGraph worker)
+http.route({
+  path: "/api/webhooks/research/progress",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json() as {
+        searchId: string;
+        stage: string;
+        tier: string;
+        confidence?: number;
+        dataPoints?: number;
+        sourcesAnalyzed?: number;
+        message: string;
+        escalationReason?: string;
+        error?: string;
+        metadata?: any;
+      };
+
+      // Basic validation
+      if (!body.searchId || !body.stage || !body.tier || !body.message) {
+        return new Response("Missing required fields", { status: 400 });
+      }
+
+      // Optional API key validation for webhook security
+      const apiKey = request.headers.get("x-api-key");
+      const expectedApiKey = process.env.LANGGRAPH_API_KEY;
+      if (expectedApiKey && apiKey !== expectedApiKey) {
+        return new Response("Invalid API key", { status: 401 });
+      }
+
+      // Update research progress
+      await ctx.runMutation(internal.research.progress.updateResearchProgress, {
+        searchId: body.searchId as Id<"searches">,
+        stage: body.stage as any,
+        tier: body.tier as any,
+        confidence: body.confidence,
+        dataPoints: body.dataPoints,
+        sourcesAnalyzed: body.sourcesAnalyzed,
+        message: body.message,
+        escalationReason: body.escalationReason,
+        error: body.error,
+        metadata: body.metadata,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { "Content-Type": "application/json" }
+      });
+
+    } catch (error) {
+      console.error("Research progress webhook error:", error);
+      return new Response(
+        JSON.stringify({ error: "Internal server error" }), 
+        { 
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
+    }
+  }),
+});
+
 // Simple test endpoint
 http.route({
   path: "/api/test",

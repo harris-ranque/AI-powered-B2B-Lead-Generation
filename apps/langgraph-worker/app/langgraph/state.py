@@ -1,5 +1,6 @@
 """
 State schema for LangGraph email generation workflow
+Enhanced with research progress tracking and tiered research support
 """
 from typing import TypedDict, Dict, Any, List, Optional, Literal
 from datetime import datetime
@@ -27,6 +28,7 @@ class EmailGenerationState(TypedDict):
     current_stage: Literal[
         "start",
         "relevance_analysis",
+        "business_context_research",  # Added for enhanced research stage
         "pain_point_research", 
         "value_matching",
         "email_writing",
@@ -40,6 +42,7 @@ class EmailGenerationState(TypedDict):
     # Agent outputs
     relevance_analysis: Optional[Dict[str, Any]]
     relevance_score: Optional[float]
+    business_context: Optional[Dict[str, Any]]  # Enhanced business context from tiered research
     pain_points: Optional[List[str]]
     value_matches: Optional[List[str]]
     primary_email: Optional[EmailContent]
@@ -64,3 +67,14 @@ class EmailGenerationState(TypedDict):
     # Optional fields for enhanced functionality
     intermediate_results: Optional[Dict[str, Any]]
     debug_info: Optional[Dict[str, Any]]
+    
+    # Research progress tracking (for tiered research system)
+    research_progress: Optional[Dict[str, Any]]  # Current research stage and progress
+    research_tier: Optional[str]  # Research tier being used (tavily/exa/perplexity)
+    research_confidence: Optional[float]  # Current research confidence score
+    user_tier: Optional[str]  # User subscription tier (free/pro/enterprise)
+    
+    # Enhanced context fields
+    competitors_found: Optional[List[Dict[str, Any]]]  # Discovered competitors from research
+    industry_insights: Optional[str]  # Industry analysis and trends
+    escalation_reason: Optional[str]  # Reason for research tier escalation

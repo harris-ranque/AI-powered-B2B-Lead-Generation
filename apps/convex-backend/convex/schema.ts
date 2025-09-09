@@ -109,11 +109,47 @@ export default defineSchema({
     orchestrationLockExpiry: v.optional(v.number()),
     orchestrationAttempts: v.optional(v.number()),
     lastWarningAt: v.optional(v.number()),
+    
+    // Research progress tracking (for tiered business context research)
+    researchStage: v.optional(v.union(
+      v.literal("research_started"),
+      v.literal("tier1_tavily"), 
+      v.literal("tier2_exa"),
+      v.literal("tier3_perplexity"),
+      v.literal("research_completed"),
+      v.literal("research_failed"),
+      v.literal("research_error")
+    )),
+    researchTier: v.optional(v.union(
+      v.literal("tavily"),
+      v.literal("exa"), 
+      v.literal("perplexity"),
+      v.literal("error")
+    )),
+    researchConfidence: v.optional(v.number()),
+    researchDataPoints: v.optional(v.number()),
+    researchSourcesAnalyzed: v.optional(v.number()),
+    researchEscalationReason: v.optional(v.string()),
+    researchResults: v.optional(v.object({
+      tier: v.string(),
+      confidence: v.number(),
+      dataPoints: v.number(),
+      sourcesAnalyzed: v.number(),
+      researchTime: v.number(),
+      escalationReason: v.optional(v.string()),
+      competitors: v.optional(v.array(v.any())),
+      industryInsights: v.optional(v.string()),
+      comprehensiveReport: v.optional(v.string()),
+    })),
+    researchCompletedAt: v.optional(v.number()),
+    
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])
     .index("by_status", ["status"])
-    .index("by_created", ["createdAt"]),
+    .index("by_created", ["createdAt"])
+    .index("by_research_tier", ["researchTier"])
+    .index("by_research_stage", ["researchStage"]),
 
   // Leads - Individual business leads with enrichment data
   leads: defineTable({
@@ -809,6 +845,40 @@ export default defineSchema({
     .index("by_domain_search", ["domain", "searchId"])
     .index("by_search", ["searchId"])
     .index("by_expires", ["expiresAt"]),
+
+  // Research Metrics - Track tiered business context research analytics
+  researchMetrics: defineTable({
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+    stage: v.union(
+      v.literal("research_started"),
+      v.literal("tier1_tavily"), 
+      v.literal("tier2_exa"),
+      v.literal("tier3_perplexity"),
+      v.literal("research_completed"),
+      v.literal("research_failed"),
+      v.literal("research_error")
+    ),
+    tier: v.union(
+      v.literal("tavily"),
+      v.literal("exa"), 
+      v.literal("perplexity"),
+      v.literal("error")
+    ),
+    confidence: v.number(),
+    dataPoints: v.number(),
+    sourcesAnalyzed: v.number(),
+    escalationReason: v.optional(v.string()),
+    error: v.optional(v.string()),
+    metadata: v.object({}),
+    timestamp: v.number(),
+  })
+    .index("by_search_timestamp", ["searchId", "timestamp"])
+    .index("by_user", ["userId"])
+    .index("by_timestamp", ["timestamp"])
+    .index("by_tier", ["tier"])
+    .index("by_stage", ["stage"])
+    .index("by_confidence", ["confidence"]),
 
   // System Control State - Emergency admin controls for lead generation
   systemControlState: defineTable({
