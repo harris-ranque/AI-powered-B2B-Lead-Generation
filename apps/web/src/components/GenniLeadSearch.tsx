@@ -4,12 +4,16 @@ import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CircularProgress } from "./CircularProgress";
-import { Play, Download, Bot, Mail, Clock, AlertCircle } from "lucide-react";
+import { EnhancedLeadCard } from "./EnhancedLeadCard";
+import { ResearchTierFlow } from "./ResearchTierFlow";
+import { Play, Download, Bot, Mail, Clock, AlertCircle, Grid, List } from "lucide-react";
 import type { Lead } from "@/lib/api-client";
 import type { Id } from "@genni/convex-types/dataModel";
 import { useLeads } from "@/hooks/useLeads";
 import { useProfile } from "@/hooks/useProfile";
+import { useSearch } from "@/hooks/useSearches";
 import { useLogger } from "@/utils/logger";
 
 interface LeadSearchProps {
@@ -18,11 +22,13 @@ interface LeadSearchProps {
 }
 
 export function GenniLeadSearch({ searchId, onGenerateEmail }: LeadSearchProps) {
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const logger = useLogger('GenniLeadSearch');
   
   // Real Convex hooks
   const { leads, isLoading } = useLeads(searchId || undefined);
   const { profile } = useProfile();
+  const { search } = useSearch(searchId || undefined);
 
   useEffect(() => {
     logger.componentMount('GenniLeadSearch');
@@ -134,105 +140,202 @@ export function GenniLeadSearch({ searchId, onGenerateEmail }: LeadSearchProps) 
         </Alert>
       ) : (
         <div className="space-y-6">
+          {/* Research Intelligence Overview */}
+          {search && (search.researchStage || search.researchTier) && (
+            <ResearchTierFlow
+              currentTier={search.researchTier}
+              stage={search.researchStage}
+              confidence={search.researchConfidence}
+              dataPoints={search.researchDataPoints}
+              sourcesAnalyzed={search.researchSourcesAnalyzed}
+              escalationReason={search.researchEscalationReason}
+              className="mb-6"
+            />
+          )}
+
+          {/* Header with View Controls */}
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold text-foreground">
-              Search Results ({searchResults.length} leads found)
-            </h2>
-            <Button 
-              onClick={downloadResults}
-              variant="outline"
-              className="flex items-center gap-2"
-            >
-              <Download className="h-4 w-4" />
-              Download CSV
-            </Button>
-          </div>
+            <div className="space-y-1">
+              <h2 className="text-2xl font-bold text-foreground">
+                Search Results ({searchResults.length} leads found)
+              </h2>
+              {search?.researchTier && (
+                <p className="text-sm text-muted-foreground">
+                  Enhanced with {search.researchTier} tier business intelligence
+                </p>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-2">
+              {/* View Mode Toggle */}
+              <div className="flex items-center border rounded-lg p-1">
+                <Button
+                  variant={viewMode === 'cards' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewMode('cards')}
+                  className="h-8 px-3"
+                >
+                  <Grid className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={viewMode === 'table' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewMode('table')}
+                  className="h-8 px-3"
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+              </div>
               
-              <Card className="p-4 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Company</TableHead>
-                      <TableHead>Domain</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Contact</TableHead>
-                      <TableHead>Title</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Location</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {searchResults.slice(0, 10).map((result) => (
-                      <TableRow key={result.id}>
-                        <TableCell className="font-medium">
-                          <div>
-                            <div>{result.company_name}</div>
-                            <div className="text-xs text-muted-foreground">{result.industry}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {result.website ? (
-                            <a 
-                              href={result.website.startsWith('http') ? result.website : `https://${result.website}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-800 hover:underline text-sm"
-                            >
-                              {result.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-                            </a>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">-</span>
+              <Button 
+                onClick={downloadResults}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Download CSV
+              </Button>
+            </div>
+          </div>
+
+          {/* Lead Display */}
+          {viewMode === 'cards' ? (
+            /* Enhanced Card View with Business Intelligence */
+            <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
+              {searchResults.slice(0, 12).map((result) => {
+                // Create mock business context for leads with research data
+                const businessContext = search?.researchResults ? {
+                  company_overview: `${result.company_name} is a ${result.industry} company located in ${result.location}.`,
+                  industry_focus: result.industry || 'General Business',
+                  business_model: 'Business-to-Business Services',
+                  key_services: result.technologies?.slice(0, 3) || ['Professional Services'],
+                  target_customers: 'Mid-market and Enterprise clients',
+                  pain_points: result.pain_points || [],
+                  technology_stack: result.technologies || [],
+                  competitive_landscape: 'Competitive market position',
+                  growth_stage: 'Growth Stage Company',
+                  recent_news: [],
+                  confidence_score: search.researchConfidence || 0.75,
+                  data_sources: ['Google Maps', 'FindyMail', search.researchTier || 'Standard Research'],
+                  research_tier: search.researchTier,
+                  escalation_reason: search.researchEscalationReason,
+                  sources_analyzed: search.researchSourcesAnalyzed,
+                  competitors: search.researchResults?.competitors,
+                  industry_insights: search.researchResults?.industryInsights,
+                  comprehensive_report: search.researchResults?.comprehensiveReport
+                } : undefined;
+
+                return (
+                  <EnhancedLeadCard
+                    key={result.id}
+                    lead={result}
+                    businessContext={businessContext}
+                    onGenerateEmail={onGenerateEmail}
+                    className="h-fit"
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            /* Traditional Table View */
+            <Card className="p-4 overflow-hidden">
+              <div className="overflow-x-auto">
+                <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Company</TableHead>
+                    <TableHead>Domain</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {searchResults.slice(0, 10).map((result) => (
+                    <TableRow key={result.id}>
+                      <TableCell className="font-medium">
+                        <div>
+                          <div>{result.company_name}</div>
+                          <div className="text-xs text-muted-foreground">{result.industry}</div>
+                          {search?.researchTier && (
+                            <Badge variant="outline" className="text-xs mt-1">
+                              {search.researchTier} research
+                            </Badge>
                           )}
-                        </TableCell>
-                        <TableCell>
-                          {result.contact_info?.phone || <span className="text-muted-foreground">-</span>}
-                        </TableCell>
-                        <TableCell>{result.contact_name || <span className="text-muted-foreground">-</span>}</TableCell>
-                        <TableCell>{result.title || <span className="text-muted-foreground">-</span>}</TableCell>
-                        <TableCell>
-                          {result.contact_info?.email || <span className="text-muted-foreground">-</span>}
-                        </TableCell>
-                        <TableCell className="max-w-[200px]">
-                          <div className="truncate" title={result.location}>
-                            {result.location}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className="bg-green-100 text-green-800">
-                            {result.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onGenerateEmail?.(result)}
-                              className="text-xs"
-                            >
-                              <Bot className="h-3 w-3 mr-1" />
-                              AI Email
-                            </Button>
-                            <Button size="sm" variant="ghost" className="text-xs">
-                              <Mail className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                  </Table>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {result.website ? (
+                          <a 
+                            href={result.website.startsWith('http') ? result.website : `https://${result.website}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800 hover:underline text-sm"
+                          >
+                            {result.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {result.contact_info?.phone || <span className="text-muted-foreground">-</span>}
+                      </TableCell>
+                      <TableCell>{result.contact_name || <span className="text-muted-foreground">-</span>}</TableCell>
+                      <TableCell>{result.title || <span className="text-muted-foreground">-</span>}</TableCell>
+                      <TableCell>
+                        {result.contact_info?.email || <span className="text-muted-foreground">-</span>}
+                      </TableCell>
+                      <TableCell className="max-w-[200px]">
+                        <div className="truncate" title={result.location}>
+                          {result.location}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="bg-green-100 text-green-800">
+                          {result.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onGenerateEmail?.(result)}
+                            className="text-xs"
+                          >
+                            <Bot className="h-3 w-3 mr-1" />
+                            AI Email
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-xs">
+                            <Mail className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                </Table>
+              </div>
+              
+              {searchResults.length > 10 && (
+                <div className="mt-4 text-center text-muted-foreground">
+                  Showing first 10 results. Download CSV to see all {searchResults.length} leads.
                 </div>
-                
-                {searchResults.length > 10 && (
-                  <div className="mt-4 text-center text-muted-foreground">
-                    Showing first 10 results. Download CSV to see all {searchResults.length} leads.
-                  </div>
-                )}
-              </Card>
+              )}
+            </Card>
+          )}
+
+          {/* Pagination Info */}
+          {searchResults.length > 12 && viewMode === 'cards' && (
+            <div className="mt-4 text-center text-muted-foreground">
+              Showing first 12 results in card view. Switch to table view or download CSV to see all {searchResults.length} leads.
+            </div>
+          )}
             </div>
         )}
     </div>

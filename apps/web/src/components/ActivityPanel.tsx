@@ -1,62 +1,112 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Mail, UserPlus, TrendingUp } from "lucide-react";
+import { 
+  Search, 
+  Mail, 
+  UserPlus, 
+  TrendingUp, 
+  Brain, 
+  Zap, 
+  Users, 
+  Building,
+  Clock,
+  CheckCircle,
+  AlertTriangle,
+  Microscope
+} from "lucide-react";
+import { useStatusBroadcasts, formatBroadcastTime, getPriorityDisplay } from "@/hooks/useStatusBroadcasts";
+import { useSearches } from "@/hooks/useSearches";
+import { useUserLeads } from "@/hooks/useLeads";
 
-const activities = [
+// Fallback activities for when no real-time data is available
+const fallbackActivities = [
   {
-    id: 1,
+    id: "fallback-1",
     type: "search",
     icon: Search,
-    title: "New lead search completed",
-    description: "Found 47 SaaS companies in Austin",
-    time: "2 minutes ago",
-    status: "success"
-  },
-  {
-    id: 2,
-    type: "email",
-    icon: Mail,
-    title: "Email template updated",
-    description: "SaaS Partnership Outreach template",
-    time: "15 minutes ago",
-    status: "info"
-  },
-  {
-    id: 3,
-    type: "lead",
-    icon: UserPlus,
-    title: "New lead added",
-    description: "TechVision AI - John Smith",
-    time: "1 hour ago",
-    status: "success"
-  },
-  {
-    id: 4,
-    type: "analytics",
-    icon: TrendingUp,
-    title: "Weekly report generated",
-    description: "89 new leads this week",
-    time: "3 hours ago",
-    status: "info"
+    title: "Ready to start searching",
+    description: "Create your first lead search to see activity",
+    time: "now",
+    status: "info" as const
   }
 ];
 
 export function ActivityPanel() {
+  // Get real-time data
+  const { broadcasts, latestStatus } = useStatusBroadcasts();
+  const { searches } = useSearches();
+  const { stats } = useUserLeads();
+
+  // Convert broadcasts to activity format
+  const getActivityIcon = (type: string, stage?: string) => {
+    if (stage?.includes('research')) return Brain;
+    if (stage?.includes('tier1_tavily')) return Search;
+    if (stage?.includes('tier2_exa')) return Microscope;
+    if (stage?.includes('tier3_perplexity')) return Zap;
+    if (stage?.includes('discovery')) return Building;
+    if (stage?.includes('enrichment')) return UserPlus;
+    if (stage?.includes('analysis')) return Brain;
+    
+    switch (type) {
+      case 'search': return Search;
+      case 'lead': return Users;
+      case 'research': return Brain;
+      case 'email': return Mail;
+      default: return TrendingUp;
+    }
+  };
+
+  const getActivityStatus = (priority: number) => {
+    if (priority >= 4) return 'success';
+    if (priority >= 3) return 'warning';
+    return 'info';
+  };
+
+  // Create activities from real-time broadcasts
+  const realtimeActivities = broadcasts.slice(0, 6).map((broadcast, index) => {
+    const stage = broadcast.data?.stage || broadcast.type;
+    return {
+      id: broadcast._id,
+      type: broadcast.type,
+      icon: getActivityIcon(broadcast.type, stage),
+      title: broadcast.title,
+      description: broadcast.message,
+      time: formatBroadcastTime(broadcast.createdAt),
+      status: getActivityStatus(broadcast.priority)
+    };
+  });
+
+  // Use real-time activities or fallback
+  const activities = realtimeActivities.length > 0 ? realtimeActivities : fallbackActivities;
+
   return (
     <div className="space-y-6">
-      <h3 className="text-lg font-semibold">Recent Activity</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Recent Activity</h3>
+        {latestStatus && (
+          <Badge variant="outline" className="text-xs">
+            Live
+          </Badge>
+        )}
+      </div>
       
       <div className="space-y-3">
         {activities.map((activity) => {
           const Icon = activity.icon;
+          const priorityDisplay = activity.id.startsWith('fallback') 
+            ? { variant: 'secondary' as const, bgColor: 'bg-muted/20' }
+            : getPriorityDisplay(broadcasts.find(b => b._id === activity.id)?.priority || 1);
+          
           return (
             <Card key={activity.id} className="glass-card p-4 hover-accent transition-smooth cursor-pointer">
               <div className="flex items-start gap-3">
                 <div className={`
                   w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0
                   ${activity.status === 'success' 
-                    ? 'bg-primary/10 text-primary' 
-                    : 'bg-muted/20 text-muted-foreground'
+                    ? 'bg-green-100 text-green-600' 
+                    : activity.status === 'warning'
+                    ? 'bg-amber-100 text-amber-600'
+                    : 'bg-blue-100 text-blue-600'
                   }
                 `}>
                   <Icon className="h-4 w-4" />
@@ -73,19 +123,38 @@ export function ActivityPanel() {
         })}
       </div>
 
-      {/* Quick Stats */}
+      {/* Real-Time Stats */}
       <div className="space-y-3 pt-4 border-t border-border">
-        <h4 className="text-sm font-medium text-muted-foreground">This Week</h4>
+        <h4 className="text-sm font-medium text-muted-foreground">Current Stats</h4>
         <div className="grid grid-cols-2 gap-3">
           <div className="text-center">
-            <div className="text-lg font-bold text-primary">89</div>
-            <div className="text-xs text-muted-foreground">New Leads</div>
+            <div className="text-lg font-bold text-primary">
+              {searches?.searches?.length || 0}
+            </div>
+            <div className="text-xs text-muted-foreground">Active Searches</div>
           </div>
           <div className="text-center">
-            <div className="text-lg font-bold text-primary">24%</div>
-            <div className="text-xs text-muted-foreground">Open Rate</div>
+            <div className="text-lg font-bold text-primary">
+              {stats?.totalLeads || 0}
+            </div>
+            <div className="text-xs text-muted-foreground">Total Leads</div>
           </div>
         </div>
+        
+        {/* Research Quality Indicator */}
+        {searches?.searches?.some(s => s.researchConfidence) && (
+          <div className="pt-2 border-t">
+            <div className="text-center">
+              <div className="text-lg font-bold text-amber-600">
+                {Math.round((searches.searches
+                  .filter(s => s.researchConfidence)
+                  .reduce((sum, s) => sum + (s.researchConfidence || 0), 0) / 
+                  searches.searches.filter(s => s.researchConfidence).length) * 100)}%
+              </div>
+              <div className="text-xs text-muted-foreground">Avg Research Quality</div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
