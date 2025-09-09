@@ -61,6 +61,48 @@ export const getStuckSearches = internalQuery({
   },
 });
 
+// Internal mutation to update search status without auth
+export const updateSearchStatusInternal = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("in_progress"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("cancelled")
+    ),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      throw new Error("Search not found");
+    }
+    
+    const updates: any = {
+      status: args.status,
+    };
+    
+    if (args.error) {
+      updates.error = args.error;
+    }
+    
+    if (args.status === "in_progress" && !search.startedAt) {
+      updates.startedAt = Date.now();
+    }
+    
+    if (args.status === "completed" || args.status === "failed") {
+      updates.completedAt = Date.now();
+    }
+    
+    await ctx.db.patch(args.searchId, updates);
+    
+    return { success: true };
+  },
+});
+
 // Log correlation for debugging
 export const logCorrelation = internalMutation({
   args: {

@@ -80,7 +80,12 @@
       "Bash(npm run prebuild:*)",
       "Bash(pnpm add:*)",
       "Bash(pnpm lint:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(pnpm --filter @genni/web type-check)",
+      "Bash(pnpm --filter @genni/convex-backend type-check)",
+      "Bash(pnpm --filter @genni/web lint)",
+      "Bash(pnpm --filter @genni/web build)",
+      "Bash(cd:*)"
     ],
     "deny": []
   }

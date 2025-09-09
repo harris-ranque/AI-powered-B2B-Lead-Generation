@@ -59,9 +59,9 @@ export function useAdminSettings() {
 }
 
 export function useAdminConfiguration() {
-  const configuration = useQuery(api.users.admin.getSystemConfiguration);
-  const updateCreditCosts = useMutation(api.users.admin.updateCreditCosts);
-  const updatePlanLimits = useMutation(api.users.admin.updatePlanLimits);
+  const configuration = useQuery(api.admin.queries.getSystemConfiguration);
+  const updateCreditCosts = useMutation(api.admin.mutations.updateCreditCosts);
+  const updatePlanLimits = useMutation(api.admin.mutations.updatePlanLimits);
   
   return {
     configuration,
@@ -72,11 +72,11 @@ export function useAdminConfiguration() {
 }
 
 export function useAdminSystemControl() {
-  const systemStatus = useQuery(api.admin.systemControl.getSystemControlStatus);
-  const systemActivity = useQuery(api.admin.systemControl.getSystemActivity);
-  const pauseAllLeadGeneration = useMutation(api.admin.systemControl.pauseAllLeadGeneration);
-  const resumeAllLeadGeneration = useMutation(api.admin.systemControl.resumeAllLeadGeneration);
-  const clearAllActiveSearches = useMutation(api.admin.systemControl.clearAllActiveSearches);
+  const systemStatus = useQuery(api.admin.queries.getSystemControlStatus);
+  const systemActivity = useQuery(api.admin.queries.getSystemActivity);
+  const pauseAllLeadGeneration = useMutation(api.admin.mutations.pauseAllLeadGeneration);
+  const resumeAllLeadGeneration = useMutation(api.admin.mutations.resumeAllLeadGeneration);
+  const clearAllActiveSearches = useMutation(api.admin.mutations.clearAllActiveSearches);
   
   return {
     systemStatus,

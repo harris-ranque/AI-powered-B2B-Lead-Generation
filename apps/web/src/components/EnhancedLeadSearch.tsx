@@ -51,7 +51,9 @@ interface EnhancedLeadSearchProps {
 }
 
 export function EnhancedLeadSearch({ 
-  onGenerateEmail
+  onGenerateEmail,
+  userCredits: propUserCredits,
+  userPlan: propUserPlan
 }: EnhancedLeadSearchProps) {
   const [currentTab, setCurrentTab] = useState("search");
   const [searchParams, setSearchParams] = useState<LocalSearchParams>({
@@ -92,9 +94,16 @@ export function EnhancedLeadSearch({
     currentBalance
   } = useCreditBroadcasts();
   
-  // Get real user data or fallback to props
-  const userCredits = credits ?? 100;
-  const userPlan = user?.plan ?? 'free';
+  // Get real user data or fallback to props with validation
+  const userCredits = credits ?? propUserCredits ?? 100;
+  const userPlan = (user?.plan ?? propUserPlan ?? 'free') as 'free' | 'pro' | 'enterprise';
+  
+  // Validate userPlan to ensure it's a valid value
+  const validPlans = ['free', 'pro', 'enterprise'] as const;
+  const validatedUserPlan = validPlans.includes(userPlan) ? userPlan : 'free';
+  
+  // Ensure userCredits is a valid positive number
+  const validatedUserCredits = typeof userCredits === 'number' && userCredits >= 0 ? userCredits : 100;
 
   // Get active and completed searches from Convex with bulletproof error handling
   const activeSearches = safeArray.filter(
@@ -114,11 +123,11 @@ export function EnhancedLeadSearch({
   };
 
   const canAffordSearch = () => {
-    return userCredits >= calculateCreditsCost();
+    return validatedUserCredits >= calculateCreditsCost();
   };
 
   const getPlanLimits = () => {
-    switch (userPlan) {
+    switch (validatedUserPlan) {
       case 'free':
         return { maxLeads: 50, maxRadius: 25, aiAnalysis: false };
       case 'pro':
@@ -145,7 +154,7 @@ export function EnhancedLeadSearch({
     if (searchParams.leadsCount > limits.maxLeads) {
       toast({
         title: "Plan Limit Exceeded",
-        description: `Your ${userPlan} plan allows up to ${limits.maxLeads} leads per search.`,
+        description: `Your ${validatedUserPlan} plan allows up to ${limits.maxLeads} leads per search.`,
         variant: "destructive",
       });
       return false;
@@ -154,7 +163,7 @@ export function EnhancedLeadSearch({
     if (searchParams.radius > limits.maxRadius) {
       toast({
         title: "Radius Limit Exceeded",
-        description: `Your ${userPlan} plan allows up to ${limits.maxRadius}km radius.`,
+        description: `Your ${validatedUserPlan} plan allows up to ${limits.maxRadius}km radius.`,
         variant: "destructive",
       });
       return false;
@@ -172,7 +181,7 @@ export function EnhancedLeadSearch({
     if (!canAffordSearch()) {
       toast({
         title: "Insufficient Credits",
-        description: `This search requires ${calculateCreditsCost()} credits. You have ${userCredits} remaining.`,
+        description: `This search requires ${calculateCreditsCost()} credits. You have ${validatedUserCredits} remaining.`,
         variant: "destructive",
       });
       return false;
@@ -304,8 +313,8 @@ export function EnhancedLeadSearch({
               <SelectItem value="50">50 leads</SelectItem>
               <SelectItem value="100">100 leads</SelectItem>
               <SelectItem value="250">250 leads</SelectItem>
-              {userPlan !== 'free' && <SelectItem value="500">500 leads</SelectItem>}
-              {userPlan === 'enterprise' && <SelectItem value="1000">1000 leads</SelectItem>}
+              {validatedUserPlan !== 'free' && <SelectItem value="500">500 leads</SelectItem>}
+              {validatedUserPlan === 'enterprise' && <SelectItem value="1000">1000 leads</SelectItem>}
             </SelectContent>
           </Select>
         </div>
@@ -323,8 +332,8 @@ export function EnhancedLeadSearch({
               <SelectItem value="10">10 km</SelectItem>
               <SelectItem value="25">25 km</SelectItem>
               <SelectItem value="50">50 km</SelectItem>
-              {userPlan !== 'free' && <SelectItem value="100">100 km</SelectItem>}
-              {userPlan === 'enterprise' && <SelectItem value="250">250 km</SelectItem>}
+              {validatedUserPlan !== 'free' && <SelectItem value="100">100 km</SelectItem>}
+              {validatedUserPlan === 'enterprise' && <SelectItem value="250">250 km</SelectItem>}
             </SelectContent>
           </Select>
         </div>
@@ -378,7 +387,7 @@ export function EnhancedLeadSearch({
             <div>
               <div className="font-medium text-sm flex items-center gap-2">
                 AI Analysis & Email Generation
-                {userPlan === 'free' && <Badge variant="outline" className="text-xs">Pro Feature</Badge>}
+                {validatedUserPlan === 'free' && <Badge variant="outline" className="text-xs">Pro Feature</Badge>}
               </div>
               <div className="text-xs text-muted-foreground">Analyze each lead and generate personalized emails (+100% cost)</div>
             </div>

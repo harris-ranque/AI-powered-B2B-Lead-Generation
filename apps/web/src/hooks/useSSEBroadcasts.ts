@@ -65,11 +65,33 @@ export function useSSEBroadcasts() {
     }
 
     // Convert Convex URL to HTTP endpoint URL
-    const baseUrl = convexUrl.replace('https://', 'https://').replace('.convex.cloud', '.convex.site');
+    // Parse the URL properly to handle different environments
+    let baseUrl: string;
+    try {
+      const url = new URL(convexUrl);
+      // For Convex cloud deployments, use the .convex.site domain for HTTP endpoints
+      if (url.hostname.endsWith('.convex.cloud')) {
+        baseUrl = convexUrl.replace('.convex.cloud', '.convex.site');
+      } else {
+        // For local development or other environments, use as-is
+        baseUrl = convexUrl;
+      }
+    } catch (e) {
+      logger.error('Invalid Convex URL', { convexUrl, error: e });
+      return;
+    }
     
-    // Generate a simple token (for now, use user ID - this should be enhanced with proper JWT)
-    const token = btoa(user._id + ':' + Date.now());
-    const sseUrl = `${baseUrl}/api/events/${user._id}?token=${token}`;
+    // Generate a more secure token using crypto API if available
+    const generateToken = () => {
+      const timestamp = Date.now();
+      const randomBytes = crypto.getRandomValues ? 
+        Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join('') :
+        Math.random().toString(36).substring(2);
+      return btoa(`${user._id}:${timestamp}:${randomBytes}`);
+    };
+    
+    const token = generateToken();
+    const sseUrl = `${baseUrl}/api/events/${user._id}?token=${encodeURIComponent(token)}`;
 
     logger.info('Connecting to SSE endpoint', { url: sseUrl });
 
@@ -132,24 +154,24 @@ export function useSSEBroadcasts() {
         eventSourceRef.current = null;
 
         // Schedule reconnect if not too many attempts
-        if (connectionStatus.connectionAttempts < MAX_RECONNECT_ATTEMPTS) {
-          setConnectionStatus(prev => ({
-            ...prev,
-            reconnecting: true,
-            connectionAttempts: prev.connectionAttempts + 1
-          }));
-
-          reconnectTimeoutRef.current = setTimeout(() => {
-            connect();
-          }, RECONNECT_DELAY * Math.pow(2, connectionStatus.connectionAttempts));
-        } else {
-          logger.error('Max reconnection attempts reached');
-          setConnectionStatus(prev => ({
+        setConnectionStatus(prev => {
+          const newAttempts = prev.connectionAttempts + 1;
+          if (newAttempts < MAX_RECONNECT_ATTEMPTS) {
+            reconnectTimeoutRef.current = setTimeout(() => {
+              connect();
+            }, RECONNECT_DELAY * Math.pow(2, newAttempts));
+            return {
+              ...prev,
+              reconnecting: true,
+              connectionAttempts: newAttempts
+            };
+          }
+          return {
             ...prev,
             reconnecting: false,
-            error: 'Max reconnection attempts reached'
-          }));
-        }
+            connectionAttempts: newAttempts
+          };
+        });
       };
 
     } catch (error) {
@@ -159,7 +181,7 @@ export function useSSEBroadcasts() {
         error: 'Failed to initialize connection'
       }));
     }
-  }, [user?._id, connectionStatus.connectionAttempts]);
+  }, [user?._id]); // Removed connectionStatus.connectionAttempts to avoid circular dependency
 
   // Disconnect from SSE
   const disconnect = useCallback(() => {
@@ -190,7 +212,9 @@ export function useSSEBroadcasts() {
       disconnect();
     }
 
-    return disconnect;
+    return () => {
+      disconnect();
+    };
   }, [user?._id, connect, disconnect]);
 
   // Manual reconnect function

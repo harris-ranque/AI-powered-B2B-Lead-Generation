@@ -26,7 +26,7 @@ export function useAuth() {
 
   return {
     isLoading: !isLoaded,
-    isAuthenticated: isSignedIn || false,
+    isAuthenticated: isLoaded ? (isSignedIn ?? false) : false, // Handle undefined state properly
     user: user || null,
     clerkUser: clerkUser || null,
     // Note: Clerk handles sign in/out through its components

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -40,10 +40,12 @@ import { useCredits, useBilling } from "@/hooks/useBilling";
 import { useLangGraphRequests } from "@/hooks/useLangGraph";
 import { useSearches } from "@/hooks/useSearches";
 import { useUserLeads } from "@/hooks/useLeads";
+import { safeTransformEmailRequests, isValidTabName } from "@/utils/typeValidation";
 
 export function LeadEternityDashboard() {
   const [currentTab, setCurrentTab] = useState("pipeline");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [generatedEmails, setGeneratedEmails] = useState<EmailGenerationResult[]>([]);
   
   // Real backend integration
   const { user, isAuthenticated } = useAuth();
@@ -59,23 +61,28 @@ export function LeadEternityDashboard() {
   const userPlan = user?.plan || 'free';
   const isAdmin = user?.role === 'admin' || user?.isAdmin === true;
   
-  // Convert email requests to EmailGenerationResult format for compatibility
-  const generatedEmails = emailRequests?.page?.filter(req => req.status === 'completed').map(req => ({
-    primary_email: {
-      subject: req.result?.subject || 'Generated Email',
-      body: req.result?.body || '',
-    },
-    follow_up_emails: req.result?.followUps || [],
-    relevance_score: req.result?.relevanceScore || 0.8,
-    personalization_notes: req.result?.notes || [],
-    estimated_response_rate: req.result?.estimatedResponseRate || 0.15,
-  })) || [];
+  // Initialize generatedEmails from email requests if available
+  useEffect(() => {
+    if (emailRequests?.page) {
+      const emails = safeTransformEmailRequests(emailRequests);
+      setGeneratedEmails(emails);
+    }
+  }, [emailRequests]);
   
   const { toast } = useToast();
 
+  const handleTabChange = (newTab: string) => {
+    if (isValidTabName(newTab)) {
+      setCurrentTab(newTab);
+    } else {
+      console.warn(`Invalid tab name: ${newTab}. Defaulting to pipeline.`);
+      setCurrentTab("pipeline");
+    }
+  };
+
   const handleGenerateEmail = (lead: Lead) => {
     setSelectedLead(lead);
-    setCurrentTab("email-generator");
+    handleTabChange("email-generator");
     toast({
       title: "Lead Selected",
       description: `Selected ${lead.company_name} for AI email generation.`,
@@ -91,7 +98,7 @@ export function LeadEternityDashboard() {
   };
 
   const handleCompleteOnboarding = (profileData: BusinessProfileInput) => {
-    setCurrentTab("search");
+    handleTabChange("pipeline"); // Changed from "search" to valid tab
     toast({
       title: "Welcome to Genni!",
       description: "Your business profile has been saved. You're ready to start generating leads!",
@@ -99,7 +106,7 @@ export function LeadEternityDashboard() {
   };
 
   const handleSkipOnboarding = () => {
-    setCurrentTab("search");
+    handleTabChange("pipeline"); // Changed from "search" to valid tab
     toast({
       title: "Onboarding Skipped",
       description: "You can complete your business profile later in Settings.",
@@ -177,7 +184,7 @@ export function LeadEternityDashboard() {
             <Button
               variant={currentTab === "pipeline" ? "default" : "ghost"}
               className="w-full justify-start"
-              onClick={() => setCurrentTab("pipeline")}
+              onClick={() => handleTabChange("pipeline")}
             >
               <Search className="h-4 w-4 mr-2" />
               Lead Pipeline
@@ -186,7 +193,7 @@ export function LeadEternityDashboard() {
             <Button
               variant={currentTab === "email-generator" ? "default" : "ghost"}
               className="w-full justify-start"
-              onClick={() => setCurrentTab("email-generator")}
+              onClick={() => handleTabChange("email-generator")}
             >
               <Bot className="h-4 w-4 mr-2" />
               AI Email Generator
@@ -195,7 +202,7 @@ export function LeadEternityDashboard() {
             <Button
               variant={currentTab === "profile" ? "default" : "ghost"}
               className="w-full justify-start"
-              onClick={() => setCurrentTab("profile")}
+              onClick={() => handleTabChange("profile")}
             >
               <Building2 className="h-4 w-4 mr-2" />
               Business Profile
@@ -209,7 +216,7 @@ export function LeadEternityDashboard() {
             <Button
               variant={currentTab === "credits" ? "default" : "ghost"}
               className="w-full justify-start"
-              onClick={() => setCurrentTab("credits")}
+              onClick={() => handleTabChange("credits")}
             >
               <CreditCard className="h-4 w-4 mr-2" />
               Credits & Billing
@@ -221,7 +228,7 @@ export function LeadEternityDashboard() {
             <Button
               variant={currentTab === "dashboard" ? "default" : "ghost"}
               className="w-full justify-start"
-              onClick={() => setCurrentTab("dashboard")}
+              onClick={() => handleTabChange("dashboard")}
             >
               <BarChart3 className="h-4 w-4 mr-2" />
               Analytics
@@ -230,7 +237,7 @@ export function LeadEternityDashboard() {
             <Button
               variant={currentTab === "settings" ? "default" : "ghost"}
               className="w-full justify-start"
-              onClick={() => setCurrentTab("settings")}
+              onClick={() => handleTabChange("settings")}
             >
               <Settings className="h-4 w-4 mr-2" />
               Settings
@@ -240,7 +247,7 @@ export function LeadEternityDashboard() {
               <Button
                 variant={currentTab === "admin" ? "default" : "ghost"}
                 className="w-full justify-start"
-                onClick={() => setCurrentTab("admin")}
+                onClick={() => handleTabChange("admin")}
               >
                 <UserCheck className="h-4 w-4 mr-2" />
                 Admin Dashboard
@@ -254,7 +261,7 @@ export function LeadEternityDashboard() {
               <Button
                 variant={currentTab === "debug" ? "default" : "ghost"}
                 className="w-full justify-start"
-                onClick={() => setCurrentTab("debug")}
+                onClick={() => handleTabChange("debug")}
               >
                 <Bug className="h-4 w-4 mr-2" />
                 Debug Panel
@@ -268,7 +275,7 @@ export function LeadEternityDashboard() {
               <Button
                 variant={currentTab === "performance" ? "default" : "ghost"}
                 className="w-full justify-start"
-                onClick={() => setCurrentTab("performance")}
+                onClick={() => handleTabChange("performance")}
               >
                 <Activity className="h-4 w-4 mr-2" />
                 Performance

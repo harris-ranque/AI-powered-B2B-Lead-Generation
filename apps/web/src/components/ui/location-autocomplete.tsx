@@ -47,18 +47,23 @@ const initializeGoogleMaps = async (): Promise<google.maps.places.AutocompleteSe
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   
-  // Debug logging - always log to help diagnose the issue
-  console.log('Google Maps API Key check:', {
-    mode: import.meta.env.MODE,
-    hasKey: !!apiKey,
-    keyLength: apiKey?.length,
-    keyPrefix: apiKey?.substring(0, 10) + '...',
-    allEnvKeys: Object.keys(import.meta.env).filter(key => key.startsWith('VITE_'))
-  });
+  // Debug logging - secure logging without exposing API key
+  if (import.meta.env.MODE === 'development') {
+    console.log('Google Maps API Key check:', {
+      mode: import.meta.env.MODE,
+      hasKey: !!apiKey,
+      keyLength: apiKey?.length,
+      isValidFormat: apiKey?.startsWith('AIza') && apiKey.length === 39,
+      envKeysCount: Object.keys(import.meta.env).filter(key => key.startsWith('VITE_')).length
+    });
+  }
   
   if (!apiKey || apiKey === 'undefined' || apiKey === 'your_google_maps_api_key_here') {
-    console.error('API Key validation failed:', { apiKey });
-    throw new Error("Google Maps API key not configured. Please set VITE_GOOGLE_MAPS_API_KEY in your environment variables.");
+    const error = new Error("Google Maps API key not configured. Please set VITE_GOOGLE_MAPS_API_KEY in your environment variables.");
+    if (import.meta.env.MODE === 'development') {
+      console.error('API Key validation failed - key missing or placeholder value');
+    }
+    throw error;
   }
 
   if (!googleMapsLoader) {

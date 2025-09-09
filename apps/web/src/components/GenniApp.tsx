@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { LeadEternityDashboard } from "./LeadEternityDashboard";
+import { ConvexErrorBoundary } from "./ConvexErrorBoundary";
 import { useLogger } from "@/utils/logger";
 
 export function GenniApp() {
@@ -16,7 +17,9 @@ export function GenniApp() {
 
   return (
     <div className="min-h-screen bg-background">
-      <LeadEternityDashboard />
+      <ConvexErrorBoundary onError={(error) => logger.error('Dashboard error', error)}>
+        <LeadEternityDashboard />
+      </ConvexErrorBoundary>
     </div>
   );
 }

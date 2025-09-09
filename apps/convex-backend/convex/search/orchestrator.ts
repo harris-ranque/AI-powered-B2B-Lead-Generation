@@ -31,7 +31,7 @@ export const orchestrateSearch: any = internalAction({
     const correlationId = `orch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     // Get search details (moved outside try block for error handling)
-    const searchRecord = await ctx.runQuery(internal["search/internal"].getSearchInternal, {
+    const searchRecord = await ctx.runQuery(internal.search.internal.getSearchInternal, {
       searchId 
     });
     
@@ -42,7 +42,7 @@ export const orchestrateSearch: any = internalAction({
     try { 
 
       // Log orchestration start
-      await ctx.runMutation(internal["search/internal"].logCorrelation, {
+      await ctx.runMutation(internal.search.internal.logCorrelation, {
         correlationId,
         operationType: "search_orchestration",
         userId: searchRecord.userId,
@@ -52,13 +52,13 @@ export const orchestrateSearch: any = internalAction({
       });
 
       // Update search status to in_progress
-      await ctx.runMutation(api.search.mutations.updateSearchStatus, {
+      await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
         searchId,
         status: "in_progress",
       });
 
       // Broadcast pipeline start
-      await ctx.runMutation(internal["realtime/broadcaster"].broadcastPipelineUpdate, {
+      await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
         userId: searchRecord.userId as Id<"users">,
         searchId,
         stage: "started",
@@ -73,7 +73,7 @@ export const orchestrateSearch: any = internalAction({
       // Stage 1: Google Maps Discovery
       if (currentStage === "discovery") {
         try {
-          await ctx.runMutation(internal["realtime/broadcaster"].broadcastPipelineUpdate, {
+          await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
             userId: searchRecord.userId as Id<"users">,
             searchId,
             stage: "discovery",
@@ -87,12 +87,12 @@ export const orchestrateSearch: any = internalAction({
 
           if (discoveryResult.totalFound === 0) {
             // No leads found, complete the search
-            await ctx.runMutation(api.search.mutations.updateSearchStatus, {
+            await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
               searchId,
               status: "completed",
             });
             
-            await ctx.runMutation(internal["realtime/broadcaster"].broadcastPipelineUpdate, {
+            await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
               userId: searchRecord.userId as Id<"users">,
               searchId,
               stage: "completed",
@@ -106,7 +106,7 @@ export const orchestrateSearch: any = internalAction({
           totalProgress = 25;
           currentStage = "enrichment";
           
-          await ctx.runMutation(internal["realtime/broadcaster"].broadcastPipelineUpdate, {
+          await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
             userId: searchRecord.userId as Id<"users">,
             searchId,
             stage: "discovery",
@@ -118,7 +118,7 @@ export const orchestrateSearch: any = internalAction({
           console.error("Discovery stage error:", error);
           pipelineSuccess = false;
           
-          await ctx.runMutation(internal["search/internal"].logCorrelation, {
+          await ctx.runMutation(internal.search.internal.logCorrelation, {
             correlationId,
             operationType: "search_orchestration",
             userId: searchRecord.userId as Id<"users">,
@@ -136,7 +136,7 @@ export const orchestrateSearch: any = internalAction({
       // Stage 2: Lead Enrichment
       if (currentStage === "enrichment" && pipelineSuccess) {
         try {
-          await ctx.runMutation(internal["realtime/broadcaster"].broadcastPipelineUpdate, {
+          await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
             userId: searchRecord.userId as Id<"users">,
             searchId,
             stage: "enrichment",
@@ -144,7 +144,7 @@ export const orchestrateSearch: any = internalAction({
             message: "Starting lead enrichment with FindyMail",
           });
 
-          const enrichmentResult = await ctx.runAction(internal["leads/enrichment"].batchEnrichLeads, {
+          const enrichmentResult = await ctx.runAction(internal.leads.enrichment.batchEnrichLeads, {
             searchId,
             correlationId,
           });
@@ -152,7 +152,7 @@ export const orchestrateSearch: any = internalAction({
           totalProgress = 60;
           currentStage = "analysis";
           
-          await ctx.runMutation(internal["realtime/broadcaster"].broadcastPipelineUpdate, {
+          await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
             userId: searchRecord.userId as Id<"users">,
             searchId,
             stage: "enrichment",
@@ -165,7 +165,7 @@ export const orchestrateSearch: any = internalAction({
           // Continue pipeline even if enrichment partially fails
           currentStage = "analysis";
           
-          await ctx.runMutation(internal["search/internal"].logCorrelation, {
+          await ctx.runMutation(internal.search.internal.logCorrelation, {
             correlationId,
             operationType: "search_orchestration", 
             userId: searchRecord.userId as Id<"users">,
@@ -184,12 +184,12 @@ export const orchestrateSearch: any = internalAction({
       if (currentStage === "analysis" && pipelineSuccess) {
         try {
           // Check if user plan includes AI analysis
-          const user = await ctx.runQuery(internal["users/queries"].getUserInternal, {
+          const user = await ctx.runQuery(internal.users.queries.getUserInternal, {
             userId: searchRecord.userId,
           });
 
           if (user && (user.plan === "pro" || user.plan === "enterprise")) {
-            await ctx.runMutation(internal["realtime/broadcaster"].broadcastPipelineUpdate, {
+            await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
               userId: searchRecord.userId as Id<"users">,
               searchId,
               stage: "analysis",
@@ -197,14 +197,14 @@ export const orchestrateSearch: any = internalAction({
               message: "Analyzing leads with AI",
             });
 
-            const analysisResult = await ctx.runAction(internal["langgraph/actions"].batchAnalyzeLeads, {
+            const analysisResult = await ctx.runAction(internal.langgraph.internal.batchAnalyzeLeads, {
               searchId,
               correlationId,
             });
 
             totalProgress = 85;
             
-            await ctx.runMutation(internal["realtime/broadcaster"].broadcastPipelineUpdate, {
+            await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
               userId: searchRecord.userId as Id<"users">,
               searchId,
               stage: "analysis",
@@ -223,7 +223,7 @@ export const orchestrateSearch: any = internalAction({
           // Continue to completion even if analysis fails
           // All stages are done
           
-          await ctx.runMutation(internal["search/internal"].logCorrelation, {
+          await ctx.runMutation(internal.search.internal.logCorrelation, {
             correlationId,
             operationType: "search_orchestration",
             userId: searchRecord.userId as Id<"users">,
@@ -242,19 +242,19 @@ export const orchestrateSearch: any = internalAction({
       // Always execute completion logic
       {
         // Update search status
-        await ctx.runMutation(api.search.mutations.updateSearchStatus, {
+        await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
           searchId,
           status: pipelineSuccess ? "completed" : "failed",
           error: !pipelineSuccess ? "Pipeline had errors" : undefined,
         });
 
         // Calculate final results
-        const results: any = await ctx.runQuery(internal["search/internal"].getSearchResults, {
+        const results: any = await ctx.runQuery(internal.search.internal.getSearchResults, {
           searchId,
         });
 
         // Broadcast completion
-        await ctx.runMutation(internal["realtime/broadcaster"].broadcastPipelineUpdate, {
+        await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
           userId: searchRecord.userId as Id<"users">,
           searchId,
           stage: "completed",
@@ -266,7 +266,7 @@ export const orchestrateSearch: any = internalAction({
         });
 
         // Log completion
-        await ctx.runMutation(internal["search/internal"].logCorrelation, {
+        await ctx.runMutation(internal.search.internal.logCorrelation, {
           correlationId,
           operationType: "search_orchestration",
           userId: searchRecord.userId as Id<"users">,
@@ -292,14 +292,14 @@ export const orchestrateSearch: any = internalAction({
       console.error("Orchestration error:", error);
       
       // Update search status to failed
-      await ctx.runMutation(api.search.mutations.updateSearchStatus, {
+      await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
         searchId,
         status: "failed",
         error: error instanceof Error ? error.message : "Orchestration failed",
       });
 
       // Broadcast failure
-      await ctx.runMutation(internal["realtime/broadcaster"].broadcastPipelineUpdate, {
+      await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
         userId: searchRecord.userId as Id<"users">,
         searchId,
         stage: "failed",
@@ -319,7 +319,7 @@ export const resumeSearch: any = internalAction({
     searchId: v.id("searches"),
   },
   handler: async (ctx, args) => {
-    const search = await ctx.runQuery(internal["search/internal"].getSearchInternal, {
+    const search = await ctx.runQuery(internal.search.internal.getSearchInternal, {
       searchId: args.searchId,
     });
 
@@ -331,7 +331,7 @@ export const resumeSearch: any = internalAction({
     let resumeStage: PipelineStage = "discovery";
     
     // Check if we have any leads
-    const leads = await ctx.runQuery(internal["leads/queries"].getSearchLeadsInternal, {
+    const leads = await ctx.runQuery(internal.leads.queries.getSearchLeadsInternal, {
       searchId: args.searchId,
     });
 
@@ -351,7 +351,7 @@ export const resumeSearch: any = internalAction({
     }
 
     // Resume orchestration from determined stage
-    return await ctx.runAction(internal["search/orchestrator"].orchestrateSearch, {
+    return await ctx.runAction(internal.search.orchestrator.orchestrateSearch, {
       searchId: args.searchId,
       startFromStage: resumeStage,
     });
@@ -365,7 +365,7 @@ export const checkStuckSearches: any = internalAction({
     // Find searches that are in_progress but haven't been updated in 10 minutes
     const stuckThreshold = Date.now() - 10 * 60 * 1000; // 10 minutes ago
     
-    const stuckSearches: any = await ctx.runQuery(internal["search/internal"].getStuckSearches, {
+    const stuckSearches: any = await ctx.runQuery(internal.search.internal.getStuckSearches, {
       stuckThreshold,
     });
 
@@ -374,7 +374,7 @@ export const checkStuckSearches: any = internalAction({
     for (const search of stuckSearches) {
       try {
         console.log(`Resuming stuck search: ${search._id}`);
-        const result = await ctx.runAction(internal["search/orchestrator"].resumeSearch, { searchId: search._id });
+        const result = await ctx.runAction(internal.search.orchestrator.resumeSearch, { searchId: search._id });
         results.push({ searchId: search._id, success: result.success });
       } catch (error) {
         console.error(`Failed to resume search ${search._id}:`, error);
