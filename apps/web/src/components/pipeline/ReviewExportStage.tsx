@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { usePipeline } from '@/pipeline/context';
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@genni/convex-types";
 import { 
   Download, 
   FileText, 
@@ -15,7 +17,8 @@ import {
   Share,
   RefreshCw,
   Sparkles,
-  Archive
+  Archive,
+  Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -57,24 +60,103 @@ export function ReviewExportStage() {
     setIsExporting(true);
     
     try {
-      // Mock export - in real implementation this would generate and download files
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Get real export data from backend
+      const leadsData = await fetch(`/api/export-leads?format=${format}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!leadsData.ok) {
+        throw new Error('Export failed');
+      }
+
+      // Create download
+      const blob = await leadsData.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `leads-export-${Date.now()}.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
       
       setExportedFormats(prev => [...prev, format]);
       
       toast({
         title: "Export Complete",
-        description: `Successfully exported leads and emails as ${format.toUpperCase()}.`,
+        description: `Successfully exported ${state.enrichedLeads.length} leads as ${format.toUpperCase()}.`,
       });
     } catch (error) {
-      toast({
-        title: "Export Failed",
-        description: "Failed to export data. Please try again.",
-        variant: "destructive",
-      });
+      console.error('Export error:', error);
+      
+      // Fallback: Generate CSV client-side if backend export fails
+      if (format === 'csv') {
+        try {
+          const csvContent = generateCSV(state.enrichedLeads, state.generatedEmails);
+          downloadCSV(csvContent, `leads-export-${Date.now()}.csv`);
+          
+          setExportedFormats(prev => [...prev, format]);
+          
+          toast({
+            title: "Export Complete",
+            description: `Successfully exported ${state.enrichedLeads.length} leads as CSV (fallback method).`,
+          });
+        } catch (fallbackError) {
+          toast({
+            title: "Export Failed",
+            description: "Failed to export data. Please try again.",
+            variant: "destructive",
+          });
+        }
+      } else {
+        toast({
+          title: "Export Failed",
+          description: "Failed to export data. Please try again.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsExporting(false);
     }
+  };
+
+  // Client-side CSV generation fallback
+  const generateCSV = (leads: Lead[], emails: GeneratedEmail[]) => {
+    const headers = ['Company Name', 'Address', 'Phone', 'Website', 'Email', 'Industry', 'Rating', 'Generated Email Subject', 'Generated Email Body'];
+    
+    const rows = leads.map(lead => {
+      const leadEmail = emails.find(e => e.leadId === lead.id);
+      return [
+        lead.company_name || '',
+        lead.location?.formatted_address || '',
+        lead.phone || '',
+        lead.website || '',
+        lead.email || '',
+        lead.industry || '',
+        lead.rating || '',
+        leadEmail?.primary_email?.subject || '',
+        leadEmail?.primary_email?.body?.replace(/\n/g, ' ') || ''
+      ];
+    });
+    
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    
+    return csvContent;
+  };
+
+  const downloadCSV = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleStartNewPipeline = () => {

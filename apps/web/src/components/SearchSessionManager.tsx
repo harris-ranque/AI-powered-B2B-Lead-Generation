@@ -322,84 +322,12 @@ export function SearchSessionManager({
   );
 }
 
-// Mock function to simulate search session creation
-export function createMockSearchSession(params: {
-  location: string;
-  industry: string;
-  leadsCount: number;
-}): SearchSession {
-  const sessionId = `search_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
-  return {
-    id: sessionId,
-    status: 'processing',
-    searchParams: {
-      ...params,
-      radius: 25,
-      minEmployees: 10,
-      maxEmployees: 1000
-    },
-    progress: {
-      current: 0,
-      total: params.leadsCount,
-      stage: 'discovery',
-      stageDetails: 'Initializing search parameters...'
-    },
-    results: {
-      leadsFound: 0,
-      leadsEnriched: 0,
-      leadsWithEmails: 0,
-      leadsAnalyzed: 0
-    },
-    timing: {
-      startedAt: new Date().toISOString(),
-      estimatedCompletion: new Date(Date.now() + 5 * 60 * 1000).toISOString() // 5 minutes from now
-    },
-    creditsUsed: 0
-  };
-}
+// Mock functions removed - now using real search progress tracking via:
+// - Real search creation via search.mutations.createSearch() 
+// - Real-time progress via useStatusBroadcasts() hook
+// - Search status updates via real-time broadcasting system
 
-// Mock function to simulate search session progress
-export function simulateSearchProgress(session: SearchSession): SearchSession {
-  const progressIncrement = Math.floor(Math.random() * 5) + 1;
-  const newCurrent = Math.min(session.progress.current + progressIncrement, session.progress.total);
-  
-  let newStage = session.progress.stage;
-  let stageDetails = session.progress.stageDetails;
-  
-  if (newCurrent >= session.progress.total) {
-    newStage = 'completed';
-    stageDetails = 'All leads processed successfully!';
-  } else if (newCurrent > session.progress.total * 0.8) {
-    newStage = 'analysis';
-    stageDetails = `Analyzing lead ${newCurrent} with AI agents...`;
-  } else if (newCurrent > session.progress.total * 0.4) {
-    newStage = 'enrichment';
-    stageDetails = `Enriching lead ${newCurrent} with contact data...`;
-  } else {
-    newStage = 'discovery';
-    stageDetails = `Discovering lead ${newCurrent} via Google Maps...`;
-  }
-
-  return {
-    ...session,
-    status: newCurrent >= session.progress.total ? 'completed' : 'processing',
-    progress: {
-      ...session.progress,
-      current: newCurrent,
-      stage: newStage,
-      stageDetails
-    },
-    results: {
-      leadsFound: newCurrent,
-      leadsEnriched: Math.floor(newCurrent * 0.8),
-      leadsWithEmails: Math.floor(newCurrent * 0.6),
-      leadsAnalyzed: Math.floor(newCurrent * 0.4)
-    },
-    creditsUsed: Math.floor(newCurrent * 1.2), // 1.2 credits per lead
-    timing: {
-      ...session.timing,
-      completedAt: newCurrent >= session.progress.total ? new Date().toISOString() : undefined
-    }
-  };
-}
+// NOTE: This component should be updated to use:
+// 1. Real search creation: useMutation(api.search.mutations.createSearch)
+// 2. Real progress tracking: useStatusBroadcasts() for live updates
+// 3. Real search data: useQuery(api.search.queries.getSearchById)

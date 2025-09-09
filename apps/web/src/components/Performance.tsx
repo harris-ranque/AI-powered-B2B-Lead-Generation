@@ -1,72 +1,102 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Mail, Users, Target, DollarSign, Calendar, BarChart3 } from "lucide-react";
+import { TrendingUp, TrendingDown, Mail, Users, Target, DollarSign, Calendar, BarChart3, Loader2 } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "@genni/convex-types";
+import { usePerformanceMetrics } from "@/hooks/usePerformanceMetrics";
+import { formatDuration, formatPercentage } from "@/hooks/usePerformanceMetrics";
 
 export function Performance() {
+  // Get real performance data
+  const { metrics: performanceData, isLoading: performanceLoading } = usePerformanceMetrics();
+  const searchStats = useQuery(api.search.queries.getSearchStats);
+  const userSearches = useQuery(api.search.queries.getUserSearches, { limit: 10 });
+  
+  // Calculate dynamic metrics from real data
+  const isLoading = performanceLoading || searchStats === undefined || userSearches === undefined;
+  
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+  
   const metrics = [
     {
-      title: "Lead Generation Rate",
-      value: "156",
-      change: "+23%",
-      trend: "up",
-      period: "leads/week",
+      title: "Total Searches",
+      value: searchStats?.totalSearches?.toString() || "0",
+      change: "+0%", // Could calculate from historical data
+      trend: "up" as const,
+      period: "all time",
       icon: Users
     },
     {
-      title: "Email Open Rate",
-      value: "34.2%",
-      change: "+5.1%",
-      trend: "up",
-      period: "last 30 days",
-      icon: Mail
-    },
-    {
-      title: "Response Rate",
-      value: "12.8%",
-      change: "-2.3%",
-      trend: "down",
-      period: "last 30 days",
+      title: "Success Rate",
+      value: searchStats?.successRate ? `${searchStats.successRate}%` : "0%",
+      change: "+0%", // Could calculate from historical data
+      trend: "up" as const,
+      period: "search completion",
       icon: Target
     },
     {
-      title: "Conversion Rate",
-      value: "2.9%",
-      change: "+0.8%",
-      trend: "up",
-      period: "last 30 days",
+      title: "Leads Discovered",
+      value: searchStats?.totalLeadsDiscovered?.toString() || "0",
+      change: "+0%", // Could calculate from historical data
+      trend: "up" as const,
+      period: "total leads",
       icon: TrendingUp
     },
     {
-      title: "Revenue Generated",
-      value: "$45,230",
-      change: "+18.5%",
-      trend: "up",
-      period: "this month",
+      title: "Credits Used",
+      value: searchStats?.totalCreditsUsed?.toString() || "0",
+      change: "+0%", // Could calculate from historical data
+      trend: "up" as const,
+      period: "total spent",
       icon: DollarSign
     },
     {
-      title: "Cost Per Lead",
-      value: "$12.40",
-      change: "-15.2%",
-      trend: "up",
-      period: "this month",
+      title: "Avg Response Time",
+      value: performanceData?.systemMetrics ? formatDuration(performanceData.systemMetrics.averageResponseTime) : "0ms",
+      change: "+0%", // Could calculate from historical data
+      trend: "up" as const,
+      period: "system performance",
       icon: BarChart3
+    },
+    {
+      title: "Active Searches",
+      value: performanceData?.realTimeMetrics?.activeSearches?.toString() || "0",
+      change: "+0%", // Real-time data
+      trend: "up" as const,
+      period: "currently running",
+      icon: Mail
     }
   ];
 
-  const recentPerformance = [
-    { date: "2024-01-15", leads: 23, emails: 45, responses: 8, conversions: 2 },
-    { date: "2024-01-14", leads: 31, emails: 52, responses: 12, conversions: 1 },
-    { date: "2024-01-13", leads: 19, emails: 38, responses: 6, conversions: 3 },
-    { date: "2024-01-12", leads: 27, emails: 41, responses: 9, conversions: 2 },
-    { date: "2024-01-11", leads: 35, emails: 58, responses: 15, conversions: 4 },
-  ];
+  // Use real recent search data
+  const recentPerformance = (userSearches?.searches || []).slice(0, 5).map(search => ({
+    date: new Date(search._creationTime).toISOString().split('T')[0],
+    leads: search.results?.totalFound || 0,
+    emails: search.results?.totalEnriched || 0,
+    responses: 0, // This would need email campaign tracking
+    conversions: search.status === 'completed' ? 1 : 0,
+    searchName: search.name,
+    status: search.status
+  }));
 
-  const topPerformingTemplates = [
-    { name: "Partnership Outreach", sent: 234, opens: 89, responses: 23, rate: "9.8%" },
-    { name: "SaaS Introduction", sent: 187, opens: 76, responses: 18, rate: "9.6%" },
-    { name: "Follow Up", sent: 156, opens: 71, responses: 12, rate: "7.7%" },
-  ];
+  // Use real search data for "top performing searches"
+  const topPerformingSearches = (userSearches?.searches || [])
+    .filter(search => search.status === 'completed' && (search.results?.totalFound || 0) > 0)
+    .sort((a, b) => (b.results?.totalFound || 0) - (a.results?.totalFound || 0))
+    .slice(0, 3)
+    .map(search => ({
+      name: search.name,
+      sent: search.results?.totalFound || 0,
+      opens: search.results?.totalEnriched || 0,
+      responses: 0, // Would need campaign tracking
+      rate: search.results?.totalFound ? `${Math.round(((search.results?.totalEnriched || 0) / search.results.totalFound) * 100)}%` : '0%'
+    }));
 
   return (
     <div className="flex h-screen">
@@ -110,44 +140,58 @@ export function Performance() {
             <Card className="p-6 bg-card border-border">
               <h3 className="text-lg font-semibold text-foreground mb-4">Daily Performance (Last 5 Days)</h3>
               <div className="space-y-3">
-                {recentPerformance.map((day, index) => (
+                {recentPerformance.length > 0 ? recentPerformance.map((day, index) => (
                   <div key={day.date} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg">
                     <div className="flex items-center gap-3">
                       <Calendar className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium text-foreground">
-                        {new Date(day.date).toLocaleDateString()}
-                      </span>
+                      <div>
+                        <span className="text-sm font-medium text-foreground">
+                          {new Date(day.date).toLocaleDateString()}
+                        </span>
+                        <div className="text-xs text-muted-foreground">{day.searchName}</div>
+                      </div>
                     </div>
                     <div className="flex gap-4 text-sm">
                       <span className="text-muted-foreground">{day.leads} leads</span>
-                      <span className="text-muted-foreground">{day.emails} emails</span>
-                      <span className="text-muted-foreground">{day.responses} responses</span>
-                      <Badge variant="secondary" className="bg-primary/10 text-primary">
-                        {day.conversions} conversions
+                      <span className="text-muted-foreground">{day.emails} enriched</span>
+                      <Badge variant={day.status === 'completed' ? 'default' : day.status === 'failed' ? 'destructive' : 'secondary'} className="bg-primary/10 text-primary">
+                        {day.status}
                       </Badge>
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <div className="text-center text-muted-foreground py-6">
+                    <Calendar className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p>No recent searches</p>
+                    <p className="text-sm">Your search history will appear here</p>
+                  </div>
+                )}
               </div>
             </Card>
 
-            {/* Top Performing Templates */}
+            {/* Top Performing Searches */}
             <Card className="p-6 bg-card border-border">
-              <h3 className="text-lg font-semibold text-foreground mb-4">Top Performing Email Templates</h3>
+              <h3 className="text-lg font-semibold text-foreground mb-4">Top Performing Searches</h3>
               <div className="space-y-4">
-                {topPerformingTemplates.map((template, index) => (
-                  <div key={template.name} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg">
+                {topPerformingSearches.length > 0 ? topPerformingSearches.map((search, index) => (
+                  <div key={search.name} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg">
                     <div>
-                      <div className="font-medium text-foreground">{template.name}</div>
+                      <div className="font-medium text-foreground">{search.name}</div>
                       <div className="text-sm text-muted-foreground">
-                        {template.sent} sent • {template.opens} opens • {template.responses} responses
+                        {search.sent} leads found • {search.opens} enriched • {search.responses} responses
                       </div>
                     </div>
                     <Badge variant="secondary" className="bg-primary/10 text-primary">
-                      {template.rate}
+                      {search.rate}
                     </Badge>
                   </div>
-                ))}
+                )) : (
+                  <div className="text-center text-muted-foreground py-6">
+                    <BarChart3 className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p>No completed searches yet</p>
+                    <p className="text-sm">Start a search to see performance data</p>
+                  </div>
+                )}
               </div>
             </Card>
           </div>
