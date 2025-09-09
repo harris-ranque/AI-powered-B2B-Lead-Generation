@@ -205,7 +205,7 @@ export const getAllUsers = query({
   args: {
     limit: v.optional(v.number()),
     offset: v.optional(v.number()),
-    plan: v.optional(v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise"))),
+    plan: v.optional(v.union(v.literal("starter"), v.literal("professional"), v.literal("business"), v.literal("enterprise"))),
     role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
     isActive: v.optional(v.boolean()),
   },

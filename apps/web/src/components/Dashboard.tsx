@@ -11,8 +11,14 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { useStatusBroadcasts, getPriorityDisplay, formatBroadcastTime } from "@/hooks/useStatusBroadcasts";
 import { SearchProgressTracker } from "@/components/SearchProgressTracker";
 import { CorrelationDebugPanel } from "@/components/CorrelationDebugPanel";
+import { SubscriptionStatusCard } from "@/components/SubscriptionStatusCard";
+import { UsageMetersCard } from "@/components/UsageMetersCard";
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useSubscription } from "@/hooks/useSubscription";
+import { useUsage } from "@/hooks/useUsage";
+import { UsageWarnings } from "@/components/SubscriptionGuard";
+import { useSubscriptionGuard } from "@/hooks/useSubscriptionGuard";
 
 export function Dashboard() {
   // Real Convex hooks
@@ -22,6 +28,11 @@ export function Dashboard() {
   const { requests: emailRequests } = useLangGraphRequests();
   const { notifications } = useNotifications();
   const { user } = useAuth();
+  
+  // Subscription and usage hooks
+  const { isStarter, hasActiveSubscription } = useSubscription();
+  const { usage, isNearLimit, searchesPercentage, enrichmentsPercentage, exportsPercentage } = useUsage();
+  const { canGenerateEmails, canUseBulkOperations, canPerformAction } = useSubscriptionGuard();
   
   // Real-time broadcasting system
   const {
@@ -103,22 +114,38 @@ export function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-4xl font-bold text-foreground mb-2">Dashboard</h1>
-                <p className="text-muted-foreground">Welcome back! Here's what's happening with your leads.</p>
-              </div>
-              {/* Real-time notification indicator */}
-              {hasUrgent && (
-                <div className="flex items-center gap-2">
-                  <Bell className="h-5 w-5 text-orange-500 animate-pulse" />
-                  <Badge variant="destructive" className="animate-pulse">
-                    {urgentBroadcasts.length} urgent
-                  </Badge>
-                  {needsAcknowledgment > 0 && (
-                    <Badge variant="outline">
-                      {needsAcknowledgment} need attention
-                    </Badge>
+                <div className="flex items-center gap-4">
+                  <p className="text-muted-foreground">Welcome back! Here's what's happening with your leads.</p>
+                  {usage && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Badge variant="outline" className="px-2 py-1">
+                        {usage.searchesUsed}/{usage.limits.monthlySearches === -1 ? '∞' : usage.limits.monthlySearches} searches
+                      </Badge>
+                      {usage.limits.monthlySearches !== -1 && searchesPercentage >= 80 && (
+                        <Badge variant="destructive" className="px-2 py-1">
+                          {searchesPercentage}% used
+                        </Badge>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
+              </div>
+              <div className="flex items-center gap-4">
+                {/* Real-time notification indicator */}
+                {hasUrgent && (
+                  <div className="flex items-center gap-2">
+                    <Bell className="h-5 w-5 text-orange-500 animate-pulse" />
+                    <Badge variant="destructive" className="animate-pulse">
+                      {urgentBroadcasts.length} urgent
+                    </Badge>
+                    {needsAcknowledgment > 0 && (
+                      <Badge variant="outline">
+                        {needsAcknowledgment} need attention
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           
@@ -210,6 +237,33 @@ export function Dashboard() {
               </div>
             </div>
           )}
+
+          {/* Subscription Status and Usage Alert */}
+          {(isStarter || (usage && (isNearLimit(searchesPercentage) || isNearLimit(enrichmentsPercentage) || isNearLimit(exportsPercentage)))) && (
+            <Alert className="mb-6 border-blue-200 bg-blue-50/50">
+              <AlertTriangle className="h-4 w-4 text-blue-600" />
+              <AlertDescription className="text-blue-800">
+                {isStarter ? (
+                  <span>
+                    You're on the Starter plan. <strong>Upgrade to Professional</strong> to unlock managed API keys and higher limits.
+                  </span>
+                ) : (
+                  <span>
+                    You're approaching your usage limits. Consider upgrading your plan to avoid interruptions.
+                  </span>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Usage Warnings */}
+          <UsageWarnings />
+
+          {/* Subscription & Usage Cards */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <SubscriptionStatusCard />
+            <UsageMetersCard />
+          </div>
 
           {/* Loading State */}
           {metricsLoading ? (
@@ -383,18 +437,60 @@ export function Dashboard() {
 
           {/* Quick Actions */}
           <Card className="p-6 bg-card border-border mt-6">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Quick Actions</h3>
-            <div className="flex gap-4">
-              <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                Start New Search
-              </Button>
-              <Button variant="outline" className="border-border">
-                Create Email Template
-              </Button>
-              <Button variant="outline" className="border-border">
-                Export Leads
-              </Button>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground">Quick Actions</h3>
+              {!hasActiveSubscription && (
+                <Badge variant="outline" className="text-xs">
+                  Limited features
+                </Badge>
+              )}
             </div>
+            <div className="flex gap-4 flex-wrap">
+              <Button 
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                disabled={!canPerformAction("search").allowed}
+              >
+                Start New Search
+                {!canPerformAction("search").allowed && (
+                  <span className="ml-2 text-xs">(Limit reached)</span>
+                )}
+              </Button>
+              <Button 
+                variant="outline" 
+                className="border-border"
+                disabled={!canGenerateEmails}
+              >
+                Create Email Template
+                {!canGenerateEmails && (
+                  <span className="ml-2 text-xs">(Upgrade needed)</span>
+                )}
+              </Button>
+              <Button 
+                variant="outline" 
+                className="border-border"
+                disabled={!canPerformAction("export").allowed}
+              >
+                Export Leads
+                {!canPerformAction("export").allowed && (
+                  <span className="ml-2 text-xs">(Limit reached)</span>
+                )}
+              </Button>
+              {canUseBulkOperations && (
+                <Button variant="outline" className="border-border">
+                  Bulk Operations
+                </Button>
+              )}
+              {isStarter && (
+                <Button variant="default" className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700" asChild>
+                  <a href="/pricing">Upgrade Plan</a>
+                </Button>
+              )}
+            </div>
+            {(isStarter || !hasActiveSubscription) && (
+              <p className="text-xs text-muted-foreground mt-3">
+                {isStarter ? "Upgrade to unlock full features and managed API keys" : "Subscribe to a plan to access all features"}
+              </p>
+            )}
           </Card>
         </div>
       </div>

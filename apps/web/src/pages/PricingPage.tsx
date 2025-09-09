@@ -36,21 +36,22 @@ export default function PricingPage() {
 
   const plans = [
     {
-      name: "Free",
-      description: "Perfect for trying out Lead Eternity",
+      name: "Starter",
+      description: "Perfect for trying out Genni with managed infrastructure",
       monthlyPrice: 0,
       annualPrice: 0,
       features: [
-        "50 credits per month",
+        "10 searches per month",
         "Up to 25 leads per search",
-        "5 searches per month",
-        "Email generation",
-        "Basic analytics",
+        "500 lead enrichments per month",
+        "10 exports per month",
+        "Managed API keys included",
+        "Basic lead discovery",
         "Community support"
       ],
       limitations: [
-        "Limited lead enrichment",
-        "Basic email templates",
+        "No email generation",
+        "No bulk operations",
         "No API access"
       ],
       cta: "Get Started Free",
@@ -58,38 +59,69 @@ export default function PricingPage() {
       popular: false
     },
     {
-      name: "Pro",
+      name: "Professional",
       description: "For growing businesses and sales teams",
-      monthlyPrice: 49,
-      annualPrice: 39,
+      monthlyPrice: 149,
+      annualPrice: 119,
       features: [
-        "500 credits per month",
-        "Up to 100 leads per search",
         "50 searches per month",
+        "Up to 500 leads per search",
+        "25,000 lead enrichments per month",
+        "100 exports per month",
+        "Managed API keys included",
         "Advanced AI analysis",
         "Full lead enrichment",
+        "Email generation",
         "Custom email templates",
         "API access",
         "Priority support",
         "Bulk operations",
-        "Advanced analytics",
-        "Email sequence automation",
-        "CRM integrations"
+        "Advanced analytics"
       ],
       limitations: [],
-      cta: "Start Free Trial",
+      cta: "Subscribe Now",
       highlighted: true,
       popular: true
     },
     {
-      name: "Enterprise",
-      description: "For large teams and organizations",
-      monthlyPrice: 199,
-      annualPrice: 149,
+      name: "Business",
+      description: "For established teams scaling their outreach",
+      monthlyPrice: 449,
+      annualPrice: 359,
       features: [
-        "2000+ credits per month",
+        "200 searches per month",
+        "Up to 2,000 leads per search",
+        "100,000 lead enrichments per month",
+        "500 exports per month",
+        "Managed API keys included",
+        "Advanced AI analysis",
+        "Premium lead enrichment",
+        "Email generation & sequences",
+        "Advanced email templates",
+        "Full API access",
+        "Priority support",
+        "Advanced bulk operations",
+        "Team collaboration",
+        "Custom reporting",
+        "CRM integrations"
+      ],
+      limitations: [],
+      cta: "Subscribe Now",
+      highlighted: false,
+      popular: false
+    },
+    {
+      name: "Enterprise",
+      description: "For large teams and organizations - BYOK option available",
+      monthlyPrice: 999,
+      annualPrice: 799,
+      features: [
         "Unlimited searches",
-        "500 leads per search",
+        "Unlimited leads per search",
+        "Unlimited enrichments",
+        "Unlimited exports",
+        "Managed API keys included",
+        "Option to bring your own API keys",
         "Custom AI training",
         "Advanced lead scoring",
         "White-label options",
@@ -144,8 +176,8 @@ export default function PricingPage() {
 
   const faqs = [
     {
-      question: "What are credits and how do they work?",
-      answer: "Credits are used for various actions in Lead Eternity. Lead discovery costs 1 credit, contact enrichment costs 2 credits, AI analysis costs 3 credits, and email generation costs 5 credits. Credits reset each month."
+      question: "Do I need to provide my own API keys?",
+      answer: "No, for all plans including Starter, we manage all API keys and costs for you. Only Enterprise customers have the option to bring their own API keys if they prefer."
     },
     {
       question: "Can I upgrade or downgrade my plan at any time?",
@@ -156,16 +188,24 @@ export default function PricingPage() {
       answer: "We offer a 30-day money-back guarantee for annual plans. Monthly plans are non-refundable, but you can cancel at any time."
     },
     {
-      question: "Is there a free trial for paid plans?",
-      answer: "Yes, we offer a 14-day free trial for all paid plans. No credit card required to start your trial."
+      question: "Is there a free trial?",
+      answer: "No, we don't offer free trials. However, you can start with our free Starter plan to test the platform before upgrading to a paid plan."
     },
     {
-      question: "What happens if I exceed my credit limit?",
-      answer: "If you exceed your monthly credit limit, you'll be prompted to upgrade your plan or purchase additional credits."
+      question: "What happens if I exceed my monthly limits?",
+      answer: "If you exceed your monthly search, enrichment, or export limits, you'll be prompted to upgrade your plan or wait until the next billing cycle."
     },
     {
-      question: "Do unused credits roll over to the next month?",
-      answer: "No, credits reset at the beginning of each billing cycle and don't roll over."
+      question: "How do managed API keys work?",
+      answer: "For all plans including Starter, we manage all API keys and costs for you. You don't need to worry about setting up or paying for individual service APIs. Only Enterprise customers can optionally bring their own keys."
+    },
+    {
+      question: "Do unused searches and enrichments roll over?",
+      answer: "No, usage limits reset at the beginning of each billing cycle and don't roll over to the next month."
+    },
+    {
+      question: "Can I change from Starter to a paid plan?",
+      answer: "Yes! You can upgrade from Starter to any paid plan at any time. All plans include managed API keys and infrastructure."
     }
   ];
 
@@ -203,7 +243,7 @@ export default function PricingPage() {
               <Button variant="ghost">Sign In</Button>
             </Link>
             <Link to="/signup">
-              <Button>Get Started Free</Button>
+              <Button>Get Started</Button>
             </Link>
           </div>
         </div>
@@ -216,7 +256,7 @@ export default function PricingPage() {
             Simple, Transparent Pricing
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Choose the plan that fits your business needs. Start free and scale as you grow.
+            Choose the plan that fits your business needs. Start with our free Starter plan and scale as you grow.
           </p>
 
           {/* Billing Toggle */}
@@ -237,7 +277,7 @@ export default function PricingPage() {
       {/* Pricing Cards */}
       <section className="pb-20 px-4">
         <div className="container mx-auto max-w-7xl">
-          <div className="grid lg:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-8">
             {plans.map((plan, index) => (
               <Card 
                 key={index}
@@ -315,8 +355,18 @@ export default function PricingPage() {
                           {plan.cta}
                         </Button>
                       </Link>
-                    ) : (
+                    ) : plan.name === "Starter" ? (
                       <Link to="/signup">
+                        <Button 
+                          className="w-full" 
+                          variant="outline"
+                        >
+                          {plan.cta}
+                          <ArrowRight className="h-4 w-4 ml-2" />
+                        </Button>
+                      </Link>
+                    ) : (
+                      <Link to={`/subscribe/${plan.name.toLowerCase()}`}>
                         <Button 
                           className="w-full" 
                           variant={plan.highlighted ? "default" : "outline"}

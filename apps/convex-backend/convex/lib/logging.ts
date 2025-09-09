@@ -1,5 +1,4 @@
 import { internalMutation, internalQuery, query, mutation } from "../_generated/server";
-import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { 
   CorrelationContext, 
@@ -134,50 +133,36 @@ export async function logWithCorrelationPersistent(
 
   // Store to database for persistence (async, non-blocking)
   try {
-    if ("runMutation" in ctx) {
-      // From action context - use internal API
-      await ctx.runMutation(internal["lib/logging"].storeLogEntry, {
+    if ("db" in ctx) {
+      // Direct database insertion for mutation/query context
+      const logData: any = {
         correlationId: correlation.correlationId,
         operationType: correlation.operationType,
-        parentId: correlation.parentId,
         userId: correlation.userId,
-        searchId: correlation.searchId,
-        leadId: correlation.leadId,
-        batchId: correlation.batchId,
         level,
         message,
-        data,
-        error: error ? {
+        createdAt: Date.now(),
+      };
+
+      // Add optional fields
+      if (correlation.parentId) logData.parentId = correlation.parentId;
+      if (correlation.searchId) logData.searchId = correlation.searchId;
+      if (correlation.leadId) logData.leadId = correlation.leadId;
+      if (correlation.batchId) logData.batchId = correlation.batchId;
+      if (data) logData.data = data;
+      if (error) {
+        logData.error = {
           message: error.message,
           stack: error.stack,
           name: error.name,
-        } : undefined,
-        performance,
-        metadata: correlation.metadata,
-      });
-    } else if ("scheduler" in ctx) {
-      // From mutation context - schedule asynchronously to avoid function reference issues
-      await ctx.scheduler.runAfter(0, internal["lib/logging"].storeLogEntry, {
-        correlationId: correlation.correlationId,
-        operationType: correlation.operationType,
-        parentId: correlation.parentId,
-        userId: correlation.userId,
-        searchId: correlation.searchId,
-        leadId: correlation.leadId,
-        batchId: correlation.batchId,
-        level,
-        message,
-        data,
-        error: error ? {
-          message: error.message,
-          stack: error.stack,
-          name: error.name,
-        } : undefined,
-        performance,
-        metadata: correlation.metadata,
-      });
+        };
+      }
+      if (performance) logData.performance = performance;
+      if (correlation.metadata) logData.metadata = correlation.metadata;
+
+      await ctx.db.insert("correlationLogs", logData);
     }
-    // If neither, skip database storage (fallback to console only)
+    // For action context or other contexts without direct DB access, skip database storage
   } catch (storageError) {
     // Don't let logging errors break the main operation
     console.warn(`Failed to store log entry: ${storageError}`);

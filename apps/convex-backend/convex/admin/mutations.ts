@@ -53,7 +53,7 @@ export const updateUserStatus = mutation({
 export const updateUserPlan = mutation({
   args: {
     userId: v.id("users"),
-    plan: v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise")),
+    plan: v.union(v.literal("starter"), v.literal("professional"), v.literal("business"), v.literal("enterprise")),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
@@ -154,7 +154,7 @@ export const exportUsers = mutation({
   args: {
     format: v.union(v.literal("csv"), v.literal("json")),
     filters: v.optional(v.object({
-      plan: v.optional(v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise"))),
+      plan: v.optional(v.union(v.literal("starter"), v.literal("professional"), v.literal("business"), v.literal("enterprise"))),
       role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
       isActive: v.optional(v.boolean()),
     })),

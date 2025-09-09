@@ -77,7 +77,7 @@ export const handleUserCreated = internalMutation({
       clerkId: args.clerkId,
       email: args.email,
       credits: 100, // Welcome credits
-      plan: "free" as const,
+      plan: "starter" as const,
       role: "user" as const,
       isActive: true,
       createdAt: Date.now(),

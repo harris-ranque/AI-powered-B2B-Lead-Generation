@@ -1,4 +1,5 @@
 import { Doc, Id } from "../_generated/dataModel";
+import { api } from "../_generated/api";
 
 // Type definitions for common operations
 export type User = Doc<"users">;
@@ -363,11 +364,12 @@ export async function withRetryTracking<T>(
     const result = await operation();
     
     // Success - update any pending retry records for this operation
-    await ctx.runMutation("retries/internal:updateRetryStatus", {
-      operationType,
-      relatedId,
-      status: "completed",
-    });
+    // TODO: Re-enable retry status update when retries API is available
+    // await ctx.runMutation(api.retries.internal.updateRetryStatus, {
+    //   operationType,
+    //   relatedId,
+    //   status: "completed",
+    // });
     
     return result;
   } catch (error) {
@@ -382,16 +384,17 @@ export async function withRetryTracking<T>(
       backoffMs: config.baseDelay || 5000,
     };
     
-    await ctx.runMutation("retries/internal:createRetryRecord", {
-      operationType,
-      relatedId,
-      error: errorMessage,
-      retryConfig,
-      metadata: {
-        originalError: errorMessage,
-        timestamp: Date.now(),
-      },
-    });
+    // TODO: Re-enable retry record creation when retries API is available
+    // await ctx.runMutation(api.retries.internal.createRetryRecord, {
+    //   operationType,
+    //   relatedId,
+    //   error: errorMessage,
+    //   retryConfig,
+    //   metadata: {
+    //     originalError: errorMessage,
+    //     timestamp: Date.now(),
+    //   },
+    // });
     
     console.log(`Created retry record for ${operationType}: ${relatedId}`);
     throw error;

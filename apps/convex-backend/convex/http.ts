@@ -364,6 +364,129 @@ http.route({
   }),
 });
 
+// Stripe webhook endpoint
+http.route({
+  path: "/api/stripe/webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      // Get the raw body for signature verification
+      const body = await request.text();
+      const signature = request.headers.get("stripe-signature");
+      
+      if (!signature) {
+        console.error("Missing Stripe signature");
+        return new Response("Missing signature", { status: 400 });
+      }
+
+      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+      if (!webhookSecret) {
+        console.error("Missing STRIPE_WEBHOOK_SECRET environment variable");
+        return new Response("Webhook secret not configured", { status: 500 });
+      }
+
+      // Note: In a real implementation, you would verify the signature here
+      // using Stripe's SDK. For now, we'll parse the event directly.
+      let event;
+      try {
+        event = JSON.parse(body);
+      } catch (err) {
+        console.error("Invalid JSON in webhook payload", err);
+        return new Response("Invalid JSON", { status: 400 });
+      }
+
+      console.log(`Stripe webhook received: ${event.type}`);
+
+      // Handle different event types
+      switch (event.type) {
+        case 'checkout.session.completed':
+          await ctx.runMutation(internal.billing.webhooks.handleCheckoutCompleted, {
+            sessionId: event.data.object.id,
+            customerId: event.data.object.customer,
+            subscriptionId: event.data.object.subscription,
+            mode: event.data.object.mode,
+            metadata: event.data.object.metadata || {},
+          });
+          break;
+
+        case 'customer.subscription.created':
+          await ctx.runMutation(internal.billing.webhooks.handleSubscriptionCreated, {
+            subscriptionId: event.data.object.id,
+            customerId: event.data.object.customer,
+            status: event.data.object.status,
+            priceId: event.data.object.items?.data?.[0]?.price?.id,
+            currentPeriodStart: event.data.object.current_period_start * 1000,
+            currentPeriodEnd: event.data.object.current_period_end * 1000,
+            trialStart: event.data.object.trial_start ? event.data.object.trial_start * 1000 : undefined,
+            trialEnd: event.data.object.trial_end ? event.data.object.trial_end * 1000 : undefined,
+          });
+          break;
+
+        case 'customer.subscription.updated':
+          await ctx.runMutation(internal.billing.webhooks.handleSubscriptionUpdated, {
+            subscriptionId: event.data.object.id,
+            customerId: event.data.object.customer,
+            status: event.data.object.status,
+            priceId: event.data.object.items?.data?.[0]?.price?.id,
+            currentPeriodStart: event.data.object.current_period_start * 1000,
+            currentPeriodEnd: event.data.object.current_period_end * 1000,
+            cancelAtPeriodEnd: event.data.object.cancel_at_period_end,
+            cancelAt: event.data.object.cancel_at ? event.data.object.cancel_at * 1000 : undefined,
+            canceledAt: event.data.object.canceled_at ? event.data.object.canceled_at * 1000 : undefined,
+          });
+          break;
+
+        case 'customer.subscription.deleted':
+          await ctx.runMutation(internal.billing.webhooks.handleSubscriptionDeleted, {
+            subscriptionId: event.data.object.id,
+            customerId: event.data.object.customer,
+          });
+          break;
+
+        case 'invoice.payment_succeeded':
+          await ctx.runMutation(internal.billing.webhooks.handlePaymentSucceeded, {
+            invoiceId: event.data.object.id,
+            subscriptionId: event.data.object.subscription,
+            customerId: event.data.object.customer,
+            amount: event.data.object.amount_paid,
+            currency: event.data.object.currency,
+            paidAt: event.data.object.status_transitions?.paid_at * 1000,
+          });
+          break;
+
+        case 'invoice.payment_failed':
+          await ctx.runMutation(internal.billing.webhooks.handlePaymentFailed, {
+            invoiceId: event.data.object.id,
+            subscriptionId: event.data.object.subscription,
+            customerId: event.data.object.customer,
+            amount: event.data.object.amount_due,
+            currency: event.data.object.currency,
+            attemptCount: event.data.object.attempt_count,
+            nextPaymentAttempt: event.data.object.next_payment_attempt ? event.data.object.next_payment_attempt * 1000 : undefined,
+          });
+          break;
+
+        default:
+          console.log(`Unhandled Stripe event type: ${event.type}`);
+      }
+
+      return new Response(JSON.stringify({ received: true }), {
+        headers: { "Content-Type": "application/json" }
+      });
+
+    } catch (error) {
+      console.error("Stripe webhook error:", error);
+      return new Response(
+        JSON.stringify({ error: "Webhook handler failed" }), 
+        { 
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
+    }
+  }),
+});
+
 // Simple test endpoint
 http.route({
   path: "/api/test",

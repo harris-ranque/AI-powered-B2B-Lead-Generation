@@ -4,7 +4,6 @@ import { auth, getCurrentUser, requireAuth, requireAdmin } from "../auth";
 import { updateUserValidator } from "../lib/validators";
 import { ERROR_CODES } from "../lib/constants";
 import { createError, isAdmin } from "../lib/helpers";
-import { internal } from "../_generated/api";
 
 // Update user profile
 export const updateProfile = mutation({
@@ -99,15 +98,30 @@ export const deductCredits = mutation({
       throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
     }
 
-    // Use atomic transaction system for credit deduction
-    const transactionResult: any = await ctx.runMutation(internal["credits/transactions"].recordTransaction, {
+    // Direct credit deduction implementation
+    const currentBalance = user.credits || 0;
+    if (currentBalance < args.amount) {
+      throw createError("Insufficient credits", ERROR_CODES.PAYMENT_REQUIRED, 402);
+    }
+
+    const newBalance = currentBalance - args.amount;
+
+    // Record the transaction
+    await ctx.db.insert("creditTransactions", {
       userId: user._id,
-      operation: "usage",
+      type: "usage",
       amount: args.amount,
       description: args.description,
+      balanceAfter: newBalance,
+      relatedEntity: args.relatedEntity,
+      createdAt: Date.now(),
     });
 
-    const newBalance: number = transactionResult.newBalance;
+    // Update user's credit balance
+    await ctx.db.patch(user._id, {
+      credits: newBalance,
+      updatedAt: Date.now(),
+    });
 
     // Check if credits are low and send notification
     if (newBalance <= 10 && newBalance > 0) {
@@ -188,7 +202,7 @@ export const addCredits = mutation({
 // Upgrade user plan
 export const upgradePlan = mutation({
   args: {
-    plan: v.union(v.literal("pro"), v.literal("enterprise")),
+    plan: v.union(v.literal("professional"), v.literal("business"), v.literal("enterprise")),
     stripeSubscriptionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -214,9 +228,20 @@ export const upgradePlan = mutation({
         amount: 0, // Will be updated by webhook
         currency: "usd",
         status: "active",
+        isTrialing: false,
         currentPeriodStart: Date.now(),
         currentPeriodEnd: Date.now() + (30 * 24 * 60 * 60 * 1000), // 30 days
         cancelAtPeriodEnd: false,
+        planLimits: {
+          monthlySearches: -1,
+          maxLeadsPerSearch: 100,
+          monthlyEnrichments: -1,
+          monthlyExports: -1,
+          emailGeneration: true,
+          bulkOperations: true,
+          apiAccess: true,
+          requiresOwnApiKeys: false,
+        },
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
@@ -272,6 +297,27 @@ export const deleteAccount = mutation({
         updatedAt: Date.now(),
       });
     }
+
+    return { success: true };
+  },
+});
+
+// Update Stripe customer ID
+export const updateStripeCustomerId = mutation({
+  args: {
+    customerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    
+    if (!user) {
+      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+    }
+
+    await ctx.db.patch(user._id, {
+      stripeCustomerId: args.customerId,
+      updatedAt: Date.now(),
+    });
 
     return { success: true };
   },

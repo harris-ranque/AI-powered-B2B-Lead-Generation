@@ -9,7 +9,7 @@ export const getAllUsers = query({
   args: {
     limit: v.optional(v.number()),
     offset: v.optional(v.number()),
-    plan: v.optional(v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise"))),
+    plan: v.optional(v.union(v.literal("starter"), v.literal("professional"), v.literal("business"), v.literal("enterprise"))),
     role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
     isActive: v.optional(v.boolean()),
   },
@@ -78,8 +78,9 @@ export const getUserStatistics = query({
     const newUsersThisWeek = users.filter(u => u.createdAt > sevenDaysAgo);
 
     const planDistribution = {
-      free: users.filter(u => u.plan === "free").length,
-      pro: users.filter(u => u.plan === "pro").length,
+      starter: users.filter(u => u.plan === "starter").length,
+      professional: users.filter(u => u.plan === "professional").length,
+      business: users.filter(u => u.plan === "business").length,
       enterprise: users.filter(u => u.plan === "enterprise").length,
     };
 

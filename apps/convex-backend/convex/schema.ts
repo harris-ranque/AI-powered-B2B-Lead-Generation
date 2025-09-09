@@ -9,7 +9,7 @@ export default defineSchema({
     email: v.string(),
     name: v.optional(v.string()),
     avatar: v.optional(v.string()),
-    plan: v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise")),
+    plan: v.union(v.literal("starter"), v.literal("professional"), v.literal("business"), v.literal("enterprise")),
     credits: v.number(),
     role: v.union(v.literal("user"), v.literal("admin")),
     isActive: v.boolean(),
@@ -298,30 +298,59 @@ export default defineSchema({
     .index("by_request_id", ["requestId"])
     .index("by_sequence", ["sequenceType", "sequenceOrder"]),
 
-  // Billing - Subscription and payment tracking
+  // Billing - Enhanced subscription and payment tracking
   billing: defineTable({
     userId: v.id("users"),
     stripeCustomerId: v.optional(v.string()),
     stripeSubscriptionId: v.optional(v.string()),
+    stripePriceId: v.optional(v.string()),
     
-    // Plan details
-    plan: v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise")),
+    // Enhanced plan details
+    plan: v.union(v.literal("starter"), v.literal("professional"), v.literal("business"), v.literal("enterprise")),
     billingCycle: v.union(v.literal("monthly"), v.literal("yearly")),
     amount: v.number(),
     currency: v.string(),
     
-    // Status
+    // Trial information
+    trialStart: v.optional(v.number()),
+    trialEnd: v.optional(v.number()),
+    isTrialing: v.boolean(),
+    
+    // Enhanced status
     status: v.union(
       v.literal("active"),
+      v.literal("trialing"), 
       v.literal("cancelled"),
       v.literal("past_due"),
-      v.literal("unpaid")
+      v.literal("unpaid"),
+      v.literal("incomplete"),
+      v.literal("incomplete_expired"),
+      v.literal("paused")
     ),
     
     // Dates
     currentPeriodStart: v.number(),
     currentPeriodEnd: v.number(),
     cancelAtPeriodEnd: v.boolean(),
+    cancelAt: v.optional(v.number()),
+    canceledAt: v.optional(v.number()),
+    
+    // Usage limits based on plan
+    planLimits: v.object({
+      monthlySearches: v.number(),
+      maxLeadsPerSearch: v.number(),
+      monthlyEnrichments: v.number(),
+      monthlyExports: v.number(),
+      emailGeneration: v.boolean(),
+      bulkOperations: v.boolean(),
+      apiAccess: v.boolean(),
+      requiresOwnApiKeys: v.boolean(),
+    }),
+    
+    // Billing metadata
+    lastInvoiceDate: v.optional(v.number()),
+    nextInvoiceDate: v.optional(v.number()),
+    upcomingInvoiceTotal: v.optional(v.number()),
     
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -329,7 +358,11 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_stripe_customer", ["stripeCustomerId"])
     .index("by_stripe_subscription", ["stripeSubscriptionId"])
-    .index("by_status", ["status"]),
+    .index("by_stripe_price", ["stripePriceId"])
+    .index("by_plan", ["plan"])
+    .index("by_status", ["status"])
+    .index("by_trial", ["isTrialing"])
+    .index("by_period_end", ["currentPeriodEnd"]),
 
   // Credit Transactions - Credit purchases and usage
   creditTransactions: defineTable({
@@ -633,7 +666,7 @@ export default defineSchema({
     burstUsage: v.number(),
     burstLimit: v.number(),
     timestamp: v.number(),
-    userPlan: v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise")),
+    userPlan: v.union(v.literal("starter"), v.literal("professional"), v.literal("business"), v.literal("enterprise")),
     isAdmin: v.boolean(),
   })
     .index("by_user", ["userId"])
@@ -894,4 +927,156 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }),
+
+  // User API Keys - For Starter tier users who bring their own API keys
+  userApiKeys: defineTable({
+    userId: v.id("users"),
+    service: v.union(
+      v.literal("openai"),
+      v.literal("google_maps"),
+      v.literal("findymail"),
+      v.literal("apify")
+    ),
+    keyName: v.string(), // User-friendly name for the key
+    encryptedKey: v.string(), // Encrypted API key
+    keyHash: v.string(), // Hash for quick lookup/validation
+    
+    // Validation status
+    isValid: v.boolean(),
+    lastValidated: v.optional(v.number()),
+    validationError: v.optional(v.string()),
+    
+    // Usage tracking
+    usageCount: v.number(),
+    lastUsed: v.optional(v.number()),
+    
+    // Key metadata
+    isActive: v.boolean(),
+    expiresAt: v.optional(v.number()),
+    
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_service", ["userId", "service"])
+    .index("by_hash", ["keyHash"])
+    .index("by_service", ["service"])
+    .index("by_active", ["isActive"]),
+
+  // Usage Tracking - Track user activity per billing period
+  usageTracking: defineTable({
+    userId: v.id("users"),
+    billingPeriodStart: v.number(),
+    billingPeriodEnd: v.number(),
+    
+    // Core usage metrics
+    searchesUsed: v.number(),
+    leadsEnriched: v.number(),
+    emailsGenerated: v.number(),
+    exportsCompleted: v.number(),
+    apiCallsMade: v.number(),
+    
+    // Detailed breakdown
+    usageByDate: v.optional(v.object({
+      // Daily usage tracking as a map
+      // Format: "YYYY-MM-DD": { searches: number, enrichments: number, ... }
+    })),
+    
+    // Cost tracking
+    creditsUsed: v.number(),
+    costByService: v.optional(v.object({
+      googleMaps: v.number(),
+      findymail: v.number(),
+      openai: v.number(),
+      apify: v.number(),
+    })),
+    
+    // Status
+    isCurrentPeriod: v.boolean(),
+    
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_period", ["userId", "billingPeriodStart"])
+    .index("by_current", ["isCurrentPeriod"])
+    .index("by_period", ["billingPeriodStart"]),
+
+  // Subscription Events - Track important subscription lifecycle events
+  subscriptionEvents: defineTable({
+    userId: v.id("users"),
+    stripeSubscriptionId: v.optional(v.string()),
+    stripeCustomerId: v.optional(v.string()),
+    
+    eventType: v.union(
+      v.literal("subscription_created"),
+      v.literal("subscription_updated"), 
+      v.literal("subscription_cancelled"),
+      v.literal("subscription_reactivated"),
+      v.literal("trial_started"),
+      v.literal("trial_ended"),
+      v.literal("payment_succeeded"),
+      v.literal("payment_failed"),
+      v.literal("invoice_created"),
+      v.literal("plan_changed"),
+      v.literal("usage_limit_exceeded")
+    ),
+    
+    // Event data
+    oldPlan: v.optional(v.string()),
+    newPlan: v.optional(v.string()),
+    amount: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    
+    // Additional metadata
+    metadata: v.optional(v.any()),
+    stripeEventId: v.optional(v.string()),
+    
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_subscription", ["stripeSubscriptionId"])
+    .index("by_event_type", ["eventType"])
+    .index("by_created", ["createdAt"]),
+
+  // Plan Configurations - Admin-configurable plan limits and pricing
+  planConfigurations: defineTable({
+    planId: v.string(), // starter, professional, business, enterprise
+    planName: v.string(),
+    
+    // Pricing
+    monthlyPrice: v.number(),
+    yearlyPrice: v.number(),
+    stripePriceIdMonthly: v.optional(v.string()),
+    stripePriceIdYearly: v.optional(v.string()),
+    
+    // Limits
+    limits: v.object({
+      monthlySearches: v.number(),
+      maxLeadsPerSearch: v.number(),
+      monthlyEnrichments: v.number(),
+      monthlyExports: v.number(),
+      emailGeneration: v.boolean(),
+      bulkOperations: v.boolean(),
+      apiAccess: v.boolean(),
+      requiresOwnApiKeys: v.boolean(),
+      supportLevel: v.string(),
+    }),
+    
+    // Features
+    features: v.array(v.string()),
+    
+    // Status
+    isActive: v.boolean(),
+    isVisible: v.boolean(), // Show in pricing page
+    sortOrder: v.number(),
+    
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_plan_id", ["planId"])
+    .index("by_active", ["isActive"])
+    .index("by_visible", ["isVisible"])
+    .index("by_sort_order", ["sortOrder"]),
 });
