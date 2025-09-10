@@ -22,7 +22,7 @@ const MAX_ATTEMPTS_PER_WINDOW = 10;
 
 // Server-Sent Events endpoint for real-time broadcasts
 http.route({
-  path: "/api/events/:userId",
+  pathPrefix: "/api/events/",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
     const url = new URL(request.url);
@@ -66,7 +66,7 @@ http.route({
     // Basic token validation - decode and verify structure
     try {
       const tokenData = atob(authToken).split(':');
-      if (tokenData.length !== 2 || tokenData[0] !== userId) {
+      if (tokenData.length !== 3 || tokenData[0] !== userId) {
         return new Response("Invalid authentication token", { status: 401 });
       }
       
@@ -215,7 +215,7 @@ http.route({
 
 // Test SSE endpoint without authentication (for testing)
 http.route({
-  path: "/api/test-events/:userId",
+  pathPrefix: "/api/test-events/",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
     const url = new URL(request.url);
@@ -504,7 +504,7 @@ http.route({
 
 // CORS preflight handler
 http.route({
-  path: "/api/events/:userId", 
+  pathPrefix: "/api/events/",
   method: "OPTIONS",
   handler: httpAction(async () => {
     return new Response(null, {

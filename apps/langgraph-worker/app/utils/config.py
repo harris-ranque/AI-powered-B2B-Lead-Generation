@@ -18,6 +18,15 @@ class Settings(BaseSettings):
     exa_api_key: Optional[str] = os.getenv("EXA_API_KEY", None)
     perplexity_api_key: Optional[str] = os.getenv("PERPLEXITY_API_KEY", None)
     
+    # Tavily-specific Configuration
+    tavily_max_results: int = int(os.getenv("TAVILY_MAX_RESULTS", "5"))
+    tavily_topic: str = os.getenv("TAVILY_TOPIC", "general")  # general, news, finance
+    tavily_include_answer: bool = os.getenv("TAVILY_INCLUDE_ANSWER", "true").lower() == "true"
+    tavily_include_raw_content: bool = os.getenv("TAVILY_INCLUDE_RAW_CONTENT", "false").lower() == "true"
+    tavily_search_depth: str = os.getenv("TAVILY_SEARCH_DEPTH", "basic")  # basic, advanced
+    tavily_timeout: float = float(os.getenv("TAVILY_TIMEOUT", "5.0"))
+    tavily_include_images: bool = os.getenv("TAVILY_INCLUDE_IMAGES", "false").lower() == "true"
+    
     # Convex Configuration
     convex_url: str = os.getenv("CONVEX_URL", "")
     

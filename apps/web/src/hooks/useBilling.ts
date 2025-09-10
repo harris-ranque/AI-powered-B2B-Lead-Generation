@@ -8,7 +8,7 @@ export function useBilling() {
   
   const updatePlan = useMutation(api.billing.mutations.updateSubscription);
   const purchaseCredits = useMutation(api.billing.mutations.purchaseCredits);
-  const createCheckoutSession = useMutation(api.billing.mutations.createCheckoutSession);
+  const createCheckoutSession = useAction(api.billing.mutations.createCheckoutSession);
   
   return {
     billing,

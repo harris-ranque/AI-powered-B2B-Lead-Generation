@@ -225,6 +225,36 @@ const getExternalServices = (): ExternalService[] => {
           { label: 'Releases', url: 'https://sentry.io/organizations/' },
         ]
       },
+      {
+        id: 'semgrep',
+        name: 'Semgrep',
+        description: 'Static code analysis, security scanning, and vulnerability detection',
+        icon: Shield,
+        url: 'https://semgrep.dev/manage',
+        status: 'operational',
+        category: 'monitoring',
+        quickActions: [
+          { label: 'Dashboard', url: 'https://semgrep.dev/manage' },
+          { label: 'Findings', url: 'https://semgrep.dev/manage/findings' },
+          { label: 'Policies', url: 'https://semgrep.dev/manage/policies' },
+          { label: 'Rules', url: 'https://semgrep.dev/explore' },
+        ]
+      },
+      {
+        id: 'langsmith',
+        name: 'LangSmith',
+        description: 'LangGraph workflow observability, tracing, and debugging for AI agent operations',
+        icon: Microscope,
+        url: 'https://smith.langchain.com',
+        status: 'operational',
+        category: 'monitoring',
+        quickActions: [
+          { label: 'Projects', url: 'https://smith.langchain.com/projects' },
+          { label: 'Traces', url: 'https://smith.langchain.com/traces' },
+          { label: 'Datasets', url: 'https://smith.langchain.com/datasets' },
+          { label: 'Settings', url: 'https://smith.langchain.com/settings' },
+        ]
+      },
       
       // APIs & External Services
       {
@@ -1555,10 +1585,9 @@ export function AdminDashboard() {
       }
     };
 
-    return () => {
-      try {
-        // Early return if no services available
-        if (!externalServices || externalServices.length === 0) {
+    try {
+      // Early return if no services available
+      if (!externalServices || externalServices.length === 0) {
           return (
             <div className="space-y-6">
               <Alert>
@@ -1753,20 +1782,19 @@ export function AdminDashboard() {
             </Card>
           </div>
         );
-      } catch (error) {
-        console.error('Critical error in renderExternalServices:', error);
-        return (
-          <div className="p-6">
-            <Alert>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                <strong>Error loading external services:</strong> {error instanceof Error ? error.message : 'Unknown error'}
-              </AlertDescription>
-            </Alert>
-          </div>
-        );
-      }
-    };
+    } catch (error) {
+      console.error('Critical error in renderExternalServices:', error);
+      return (
+        <div className="p-6">
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Error loading external services:</strong> {error instanceof Error ? error.message : 'Unknown error'}
+            </AlertDescription>
+          </Alert>
+        </div>
+      );
+    }
   }, [toast]); // Dependency on toast for memoization
 
   // Show loading state
@@ -1846,7 +1874,7 @@ export function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="services" className="mt-6">
-            {safeRender(renderExternalServices(), "External services tab failed to render")}
+            {safeRender(() => renderExternalServices, "External services tab failed to render")}
           </TabsContent>
 
           <TabsContent value="configuration" className="mt-6">

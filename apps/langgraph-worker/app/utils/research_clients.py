@@ -11,6 +11,7 @@ import aiohttp
 from pydantic import BaseModel, Field
 from ..utils.config import get_settings
 from ..utils.logger import setup_logger
+from ..utils.tavily_tool import TavilySearchTool, TavilySearchResult
 
 logger = setup_logger(__name__)
 settings = get_settings()
@@ -42,24 +43,34 @@ class ResearchResult(BaseModel):
 
 class TavilyClient:
     """
-    Tier 1 research client using Tavily for fast basic business context.
+    Tier 1 research client using Tavily via LangChain integration for fast basic business context.
     Target: 2-3 seconds response time, basic business information.
     """
     
     def __init__(self):
-        self.api_key = getattr(settings, 'tavily_api_key', None)
-        self.base_url = "https://api.tavily.com/v1"
-        self.timeout = 5.0  # Quick timeout for Tier 1
+        # Initialize with Tavily-specific configuration from settings
+        tavily_config = {
+            'max_results': getattr(settings, 'tavily_max_results', 5),
+            'topic': getattr(settings, 'tavily_topic', 'general'),
+            'include_answer': getattr(settings, 'tavily_include_answer', True),
+            'include_raw_content': getattr(settings, 'tavily_include_raw_content', False),
+            'search_depth': getattr(settings, 'tavily_search_depth', 'basic'),
+            'timeout': getattr(settings, 'tavily_timeout', 5.0)
+        }
         
-        if not self.api_key:
-            logger.warning("Tavily API key not configured")
+        self.tavily_tool = TavilySearchTool(**tavily_config)
+        self.timeout = tavily_config['timeout']
+        
+        # Check if tool initialized successfully
+        if not self.tavily_tool.tool:
+            logger.warning("Tavily tool not initialized - check API key configuration")
     
     async def search(self, 
                     company_name: str, 
                     domain: str = "", 
                     max_results: int = 5) -> ResearchResult:
         """
-        Perform basic business context search using Tavily.
+        Perform basic business context search using Tavily via LangChain tool.
         
         Args:
             company_name: Name of the company to research
@@ -71,7 +82,8 @@ class TavilyClient:
         """
         start_time = time.time()
         
-        if not self.api_key:
+        # Check if tool is available
+        if not self.tavily_tool.tool:
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.TAVILY,
@@ -85,41 +97,17 @@ class TavilyClient:
             query += f" {domain}"
             
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
-                payload = {
-                    "query": query,
-                    "search_depth": "basic",
-                    "max_results": max_results,
-                    "include_answer": True,
-                    "include_raw_content": False
-                }
-                
-                headers = {"Authorization": f"Bearer {self.api_key}"}
-                
-                async with session.post(
-                    f"{self.base_url}/search", 
-                    json=payload, 
-                    headers=headers
-                ) as response:
-                    
-                    if response.status != 200:
-                        raise Exception(f"Tavily API error: {response.status}")
-                    
-                    data = await response.json()
-                    response_time = time.time() - start_time
-                    
-                    return self._process_tavily_response(
-                        company_name, data, response_time
-                    )
-                    
-        except asyncio.TimeoutError:
-            return ResearchResult(
-                query=company_name,
-                tier=ResearchTier.TAVILY,
-                confidence_score=0.1,
-                response_time=time.time() - start_time,
-                error="Tavily search timeout"
+            # Use the LangChain Tavily tool for search
+            tavily_result: TavilySearchResult = await self.tavily_tool.search_async(
+                query=query,
+                search_depth="basic"
             )
+            
+            # Convert TavilySearchResult to ResearchResult format
+            return self._convert_tavily_to_research_result(
+                company_name, tavily_result
+            )
+                    
         except Exception as e:
             logger.error(f"Tavily search error for {company_name}: {str(e)}")
             return ResearchResult(
@@ -130,41 +118,70 @@ class TavilyClient:
                 error=f"Tavily error: {str(e)}"
             )
     
-    def _process_tavily_response(self, company_name: str, data: Dict[str, Any], response_time: float) -> ResearchResult:
-        """Process Tavily API response into standardized format"""
-        results = data.get("results", [])
-        answer = data.get("answer", "")
+    def _convert_tavily_to_research_result(self, company_name: str, tavily_result: TavilySearchResult) -> ResearchResult:
+        """Convert TavilySearchResult to ResearchResult format for compatibility"""
+        
+        if tavily_result.error:
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.TAVILY,
+                confidence_score=0.1,
+                response_time=tavily_result.response_time,
+                error=tavily_result.error
+            )
         
         # Extract services/products from results
         services = []
-        overview_parts = [answer] if answer else []
+        overview_parts = []
         
-        for result in results:
-            content = result.get("content", "")
-            title = result.get("title", "")
-            
-            overview_parts.append(content[:200])  # Limit content length
-            
-            # Extract potential services/products (basic keyword matching)
-            service_keywords = ["service", "product", "solution", "offering", "software", "platform"]
-            if any(keyword in content.lower() for keyword in service_keywords):
-                services.append(title)
+        # Add answer if available
+        if tavily_result.answer:
+            overview_parts.append(tavily_result.answer)
+        
+        # Process content snippets
+        for i, content in enumerate(tavily_result.content_snippets):
+            if content:
+                overview_parts.append(content[:200])  # Limit content length
+                
+                # Extract potential services/products (basic keyword matching)
+                service_keywords = ["service", "product", "solution", "offering", "software", "platform"]
+                if any(keyword in content.lower() for keyword in service_keywords):
+                    # Use title if available, otherwise extract from content
+                    if i < len(tavily_result.titles) and tavily_result.titles[i]:
+                        services.append(tavily_result.titles[i])
+                    else:
+                        # Extract first sentence as service name
+                        sentences = content.split('.')
+                        if sentences:
+                            services.append(sentences[0][:50])
         
         company_overview = " ".join(overview_parts)[:800]  # Limit overview length
         
         # Calculate confidence based on data quality
-        confidence = self._calculate_tavily_confidence(results, answer)
+        confidence = self._calculate_tavily_confidence(
+            tavily_result.results, 
+            tavily_result.answer or ""
+        )
         
         return ResearchResult(
             query=company_name,
             tier=ResearchTier.TAVILY,
             confidence_score=confidence,
-            data_points=len(results),
-            sources_analyzed=len(results),
-            response_time=response_time,
+            data_points=tavily_result.total_results,
+            sources_analyzed=tavily_result.total_results,
+            response_time=tavily_result.response_time,
             company_overview=company_overview,
             services_products=services[:5],  # Limit services
-            raw_data=data
+            raw_data={
+                "langchain_tavily_result": {
+                    "query": tavily_result.query,
+                    "results": tavily_result.results,
+                    "answer": tavily_result.answer,
+                    "images": tavily_result.images,
+                    "follow_up_questions": tavily_result.follow_up_questions,
+                    "total_results": tavily_result.total_results
+                }
+            }
         )
     
     def _calculate_tavily_confidence(self, results: List[Dict], answer: str) -> float:

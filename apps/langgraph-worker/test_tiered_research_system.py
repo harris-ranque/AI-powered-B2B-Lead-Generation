@@ -21,39 +21,53 @@ from app.langgraph.nodes.business_context_researcher import (
 )
 
 class TestTavilyClient:
-    """Test Tavily client (Tier 1 - fast basic research)"""
+    """Test Tavily client (Tier 1 - fast basic research) with LangChain integration"""
     
     @pytest.mark.asyncio
     async def test_tavily_successful_search(self):
-        """Test successful Tavily search with good results"""
-        with patch('app.utils.research_clients.get_settings') as mock_settings:
+        """Test successful Tavily search with good results using LangChain tool"""
+        with patch('app.utils.research_clients.get_settings') as mock_settings, \
+             patch('app.utils.tavily_tool.get_settings') as mock_tool_settings:
+            
+            # Mock settings for both modules
             mock_settings.return_value.tavily_api_key = "test-key"
+            mock_settings.return_value.tavily_max_results = 5
+            mock_settings.return_value.tavily_topic = "general"
+            mock_settings.return_value.tavily_include_answer = True
+            mock_settings.return_value.tavily_include_raw_content = False
+            mock_settings.return_value.tavily_search_depth = "basic"
+            mock_settings.return_value.tavily_timeout = 5.0
             
-            client = TavilyClient()
+            mock_tool_settings.return_value.tavily_api_key = "test-key"
             
-            # Mock successful API response
-            mock_response_data = {
-                "results": [
-                    {
-                        "title": "Acme Corp - Leading Software Solutions",
-                        "content": "Acme Corp is a leading provider of enterprise software solutions, specializing in CRM and ERP systems for mid-market companies. Founded in 2010, we serve over 500 customers globally.",
-                        "url": "https://acmecorp.com"
-                    },
-                    {
-                        "title": "About Acme Corp",
-                        "content": "Our mission is to help businesses streamline their operations through innovative software. We offer cloud-based solutions for sales, marketing, and customer service.",
-                        "url": "https://acmecorp.com/about"
-                    }
-                ],
-                "answer": "Acme Corp is a software company that provides CRM and ERP solutions to mid-market businesses."
-            }
-            
-            with patch('aiohttp.ClientSession.post') as mock_post:
-                mock_response = AsyncMock()
-                mock_response.status = 200
-                mock_response.json.return_value = mock_response_data
-                mock_post.return_value.__aenter__.return_value = mock_response
+            # Mock the LangChain Tavily tool
+            with patch('app.utils.tavily_tool.TavilySearch') as mock_tavily_search:
+                mock_tool_instance = Mock()
+                mock_tavily_search.return_value = mock_tool_instance
                 
+                # Mock successful tool response (JSON string format)
+                mock_tool_response = """{
+                    "query": "Acme Corp business overview services products",
+                    "results": [
+                        {
+                            "title": "Acme Corp - Leading Software Solutions",
+                            "content": "Acme Corp is a leading provider of enterprise software solutions, specializing in CRM and ERP systems for mid-market companies. Founded in 2010, we serve over 500 customers globally.",
+                            "url": "https://acmecorp.com"
+                        },
+                        {
+                            "title": "About Acme Corp",
+                            "content": "Our mission is to help businesses streamline their operations through innovative software. We offer cloud-based solutions for sales, marketing, and customer service.",
+                            "url": "https://acmecorp.com/about"
+                        }
+                    ],
+                    "answer": "Acme Corp is a software company that provides CRM and ERP solutions to mid-market businesses.",
+                    "follow_up_questions": [],
+                    "images": []
+                }"""
+                
+                mock_tool_instance.invoke.return_value = mock_tool_response
+                
+                client = TavilyClient()
                 result = await client.search("Acme Corp", "acmecorp.com", max_results=5)
                 
                 # Verify result structure
@@ -66,31 +80,56 @@ class TestTavilyClient:
                 assert len(result.services_products) > 0
                 assert result.error is None
                 assert result.response_time > 0
+                
+                # Verify the tool was called with correct parameters
+                mock_tool_instance.invoke.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_tavily_api_error(self):
-        """Test Tavily API error handling"""
-        with patch('app.utils.research_clients.get_settings') as mock_settings:
+        """Test Tavily API error handling with LangChain tool"""
+        with patch('app.utils.research_clients.get_settings') as mock_settings, \
+             patch('app.utils.tavily_tool.get_settings') as mock_tool_settings:
+            
+            # Mock settings
             mock_settings.return_value.tavily_api_key = "test-key"
+            mock_settings.return_value.tavily_max_results = 5
+            mock_settings.return_value.tavily_topic = "general"
+            mock_settings.return_value.tavily_include_answer = True
+            mock_settings.return_value.tavily_include_raw_content = False
+            mock_settings.return_value.tavily_search_depth = "basic"
+            mock_settings.return_value.tavily_timeout = 5.0
             
-            client = TavilyClient()
+            mock_tool_settings.return_value.tavily_api_key = "test-key"
             
-            with patch('aiohttp.ClientSession.post') as mock_post:
-                mock_response = AsyncMock()
-                mock_response.status = 429  # Rate limit error
-                mock_post.return_value.__aenter__.return_value = mock_response
+            # Mock the LangChain Tavily tool to raise an exception
+            with patch('app.utils.tavily_tool.TavilySearch') as mock_tavily_search:
+                mock_tool_instance = Mock()
+                mock_tavily_search.return_value = mock_tool_instance
+                mock_tool_instance.invoke.side_effect = Exception("Rate limit error")
                 
+                client = TavilyClient()
                 result = await client.search("Test Company")
                 
                 assert result.error is not None
-                assert "Tavily API error" in result.error
+                assert "Tavily error" in result.error
                 assert result.confidence_score == 0.1
     
     @pytest.mark.asyncio
     async def test_tavily_no_api_key(self):
         """Test Tavily with no API key configured"""
-        with patch('app.utils.research_clients.get_settings') as mock_settings:
+        with patch('app.utils.research_clients.get_settings') as mock_settings, \
+             patch('app.utils.tavily_tool.get_settings') as mock_tool_settings:
+            
+            # Mock no API key in settings
             mock_settings.return_value.tavily_api_key = None
+            mock_settings.return_value.tavily_max_results = 5
+            mock_settings.return_value.tavily_topic = "general"
+            mock_settings.return_value.tavily_include_answer = True
+            mock_settings.return_value.tavily_include_raw_content = False
+            mock_settings.return_value.tavily_search_depth = "basic"
+            mock_settings.return_value.tavily_timeout = 5.0
+            
+            mock_tool_settings.return_value.tavily_api_key = None
             
             client = TavilyClient()
             result = await client.search("Test Company")
