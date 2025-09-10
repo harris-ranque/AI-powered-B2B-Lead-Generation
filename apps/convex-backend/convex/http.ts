@@ -65,7 +65,7 @@ http.route({
 
     // Basic token validation - decode and verify structure
     try {
-      const tokenData = atob(authToken).split(':');
+      const tokenData = Buffer.from(authToken, 'base64').toString('utf8').split(':');
       if (tokenData.length !== 3 || tokenData[0] !== userId) {
         return new Response("Invalid authentication token", { status: 401 });
       }
@@ -101,7 +101,7 @@ http.route({
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       "Connection": "keep-alive",
-      "Access-Control-Allow-Origin": process.env.APP_URL || "http://localhost:3000",
+      "Access-Control-Allow-Origin": process.env.APP_URL || "http://localhost:5173",
       "Access-Control-Allow-Headers": "Content-Type",
       "Access-Control-Allow-Methods": "GET, OPTIONS",
     });
@@ -230,7 +230,7 @@ http.route({
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       "Connection": "keep-alive",
-      "Access-Control-Allow-Origin": process.env.APP_URL || "http://localhost:3000",
+      "Access-Control-Allow-Origin": process.env.APP_URL || "http://localhost:5173",
       "Access-Control-Allow-Headers": "Content-Type",
       "Access-Control-Allow-Methods": "GET, OPTIONS",
     });
@@ -487,6 +487,152 @@ http.route({
   }),
 });
 
+// LangGraph webhook handler for email generation completion
+http.route({
+  path: "/webhooks/langgraph/email-completed",
+  method: "POST",
+  handler: httpAction(async (ctx, request: Request) => {
+    try {
+      // Verify API key with enhanced security
+      const authHeader = request.headers.get("Authorization");
+      const expectedKey = process.env.LANGGRAPH_API_KEY;
+      const userAgent = request.headers.get("User-Agent");
+      
+      if (!authHeader || !expectedKey) {
+        console.error("Missing authorization header or API key not configured");
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { 
+            status: 401,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
+
+      if (authHeader !== `Bearer ${expectedKey}`) {
+        console.error("Invalid API key provided");
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { 
+            status: 401,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
+
+      // Optional: Add user agent validation for additional security
+      if (userAgent && !userAgent.includes("langgraph-worker")) {
+        console.warn("Unexpected user agent for LangGraph webhook:", userAgent);
+      }
+
+      const payload = await request.json() as any;
+      
+      if (!payload.search_id || !payload.lead_id) {
+        return new Response(
+          JSON.stringify({ error: "Invalid payload" }),
+          { 
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
+
+      // Process the webhook
+      await ctx.runMutation(internal.langgraph.webhooks.handleAnalysisCompleted, {
+        searchId: payload.search_id,
+        leadId: payload.lead_id,
+        result: payload,
+      });
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
+
+    } catch (error) {
+      console.error("LangGraph email webhook error:", error);
+      return new Response(
+        JSON.stringify({ error: "Webhook processing failed" }),
+        { 
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
+    }
+  }),
+});
+
+// LangGraph webhook handler for lead analysis completion
+http.route({
+  path: "/webhooks/langgraph/analysis-completed",
+  method: "POST",
+  handler: httpAction(async (ctx, request: Request) => {
+    try {
+      // Verify API key with enhanced security
+      const authHeader = request.headers.get("Authorization");
+      const expectedKey = process.env.LANGGRAPH_API_KEY;
+      const userAgent = request.headers.get("User-Agent");
+      
+      if (!authHeader || !expectedKey) {
+        console.error("Missing authorization header or API key not configured");
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { 
+            status: 401,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
+
+      if (authHeader !== `Bearer ${expectedKey}`) {
+        console.error("Invalid API key provided");
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { 
+            status: 401,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
+
+      // Optional: Add user agent validation for additional security
+      if (userAgent && !userAgent.includes("langgraph-worker")) {
+        console.warn("Unexpected user agent for LangGraph webhook:", userAgent);
+      }
+
+      const payload = await request.json() as any;
+      
+      // Process the webhook
+      await ctx.runMutation(internal.langgraph.webhooks.handleAnalysisCompleted, {
+        searchId: payload.search_id,
+        leadId: payload.lead_id,
+        result: payload,
+      });
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
+
+    } catch (error) {
+      console.error("LangGraph analysis webhook error:", error);
+      return new Response(
+        JSON.stringify({ error: "Webhook processing failed" }),
+        { 
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
+    }
+  }),
+});
+
 // Simple test endpoint
 http.route({
   path: "/api/test",
@@ -510,7 +656,7 @@ http.route({
     return new Response(null, {
       status: 200,
       headers: {
-        "Access-Control-Allow-Origin": process.env.APP_URL || "http://localhost:3000",
+        "Access-Control-Allow-Origin": process.env.APP_URL || "http://localhost:5173",
         "Access-Control-Allow-Headers": "Content-Type",
         "Access-Control-Allow-Methods": "GET, OPTIONS",
       },

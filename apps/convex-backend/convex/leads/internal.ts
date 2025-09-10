@@ -190,8 +190,24 @@ export const cacheDomainData = internalMutation({
 export const updateLeadAnalysis = internalMutation({
   args: {
     leadId: v.id("leads"),
-    aiAnalysis: v.any(),
-    emailContent: v.optional(v.any()),
+    aiAnalysis: v.object({
+      relevanceScore: v.number(),
+      painPoints: v.array(v.string()),
+      valueMatches: v.array(v.string()),
+      recommendations: v.array(v.string()),
+      leadAnalysis: v.any(),
+      processingTime: v.number(),
+      confidence: v.optional(v.number()),
+      // Legacy fields for backward compatibility
+      fitAssessment: v.optional(v.string()),
+      recommendedApproach: v.optional(v.string()),
+    }),
+    emailContent: v.optional(v.object({
+      subject: v.string(),
+      body: v.string(),
+      personalizationNotes: v.array(v.string()),
+      estimatedEffectiveness: v.number(),
+    })),
   },
   handler: async (ctx, args) => {
     const updateData: any = {
@@ -203,7 +219,65 @@ export const updateLeadAnalysis = internalMutation({
       updateData.emailContent = args.emailContent;
     }
 
+    // Track analysis attempts
+    const currentLead = await ctx.db.get(args.leadId);
+    if (currentLead) {
+      updateData.analysisAttempts = (currentLead.analysisAttempts || 0) + 1;
+      updateData.lastAnalysisAttempt = Date.now();
+      
+      // Clear any previous analysis errors if this was successful
+      if (args.aiAnalysis.relevanceScore > 0) {
+        updateData.analysisError = undefined;
+      } else if (args.aiAnalysis.leadAnalysis?.error) {
+        updateData.analysisError = args.aiAnalysis.leadAnalysis.error;
+      }
+    }
+
     await ctx.db.patch(args.leadId, updateData);
+  },
+});
+
+// Internal mutation to create email sequence from LangGraph results
+export const createEmailSequence = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+    userId: v.id("users"),
+    requestId: v.string(),
+    emailContent: v.object({
+      subject: v.string(),
+      body: v.string(),
+      personalizationNotes: v.array(v.string()),
+      estimatedEffectiveness: v.number(),
+    }),
+    agentResults: v.optional(v.array(v.object({
+      agentName: v.string(),
+      role: v.string(),
+      output: v.string(),
+      confidenceScore: v.number(),
+      executionTime: v.number(),
+    }))),
+    processingTime: v.optional(v.number()),
+    recommendations: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("emailSequences", {
+      leadId: args.leadId,
+      userId: args.userId,
+      requestId: args.requestId,
+      subject: args.emailContent.subject,
+      body: args.emailContent.body,
+      tone: "professional",
+      personalizationNotes: args.emailContent.personalizationNotes,
+      sequenceType: "primary",
+      sequenceOrder: 1,
+      agentResults: args.agentResults || [],
+      estimatedEffectiveness: args.emailContent.estimatedEffectiveness,
+      recommendations: args.recommendations || [],
+      processingTime: args.processingTime || 0,
+      status: "generated",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
   },
 });
 

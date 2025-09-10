@@ -18,12 +18,12 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState } from "react";
+import { PRICING_CONFIG, getPlanPrice, getAnnualSavings, formatPrice, type PlanType } from "@/lib/pricing-config";
 
 interface PricingPlan {
+  id: PlanType;
   name: string;
   description: string;
-  monthlyPrice: number;
-  annualPrice: number;
   features: string[];
   limitations?: string[];
   cta: string;
@@ -34,12 +34,11 @@ interface PricingPlan {
 export default function PricingPage() {
   const [isAnnual, setIsAnnual] = useState(false);
 
-  const plans = [
+  const plans: PricingPlan[] = [
     {
+      id: 'starter',
       name: "Starter",
       description: "Perfect for trying out Genni with managed infrastructure",
-      monthlyPrice: 0,
-      annualPrice: 0,
       features: [
         "10 searches per month",
         "Up to 25 leads per search",
@@ -59,10 +58,9 @@ export default function PricingPage() {
       popular: false
     },
     {
+      id: 'professional',
       name: "Professional",
       description: "For growing businesses and sales teams",
-      monthlyPrice: 149,
-      annualPrice: 119,
       features: [
         "50 searches per month",
         "Up to 500 leads per search",
@@ -84,10 +82,9 @@ export default function PricingPage() {
       popular: true
     },
     {
+      id: 'business',
       name: "Business",
       description: "For established teams scaling their outreach",
-      monthlyPrice: 449,
-      annualPrice: 359,
       features: [
         "200 searches per month",
         "Up to 2,000 leads per search",
@@ -111,10 +108,9 @@ export default function PricingPage() {
       popular: false
     },
     {
+      id: 'enterprise',
       name: "Enterprise",
       description: "For large teams and organizations - BYOK option available",
-      monthlyPrice: 999,
-      annualPrice: 799,
       features: [
         "Unlimited searches",
         "Unlimited leads per search",
@@ -210,7 +206,11 @@ export default function PricingPage() {
   ];
 
   const getPrice = (plan: PricingPlan) => {
-    return isAnnual ? plan.annualPrice : plan.monthlyPrice;
+    return getPlanPrice(plan.id, isAnnual);
+  };
+
+  const getSavings = (plan: PricingPlan) => {
+    return getAnnualSavings(plan.id);
   };
 
   return (
@@ -268,7 +268,7 @@ export default function PricingPage() {
             />
             <span className={isAnnual ? "font-medium" : "text-muted-foreground"}>
               Annual
-              <Badge variant="secondary" className="ml-2">Save 20%</Badge>
+              <Badge variant="secondary" className="ml-2">Save up to 20%</Badge>
             </span>
           </div>
         </div>
@@ -299,17 +299,17 @@ export default function PricingPage() {
                   <div className="mt-4">
                     <div className="flex items-baseline justify-center">
                       <span className="text-5xl font-bold">
-                        ${getPrice(plan)}
+                        {formatPrice(getPrice(plan))}
                       </span>
-                      {plan.monthlyPrice > 0 && (
+                      {getPrice(plan) > 0 && (
                         <span className="text-muted-foreground ml-2">
-                          /{isAnnual ? 'year' : 'month'}
+                          /{isAnnual ? 'month' : 'month'}
                         </span>
                       )}
                     </div>
-                    {isAnnual && plan.monthlyPrice > 0 && (
+                    {isAnnual && getPrice(plan) > 0 && getSavings(plan) > 0 && (
                       <p className="text-sm text-muted-foreground mt-1">
-                        ${plan.monthlyPrice}/month billed annually
+                        ${getPlanPrice(plan.id, false)}/month billed annually (Save {getSavings(plan)}%)
                       </p>
                     )}
                   </div>

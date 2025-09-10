@@ -86,7 +86,8 @@
       "Bash(pnpm --filter @genni/web lint)",
       "Bash(pnpm --filter @genni/web build)",
       "Bash(cd:*)",
-      "Bash(pnpm --filter @genni/convex-backend lint)"
+      "Bash(pnpm --filter @genni/convex-backend lint)",
+      "Read(//Users/mountain/Documents/**)"
     ],
     "deny": []
   }

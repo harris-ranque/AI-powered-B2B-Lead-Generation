@@ -19,6 +19,7 @@ import {
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { ErrorBoundaryWrapper } from "@/components/ErrorBoundary";
+import { PRICING_CONFIG, getPlanPrice, formatPrice } from "@/lib/pricing-config";
 
 export default function LandingPage() {
   const [isHovered, setIsHovered] = useState<string | null>(null);
@@ -118,31 +119,31 @@ export default function LandingPage() {
 
   const pricingPlans = [
     {
-      name: "Free",
-      price: "$0",
+      name: "Starter",
+      price: formatPrice(getPlanPrice('starter', false)),
       description: "Perfect for trying out Lead Eternity",
       features: [
-        "50 credits per month",
+        "10 searches per month",
         "Up to 25 leads per search",
-        "5 searches per month",
-        "Email generation",
-        "Basic analytics"
+        "500 lead enrichments per month",
+        "Basic lead discovery",
+        "Community support"
       ],
-      cta: "Get Started",
+      cta: "Get Started Free",
       highlighted: false
     },
     {
-      name: "Pro",
-      price: "$49",
-      description: "For growing businesses",
+      name: "Professional",
+      price: formatPrice(getPlanPrice('professional', false)),
+      description: "For growing businesses and sales teams",
       features: [
-        "500 credits per month",
-        "Up to 100 leads per search",
         "50 searches per month",
+        "Up to 500 leads per search",
+        "25,000 lead enrichments per month",
         "Advanced AI analysis",
+        "Email generation",
         "API access",
-        "Priority support",
-        "Bulk operations"
+        "Priority support"
       ],
       cta: "Start Free Trial",
       highlighted: true
@@ -152,12 +153,12 @@ export default function LandingPage() {
       price: "Custom",
       description: "For large teams and organizations",
       features: [
-        "2000+ credits per month",
         "Unlimited searches",
-        "500 leads per search",
+        "Unlimited leads per search",
+        "Unlimited enrichments",
         "Custom AI training",
         "Dedicated account manager",
-        "SLA guarantee",
+        "SLA guarantee (99.9% uptime)",
         "White-label options"
       ],
       cta: "Contact Sales",

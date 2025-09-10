@@ -1,9 +1,10 @@
 """
-Supervisor node for routing and orchestration in LangGraph workflow
+Simplified supervisor for 3-agent linear workflow
+Note: This supervisor is now simplified since we use a direct linear flow:
+Business Intelligence → Email Generation → Quality Assurance → End
 """
 from typing import Literal
 from langchain_openai import ChatOpenAI
-# from langgraph.types import Command  # Not needed with string routing
 from ..utils.config import get_settings
 from ..utils.logger import setup_logger
 from .state import EmailGenerationState

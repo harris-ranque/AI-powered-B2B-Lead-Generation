@@ -3,7 +3,12 @@
  * 
  * This file contains test scenarios and validation functions for the complete
  * subscription system implementation.
+ * 
+ * IMPORTANT: All pricing values are now loaded from environment variables.
+ * No hardcoded pricing should exist in tests.
  */
+
+import { PRICING_CONFIG, getPlanPrice, formatPrice } from '../lib/pricing-config';
 
 export interface TestScenario {
   name: string;
@@ -62,10 +67,10 @@ export const subscriptionFlowTests: TestScenario[] = [
         action: "User navigates to pricing page",
         expectedResult: "All 4 plans displayed correctly",
         validationChecks: [
-          "Starter plan shows $0/month",
-          "Professional plan shows $149/month", 
-          "Business plan shows $449/month",
-          "Enterprise plan shows $999/month",
+          `Starter plan shows ${formatPrice(getPlanPrice('starter', false))}/month`,
+          `Professional plan shows ${formatPrice(getPlanPrice('professional', false))}/month`, 
+          `Business plan shows ${formatPrice(getPlanPrice('business', false))}/month`,
+          `Enterprise plan shows ${formatPrice(getPlanPrice('enterprise', false))}/month`,
           "No free trial mentions",
           "BYOK only mentioned for Enterprise"
         ]
@@ -76,7 +81,7 @@ export const subscriptionFlowTests: TestScenario[] = [
         validationChecks: [
           "URL is /subscribe/professional",
           "Plan details loaded correctly",
-          "Price shows $149/month",
+          `Price shows ${formatPrice(getPlanPrice('professional', false))}/month`,
           "Features list displays Professional benefits"
         ]
       },

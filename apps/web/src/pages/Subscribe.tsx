@@ -9,15 +9,12 @@ import { Switch } from "@/components/ui/switch";
 import { Loader2, CheckCircle, ArrowLeft, Bot, CreditCard } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { convex } from "@/lib/convex";
+import { PRICING_CONFIG, getPlanPrice, getAnnualSavings, formatPrice, getStripePriceId, type PlanType } from "@/lib/pricing-config";
 
 interface PlanConfig {
-  id: string;
+  id: PlanType;
   name: string;
   description: string;
-  monthlyPrice: number;
-  yearlyPrice: number;
-  stripePriceIdMonthly: string;
-  stripePriceIdYearly: string;
   features: string[];
   limits: {
     monthlySearches: number;
@@ -29,13 +26,9 @@ interface PlanConfig {
 
 const planConfigs: Record<string, PlanConfig> = {
   professional: {
-    id: "professional",
+    id: 'professional',
     name: "Professional",
     description: "For growing businesses and sales teams",
-    monthlyPrice: 149,
-    yearlyPrice: 119,
-    stripePriceIdMonthly: process.env.VITE_STRIPE_PRO_PRICE_ID || "price_pro_monthly",
-    stripePriceIdYearly: process.env.VITE_STRIPE_PRO_PRICE_ID_YEARLY || "price_pro_yearly",
     features: [
       "50 searches per month",
       "Up to 500 leads per search", 
@@ -55,13 +48,9 @@ const planConfigs: Record<string, PlanConfig> = {
     }
   },
   business: {
-    id: "business", 
+    id: 'business', 
     name: "Business",
     description: "For established teams scaling their outreach",
-    monthlyPrice: 449,
-    yearlyPrice: 359,
-    stripePriceIdMonthly: process.env.VITE_STRIPE_BUSINESS_PRICE_ID || "price_business_monthly",
-    stripePriceIdYearly: process.env.VITE_STRIPE_BUSINESS_PRICE_ID_YEARLY || "price_business_yearly",
     features: [
       "200 searches per month",
       "Up to 2,000 leads per search",
@@ -135,7 +124,7 @@ export default function Subscribe() {
     if (!plan) return;
     
     setIsLoading(true);
-    const priceId = isAnnual ? plan.stripePriceIdYearly : plan.stripePriceIdMonthly;
+    const priceId = getStripePriceId(plan.id, isAnnual);
     const billingCycle = isAnnual ? "yearly" : "monthly";
     
     createCheckoutSession.mutate({
@@ -156,8 +145,8 @@ export default function Subscribe() {
     );
   }
 
-  const currentPrice = isAnnual ? plan.yearlyPrice : plan.monthlyPrice;
-  const savings = isAnnual ? Math.round(((plan.monthlyPrice * 12 - plan.yearlyPrice * 12) / (plan.monthlyPrice * 12)) * 100) : 0;
+  const currentPrice = getPlanPrice(plan.id, isAnnual);
+  const savings = isAnnual ? getAnnualSavings(plan.id) : 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -218,14 +207,14 @@ export default function Subscribe() {
               {/* Pricing */}
               <div className="text-center">
                 <div className="flex items-baseline justify-center">
-                  <span className="text-4xl font-bold">${currentPrice}</span>
+                  <span className="text-4xl font-bold">{formatPrice(currentPrice)}</span>
                   <span className="text-muted-foreground ml-2">
                     /{isAnnual ? 'month' : 'month'}
                   </span>
                 </div>
-                {isAnnual && (
+                {isAnnual && savings > 0 && (
                   <p className="text-sm text-muted-foreground mt-1">
-                    ${plan.yearlyPrice * 12}/year • Save ${(plan.monthlyPrice * 12) - (plan.yearlyPrice * 12)}/year
+                    ${getPlanPrice(plan.id, true) * 12}/year • Save ${(getPlanPrice(plan.id, false) * 12) - (getPlanPrice(plan.id, true) * 12)}/year
                   </p>
                 )}
               </div>
@@ -253,7 +242,7 @@ export default function Subscribe() {
                 Complete Your Subscription
               </CardTitle>
               <CardDescription>
-                Subscribe for ${currentPrice}/{isAnnual ? 'month' : 'month'} - cancel anytime
+                Subscribe for {formatPrice(currentPrice)}/{isAnnual ? 'month' : 'month'} - cancel anytime
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -269,17 +258,17 @@ export default function Subscribe() {
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span>{plan.name} Plan ({isAnnual ? 'Annual' : 'Monthly'})</span>
-                  <span>${currentPrice}/{isAnnual ? 'month' : 'month'}</span>
+                  <span>{formatPrice(currentPrice)}/{isAnnual ? 'month' : 'month'}</span>
                 </div>
                 {isAnnual && savings > 0 && (
                   <div className="flex justify-between text-green-600">
                     <span>Annual Discount</span>
-                    <span>-${plan.monthlyPrice - plan.yearlyPrice}/month</span>
+                    <span>-${getPlanPrice(plan.id, false) - getPlanPrice(plan.id, true)}/month</span>
                   </div>
                 )}
                 <div className="border-t pt-3 flex justify-between font-semibold">
                   <span>Total</span>
-                  <span>${currentPrice}/{isAnnual ? 'month' : 'month'}</span>
+                  <span>{formatPrice(currentPrice)}/{isAnnual ? 'month' : 'month'}</span>
                 </div>
               </div>
 

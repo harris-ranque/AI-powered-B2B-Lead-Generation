@@ -21,44 +21,34 @@ export const createCheckoutSession = action({
     }
 
     try {
-      // Create checkout session with Stripe API
-      const checkoutData: any = {
-        mode: 'subscription',
-        payment_method_types: ['card'],
-        line_items: [{
-          price: args.priceId,
-          quantity: 1,
-        }],
-        success_url: args.successUrl || `${process.env.APP_URL}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: args.cancelUrl || `${process.env.APP_URL}/pricing`,
-        customer: user.stripeCustomerId,
-        metadata: {
-          userId: user._id,
-          planId: args.planId,
-          billingCycle: args.billingCycle,
-        },
-        subscription_data: {
-          metadata: {
-            userId: user._id,
-            planId: args.planId,
-          },
-        },
-      };
-
-      // If user doesn't have a Stripe customer ID, create one
-      if (!user.stripeCustomerId) {
-        checkoutData.customer_email = user.email;
+      // Create checkout session with Stripe API - properly form-encode nested objects
+      const params = new URLSearchParams();
+      params.set('mode', 'subscription');
+      params.set('payment_method_types[0]', 'card');
+      params.set('line_items[0][price]', args.priceId);
+      params.set('line_items[0][quantity]', '1');
+      params.set('success_url', args.successUrl || `${process.env.APP_URL}/subscription/success?session_id={CHECKOUT_SESSION_ID}`);
+      params.set('cancel_url', args.cancelUrl || `${process.env.APP_URL}/pricing`);
+      
+      if (user.stripeCustomerId) {
+        params.set('customer', user.stripeCustomerId);
+      } else {
+        params.set('customer_email', user.email);
       }
+      
+      params.set('metadata[userId]', user._id);
+      params.set('metadata[planId]', args.planId);
+      params.set('metadata[billingCycle]', args.billingCycle);
+      params.set('subscription_data[metadata][userId]', user._id);
+      params.set('subscription_data[metadata][planId]', args.planId);
 
-      // In a real implementation, you would use the Stripe SDK here
-      // For now, we'll simulate the response structure
       const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${stripeSecretKey}`,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: new URLSearchParams(checkoutData as any).toString(),
+        body: params.toString(),
       });
 
       if (!response.ok) {

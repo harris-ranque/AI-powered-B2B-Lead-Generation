@@ -15,8 +15,8 @@ from ..models.lead_models import (
 
 class EmailGenerationState(TypedDict):
     """
-    Complete state for email generation workflow.
-    Shared across all nodes in the LangGraph.
+    Optimized state for 3-agent email generation workflow.
+    Streamlined for Business Intelligence → Email Generation → Quality Assurance flow.
     """
     # Input data
     request_id: str
@@ -24,29 +24,30 @@ class EmailGenerationState(TypedDict):
     business_profile: BusinessProfile
     requirements: EmailRequirements
     
-    # Workflow control
+    # Workflow control (simplified for 3-agent flow)
     current_stage: Literal[
         "start",
-        "relevance_analysis",
-        "business_context_research",  # Added for enhanced research stage
-        "pain_point_research", 
-        "value_matching",
-        "email_writing",
-        "followup_strategy",
-        "aggregation",
+        "business_intelligence_complete",
+        "email_generation_complete", 
+        "quality_assurance_complete",
         "complete",
         "error"
     ]
-    next_agent: Optional[str]
     
-    # Agent outputs
+    # Core agent outputs
+    business_intelligence: Optional[Dict[str, Any]]  # Comprehensive business intelligence from Agent 1
+    primary_email: Optional[EmailContent]           # Generated email from Agent 2
+    follow_up_sequence: Optional[FollowUpSequence]  # Follow-up sequence from Agent 2
+    email_metadata: Optional[Dict[str, Any]]        # Email generation metadata from Agent 2
+    quality_assessment: Optional[Dict[str, Any]]    # Quality assessment from Agent 3
+    final_result: Optional[Dict[str, Any]]          # Final validated result from Agent 3
+    
+    # Legacy compatibility fields (maintained for backward compatibility)
     relevance_analysis: Optional[Dict[str, Any]]
     relevance_score: Optional[float]
-    business_context: Optional[Dict[str, Any]]  # Enhanced business context from tiered research
+    business_context: Optional[Dict[str, Any]]
     pain_points: Optional[List[str]]
     value_matches: Optional[List[str]]
-    primary_email: Optional[EmailContent]
-    follow_up_sequence: Optional[FollowUpSequence]
     
     # Metadata and tracking
     agent_results: Optional[List[AgentResult]]

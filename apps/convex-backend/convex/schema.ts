@@ -214,14 +214,26 @@ export default defineSchema({
     // Raw enrichment data from FindyMail API
     enrichmentData: v.optional(v.any()), // Flexible storage for API response data
     
-    // AI Analysis from CrewAI
+    // AI Analysis from LangGraph
     aiAnalysis: v.optional(v.object({
       relevanceScore: v.number(),
       painPoints: v.array(v.string()),
       valueMatches: v.array(v.string()),
-      fitAssessment: v.string(),
-      recommendedApproach: v.string(),
-      confidence: v.number(),
+      recommendations: v.optional(v.array(v.string())),
+      leadAnalysis: v.optional(v.any()), // Full analysis object from LangGraph
+      processingTime: v.optional(v.number()),
+      confidence: v.optional(v.number()),
+      // Legacy fields for backward compatibility
+      fitAssessment: v.optional(v.string()),
+      recommendedApproach: v.optional(v.string()),
+    })),
+    
+    // Primary email content from LangGraph
+    emailContent: v.optional(v.object({
+      subject: v.string(),
+      body: v.string(),
+      personalizationNotes: v.array(v.string()),
+      estimatedEffectiveness: v.number(),
     })),
     
     // Analysis retry tracking

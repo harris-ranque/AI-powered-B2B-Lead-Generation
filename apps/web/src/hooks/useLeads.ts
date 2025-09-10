@@ -12,7 +12,8 @@ export function useLeads(searchId?: Id<"searches">) {
     searchId ? { searchId } : "skip"
   );
   
-  const leads = leadsResult?.leads;
+  // Fix: backend returns array directly, not { leads }
+  const leads = leadsResult || [];
   
   const updateLeadMutation = useMutation(api.leads.mutations.updateLead);
   const updateLeadStatusMutation = useMutation(api.leads.mutations.updateLeadStatus);
@@ -20,7 +21,7 @@ export function useLeads(searchId?: Id<"searches">) {
   const deleteLeadMutation = useMutation(api.leads.mutations.deleteLead);
 
   useEffect(() => {
-    if (leads) {
+    if (leads && leads.length > 0) {
       logger.debug('Leads loaded', {
         searchId,
         count: leads.length,

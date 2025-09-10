@@ -29,7 +29,8 @@ export function EnrichmentStage() {
     return state.leads.length > 0 ? state.leads : (searchLeads || []);
   }, [state.leads, searchLeads]);
   
-  const enrichedCount = leads.filter(lead => lead.email).length;
+  // Fix: check contactInfo.emails instead of lead.email
+  const enrichedCount = leads.filter(lead => lead.contactInfo?.emails && lead.contactInfo.emails.length > 0).length;
   const enrichmentProgress = leads.length > 0 ? (enrichedCount / leads.length) * 100 : 0;
   
   // Auto-advance when enrichment is complete
@@ -155,7 +156,7 @@ export function EnrichmentStage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {leads.filter(lead => lead.email).slice(0, 5).map((lead, index) => (
+            {leads.filter(lead => lead.contactInfo?.emails && lead.contactInfo.emails.length > 0).slice(0, 5).map((lead, index) => (
               <div 
                 key={lead.id} 
                 className="flex items-center gap-4 p-3 rounded-lg bg-muted/10 transition-all duration-300 hover:bg-muted/20"
@@ -166,7 +167,7 @@ export function EnrichmentStage() {
                 
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{lead.company_name}</div>
-                  <div className="text-sm text-muted-foreground">{lead.email}</div>
+                  <div className="text-sm text-muted-foreground">{lead.contactInfo?.emails?.[0]?.email || 'Email found'}</div>
                 </div>
                 
                 <div className="flex gap-1">

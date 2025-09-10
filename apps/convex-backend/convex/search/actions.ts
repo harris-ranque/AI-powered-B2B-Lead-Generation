@@ -60,11 +60,45 @@ export const searchGoogleMaps = action({
       const location = params.location;
       const radius = params.radius * 1000; // Convert km to meters
 
-      // Call Google Maps Places API
+      // First geocode the location to get lat,lng coordinates
+      let lat: number, lng: number;
+      try {
+        const geocodeUrl = new URL("https://maps.googleapis.com/maps/api/geocode/json");
+        geocodeUrl.searchParams.set("address", location);
+        geocodeUrl.searchParams.set("key", googleMapsApiKey);
+
+        const geocodeResponse = await fetch(geocodeUrl.toString());
+        const geocodeData = await geocodeResponse.json() as {
+          status: string;
+          results?: Array<{
+            geometry: {
+              location: { lat: number; lng: number };
+            };
+          }>;
+        };
+        
+        if (geocodeData.status !== "OK" || !geocodeData.results?.[0]) {
+          throw new Error(`Geocoding failed: ${geocodeData.status}`);
+        }
+        
+        const coordinates = geocodeData.results[0].geometry.location;
+        lat = coordinates.lat;
+        lng = coordinates.lng;
+        console.log(`Geocoded location "${location}" to ${lat},${lng}`);
+      } catch (geocodeError) {
+        console.error("Geocoding error:", geocodeError);
+        // Fallback: use text search without location bias
+        lat = 0;
+        lng = 0;
+      }
+
+      // Call Google Maps Places API with proper location format
       const placesUrl = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
       placesUrl.searchParams.set("query", query);
-      placesUrl.searchParams.set("location", location);
-      placesUrl.searchParams.set("radius", radius.toString());
+      if (lat !== 0 && lng !== 0) {
+        placesUrl.searchParams.set("location", `${lat},${lng}`);
+        placesUrl.searchParams.set("radius", radius.toString());
+      }
       placesUrl.searchParams.set("type", "establishment");
       placesUrl.searchParams.set("key", googleMapsApiKey);
 
@@ -100,32 +134,64 @@ export const searchGoogleMaps = action({
       // Log progress update
       console.log(`Search ${args.searchId} progress: Discovered ${totalFound} leads`);
 
-      // Create lead records for discovered places
+      // Create lead records for discovered places with Place Details enrichment
       const leadIds: string[] = [];
       for (let i = 0; i < totalFound; i++) {
         const place = places[i];
         
-        // Create lead using mutations
+        // Get detailed place information including website and phone
+        let detailedPlace = place;
+        if (place.place_id) {
+          try {
+            const detailsUrl = new URL("https://maps.googleapis.com/maps/api/place/details/json");
+            detailsUrl.searchParams.set("place_id", place.place_id);
+            detailsUrl.searchParams.set("fields", "website,formatted_phone_number,international_phone_number");
+            detailsUrl.searchParams.set("key", googleMapsApiKey);
+            
+            const detailsResponse = await fetch(detailsUrl.toString());
+            if (detailsResponse.ok) {
+              const detailsData = await detailsResponse.json() as {
+                status: string;
+                result?: {
+                  website?: string;
+                  formatted_phone_number?: string;
+                  international_phone_number?: string;
+                };
+              };
+              if (detailsData.status === "OK" && detailsData.result) {
+                detailedPlace = { ...place, ...detailsData.result };
+              }
+            }
+            
+            // Add small delay to respect rate limits
+            await new Promise(resolve => setTimeout(resolve, 100));
+          } catch (error) {
+            console.warn(`Failed to get place details for ${place.place_id}:`, error);
+            // Continue with basic place data
+          }
+        }
+        
+        // Create lead using mutations with enriched data
         const leadId = await ctx.runMutation(api.leads.mutations.createLead, {
           searchId: args.searchId,
           leadData: {
-            businessName: place.name || "Unknown",
-            address: place.formatted_address || "",
-            placeId: place.place_id || "",
+            businessName: detailedPlace.name || "Unknown",
+            address: detailedPlace.formatted_address || "",
+            placeId: detailedPlace.place_id || "",
             location: {
-              lat: place.geometry?.location?.lat || 0,
-              lng: place.geometry?.location?.lng || 0,
-              formattedAddress: place.formatted_address || "",
+              lat: detailedPlace.geometry?.location?.lat || 0,
+              lng: detailedPlace.geometry?.location?.lng || 0,
+              formattedAddress: detailedPlace.formatted_address || "",
               city: undefined,
               state: undefined,
               country: undefined,
               postalCode: undefined,
             },
-            phone: place.formatted_phone_number || undefined,
-            website: place.website || undefined,
-            rating: place.rating || undefined,
-            reviewCount: place.user_ratings_total || undefined,
-            category: place.types?.[0] || undefined,
+            phone: detailedPlace.formatted_phone_number || detailedPlace.international_phone_number || undefined,
+            website: detailedPlace.website || undefined,
+            rating: detailedPlace.rating || undefined,
+            reviewCount: detailedPlace.user_ratings_total || undefined,
+            category: detailedPlace.types?.[0] || undefined,
           },
         });
 
@@ -166,7 +232,7 @@ export const searchGoogleMaps = action({
         };
       }
 
-      // Trigger enrichment stage for discovered leads - using the action reference directly
+      // Trigger enrichment stage for discovered leads
       await ctx.scheduler.runAfter(0, "leads/actions:enrichLeads" as any, {
         searchId: args.searchId,
       });
