@@ -327,6 +327,59 @@ export const getUsageStats = query({
   },
 });
 
+// Get system control status
+export const getSystemControlStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+
+    const systemConfig = await ctx.db
+      .query("systemConfiguration")
+      .unique();
+
+    // Get current processing statistics
+    const processingSearches = await ctx.db
+      .query("searches")
+      .filter((q) => q.eq(q.field("status"), "processing"))
+      .collect();
+
+    const inProgressSearches = await ctx.db
+      .query("searches")
+      .filter((q) => q.eq(q.field("status"), "in_progress"))
+      .collect();
+
+    const queuedSearches = await ctx.db
+      .query("searches")
+      .filter((q) => q.eq(q.field("status"), "pending"))
+      .collect();
+
+    // Get orchestration settings from system config
+    const orchestrationSettings = systemConfig?.orchestrationSettings || {
+      leadGenerationEnabled: true, // Default to enabled if no config exists
+      maintenanceMode: false,
+      maxConcurrentSearches: 10,
+      pauseReason: undefined,
+      pausedAt: undefined,
+      pausedBy: undefined,
+    };
+
+    return {
+      maintenanceMode: orchestrationSettings.maintenanceMode,
+      leadGenerationPaused: !orchestrationSettings.leadGenerationEnabled,
+      orchestrationSettings,
+      processingQueue: {
+        processing: processingSearches.length + inProgressSearches.length,
+        queued: queuedSearches.length,
+        total: processingSearches.length + inProgressSearches.length + queuedSearches.length,
+      },
+      systemLoad: {
+        status: processingSearches.length > 10 ? "high" : processingSearches.length > 5 ? "medium" : "low",
+        activeProcesses: processingSearches.length + inProgressSearches.length,
+      },
+    };
+  },
+});
+
 // Get system configuration
 export const getSystemConfiguration = query({
   args: {},
