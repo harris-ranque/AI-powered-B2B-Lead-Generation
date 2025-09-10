@@ -380,6 +380,67 @@ export const getSystemControlStatus = query({
   },
 });
 
+// Get system activity
+export const getSystemActivity = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    const limit = args.limit || 50;
+    const now = Date.now();
+    const oneHourAgo = now - (60 * 60 * 1000);
+
+    // Get recent system logs
+    const systemLogs = await ctx.db
+      .query("systemLogs")
+      .filter((q) => q.gte(q.field("timestamp"), oneHourAgo))
+      .order("desc")
+      .take(limit);
+
+    // Get recent searches with their status
+    const recentSearches = await ctx.db
+      .query("searches")
+      .filter((q) => q.gte(q.field("createdAt"), oneHourAgo))
+      .order("desc")
+      .take(limit);
+
+    // Get recent failed operations
+    const failedOperations = await ctx.db
+      .query("searches")
+      .filter((q) => q.eq(q.field("status"), "failed"))
+      .filter((q) => q.gte(q.field("createdAt"), oneHourAgo))
+      .collect();
+
+    return {
+      systemLogs: systemLogs.map(log => ({
+        id: log._id,
+        type: log.type,
+        action: log.action,
+        timestamp: log.timestamp,
+        data: log.data,
+      })),
+      recentSearches: recentSearches.map(search => ({
+        id: search._id,
+        userId: search.userId,
+        status: search.status,
+        createdAt: search._creationTime,
+        name: search.name,
+        parameters: search.parameters,
+      })),
+      failedOperations: failedOperations.length,
+      activitySummary: {
+        totalSearches: recentSearches.length,
+        failedSearches: failedOperations.length,
+        successRate: recentSearches.length > 0 
+          ? Math.round(((recentSearches.length - failedOperations.length) / recentSearches.length) * 100)
+          : 100,
+      },
+    };
+  },
+});
+
 // Get system configuration
 export const getSystemConfiguration = query({
   args: {},
