@@ -15,8 +15,13 @@ function decryptApiKey(encryptedKey: string): string {
 
 function hashApiKey(key: string): string {
   // Simple hash for lookup (in production, use proper hashing)
-  const crypto = require('crypto');
-  return crypto.createHash('sha256').update(key).digest('hex');
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    const char = key.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash).toString(16);
 }
 
 // Add or update API key

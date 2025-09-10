@@ -242,3 +242,50 @@ export const commitReservation = internalMutation({
     }
   },
 });
+
+// Refund credits to a user
+export const refundCredits = internalMutation({
+  args: {
+    userId: v.id("users"),
+    amount: v.number(),
+    reason: v.string(),
+    relatedEntityType: v.optional(v.string()),
+    relatedEntityId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    try {
+      // Validate inputs
+      if (args.amount <= 0) {
+        throw new Error("Refund amount must be positive");
+      }
+
+      // Call the recordTransaction mutation
+      const result: { success: boolean; error?: string; transactionId?: string; newBalance?: number } = await ctx.runMutation(internal.credits.transactions.recordTransaction, {
+        userId: args.userId,
+        amount: args.amount,
+        operation: "refund",
+        description: `Refund: ${args.reason}`,
+        relatedEntityType: args.relatedEntityType,
+        relatedEntityId: args.relatedEntityId,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to record refund transaction");
+      }
+
+      console.log(`Credits refunded: ${args.amount} to user ${args.userId} (${args.reason})`);
+      return {
+        success: true,
+        transactionId: result.transactionId,
+        newBalance: result.newBalance,
+        amountRefunded: args.amount,
+      };
+    } catch (error) {
+      console.error(`Error refunding credits to user ${args.userId}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  },
+});

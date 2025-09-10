@@ -327,6 +327,19 @@ export const getUsageStats = query({
   },
 });
 
+// Get system configuration
+export const getSystemConfiguration = query({
+  args: {},
+  handler: async (ctx) => {
+    // No auth required - this is used by system processes
+    const systemConfig = await ctx.db
+      .query("systemConfiguration")
+      .unique();
+
+    return systemConfig;
+  },
+});
+
 // Get admin settings
 export const getAdminSettings = query({
   args: {},
@@ -338,12 +351,13 @@ export const getAdminSettings = query({
       .unique();
 
     return {
-      maintenanceMode: false, // Not available in current schema
+      maintenanceMode: systemConfig?.orchestrationSettings?.maintenanceMode || false,
       registrationEnabled: true, // Not available in current schema
       maxDailySearches: 100, // Not available in current schema
       systemMessage: "", // Not available in current schema
       creditCosts: systemConfig?.creditCosts || null,
       planLimits: systemConfig?.planLimits || null,
+      orchestrationSettings: systemConfig?.orchestrationSettings || null,
     };
   },
 });

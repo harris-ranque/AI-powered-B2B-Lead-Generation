@@ -185,3 +185,41 @@ export const cacheDomainData = internalMutation({
     }
   },
 });
+
+// Internal mutation to update lead with AI analysis results
+export const updateLeadAnalysis = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+    aiAnalysis: v.any(),
+    emailContent: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const updateData: any = {
+      aiAnalysis: args.aiAnalysis,
+      updatedAt: Date.now(),
+    };
+
+    if (args.emailContent) {
+      updateData.emailContent = args.emailContent;
+    }
+
+    await ctx.db.patch(args.leadId, updateData);
+  },
+});
+
+// Internal query to get enriched leads
+export const getEnrichedLeads = internalQuery({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .filter((q) => 
+        q.or(
+          q.eq(q.field("enrichmentStatus"), "completed"),
+          q.eq(q.field("enrichmentStatus"), "completed_fallback")
+        )
+      )
+      .collect();
+  },
+});

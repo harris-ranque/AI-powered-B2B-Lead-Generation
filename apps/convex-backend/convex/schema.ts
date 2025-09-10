@@ -9,7 +9,7 @@ export default defineSchema({
     email: v.string(),
     name: v.optional(v.string()),
     avatar: v.optional(v.string()),
-    plan: v.union(v.literal("starter"), v.literal("professional"), v.literal("business"), v.literal("enterprise")),
+    plan: v.union(v.literal("free"), v.literal("pro"), v.literal("starter"), v.literal("professional"), v.literal("business"), v.literal("enterprise")),
     credits: v.number(),
     role: v.union(v.literal("user"), v.literal("admin")),
     isActive: v.boolean(),
@@ -77,6 +77,7 @@ export default defineSchema({
     status: v.union(
       v.literal("pending"),
       v.literal("in_progress"),
+      v.literal("processing"),
       v.literal("completed"),
       v.literal("failed"),
       v.literal("cancelled")
@@ -306,7 +307,7 @@ export default defineSchema({
     stripePriceId: v.optional(v.string()),
     
     // Enhanced plan details
-    plan: v.union(v.literal("starter"), v.literal("professional"), v.literal("business"), v.literal("enterprise")),
+    plan: v.union(v.literal("free"), v.literal("pro"), v.literal("starter"), v.literal("professional"), v.literal("business"), v.literal("enterprise")),
     billingCycle: v.union(v.literal("monthly"), v.literal("yearly")),
     amount: v.number(),
     currency: v.string(),
@@ -576,6 +577,14 @@ export default defineSchema({
         apiAccess: v.boolean(),
       }),
     }),
+    orchestrationSettings: v.optional(v.object({
+      leadGenerationEnabled: v.boolean(),  // Emergency stop flag
+      maintenanceMode: v.boolean(),
+      maxConcurrentSearches: v.number(),
+      pauseReason: v.optional(v.string()),
+      pausedAt: v.optional(v.number()),
+      pausedBy: v.optional(v.id("users")),
+    })),
     createdAt: v.number(),
     updatedAt: v.number(),
     updatedBy: v.id("users"),

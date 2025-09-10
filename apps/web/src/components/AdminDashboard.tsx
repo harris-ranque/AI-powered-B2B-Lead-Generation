@@ -1855,10 +1855,196 @@ export function AdminDashboard() {
 
           <TabsContent value="system" className="mt-6">
             {safeRender(() => (
-              <Card className="p-6">
-                <h3 className="text-lg font-semibold mb-4">System Health Details</h3>
-                <p className="text-muted-foreground">Detailed system monitoring and logs will be implemented here.</p>
-              </Card>
+              <div className="space-y-6">
+                {/* Emergency Stop Controls */}
+                <Card className="border-red-500 bg-red-50">
+                  <div className="p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <AlertTriangle className="h-6 w-6 text-red-600" />
+                      <h3 className="text-lg font-semibold text-red-700">Emergency Controls</h3>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      {systemStatus?.leadGenerationPaused ? (
+                        <div className="space-y-3">
+                          <Alert variant="destructive">
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertDescription>
+                              <strong>LEAD GENERATION IS PAUSED</strong>
+                              <br />
+                              Reason: {systemStatus.orchestrationSettings?.pauseReason || "Administrative stop"}
+                              <br />
+                              Paused: {systemStatus.orchestrationSettings?.pausedAt ? 
+                                new Date(systemStatus.orchestrationSettings.pausedAt).toLocaleString() : "Unknown"}
+                            </AlertDescription>
+                          </Alert>
+                          
+                          <Button 
+                            onClick={async () => {
+                              try {
+                                await resumeAllLeadGeneration();
+                                toast({
+                                  title: "System Resumed",
+                                  description: "Lead generation has been resumed successfully.",
+                                });
+                              } catch (error) {
+                                toast({
+                                  title: "Resume Failed",
+                                  description: "Failed to resume lead generation. Please try again.",
+                                  variant: "destructive",
+                                });
+                              }
+                            }}
+                            className="bg-green-600 hover:bg-green-700"
+                            disabled={systemControlLoading}
+                          >
+                            <Play className="h-4 w-4 mr-2" />
+                            Resume Lead Generation
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <Alert>
+                            <CheckCircle className="h-4 w-4" />
+                            <AlertDescription>
+                              Lead generation system is <strong>ACTIVE</strong> and processing requests normally.
+                            </AlertDescription>
+                          </Alert>
+                          
+                          <Button 
+                            onClick={async () => {
+                              const confirmed = confirm(
+                                "⚠️ EMERGENCY STOP ⚠️\n\n" +
+                                "This will immediately halt ALL lead generation operations.\n" +
+                                "Active searches will be cancelled and users will be notified.\n\n" +
+                                "Are you sure you want to proceed?"
+                              );
+                              
+                              if (confirmed) {
+                                try {
+                                  const result = await pauseAllLeadGeneration({ 
+                                    reason: "Emergency stop initiated by administrator" 
+                                  });
+                                  toast({
+                                    title: "🚨 EMERGENCY STOP ACTIVATED",
+                                    description: `Lead generation halted. ${result?.cancelledSearches || 0} searches cancelled.`,
+                                    variant: "destructive",
+                                    duration: 10000,
+                                  });
+                                } catch (error) {
+                                  toast({
+                                    title: "Emergency Stop Failed",
+                                    description: "Failed to stop lead generation. Please try again.",
+                                    variant: "destructive",
+                                  });
+                                }
+                              }
+                            }}
+                            variant="destructive"
+                            className="bg-red-600 hover:bg-red-700"
+                            disabled={systemControlLoading}
+                          >
+                            <Square className="h-4 w-4 mr-2" />
+                            🚨 EMERGENCY STOP - Halt All Operations
+                          </Button>
+                        </div>
+                      )}
+                      
+                      <div className="pt-4 border-t">
+                        <h4 className="font-medium mb-2">Quick Actions</h4>
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                await clearAllActiveSearches({ reason: "Admin maintenance" });
+                                toast({
+                                  title: "Active Searches Cleared",
+                                  description: "All active searches have been cancelled.",
+                                });
+                              } catch (error) {
+                                toast({
+                                  title: "Clear Failed",
+                                  description: "Failed to clear active searches.",
+                                  variant: "destructive",
+                                });
+                              }
+                            }}
+                            disabled={systemControlLoading}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Clear Active Searches
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* System Status */}
+                <Card className="p-6">
+                  <h3 className="text-lg font-semibold mb-4">System Status</h3>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600">
+                        {systemStatus?.processingQueue?.processing || 0}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Processing</div>
+                    </div>
+                    
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-yellow-600">
+                        {systemStatus?.processingQueue?.queued || 0}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Queued</div>
+                    </div>
+                    
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">
+                        {systemStatus?.systemLoad?.activeProcesses || 0}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Active</div>
+                    </div>
+                    
+                    <div className="text-center">
+                      <Badge variant={
+                        systemStatus?.systemLoad?.status === "high" ? "destructive" :
+                        systemStatus?.systemLoad?.status === "medium" ? "default" : "secondary"
+                      }>
+                        {systemStatus?.systemLoad?.status || "Normal"} Load
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Recent Activity */}
+                  {systemActivity?.recentSearches && systemActivity.recentSearches.length > 0 && (
+                    <div>
+                      <h4 className="font-medium mb-3">Recent Activity</h4>
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {systemActivity.recentSearches.slice(0, 10).map((search: { id: string; name: string; status: string; createdAt: number }) => (
+                          <div key={search.id} className="flex items-center justify-between p-2 bg-muted/20 rounded">
+                            <div className="flex-1">
+                              <div className="text-sm font-medium">{search.name}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {new Date(search.createdAt).toLocaleString()}
+                              </div>
+                            </div>
+                            <Badge variant={
+                              search.status === "completed" ? "default" :
+                              search.status === "failed" ? "destructive" :
+                              search.status === "cancelled" ? "secondary" : "outline"
+                            }>
+                              {search.status}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              </div>
             ), "System health tab failed to render")}
           </TabsContent>
         </Tabs>

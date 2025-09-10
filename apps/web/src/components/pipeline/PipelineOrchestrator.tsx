@@ -13,10 +13,11 @@ import { AIAnalysisStage } from './AIAnalysisStage';
 import { EmailGenerationStage } from './EmailGenerationStage';
 import { ReviewExportStage } from './ReviewExportStage';
 import { SearchProgressTracker } from '../SearchProgressTracker';
-import { CheckCircle, Clock, Sparkles, Search, Users, Brain, Zap } from 'lucide-react';
+import { CheckCircle, Clock, Sparkles, Search, Users, Brain, Zap, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSearch } from '@/hooks/useSearches';
 import { useSearchBroadcasts } from '@/hooks/useStatusBroadcasts';
+import { useAdminSystemControl } from '@/hooks/useAdmin';
 
 interface PipelineOrchestratorProps {
   userCredits: number;
@@ -34,6 +35,9 @@ export function PipelineOrchestrator({
   // Get search data and real-time updates
   const { search } = useSearch(state.searchId || undefined);
   const { broadcasts, latestStatus } = useSearchBroadcasts(state.searchId || undefined);
+  
+  // Get system status for emergency stop check
+  const { systemStatus } = useAdminSystemControl();
   
   const currentStageIndex = STAGE_ORDER.indexOf(state.currentStage);
   const progressPercentage = (currentStageIndex / (STAGE_ORDER.length - 1)) * 100;
@@ -144,13 +148,31 @@ export function PipelineOrchestrator({
         </Card>
       </div>
 
+      {/* System Status Warning */}
+      {systemStatus?.leadGenerationPaused && (
+        <Alert variant="destructive" className="border-red-500 bg-red-50">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <div className="space-y-1">
+              <div className="font-semibold">Lead generation is currently paused by administrator</div>
+              <div className="text-sm">
+                Reason: {systemStatus.orchestrationSettings?.pauseReason || "System maintenance"}
+              </div>
+              <div className="text-sm">
+                All pipeline operations are temporarily disabled. Please contact support for updates.
+              </div>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Pipeline Stepper */}
       <PipelineStepper />
 
       {/* Current Stage Content */}
       <div className={cn(
         "transition-all duration-500 ease-in-out",
-        state.isProcessing && "opacity-75 pointer-events-none"
+        (state.isProcessing || systemStatus?.leadGenerationPaused) && "opacity-75 pointer-events-none"
       )}>
         {renderStageContent()}
       </div>

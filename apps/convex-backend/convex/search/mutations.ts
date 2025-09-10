@@ -1,4 +1,5 @@
 import { mutation } from "../_generated/server";
+import { api } from "../_generated/api";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 import { withSubscriptionCheck } from "../middleware/subscriptionMiddleware";
@@ -68,7 +69,7 @@ export const createSearch = mutation({
           createdAt: Date.now(),
         });
 
-        return searchId;
+        return { searchId };
       }
     );
   },
@@ -143,11 +144,28 @@ export const createSearchCompleted = mutation({
     
     // If autoStart is true, schedule the orchestration
     if (args.autoStart) {
-      // TODO: Re-enable orchestration after fixing circular dependencies
-      console.log(`Auto-start requested for search ${searchId} - orchestration disabled temporarily`);
+      // Check if lead generation is enabled
+      const systemConfig = await ctx.db.query("systemConfiguration").unique();
+      const isEnabled = systemConfig?.orchestrationSettings?.leadGenerationEnabled ?? true;
+      
+      if (!isEnabled) {
+        // Mark search as failed due to system pause
+        await ctx.db.patch(searchId, {
+          status: "failed",
+          error: "Lead generation is currently paused by administrator",
+          completedAt: Date.now(),
+        });
+        throw new Error("Lead generation is currently paused by administrator");
+      }
+      
+      // Schedule the Google Maps search action
+      await ctx.scheduler.runAfter(0, api.search.actions.searchGoogleMaps, {
+        searchId,
+        forceRestart: false
+      });
     }
     
-    return searchId;
+    return { searchId };
   },
 });
 
@@ -158,6 +176,7 @@ export const updateSearchStatus = mutation({
     status: v.union(
       v.literal("pending"),
       v.literal("in_progress"),
+      v.literal("processing"),
       v.literal("completed"),
       v.literal("failed"),
       v.literal("cancelled")

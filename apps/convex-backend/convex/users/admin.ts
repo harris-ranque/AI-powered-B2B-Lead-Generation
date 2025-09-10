@@ -418,6 +418,14 @@ export const updateCreditCosts = mutation({
       await ctx.db.insert("systemConfiguration", {
         creditCosts: args.creditCosts,
         planLimits: PLAN_LIMITS, // Use default plan limits for now
+        orchestrationSettings: {
+          leadGenerationEnabled: true,
+          maintenanceMode: false,
+          maxConcurrentSearches: 10,
+          pauseReason: undefined,
+          pausedAt: undefined,
+          pausedBy: undefined,
+        },
         createdAt: Date.now(),
         updatedAt: Date.now(),
         updatedBy: currentUser._id,
@@ -505,6 +513,14 @@ export const updatePlanLimits = mutation({
       await ctx.db.insert("systemConfiguration", {
         creditCosts: CREDIT_COSTS, // Use default credit costs for now
         planLimits: args.planLimits,
+        orchestrationSettings: {
+          leadGenerationEnabled: true,
+          maintenanceMode: false,
+          maxConcurrentSearches: 10,
+          pauseReason: undefined,
+          pausedAt: undefined,
+          pausedBy: undefined,
+        },
         createdAt: Date.now(),
         updatedAt: Date.now(),
         updatedBy: currentUser._id,

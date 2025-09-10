@@ -135,3 +135,18 @@ export const logCorrelation = internalMutation({
     });
   },
 });
+
+// Internal mutation to update search results and progress
+export const updateSearchResults = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    results: v.any(),
+    progress: v.any(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.searchId, {
+      results: args.results,
+      progress: args.progress,
+    });
+  },
+});

@@ -85,7 +85,8 @@
       "Bash(pnpm --filter @genni/convex-backend type-check)",
       "Bash(pnpm --filter @genni/web lint)",
       "Bash(pnpm --filter @genni/web build)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(pnpm --filter @genni/convex-backend lint)"
     ],
     "deny": []
   }

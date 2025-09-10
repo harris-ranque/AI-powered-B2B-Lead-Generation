@@ -10,6 +10,12 @@ export const searchGoogleMaps = action({
     forceRestart: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    // Check emergency stop first
+    const systemConfig = await ctx.runQuery(api.admin.queries.getSystemConfiguration, {});
+    if (!systemConfig?.orchestrationSettings?.leadGenerationEnabled) {
+      throw new Error("Lead generation is currently paused. Please contact administrator.");
+    }
+
     const user = await requireAuth(ctx);
     if (!user) {
       throw new Error("Authentication required");
@@ -38,6 +44,9 @@ export const searchGoogleMaps = action({
         searchId: args.searchId,
         status: "in_progress",
       });
+
+      // Log search started
+      console.log(`Search ${args.searchId} started for user ${user._id}: Starting lead discovery...`);
 
       // Get Google Maps API key
       const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
@@ -88,6 +97,9 @@ export const searchGoogleMaps = action({
         },
       });
 
+      // Log progress update
+      console.log(`Search ${args.searchId} progress: Discovered ${totalFound} leads`);
+
       // Create lead records for discovered places
       const leadIds: string[] = [];
       for (let i = 0; i < totalFound; i++) {
@@ -130,14 +142,22 @@ export const searchGoogleMaps = action({
         },
       });
 
-      // Update search credits used
+      // Update search status to processing (discovery complete, but pipeline continues)
       await ctx.runMutation(api.search.mutations.updateSearchStatus, {
         searchId: args.searchId,
-        status: "completed", // Mark as completed regardless of results
+        status: "processing", // Changed from "completed" - pipeline continues
       });
 
-      // If no leads found, return completion message
+      // Log discovery completion
+      console.log(`Search ${args.searchId} discovery completed: ${totalFound} leads found`);
+
+      // If no leads found, complete the search immediately
       if (totalFound === 0) {
+        await ctx.runMutation(api.search.mutations.updateSearchStatus, {
+          searchId: args.searchId,
+          status: "completed",
+        });
+        
         return {
           success: true,
           message: "Search completed - no results found",
@@ -146,9 +166,14 @@ export const searchGoogleMaps = action({
         };
       }
 
+      // Trigger enrichment stage for discovered leads - using the action reference directly
+      await ctx.scheduler.runAfter(0, "leads/actions:enrichLeads" as any, {
+        searchId: args.searchId,
+      });
+
       return {
         success: true,
-        message: `Discovered ${totalFound} potential leads`,
+        message: `Discovered ${totalFound} potential leads, starting enrichment...`,
         totalFound,
         leadIds,
       };
@@ -161,6 +186,112 @@ export const searchGoogleMaps = action({
         searchId: args.searchId,
         status: "failed",
         error: error instanceof Error ? error.message : "Unknown error",
+      });
+
+      // Log error
+      console.error(`Search ${args.searchId} failed:`, error instanceof Error ? error.message : "Unknown error");
+
+      throw error;
+    }
+  },
+});
+
+// Complete the search pipeline and finalize results
+export const completeSearch: any = action({
+  args: { 
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    try {
+      console.log(`Completing search ${args.searchId}`);
+
+      // Get search info
+      const search = await ctx.runQuery(internal.search.internal.getSearchInternal, {
+        searchId: args.searchId,
+      });
+      
+      if (!search) {
+        throw new Error("Search not found");
+      }
+
+      // Calculate final results
+      const results: any = await ctx.runQuery(internal.search.internal.getSearchResults, {
+        searchId: args.searchId,
+      });
+
+      // Update search status to completed with final results
+      await ctx.runMutation(api.search.mutations.updateSearchStatus, {
+        searchId: args.searchId,
+        status: "completed",
+      });
+
+      // Update search progress and results
+      await ctx.runMutation(internal.search.internal.updateSearchResults, {
+        searchId: args.searchId,
+        results: {
+          totalFound: results.totalFound,
+          enrichedCount: results.enrichedCount,
+          analyzedCount: results.analyzedCount,
+          avgRelevanceScore: results.avgRelevanceScore,
+        },
+        progress: {
+          discovered: results.totalFound,
+          enriched: results.enrichedCount,
+          analyzed: results.analyzedCount,
+          total: results.totalFound,
+        },
+      });
+
+      // Send final pipeline update broadcast
+      await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+        userId: search.userId,
+        searchId: args.searchId,
+        stage: "completed",
+        progress: 100,
+        message: `Search completed! Found ${results.totalFound} leads, enriched ${results.enrichedCount}, analyzed ${results.analyzedCount}`,
+        data: {
+          results: {
+            totalFound: results.totalFound,
+            enrichedCount: results.enrichedCount,
+            analyzedCount: results.analyzedCount,
+            avgRelevanceScore: results.avgRelevanceScore,
+          },
+          progress: {
+            discovered: results.totalFound,
+            enriched: results.enrichedCount,
+            analyzed: results.analyzedCount,
+            total: results.totalFound,
+          }
+        }
+      });
+
+      // Send completion notification
+      try {
+        await ctx.runAction("notifications/actions:sendSearchCompletedEmail" as any, {
+          searchId: args.searchId,
+          results: results,
+        });
+      } catch (error) {
+        // Don't fail the completion if email fails
+        console.warn(`Failed to send completion email for search ${args.searchId}:`, error);
+      }
+
+      console.log(`Search ${args.searchId} completed successfully: ${results.totalFound} leads, ${results.enrichedCount} enriched, ${results.analyzedCount} analyzed`);
+
+      return {
+        success: true,
+        message: "Search completed successfully",
+        results: results,
+      };
+
+    } catch (error) {
+      console.error(`Search completion failed for ${args.searchId}:`, error);
+      
+      // Update search status to failed
+      await ctx.runMutation(api.search.mutations.updateSearchStatus, {
+        searchId: args.searchId,
+        status: "failed",
+        error: error instanceof Error ? error.message : "Search completion failed",
       });
 
       throw error;
