@@ -28,8 +28,18 @@ http.route({
     const url = new URL(request.url);
     const userId = url.pathname.split('/').pop();
     
+    // Set up CORS headers for all responses (including errors)
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": process.env.APP_URL || "http://localhost:5173",
+      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+    };
+    
     if (!userId) {
-      return new Response("User ID required", { status: 400 });
+      return new Response("User ID required", { 
+        status: 400,
+        headers: corsHeaders
+      });
     }
 
     // Rate limiting check
@@ -39,7 +49,10 @@ http.route({
     if (attemptData) {
       if (now - attemptData.lastAttempt < RATE_LIMIT_WINDOW) {
         if (attemptData.count >= MAX_ATTEMPTS_PER_WINDOW) {
-          return new Response("Too many connection attempts", { status: 429 });
+          return new Response("Too many connection attempts", { 
+            status: 429,
+            headers: corsHeaders
+          });
         }
         attemptData.count++;
       } else {
@@ -53,21 +66,30 @@ http.route({
     // Check maximum connections per user
     const userConnections = connections.get(userId) || [];
     if (userConnections.length >= MAX_CONNECTIONS_PER_USER) {
-      return new Response("Maximum connections exceeded", { status: 429 });
+      return new Response("Maximum connections exceeded", { 
+        status: 429,
+        headers: corsHeaders
+      });
     }
 
     // Enhanced authentication with basic token validation
     const authToken = url.searchParams.get('token');
     
     if (!authToken) {
-      return new Response("Authentication token required", { status: 401 });
+      return new Response("Authentication token required", { 
+        status: 401,
+        headers: corsHeaders
+      });
     }
 
     // Basic token validation - decode and verify structure
     try {
       const tokenData = Buffer.from(authToken, 'base64').toString('utf8').split(':');
       if (tokenData.length !== 3 || tokenData[0] !== userId) {
-        return new Response("Invalid authentication token", { status: 401 });
+        return new Response("Invalid authentication token", { 
+          status: 401,
+          headers: corsHeaders
+        });
       }
       
       const tokenTimestamp = parseInt(tokenData[1]!);
@@ -75,10 +97,16 @@ http.route({
       
       // Token expires after 1 hour
       if (tokenAge > 60 * 60 * 1000) {
-        return new Response("Authentication token expired", { status: 401 });
+        return new Response("Authentication token expired", { 
+          status: 401,
+          headers: corsHeaders
+        });
       }
     } catch (error) {
-      return new Response("Invalid authentication token format", { status: 401 });
+      return new Response("Invalid authentication token format", { 
+        status: 401,
+        headers: corsHeaders
+      });
     }
 
     // Verify user exists and is active
@@ -88,12 +116,18 @@ http.route({
       });
       
       if (!user || !user.isActive) {
-        return new Response("User not found or inactive", { status: 401 });
+        return new Response("User not found or inactive", { 
+          status: 401,
+          headers: corsHeaders
+        });
       }
       
     } catch (error) {
       console.error("User verification failed:", error);
-      return new Response("Authentication failed", { status: 401 });
+      return new Response("Authentication failed", { 
+        status: 401,
+        headers: corsHeaders
+      });
     }
 
     // Set up SSE headers
