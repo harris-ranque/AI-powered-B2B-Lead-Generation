@@ -527,9 +527,10 @@ http.route({
 
       const payload = await request.json() as any;
       
-      if (!payload.search_id || !payload.lead_id) {
+      // Basic payload validation
+      if (!payload.request_id) {
         return new Response(
-          JSON.stringify({ error: "Invalid payload" }),
+          JSON.stringify({ error: "Missing request_id in payload" }),
           { 
             status: 400,
             headers: { "Content-Type": "application/json" }
@@ -537,12 +538,22 @@ http.route({
         );
       }
 
-      // Process the webhook
-      await ctx.runMutation(internal.langgraph.webhooks.handleAnalysisCompleted, {
-        searchId: payload.search_id,
-        leadId: payload.lead_id,
-        result: payload,
+      // Process the webhook using the new handler
+      const result = await ctx.runMutation(internal.langgraph.webhooks.handleEmailGenerationCompleted, {
+        payload: payload,
       });
+      
+      // Return appropriate HTTP status based on processing result
+      if (!result.success) {
+        console.error(`Webhook processing failed: ${result.error}`);
+        return new Response(
+          JSON.stringify({ error: result.error }),
+          { 
+            status: 400, // Bad request for validation/processing errors
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
 
       return new Response(
         JSON.stringify({ success: true }),
@@ -554,10 +565,27 @@ http.route({
 
     } catch (error) {
       console.error("LangGraph email webhook error:", error);
+      
+      // Determine if this is a retryable error
+      const isRetryable = error instanceof Error && (
+        error.message.includes("timeout") ||
+        error.message.includes("connection") ||
+        error.message.includes("unavailable") ||
+        error.message.includes("overloaded")
+      );
+      
+      // Return appropriate status code for retry behavior
+      // 500 = retryable server error, 400 = non-retryable client error
+      const statusCode = isRetryable ? 500 : 400;
+      
       return new Response(
-        JSON.stringify({ error: "Webhook processing failed" }),
+        JSON.stringify({ 
+          error: "Webhook processing failed",
+          retryable: isRetryable,
+          message: error instanceof Error ? error.message : "Unknown error"
+        }),
         { 
-          status: 500,
+          status: statusCode,
           headers: { "Content-Type": "application/json" }
         }
       );
@@ -605,12 +633,33 @@ http.route({
 
       const payload = await request.json() as any;
       
-      // Process the webhook
-      await ctx.runMutation(internal.langgraph.webhooks.handleAnalysisCompleted, {
-        searchId: payload.search_id,
-        leadId: payload.lead_id,
-        result: payload,
+      // Basic payload validation
+      if (!payload.request_id && !payload.lead_id) {
+        return new Response(
+          JSON.stringify({ error: "Missing request_id or lead_id in payload" }),
+          { 
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
+
+      // Process the webhook using the new handler
+      const result = await ctx.runMutation(internal.langgraph.webhooks.handleAnalysisCompleted, {
+        payload: payload,
       });
+      
+      // Return appropriate HTTP status based on processing result
+      if (!result.success) {
+        console.error(`Analysis webhook processing failed: ${result.error}`);
+        return new Response(
+          JSON.stringify({ error: result.error }),
+          { 
+            status: 400, // Bad request for validation/processing errors
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
 
       return new Response(
         JSON.stringify({ success: true }),
@@ -622,10 +671,27 @@ http.route({
 
     } catch (error) {
       console.error("LangGraph analysis webhook error:", error);
+      
+      // Determine if this is a retryable error
+      const isRetryable = error instanceof Error && (
+        error.message.includes("timeout") ||
+        error.message.includes("connection") ||
+        error.message.includes("unavailable") ||
+        error.message.includes("overloaded")
+      );
+      
+      // Return appropriate status code for retry behavior
+      // 500 = retryable server error, 400 = non-retryable client error
+      const statusCode = isRetryable ? 500 : 400;
+      
       return new Response(
-        JSON.stringify({ error: "Webhook processing failed" }),
+        JSON.stringify({ 
+          error: "Analysis webhook processing failed",
+          retryable: isRetryable,
+          message: error instanceof Error ? error.message : "Unknown error"
+        }),
         { 
-          status: 500,
+          status: statusCode,
           headers: { "Content-Type": "application/json" }
         }
       );

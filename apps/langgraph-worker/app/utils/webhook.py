@@ -25,6 +25,8 @@ class WebhookClient:
         status: str,
         result: Optional[EmailGenerationResult] = None,
         error: Optional[str] = None,
+        quality_score: Optional[float] = None,
+        approved: Optional[bool] = None,
         retries: int = 3
     ) -> bool:
         """Send processing result via webhook"""
@@ -38,7 +40,9 @@ class WebhookClient:
             "status": status,
             "timestamp": datetime.utcnow().isoformat(),
             "result": result.model_dump() if result else None,
-            "error": error
+            "error": error,
+            "quality_score": quality_score,
+            "approved": approved
         }
         
         # Prepare headers
@@ -57,12 +61,29 @@ class WebhookClient:
                         if response.status == 200:
                             logger.info(f"Webhook sent successfully for request {request_id}")
                             return True
-                        elif response.status in [401, 403, 400]:
-                            # Don't retry auth/validation errors
-                            logger.error(f"Webhook failed with non-retryable status {response.status}")
+                        elif response.status in [401, 403]:
+                            # Don't retry auth errors
+                            error_text = await response.text()
+                            logger.error(f"Webhook authentication failed (status {response.status}): {error_text}")
                             return False
+                        elif response.status == 400:
+                            # Check if this is a retryable 400 error based on response
+                            try:
+                                error_data = await response.json()
+                                if error_data.get("retryable", False):
+                                    logger.warning(f"Webhook failed with retryable 400: {error_data.get('message', 'Unknown error')}")
+                                else:
+                                    logger.error(f"Webhook failed with non-retryable 400: {error_data.get('message', 'Unknown error')}")
+                                    return False
+                            except:
+                                # If we can't parse the response, don't retry 400s
+                                error_text = await response.text()
+                                logger.error(f"Webhook validation failed (status 400): {error_text}")
+                                return False
                         else:
-                            logger.warning(f"Webhook failed with status {response.status}")
+                            # 500+ errors are retryable
+                            error_text = await response.text()
+                            logger.warning(f"Webhook failed with status {response.status}: {error_text}")
                             
             except asyncio.TimeoutError:
                 logger.warning(f"Webhook timeout for request {request_id} (attempt {attempt + 1})")
