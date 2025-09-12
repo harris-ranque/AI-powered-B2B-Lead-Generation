@@ -1,6 +1,7 @@
 import { internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
+import { createOperationLogger } from "../lib/logger";
 
 // Helper function to determine plan from price ID
 function getPlanFromPriceId(priceId: string): "starter" | "professional" | "business" | "enterprise" {
@@ -115,6 +116,8 @@ export const handleSubscriptionCreated = internalMutation({
     trialEnd: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const logger = createOperationLogger.webhook("system", "subscription_created");
+    const timer = logger.start(`Creating subscription for customer: ${args.customerId}`);
     try {
       console.log(`Creating subscription: ${args.subscriptionId}`);
       
@@ -569,4 +572,3 @@ export const handlePaymentFailed = internalMutation({
     }
   },
 });
-

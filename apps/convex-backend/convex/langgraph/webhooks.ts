@@ -1,6 +1,7 @@
 import { internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
+import { createOperationLogger } from "../lib/logger";
 
 // Type definitions for LangGraph webhook payloads
 const EmailGenerationResult = v.object({

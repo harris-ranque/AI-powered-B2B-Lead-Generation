@@ -380,6 +380,9 @@ export function logApiCall(
       requestData: options.requestData,
       responseData: options.responseData
     }, options.error, options.duration ? {
+      // Construct a full performance object from duration
+      startTime: Date.now() - options.duration,
+      endTime: Date.now(),
       duration: options.duration
     } : undefined);
   } else {
@@ -392,6 +395,8 @@ export function logApiCall(
         requestData: options?.requestData,
         responseData: options?.responseData
       }, undefined, options?.duration ? {
+        startTime: Date.now() - options.duration,
+        endTime: Date.now(),
         duration: options.duration
       } : undefined);
     } else {
@@ -400,6 +405,8 @@ export function logApiCall(
         requestData: options?.requestData,
         responseData: options?.responseData
       }, options?.duration ? {
+        startTime: Date.now() - options.duration,
+        endTime: Date.now(),
         duration: options.duration
       } : undefined);
     }

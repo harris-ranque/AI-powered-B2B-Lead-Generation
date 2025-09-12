@@ -29,11 +29,14 @@ http.route({
     const userId = url.pathname.split('/').pop();
     
     // Set up CORS headers for all responses (including errors)
+    const requestOrigin = request.headers.get('origin') || undefined;
+    const allowedOrigin = requestOrigin || process.env.APP_URL || "*";
     const corsHeaders = {
-      "Access-Control-Allow-Origin": process.env.APP_URL || "http://localhost:5173",
+      "Access-Control-Allow-Origin": allowedOrigin,
+      "Vary": "Origin",
       "Access-Control-Allow-Headers": "Content-Type",
       "Access-Control-Allow-Methods": "GET, OPTIONS",
-    };
+    } as Record<string, string>;
     
     if (!userId) {
       return new Response("User ID required", { 
@@ -86,7 +89,7 @@ http.route({
     try {
       const tokenData = Buffer.from(authToken, 'base64').toString('utf8').split(':');
       if (tokenData.length !== 3 || tokenData[0] !== userId) {
-        return new Response("Invalid authentication token", { 
+        return new Response("Invalid authentication token: user mismatch or bad format", { 
           status: 401,
           headers: corsHeaders
         });
@@ -115,8 +118,14 @@ http.route({
         userId: userId as Id<"users">,
       });
       
-      if (!user || !user.isActive) {
-        return new Response("User not found or inactive", { 
+      if (!user) {
+        return new Response("User not found", { 
+          status: 401,
+          headers: corsHeaders
+        });
+      }
+      if (!user.isActive) {
+        return new Response("User inactive", { 
           status: 401,
           headers: corsHeaders
         });
@@ -135,7 +144,8 @@ http.route({
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       "Connection": "keep-alive",
-      "Access-Control-Allow-Origin": process.env.APP_URL || "http://localhost:5173",
+      "Access-Control-Allow-Origin": allowedOrigin,
+      "Vary": "Origin",
       "Access-Control-Allow-Headers": "Content-Type",
       "Access-Control-Allow-Methods": "GET, OPTIONS",
     });
@@ -752,11 +762,14 @@ http.route({
 http.route({
   pathPrefix: "/api/events/",
   method: "OPTIONS",
-  handler: httpAction(async () => {
+  handler: httpAction(async (_ctx, request) => {
+    const requestOrigin = request.headers.get('origin') || undefined;
+    const allowedOrigin = requestOrigin || process.env.APP_URL || "*";
     return new Response(null, {
       status: 200,
       headers: {
-        "Access-Control-Allow-Origin": process.env.APP_URL || "http://localhost:5173",
+        "Access-Control-Allow-Origin": allowedOrigin,
+        "Vary": "Origin",
         "Access-Control-Allow-Headers": "Content-Type",
         "Access-Control-Allow-Methods": "GET, OPTIONS",
       },

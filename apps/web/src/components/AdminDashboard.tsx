@@ -923,7 +923,7 @@ export function AdminDashboard() {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Emergency System Controls</h3>
           <div className="flex items-center gap-2">
-            {systemStatus?.systemPaused && (
+            {systemStatus?.leadGenerationPaused && (
               <Badge variant="destructive" className="animate-pulse">
                 <AlertTriangle className="h-3 w-3 mr-1" />
                 SYSTEM PAUSED
@@ -943,10 +943,10 @@ export function AdminDashboard() {
             <div>
               <p className="text-sm font-medium">System Status</p>
               <p className="text-lg font-bold text-green-600">
-                {systemStatus?.systemPaused ? 'PAUSED' : 'OPERATIONAL'}
+                {systemStatus?.leadGenerationPaused ? 'PAUSED' : 'OPERATIONAL'}
               </p>
             </div>
-            <Power className={`h-8 w-8 ${systemStatus?.systemPaused ? 'text-red-500' : 'text-green-500'}`} />
+            <Power className={`h-8 w-8 ${systemStatus?.leadGenerationPaused ? 'text-red-500' : 'text-green-500'}`} />
           </div>
 
           <div className="flex items-center justify-between p-4 border rounded-lg">
@@ -971,7 +971,7 @@ export function AdminDashboard() {
         </div>
 
         <div className="flex flex-wrap gap-3">
-          {!systemStatus?.systemPaused ? (
+          {!systemStatus?.leadGenerationPaused ? (
             <>
               <Button
                 variant="destructive"
@@ -1002,7 +1002,7 @@ export function AdminDashboard() {
           )}
         </div>
 
-        {systemStatus?.systemPaused && systemStatus.reason && (
+        {systemStatus?.leadGenerationPaused && systemStatus.reason && (
           <Alert className="mt-4">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
