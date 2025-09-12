@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { usePipeline } from '@/pipeline/context';
+import type { Lead } from '@/lib/types';
+import type { EmailGenerationResult } from '@/pipeline/types';
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@genni/convex-types";
 import { 
@@ -124,17 +126,17 @@ export function ReviewExportStage() {
   };
 
   // Client-side CSV generation fallback
-  const generateCSV = (leads: Lead[], emails: GeneratedEmail[]) => {
+  const generateCSV = (leads: Lead[], emails: EmailGenerationResult[]) => {
     const headers = ['Company Name', 'Address', 'Phone', 'Website', 'Email', 'Industry', 'Rating', 'Generated Email Subject', 'Generated Email Body'];
     
     const rows = leads.map(lead => {
       const leadEmail = emails.find(e => e.leadId === lead.id);
       return [
-        lead.company_name || '',
-        lead.location?.formatted_address || '',
+        lead.businessName || '',
+        lead.location?.formattedAddress || '',
         lead.phone || '',
         lead.website || '',
-        lead.email || '',
+        lead.contactInfo?.emails?.[0]?.email || '',
         lead.industry || '',
         lead.rating || '',
         leadEmail?.primary_email?.subject || '',

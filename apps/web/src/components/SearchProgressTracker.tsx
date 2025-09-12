@@ -74,7 +74,7 @@ export function SearchProgressTracker({
   let currentStep = 0;
   let progressPercent = 0;
 
-  if (search.status === 'in_progress' || search.status === 'completed') {
+  if (search.status === 'in_progress' || search.status === 'processing' || search.status === 'completed') {
     currentStep = 1; // Discovery started
     if (search.progress?.enriched > 0) currentStep = 2; // Enrichment started
     if (search.progress?.analyzed > 0) currentStep = 3; // Analysis started
@@ -89,6 +89,8 @@ export function SearchProgressTracker({
       case 'pending':
         return { icon: Clock, color: 'text-yellow-500', bg: 'bg-yellow-50' };
       case 'in_progress':
+        return { icon: Loader2, color: 'text-blue-500', bg: 'bg-blue-50' };
+      case 'processing':
         return { icon: Loader2, color: 'text-blue-500', bg: 'bg-blue-50' };
       case 'completed':
         return { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50' };

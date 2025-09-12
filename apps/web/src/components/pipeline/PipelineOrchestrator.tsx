@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { usePipeline } from '@/pipeline/context';
 import type { Lead } from '@/lib/api-client';
 import { STAGE_CONFIGS, STAGE_ORDER } from '@/pipeline/config';
@@ -41,6 +42,9 @@ export function PipelineOrchestrator({
   
   const currentStageIndex = STAGE_ORDER.indexOf(state.currentStage);
   const progressPercentage = (currentStageIndex / (STAGE_ORDER.length - 1)) * 100;
+  
+  // Compute processing state from backend + local state
+  const isBusy = state.isProcessing || search?.status === 'in_progress' || search?.status === 'processing';
 
   // Get research tier display info
   const getResearchTierInfo = (tier?: string) => {
@@ -137,7 +141,7 @@ export function PipelineOrchestrator({
                 />
               </div>
               
-              {state.isProcessing && (
+              {isBusy && (
                 <div className="flex items-center gap-2 text-sm text-primary">
                   <Clock className="h-4 w-4 animate-spin" />
                   Processing...
@@ -172,7 +176,7 @@ export function PipelineOrchestrator({
       {/* Current Stage Content */}
       <div className={cn(
         "transition-all duration-500 ease-in-out",
-        (state.isProcessing || systemStatus?.leadGenerationPaused) && "opacity-75 pointer-events-none"
+        (isBusy || systemStatus?.leadGenerationPaused) && "opacity-75 pointer-events-none"
       )}>
         {renderStageContent()}
       </div>
@@ -196,14 +200,14 @@ export function PipelineOrchestrator({
               <div className="flex items-center gap-3">
                 <div className={cn(
                   "w-3 h-3 rounded-full transition-colors",
-                  state.isProcessing ? "bg-yellow-500 animate-pulse" : "bg-green-500"
+                  isBusy ? "bg-yellow-500 animate-pulse" : "bg-green-500"
                 )} />
                 <span className="text-sm font-medium">
-                  {state.isProcessing ? 'Processing...' : 'Ready'}
+                  {isBusy ? 'Processing...' : 'Ready'}
                 </span>
                 {researchTierInfo && (
                   <Badge variant="outline" className={cn("ml-2", researchTierInfo.bg)}>
-                    <researchTierInfo.icon className="w-3 h-3 mr-1" />
+                    {React.createElement(researchTierInfo.icon, { className: "w-3 h-3 mr-1" })}
                     {researchTierInfo.label}
                   </Badge>
                 )}

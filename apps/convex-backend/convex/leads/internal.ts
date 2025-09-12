@@ -109,6 +109,56 @@ export const updateLeadEnrichment = internalMutation({
   },
 });
 
+// Internal mutation to create a lead (for scheduled/system actions)
+export const createLeadInternal = internalMutation({
+  args: {
+    userId: v.id("users"),
+    searchId: v.id("searches"),
+    leadData: v.object({
+      businessName: v.string(),
+      address: v.string(),
+      placeId: v.string(),
+      location: v.object({
+        lat: v.number(),
+        lng: v.number(),
+        formattedAddress: v.string(),
+        city: v.optional(v.string()),
+        state: v.optional(v.string()),
+        country: v.optional(v.string()),
+        postalCode: v.optional(v.string()),
+      }),
+      phone: v.optional(v.string()),
+      website: v.optional(v.string()),
+      rating: v.optional(v.number()),
+      reviewCount: v.optional(v.number()),
+      category: v.optional(v.string()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    // Trust caller to ensure search exists and belongs to user
+    const leadId = await ctx.db.insert("leads", {
+      userId: args.userId,
+      searchId: args.searchId,
+      businessName: args.leadData.businessName,
+      address: args.leadData.address,
+      placeId: args.leadData.placeId,
+      location: args.leadData.location,
+      phone: args.leadData.phone,
+      website: args.leadData.website,
+      rating: args.leadData.rating,
+      reviewCount: args.leadData.reviewCount,
+      category: args.leadData.category,
+      enrichmentStatus: "pending",
+      status: "new",
+      tags: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    return leadId;
+  },
+});
+
 // Internal query to get domain cache
 export const getDomainCache = internalQuery({
   args: {

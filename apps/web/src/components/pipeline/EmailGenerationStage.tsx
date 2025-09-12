@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePipeline } from '@/pipeline/context';
-import { useMutation } from "convex/react";
+import type { Lead } from '@/lib/types';
+import { useAction } from "convex/react";
 import { api } from "@genni/convex-types";
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -32,7 +33,7 @@ export function EmailGenerationStage({ onGenerateEmail }: EmailGenerationStagePr
   const { toast } = useToast();
   
   // Use real LangGraph email generation
-  const generateEmailAction = useMutation(api.langgraph.actions.generateEmail);
+  const generateEmailAction = useAction(api.langgraph.actions.generateEmail);
   
   const handleGenerateEmails = async () => {
     setIsGenerating(true);
@@ -277,7 +278,7 @@ export function EmailGenerationStage({ onGenerateEmail }: EmailGenerationStagePr
                       
                       <div className="flex-1 min-w-0">
                         <div className="font-medium">{lead.company_name}</div>
-                        <div className="text-sm text-muted-foreground">{lead.email}</div>
+                        <div className="text-sm text-muted-foreground">{lead.contactInfo?.emails?.[0]?.email || 'No email available'}</div>
                       </div>
                       
                       <div className="flex gap-2">

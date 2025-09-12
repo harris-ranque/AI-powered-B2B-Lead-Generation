@@ -227,10 +227,18 @@ export const handleSubscriptionCreated = internalMutation({
         createdAt: Date.now(),
       });
 
-      console.log(`Subscription created for user ${user._id}: ${plan} plan`);
+      logger.complete(timer, `Subscription created for user ${user._id}: ${plan} plan`, {
+        userId: user._id,
+        subscriptionId: args.subscriptionId,
+        plan,
+        isTrialing
+      });
       return { success: true, plan };
     } catch (error) {
-      console.error("Error handling subscription created:", error);
+      logger.failure(timer, error as Error, "Error handling subscription created", {
+        subscriptionId: args.subscriptionId,
+        customerId: args.customerId
+      });
       return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
     }
   },
@@ -250,9 +258,10 @@ export const handleSubscriptionUpdated = internalMutation({
     canceledAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const logger = createOperationLogger.webhook("system", "subscription_updated");
+    const timer = logger.start(`Updating subscription: ${args.subscriptionId}`);
+    
     try {
-      console.log(`Updating subscription: ${args.subscriptionId}`);
-      
       // Find user by subscription ID
       const user = await ctx.db
         .query("users")
@@ -260,7 +269,9 @@ export const handleSubscriptionUpdated = internalMutation({
         .unique();
 
       if (!user) {
-        console.error(`User not found for subscription: ${args.subscriptionId}`);
+        logger.error(`User not found for subscription: ${args.subscriptionId}`, {
+          subscriptionId: args.subscriptionId
+        });
         return { success: false, error: "User not found" };
       }
 
@@ -271,9 +282,17 @@ export const handleSubscriptionUpdated = internalMutation({
         .unique();
 
       if (!billing) {
-        console.error(`Billing record not found for user: ${user._id}`);
+        logger.error(`Billing record not found for user: ${user._id}`, {
+          userId: user._id,
+          subscriptionId: args.subscriptionId
+        });
         return { success: false, error: "Billing record not found" };
       }
+
+      logger.debug("Found user and billing record for subscription update", {
+        userId: user._id,
+        subscriptionId: args.subscriptionId
+      });
 
       const oldPlan = billing.plan;
       const newPlan = getPlanFromPriceId(args.priceId || "");
@@ -343,10 +362,18 @@ export const handleSubscriptionUpdated = internalMutation({
         createdAt: Date.now(),
       });
 
-      console.log(`Subscription updated for user ${user._id}: ${oldPlan} -> ${newPlan}`);
+      logger.complete(timer, `Subscription updated for user ${user._id}: ${oldPlan} -> ${newPlan}`, {
+        userId: user._id,
+        subscriptionId: args.subscriptionId,
+        oldPlan,
+        newPlan
+      });
       return { success: true, oldPlan, newPlan };
     } catch (error) {
-      console.error(`Error handling subscription updated: ${args.subscriptionId}`, error);
+      logger.failure(timer, error as Error, `Error handling subscription updated: ${args.subscriptionId}`, {
+        subscriptionId: args.subscriptionId,
+        customerId: args.customerId
+      });
       return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
     }
   },

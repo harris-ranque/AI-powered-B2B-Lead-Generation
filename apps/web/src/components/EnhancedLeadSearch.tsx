@@ -26,7 +26,7 @@ import { GenniLeadSearch } from "./GenniLeadSearch";
 import { SearchProgressTracker } from "./SearchProgressTracker";
 import type { Lead } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
-import { useSearches, useGoogleMapsSearch } from "@/hooks/useSearches";
+import { useSearches } from "@/hooks/useSearches";
 import { useUser, useUserCredits } from "@/hooks/useUser";
 import { safeArray, safeRender, withErrorBoundary, useErrorBoundary, logError } from "@/utils/errorHandling";
 import { useProfile } from "@/hooks/useProfile";
@@ -77,7 +77,6 @@ export function EnhancedLeadSearch({
   const { credits, isLoading: creditsLoading } = useUserCredits();
   const { profile } = useProfile();
   const { searches, createSearch, cancelSearch, isLoading: searchesLoading } = useSearches();
-  const { searchGoogleMaps } = useGoogleMapsSearch();
   
   // Real-time broadcasting integration
   const {
@@ -199,7 +198,8 @@ export function EnhancedLeadSearch({
       // Convert local search params to Convex format
       const convexSearchParams: ConvexSearchParams = {
         location: searchParams.location,
-        radius: searchParams.radius * 1000, // Convert km to meters for Google Maps API
+        // Backend expects km and converts to meters; pass km directly
+        radius: searchParams.radius,
         keywords: [searchParams.industry],
         industries: [searchParams.industry],
         maxResults: searchParams.leadsCount,
@@ -209,17 +209,17 @@ export function EnhancedLeadSearch({
       const result = await createSearch({
         name: `${searchParams.industry} leads in ${searchParams.location}`,
         parameters: convexSearchParams,
+        // Let the backend orchestrator auto-start discovery
+        autoStart: true,
       });
 
-      if (result.success && result.searchId) {
-        // Start Google Maps search
-        await searchGoogleMaps({
-          searchId: result.searchId,
-          ...convexSearchParams,
-        });
-
+      interface CreateSearchResult { searchId: string }
+      const maybe = result as Partial<CreateSearchResult> | null | undefined;
+      if (maybe && typeof maybe.searchId === 'string') {
+        const searchId = maybe.searchId;
+        // Orchestrator is scheduled server-side; just update UI state
         setCurrentTab("active");
-        setSelectedSearchId(result.searchId);
+        setSelectedSearchId(searchId);
 
         toast({
           title: "Search Started",

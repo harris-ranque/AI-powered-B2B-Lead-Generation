@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePipeline } from '@/pipeline/context';
+import type { PipelineStage } from '@/pipeline/types';
 import { STAGE_CONFIGS, STAGE_ORDER } from '@/pipeline/config';
 import { 
   CheckCircle, 
@@ -46,7 +47,7 @@ export function PipelineStepper() {
             <div 
               className="h-full stepper-progress-line transition-all duration-1000 ease-out glow-soft"
               style={{ 
-                width: `${(state.completedStages.length / (STAGE_ORDER.length - 1)) * 100}%` 
+                width: `${(Math.max(0, state.completedStages.length - 1) / (STAGE_ORDER.length - 1)) * 100}%` 
               }}
             />
           </div>

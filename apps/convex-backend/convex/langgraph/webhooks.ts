@@ -58,21 +58,33 @@ export const handleEmailGenerationCompleted = internalMutation({
     payload: EmailGenerationResult,
   },
   handler: async (ctx, args) => {
+    const logger = createOperationLogger.webhook("system", "email_generation_webhook");
+    const timer = logger.start(`Processing email generation webhook: ${args.payload.request_id}`);
+    
     try {
-      console.log(`Processing email generation webhook: ${args.payload.request_id}`);
-      
       // Validate status
       if (args.payload.status !== "completed" && args.payload.status !== "error") {
-        console.error(`Invalid status: ${args.payload.status}`);
+        logger.error(`Invalid status: ${args.payload.status}`, {
+          requestId: args.payload.request_id,
+          status: args.payload.status
+        });
         return { success: false, error: "Invalid status" };
       }
 
       // Extract search and lead IDs from request_id pattern: searchId_leadId_attempt
       const requestIdParts = args.payload.request_id.split('_');
       if (requestIdParts.length < 2) {
-        console.error(`Invalid request ID format: ${args.payload.request_id}`);
+        logger.error(`Invalid request ID format: ${args.payload.request_id}`, {
+          requestId: args.payload.request_id,
+          parts: requestIdParts
+        });
         return { success: false, error: "Invalid request ID format" };
       }
+
+      logger.debug("Webhook validation passed", {
+        requestId: args.payload.request_id,
+        status: args.payload.status
+      });
 
       const searchId = requestIdParts[0];
       const leadId = requestIdParts[1];

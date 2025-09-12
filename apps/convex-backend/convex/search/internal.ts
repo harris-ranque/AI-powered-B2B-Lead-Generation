@@ -150,3 +150,23 @@ export const updateSearchResults = internalMutation({
     });
   },
 });
+
+// Internal mutation to update search progress without auth
+export const updateSearchProgressInternal = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    progress: v.object({
+      discovered: v.number(),
+      enriched: v.number(),
+      analyzed: v.number(),
+      total: v.number(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.searchId, {
+      progress: args.progress,
+      lastOrchestrationAt: Date.now(),
+    });
+    return { success: true };
+  },
+});

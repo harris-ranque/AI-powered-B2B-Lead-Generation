@@ -8,7 +8,8 @@ const logger = createLogger('useSearches');
 
 export function useSearches() {
   const searches = useQuery(api.search.queries.getUserSearches);
-  const createSearchMutation = useMutation(api.search.mutations.createSearch);
+  // Use the mutation that supports auto-start orchestration
+  const createSearchMutation = useMutation(api.search.mutations.createSearchCompleted);
   const updateSearchStatusMutation = useMutation(api.search.mutations.updateSearchStatus);
   const updateSearchProgressMutation = useMutation(api.search.mutations.updateSearchProgress);
   const cancelSearchMutation = useMutation(api.search.mutations.cancelSearch);
@@ -28,7 +29,7 @@ export function useSearches() {
   }, [searches]);
 
   const createSearch = async (...args: Parameters<typeof createSearchMutation>) => {
-    logger.info('Creating new search', { query: args[0].query, location: args[0].location });
+    logger.info('Creating new search (autoStart may schedule orchestration)');
     return timeOperation('createSearch', () => createSearchMutation(...args));
   };
 

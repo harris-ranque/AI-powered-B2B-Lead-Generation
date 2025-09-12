@@ -1,7 +1,7 @@
 import { action } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
-import { requireAuth } from "../auth";
+// Note: This action can be scheduled by the orchestrator (no user auth).
 
 // Google Maps search action
 export const searchGoogleMaps = action({
@@ -16,13 +16,8 @@ export const searchGoogleMaps = action({
       throw new Error("Lead generation is currently paused. Please contact administrator.");
     }
 
-    const user = await requireAuth(ctx);
-    if (!user) {
-      throw new Error("Authentication required");
-    }
-
-    // Get search record using scheduler
-    const search = await ctx.runQuery(api.search.queries.getSearch, { searchId: args.searchId });
+    // Get search record (internal query works in scheduled/system context)
+    const search = await ctx.runQuery(internal.search.internal.getSearchInternal, { searchId: args.searchId });
     if (!search) {
       throw new Error("Search not found or access denied");
     }
@@ -32,21 +27,17 @@ export const searchGoogleMaps = action({
       throw new Error("Search is already in progress");
     }
 
-    // Check user credits using scheduler
-    const currentUser = await ctx.runQuery(api.users.queries.getCurrentUserData, {});
-    if (!currentUser || currentUser.credits < 1) {
-      throw new Error("Insufficient credits to start search");
-    }
+    // Credits are validated at creation; deduction happens below via internal mutation
 
     try {
       // Update search status to in progress using scheduler
-      await ctx.runMutation(api.search.mutations.updateSearchStatus, {
+      await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
         searchId: args.searchId,
         status: "in_progress",
       });
 
       // Log search started
-      console.log(`Search ${args.searchId} started for user ${user._id}: Starting lead discovery...`);
+      console.log(`Search ${args.searchId} started for user ${search.userId}: Starting lead discovery...`);
 
       // Get Google Maps API key
       const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
@@ -121,7 +112,7 @@ export const searchGoogleMaps = action({
       const totalFound = Math.min(places.length, params.maxResults);
 
       // Update search progress using scheduler
-      await ctx.runMutation(api.search.mutations.updateSearchProgress, {
+      await ctx.runMutation(internal.search.internal.updateSearchProgressInternal, {
         searchId: args.searchId,
         progress: {
           discovered: totalFound,
@@ -171,45 +162,47 @@ export const searchGoogleMaps = action({
           }
         }
         
-        // Create lead using mutations with enriched data
-        const leadId = await ctx.runMutation(api.leads.mutations.createLead, {
-          searchId: args.searchId,
-          leadData: {
-            businessName: detailedPlace.name || "Unknown",
-            address: detailedPlace.formatted_address || "",
-            placeId: detailedPlace.place_id || "",
-            location: {
-              lat: detailedPlace.geometry?.location?.lat || 0,
-              lng: detailedPlace.geometry?.location?.lng || 0,
-              formattedAddress: detailedPlace.formatted_address || "",
-              city: undefined,
-              state: undefined,
-              country: undefined,
-              postalCode: undefined,
-            },
-            phone: detailedPlace.formatted_phone_number || detailedPlace.international_phone_number || undefined,
-            website: detailedPlace.website || undefined,
-            rating: detailedPlace.rating || undefined,
-            reviewCount: detailedPlace.user_ratings_total || undefined,
-            category: detailedPlace.types?.[0] || undefined,
+      // Create lead using internal mutation (works without user auth)
+      const leadId = await ctx.runMutation(internal.leads.internal.createLeadInternal, {
+        userId: search.userId,
+        searchId: args.searchId,
+        leadData: {
+          businessName: detailedPlace.name || "Unknown",
+          address: detailedPlace.formatted_address || "",
+          placeId: detailedPlace.place_id || "",
+          location: {
+            lat: detailedPlace.geometry?.location?.lat || 0,
+            lng: detailedPlace.geometry?.location?.lng || 0,
+            formattedAddress: detailedPlace.formatted_address || "",
+            city: undefined,
+            state: undefined,
+            country: undefined,
+            postalCode: undefined,
           },
-        });
+          phone: detailedPlace.formatted_phone_number || detailedPlace.international_phone_number || undefined,
+          website: detailedPlace.website || undefined,
+          rating: detailedPlace.rating || undefined,
+          reviewCount: detailedPlace.user_ratings_total || undefined,
+          category: detailedPlace.types?.[0] || undefined,
+        },
+      });
 
         leadIds.push(leadId);
       }
 
       // Deduct credit and record transaction using scheduler
-      await ctx.runMutation(api.users.mutations.deductCredits, {
+      await ctx.runMutation(internal.users.internal.deductCreditsInternal, {
+        userId: search.userId,
         amount: 1,
         description: "Google Maps lead discovery",
         relatedEntity: {
           type: "search",
-          id: args.searchId,
+          id: args.searchId as any,
         },
       });
 
       // Update search status to processing (discovery complete, but pipeline continues)
-      await ctx.runMutation(api.search.mutations.updateSearchStatus, {
+      await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
         searchId: args.searchId,
         status: "processing", // Changed from "completed" - pipeline continues
       });
@@ -219,7 +212,7 @@ export const searchGoogleMaps = action({
 
       // If no leads found, complete the search immediately
       if (totalFound === 0) {
-        await ctx.runMutation(api.search.mutations.updateSearchStatus, {
+        await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
           searchId: args.searchId,
           status: "completed",
         });
@@ -248,7 +241,7 @@ export const searchGoogleMaps = action({
       console.error("Google Maps search error:", error);
       
       // Update search status to failed using scheduler
-      await ctx.runMutation(api.search.mutations.updateSearchStatus, {
+      await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
         searchId: args.searchId,
         status: "failed",
         error: error instanceof Error ? error.message : "Unknown error",
@@ -286,7 +279,7 @@ export const completeSearch: any = action({
       });
 
       // Update search status to completed with final results
-      await ctx.runMutation(api.search.mutations.updateSearchStatus, {
+      await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
         searchId: args.searchId,
         status: "completed",
       });
@@ -354,7 +347,7 @@ export const completeSearch: any = action({
       console.error(`Search completion failed for ${args.searchId}:`, error);
       
       // Update search status to failed
-      await ctx.runMutation(api.search.mutations.updateSearchStatus, {
+      await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
         searchId: args.searchId,
         status: "failed",
         error: error instanceof Error ? error.message : "Search completion failed",

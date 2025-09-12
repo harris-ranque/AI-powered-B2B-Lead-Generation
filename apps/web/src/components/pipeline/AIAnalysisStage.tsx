@@ -91,7 +91,7 @@ export function AIAnalysisStage() {
                 ) : agent.status === 'active' ? (
                   <Clock className="h-6 w-6 animate-spin" />
                 ) : (
-                  <agent.icon className="h-6 w-6" />
+                  React.createElement(agent.icon, { className: "h-6 w-6" })
                 )}
               </div>
               
@@ -168,7 +168,7 @@ export function AIAnalysisStage() {
                 <div className="flex-1 min-w-0">
                   <div className="font-medium">{lead.company_name}</div>
                   <div className="text-sm text-muted-foreground">{lead.industry || 'Industry not specified'}</div>
-                  {lead.email && (
+                  {lead.contactInfo?.emails?.length && (
                     <div className="text-xs text-green-600 mt-1">✓ Email found</div>
                   )}
                 </div>

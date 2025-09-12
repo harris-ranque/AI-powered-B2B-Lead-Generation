@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { usePipeline } from '@/pipeline/context';
+import type { LeadSourceType } from '@/pipeline/types';
 import { SourceRegistry } from '@/pipeline/sources/SourceRegistry';
 import { 
   MapPin, 

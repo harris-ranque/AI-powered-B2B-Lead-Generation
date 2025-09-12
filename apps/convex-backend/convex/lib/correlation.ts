@@ -323,17 +323,30 @@ export function withTimeout<T>(
   ]);
 }
 
-// Format correlation context for external logging systems
+// Format correlation context for external logging systems (Sentry, etc.)
 export function formatCorrelationForLogging(correlation: CorrelationContext): Record<string, any> {
-  return {
+  const formatted = {
+    // Sentry-compatible format
     correlation_id: correlation.correlationId,
     operation_type: correlation.operationType,
-    parent_id: correlation.parentId,
     user_id: correlation.userId,
-    search_id: correlation.searchId,
-    lead_id: correlation.leadId,
-    batch_id: correlation.batchId,
     created_at: correlation.createdAt,
-    metadata: correlation.metadata,
+    
+    // Optional context fields (only include if they exist)
+    ...(correlation.parentId && { parent_id: correlation.parentId }),
+    ...(correlation.searchId && { search_id: correlation.searchId }),
+    ...(correlation.leadId && { lead_id: correlation.leadId }),
+    ...(correlation.batchId && { batch_id: correlation.batchId }),
+    
+    // Metadata and custom tags
+    ...(correlation.metadata && { 
+      metadata: correlation.metadata,
+      // Extract common metadata as top-level fields for better Sentry grouping
+      ...(correlation.metadata.environment && { environment: correlation.metadata.environment }),
+      ...(correlation.metadata.version && { version: correlation.metadata.version }),
+      ...(correlation.metadata.feature && { feature: correlation.metadata.feature })
+    })
   };
+  
+  return formatted;
 }
