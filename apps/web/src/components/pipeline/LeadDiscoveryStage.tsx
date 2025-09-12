@@ -169,6 +169,37 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
         </p>
       </div>
 
+      {/* Credits Summary */}
+      <div className="flex items-center justify-center">
+        <div
+          className={cn(
+            "w-full max-w-2xl rounded-md border px-4 py-3 text-sm",
+            (validation.estimatedCost || 0) > userCredits
+              ? "border-destructive/40 bg-destructive/5 text-destructive"
+              : "border-border/50 bg-muted/30 text-muted-foreground"
+          )}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center justify-between">
+            <div className="font-medium">
+              Credits
+            </div>
+            <div className="flex items-center gap-3">
+              <span>
+                Estimated: <span className="font-semibold">{validation.estimatedCost ?? 0}</span>
+              </span>
+              <span>
+                Available: <span className="font-semibold">{userCredits}</span>
+              </span>
+              <span className="hidden sm:inline">
+                After search: <span className="font-semibold">{Math.max(userCredits - (validation.estimatedCost ?? 0), 0)}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Source-specific form */}
       <Card className="glass-card">
         <CardHeader>
@@ -225,7 +256,7 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Search Radius: {radius[0]} miles</Label>
+                  <Label>Search Radius: {radius[0]} km</Label>
                   <Slider
                     value={radius}
                     onValueChange={setRadius}
@@ -235,8 +266,8 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
                     className="transition-neo"
                   />
                   <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>1 mile</span>
-                    <span>100 miles</span>
+                    <span>1 km</span>
+                    <span>100 km</span>
                   </div>
                 </div>
 

@@ -118,15 +118,19 @@ const handleSubmit = async (data) => {
 
 #### Task 2: Lead Search Integration  
 ```typescript
-// In EnhancedLeadSearch.tsx
-import { useSearches, useGoogleMapsSearch } from "@/hooks/useSearches";
+// In LeadDiscoveryStage (or any caller)
+import { useSearches } from "@/hooks/useSearches";
 
-const { searches, createSearch } = useSearches();
-const { searchGoogleMaps } = useGoogleMapsSearch();
+const { createSearch } = useSearches();
 
 const handleSearch = async (params) => {
-  const search = await createSearch({ name, parameters: params });
-  await searchGoogleMaps({ searchId: search._id, ...params });
+  // Orchestrator auto-starts via scheduler when autoStart is true
+  const { searchId } = await createSearch({
+    name,
+    parameters: params,
+    autoStart: true,
+  });
+  // No direct action call needed; backend runs discovery → enrichment → analysis
 };
 ```
 

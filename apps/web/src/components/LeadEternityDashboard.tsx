@@ -21,7 +21,6 @@ import {
   Bug,
   Activity
 } from "lucide-react";
-import { EnhancedLeadSearch } from "./EnhancedLeadSearch";
 import { PipelineOrchestrator } from "./pipeline/PipelineOrchestrator";
 import { PipelineProvider } from "@/pipeline/context";
 import { AIEmailGenerator } from "./AIEmailGenerator";
