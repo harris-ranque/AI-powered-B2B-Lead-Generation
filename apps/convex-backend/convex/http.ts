@@ -442,7 +442,10 @@ http.route({
       });
     }
 
-    // Validate auth token (same scheme as SSE)
+    // TODO(auth): Accept v2 HMAC-signed tokens for CSV export (align with /api/events)
+    // - Parse `v2.<payload>.<sig>` and verify via SSE_TOKEN_SECRET
+    // - Keep legacy base64 fallback temporarily, then remove once frontend is migrated
+    // Validate auth token (current: legacy base64 scheme)
     try {
       const tokenData = Buffer.from(token, "base64")
         .toString("utf8")

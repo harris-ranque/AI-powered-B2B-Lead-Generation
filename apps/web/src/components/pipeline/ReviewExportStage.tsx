@@ -83,7 +83,11 @@ export function ReviewExportStage() {
         // use as-is
       }
 
-      // Generate auth token (userId:timestamp:nonce base64)
+      // TODO(auth): Migrate CSV export to server-signed token flow (Option A)
+      // - Call `${baseUrl}/api/sse/issue-token` with Clerk bearer to get `v2.*` token
+      // - Update backend /api/exports/leads.csv to accept v2 HMAC tokens (like /api/events)
+      // - Remove this legacy base64 token generation once backend accepts v2
+      // Generate legacy auth token (userId:timestamp:nonce base64)
       const timestamp = Date.now();
       const randomBytes = crypto.getRandomValues
         ? Array.from(crypto.getRandomValues(new Uint8Array(16)))
