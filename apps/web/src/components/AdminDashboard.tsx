@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -2257,6 +2258,27 @@ export function AdminDashboard() {
   }
 
   // Bulletproof render with comprehensive error handling
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Sync tab from URL (?tab=services) or hash (#services)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const fromSearch = params.get("tab");
+    const fromHash = location.hash ? location.hash.replace(/^#/, "") : null;
+    const candidate = (fromSearch || fromHash) as string | null;
+    const allowed = [
+      "overview",
+      "users",
+      "credits",
+      "services",
+      "configuration",
+      "system",
+    ];
+    if (candidate && allowed.includes(candidate) && candidate !== currentTab) {
+      setCurrentTab(candidate);
+    }
+  }, [location.search, location.hash]);
   try {
     return (
       <div className="p-6 max-w-7xl mx-auto">
@@ -2288,8 +2310,19 @@ export function AdminDashboard() {
           </p>
         </div>
 
-        <Tabs value={currentTab} onValueChange={setCurrentTab}>
-          <TabsList className="grid w-full grid-cols-6">
+        <Tabs
+          value={currentTab}
+          onValueChange={(v) => {
+            if (v === "docs") {
+              navigate("/admin/docs");
+              return;
+            }
+            setCurrentTab(v);
+            // Keep tab in URL for deep-linking
+            navigate(`?tab=${v}`, { replace: true });
+          }}
+        >
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="users">User Management</TabsTrigger>
             <TabsTrigger value="credits">Credit Management</TabsTrigger>
@@ -2302,6 +2335,10 @@ export function AdminDashboard() {
               Configuration
             </TabsTrigger>
             <TabsTrigger value="system">System Health</TabsTrigger>
+            <TabsTrigger value="docs">
+              <FileText className="h-4 w-4 mr-2" />
+              Documentation
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="mt-6">

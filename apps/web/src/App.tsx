@@ -25,6 +25,7 @@ import { AdminRoute } from "@/components/auth/AdminRoute";
 // App Components
 import { GenniApp } from "@/components/GenniApp";
 import { AdminDashboard } from "@/components/AdminDashboard";
+import AdminDocs from "@/components/docs/AdminDocs";
 
 // Other Pages
 import NotFound from "./pages/NotFound";
@@ -90,6 +91,16 @@ const App = () => (
                       <ErrorBoundary>
                         <AdminRoute>
                           <AdminDashboard />
+                        </AdminRoute>
+                      </ErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/admin/docs/*"
+                    element={
+                      <ErrorBoundary>
+                        <AdminRoute>
+                          <AdminDocs />
                         </AdminRoute>
                       </ErrorBoundary>
                     }
