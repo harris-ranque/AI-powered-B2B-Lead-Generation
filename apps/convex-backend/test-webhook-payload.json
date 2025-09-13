@@ -1,6 +1,6 @@
 {
   "request_id": "test_search_123_lead_456",
-  "status": "completed", 
+  "status": "completed",
   "result": {
     "relevance_score": 0.85,
     "pain_points_identified": ["manual processes", "scaling challenges"],
@@ -15,7 +15,10 @@
     "primary_email": {
       "subject": "Streamline Your Manual Processes with AI Automation",
       "body": "Hi [Name],\n\nI noticed your company is dealing with manual processes that could be automated...",
-      "personalization_notes": ["References their scaling challenges", "Mentions their current manual processes"],
+      "personalization_notes": [
+        "References their scaling challenges",
+        "Mentions their current manual processes"
+      ],
       "estimated_effectiveness": 0.78
     },
     "agent_results": [
@@ -27,7 +30,7 @@
         "executionTime": 4.2
       },
       {
-        "agentName": "EmailGeneration", 
+        "agentName": "EmailGeneration",
         "role": "Content Creation",
         "output": "Generated personalized email with high relevance",
         "confidenceScore": 0.85,

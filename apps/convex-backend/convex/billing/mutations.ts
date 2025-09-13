@@ -2,6 +2,7 @@ import { mutation, action } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 import { api } from "../_generated/api";
+import Stripe from "stripe";
 
 // Create Stripe checkout session
 export const createCheckoutSession = action({
@@ -13,59 +14,54 @@ export const createCheckoutSession = action({
     cancelUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    "use node";
     const user = await requireAuth(ctx);
-    
+
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey) {
       throw new Error("Stripe secret key not configured");
     }
 
-    try {
-      // Create checkout session with Stripe API - properly form-encode nested objects
-      const params = new URLSearchParams();
-      params.set('mode', 'subscription');
-      params.set('payment_method_types[0]', 'card');
-      params.set('line_items[0][price]', args.priceId);
-      params.set('line_items[0][quantity]', '1');
-      params.set('success_url', args.successUrl || `${process.env.APP_URL}/subscription/success?session_id={CHECKOUT_SESSION_ID}`);
-      params.set('cancel_url', args.cancelUrl || `${process.env.APP_URL}/pricing`);
-      
-      if (user.stripeCustomerId) {
-        params.set('customer', user.stripeCustomerId);
-      } else {
-        params.set('customer_email', user.email);
-      }
-      
-      params.set('metadata[userId]', user._id);
-      params.set('metadata[planId]', args.planId);
-      params.set('metadata[billingCycle]', args.billingCycle);
-      params.set('subscription_data[metadata][userId]', user._id);
-      params.set('subscription_data[metadata][planId]', args.planId);
+    // Ensure success/cancel URLs are properly set
+    const appUrl = process.env.APP_URL;
+    if (!args.successUrl && !appUrl) {
+      throw new Error(
+        "Missing successUrl and APP_URL; cannot construct redirect URLs",
+      );
+    }
 
-      const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${stripeSecretKey}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
+    try {
+      const stripe = new Stripe(stripeSecretKey);
+      const session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        payment_method_types: ["card"],
+        line_items: [{ price: args.priceId, quantity: 1 }],
+        success_url:
+          args.successUrl ||
+          `${appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: args.cancelUrl || `${appUrl}/pricing`,
+        customer: user.stripeCustomerId,
+        customer_email: user.stripeCustomerId ? undefined : user.email,
+        metadata: {
+          userId: user._id,
+          planId: args.planId,
+          billingCycle: args.billingCycle,
         },
-        body: params.toString(),
+        subscription_data: {
+          metadata: {
+            userId: user._id,
+            planId: args.planId,
+          },
+        },
       });
 
-      if (!response.ok) {
-        const error = await response.text();
-        console.error('Stripe checkout error:', error);
-        throw new Error('Failed to create checkout session');
-      }
-
-      const session: any = await response.json();
-      
       return {
         sessionId: session.id,
-        url: session.url,
+        url: session.url!,
       };
     } catch (error) {
-      console.error('Error creating Stripe checkout session:', error);
-      throw new Error('Failed to create checkout session');
+      console.error("Error creating Stripe checkout session:", error);
+      throw new Error("Failed to create checkout session");
     }
   },
 });
@@ -76,8 +72,9 @@ export const createPortalSession = action({
     returnUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    "use node";
     const user = await requireAuth(ctx);
-    
+
     if (!user.stripeCustomerId) {
       throw new Error("No Stripe customer ID found for user");
     }
@@ -88,34 +85,16 @@ export const createPortalSession = action({
     }
 
     try {
-      const portalData = {
+      const stripe = new Stripe(stripeSecretKey);
+      const session = await stripe.billingPortal.sessions.create({
         customer: user.stripeCustomerId,
         return_url: args.returnUrl || `${process.env.APP_URL}/billing`,
-      };
-
-      const response = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${stripeSecretKey}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams(portalData).toString(),
       });
 
-      if (!response.ok) {
-        const error = await response.text();
-        console.error('Stripe portal error:', error);
-        throw new Error('Failed to create portal session');
-      }
-
-      const session: any = await response.json();
-      
-      return {
-        url: session.url,
-      };
+      return { url: session.url };
     } catch (error) {
-      console.error('Error creating Stripe portal session:', error);
-      throw new Error('Failed to create portal session');
+      console.error("Error creating Stripe portal session:", error);
+      throw new Error("Failed to create portal session");
     }
   },
 });
@@ -124,8 +103,9 @@ export const createPortalSession = action({
 export const createStripeCustomer = action({
   args: {},
   handler: async (ctx, args) => {
+    "use node";
     const user = await requireAuth(ctx);
-    
+
     if (user.stripeCustomerId) {
       return { customerId: user.stripeCustomerId };
     }
@@ -136,40 +116,24 @@ export const createStripeCustomer = action({
     }
 
     try {
-      const customerData = {
+      const stripe = new Stripe(stripeSecretKey);
+      const customer = await stripe.customers.create({
         email: user.email,
-        name: user.name || "",
-        "metadata[userId]": user._id,
-      };
-
-      const response = await fetch('https://api.stripe.com/v1/customers', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${stripeSecretKey}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams(customerData).toString(),
+        name: user.name || undefined,
+        metadata: { userId: user._id },
       });
-
-      if (!response.ok) {
-        const error = await response.text();
-        console.error('Stripe customer creation error:', error);
-        throw new Error('Failed to create Stripe customer');
-      }
-
-      const customer: any = await response.json();
 
       // Update user with Stripe customer ID
       await ctx.runMutation(api.users.mutations.updateStripeCustomerId, {
         customerId: customer.id,
       });
-      
+
       return {
         customerId: customer.id,
       };
     } catch (error) {
-      console.error('Error creating Stripe customer:', error);
-      throw new Error('Failed to create Stripe customer');
+      console.error("Error creating Stripe customer:", error);
+      throw new Error("Failed to create Stripe customer");
     }
   },
 });
@@ -179,7 +143,7 @@ export const getSubscriptionStatus = mutation({
   args: {},
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Get billing record
     const billing = await ctx.db
       .query("billing")
@@ -209,8 +173,9 @@ export const cancelSubscription = action({
     cancelAtPeriodEnd: v.boolean(),
   },
   handler: async (ctx, args) => {
+    "use node";
     const user = await requireAuth(ctx);
-    
+
     if (!user.stripeSubscriptionId) {
       throw new Error("No active subscription found");
     }
@@ -221,34 +186,20 @@ export const cancelSubscription = action({
     }
 
     try {
-      const updateData = {
-        cancel_at_period_end: args.cancelAtPeriodEnd.toString(),
-      };
+      const stripe = new Stripe(stripeSecretKey);
+      const subscription = await stripe.subscriptions.update(
+        user.stripeSubscriptionId,
+        { cancel_at_period_end: args.cancelAtPeriodEnd },
+      );
 
-      const response = await fetch(`https://api.stripe.com/v1/subscriptions/${user.stripeSubscriptionId}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${stripeSecretKey}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams(updateData).toString(),
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        console.error('Stripe subscription update error:', error);
-        throw new Error('Failed to update subscription');
-      }
-
-      const subscription: any = await response.json();
-      
       return {
-        cancelAtPeriodEnd: subscription.cancel_at_period_end,
-        currentPeriodEnd: subscription.current_period_end * 1000,
+        cancelAtPeriodEnd: (subscription as any).cancel_at_period_end,
+        currentPeriodEnd:
+          ((subscription as any).current_period_end || 0) * 1000,
       };
     } catch (error) {
-      console.error('Error updating subscription:', error);
-      throw new Error('Failed to update subscription');
+      console.error("Error updating subscription:", error);
+      throw new Error("Failed to update subscription");
     }
   },
 });

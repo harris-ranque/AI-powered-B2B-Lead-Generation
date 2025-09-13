@@ -40,7 +40,7 @@ genni-app/
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - Python 3.11+
 - pnpm (`npm install -g pnpm`)
 - OpenAI API key
@@ -55,6 +55,7 @@ chmod +x scripts/start-development.sh
 ```
 
 **That's it!** The script will:
+
 1. Install all dependencies (Node.js + Python)
 2. Create environment files from examples
 3. Start both frontend and CrewAI worker
@@ -62,12 +63,14 @@ chmod +x scripts/start-development.sh
 ### Manual Setup (Alternative)
 
 1. **Install dependencies:**
+
    ```bash
    pnpm install
    cd apps/crewai-worker && pip install -r requirements.txt && cd ../..
    ```
 
 2. **Configure environment:**
+
    ```bash
    cp apps/web/.env.example apps/web/.env
    cp apps/crewai-worker/.env.example apps/crewai-worker/.env
@@ -98,6 +101,7 @@ chmod +x scripts/start-development.sh
 ### Project-Specific Scripts
 
 **Frontend (apps/web):**
+
 ```bash
 cd apps/web
 pnpm dev      # Start Next.js dev server
@@ -106,6 +110,7 @@ pnpm lint     # Run ESLint
 ```
 
 **CrewAI Worker (apps/crewai-worker):**
+
 ```bash
 cd apps/crewai-worker
 pip install -r requirements.txt
@@ -135,6 +140,7 @@ Lead Data → Relevance Analyzer → Pain Point Researcher → Value Matcher →
 ### Environment Variables
 
 **Frontend (.env.local):**
+
 ```env
 NEXT_PUBLIC_CONVEX_URL=your_convex_url
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
@@ -142,6 +148,7 @@ NEXT_PUBLIC_POSTHOG_KEY=phc_...
 ```
 
 **CrewAI Worker (.env):**
+
 ```env
 API_KEY=your_secure_api_key
 OPENAI_API_KEY=sk-...
@@ -152,6 +159,7 @@ PORT=8080
 ### Convex Backend Setup
 
 The backend is in a separate repository. See `genni-convex` for:
+
 - Database schema
 - Authentication
 - API endpoints
@@ -163,6 +171,7 @@ The backend is in a separate repository. See `genni-convex` for:
 ### Railway Deployment
 
 1. **Deploy frontend and CrewAI worker:**
+
    ```bash
    ./scripts/deploy.sh
    ```
@@ -219,6 +228,7 @@ This project is proprietary software. All rights reserved.
 ## 🆘 Support
 
 For technical support or questions:
+
 - Create an issue in the repository
 - Contact the development team
 - Check the documentation in `/docs`

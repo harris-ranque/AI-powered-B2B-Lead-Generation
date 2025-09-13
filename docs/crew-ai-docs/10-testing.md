@@ -34,13 +34,13 @@ A table of scores at the end will show the performance of the crew in terms of t
 
 | Tasks/Crew/Agents  | Run 1 | Run 2 | Avg. Total |            Agents            | Additional Info                |
 | :----------------- | :---: | :---: | :--------: | :--------------------------: | :----------------------------- |
-| Task 1             |  9.0  |  9.5  |   **9.2**  |     Professional Insights    |                                |
+| Task 1             |  9.0  |  9.5  |  **9.2**   |    Professional Insights     |                                |
 |                    |       |       |            |          Researcher          |                                |
-| Task 2             |  9.0  |  10.0 |   **9.5**  | Company Profile Investigator |                                |
-| Task 3             |  9.0  |  9.0  |   **9.0**  |      Automation Insights     |                                |
+| Task 2             |  9.0  | 10.0  |  **9.5**   | Company Profile Investigator |                                |
+| Task 3             |  9.0  |  9.0  |  **9.0**   |     Automation Insights      |                                |
 |                    |       |       |            |          Specialist          |                                |
-| Task 4             |  9.0  |  9.0  |   **9.0**  |     Final Report Compiler    | Automation Insights Specialist |
-| Crew               |  9.00 |  9.38 |   **9.2**  |                              |                                |
-| Execution Time (s) |  126  |  145  |   **135**  |                              |                                |
+| Task 4             |  9.0  |  9.0  |  **9.0**   |    Final Report Compiler     | Automation Insights Specialist |
+| Crew               | 9.00  | 9.38  |  **9.2**   |                              |                                |
+| Execution Time (s) |  126  |  145  |  **135**   |                              |                                |
 
 The example above shows the test results for two runs of the crew with two tasks, with the average total score for each task and the crew as a whole.

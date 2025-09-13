@@ -6,9 +6,12 @@ export function useUsage() {
   const { isSignedIn } = useAuth();
 
   const { data: usage, isLoading } = useQuery({
-    queryKey: ['current-usage'],
+    queryKey: ["current-usage"],
     queryFn: async () => {
-      const result = await convex.query("usageTracking/queries:getCurrentUsage", {});
+      const result = await convex.query(
+        "usageTracking/queries:getCurrentUsage",
+        {},
+      );
       return result;
     },
     enabled: !!isSignedIn,
@@ -38,9 +41,15 @@ export function useUsage() {
     return "bg-green-500";
   };
 
-  const searchesPercentage = usage ? getUsagePercentage(usage.searchesUsed, usage.limits.monthlySearches) : 0;
-  const enrichmentsPercentage = usage ? getUsagePercentage(usage.leadsEnriched, usage.limits.monthlyEnrichments) : 0;
-  const exportsPercentage = usage ? getUsagePercentage(usage.exportsCompleted, usage.limits.monthlyExports) : 0;
+  const searchesPercentage = usage
+    ? getUsagePercentage(usage.searchesUsed, usage.limits.monthlySearches)
+    : 0;
+  const enrichmentsPercentage = usage
+    ? getUsagePercentage(usage.leadsEnriched, usage.limits.monthlyEnrichments)
+    : 0;
+  const exportsPercentage = usage
+    ? getUsagePercentage(usage.exportsCompleted, usage.limits.monthlyExports)
+    : 0;
 
   return {
     usage,

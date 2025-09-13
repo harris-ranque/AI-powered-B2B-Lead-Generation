@@ -1,25 +1,25 @@
-import { 
-  CorrelationContext, 
-  LogContext, 
+import {
+  CorrelationContext,
+  LogContext,
   createLogEntry,
-  formatCorrelationForLogging 
+  formatCorrelationForLogging,
 } from "./correlation";
 
 /**
  * Console-Only Logging Service with Correlation ID Support
- * 
+ *
  * Provides structured console logging for Convex's built-in log aggregator
  * with correlation tracking for better debugging and monitoring.
  */
 
 // Enhanced console logging function for Convex log aggregator
 export function logWithCorrelationConsole(
-  level: LogContext['level'],
+  level: LogContext["level"],
   correlation: CorrelationContext,
   message: string,
   data?: any,
   error?: Error,
-  performance?: LogContext['performance']
+  performance?: LogContext["performance"],
 ) {
   // Create structured log entry for better Convex dashboard visibility
   const logEntry = {
@@ -34,17 +34,19 @@ export function logWithCorrelationConsole(
     message,
     timestamp: new Date().toISOString(),
     data,
-    error: error ? {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    } : undefined,
+    error: error
+      ? {
+          message: error.message,
+          stack: error.stack,
+          name: error.name,
+        }
+      : undefined,
     performance,
-    metadata: correlation.metadata
+    metadata: correlation.metadata,
   };
 
   // Remove undefined fields for cleaner output
-  Object.keys(logEntry).forEach(key => {
+  Object.keys(logEntry).forEach((key) => {
     if (logEntry[key as keyof typeof logEntry] === undefined) {
       delete logEntry[key as keyof typeof logEntry];
     }
@@ -54,39 +56,34 @@ export function logWithCorrelationConsole(
   const correlationInfo = [
     `[${correlation.correlationId}]`,
     `[${correlation.operationType}]`,
-    correlation.parentId ? `[parent:${correlation.parentId.substring(0, 8)}]` : '',
-    correlation.searchId ? `[search:${correlation.searchId}]` : '',
-    correlation.leadId ? `[lead:${correlation.leadId}]` : '',
-    correlation.batchId ? `[batch:${correlation.batchId}]` : '',
-  ].filter(Boolean).join(' ');
-  
+    correlation.parentId
+      ? `[parent:${correlation.parentId.substring(0, 8)}]`
+      : "",
+    correlation.searchId ? `[search:${correlation.searchId}]` : "",
+    correlation.leadId ? `[lead:${correlation.leadId}]` : "",
+    correlation.batchId ? `[batch:${correlation.batchId}]` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   const displayMessage = `${correlationInfo} ${message}`;
-  
+
   // Console logging with structured data
   switch (level) {
-    case 'debug':
+    case "debug":
       console.debug(displayMessage, logEntry);
       break;
-    case 'info':
+    case "info":
       console.info(displayMessage, logEntry);
       break;
-    case 'warn':
+    case "warn":
       console.warn(displayMessage, logEntry);
       break;
-    case 'error':
+    case "error":
       console.error(displayMessage, logEntry);
       break;
   }
 }
 
-
-
-
-
-
 // Console-only logging functions - no database queries needed
 // Logs are viewable through Convex dashboard and CLI tools
-
-
-
-

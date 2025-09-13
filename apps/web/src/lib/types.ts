@@ -34,7 +34,12 @@ export interface BusinessProfileInput {
 
 // Search types
 export type Search = Doc<"searches">;
-export type SearchStatus = "pending" | "in_progress" | "completed" | "failed" | "cancelled";
+export type SearchStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "failed"
+  | "cancelled";
 
 export interface SearchParams {
   location: string;
@@ -48,8 +53,18 @@ export interface SearchParams {
 
 // Lead types
 export type Lead = Doc<"leads">;
-export type LeadStatus = "new" | "qualified" | "contacted" | "nurturing" | "converted" | "unqualified";
-export type EnrichmentStatus = "pending" | "in_progress" | "completed" | "failed";
+export type LeadStatus =
+  | "new"
+  | "qualified"
+  | "contacted"
+  | "nurturing"
+  | "converted"
+  | "unqualified";
+export type EnrichmentStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "failed";
 
 // Email Sequence types
 export type EmailSequence = Doc<"emailSequences">;
@@ -103,7 +118,12 @@ export type CreditTransaction = Doc<"creditTransactions">;
 
 // Notification types
 export type Notification = Doc<"notifications">;
-export type NotificationType = "search_completed" | "credits_low" | "plan_upgraded" | "system_alert" | "email_sent";
+export type NotificationType =
+  | "search_completed"
+  | "credits_low"
+  | "plan_upgraded"
+  | "system_alert"
+  | "email_sent";
 
 // Analytics types
 export interface UserStats {

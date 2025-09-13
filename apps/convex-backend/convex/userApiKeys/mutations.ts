@@ -5,12 +5,12 @@ import { requireAuth } from "../auth";
 // Simple encryption/decryption functions (in production, use proper encryption)
 function encryptApiKey(key: string): string {
   // In production, use proper encryption like AES
-  return Buffer.from(key).toString('base64');
+  return Buffer.from(key).toString("base64");
 }
 
 function decryptApiKey(encryptedKey: string): string {
   // In production, use proper decryption
-  return Buffer.from(encryptedKey, 'base64').toString('utf8');
+  return Buffer.from(encryptedKey, "base64").toString("utf8");
 }
 
 function hashApiKey(key: string): string {
@@ -18,7 +18,7 @@ function hashApiKey(key: string): string {
   let hash = 0;
   for (let i = 0; i < key.length; i++) {
     const char = key.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convert to 32-bit integer
   }
   return Math.abs(hash).toString(16);
@@ -31,17 +31,19 @@ export const upsertApiKey = mutation({
       v.literal("openai"),
       v.literal("google_maps"),
       v.literal("findymail"),
-      v.literal("apify")
+      v.literal("apify"),
     ),
     keyName: v.string(),
     apiKey: v.string(),
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Only starter tier users can manage their own API keys
     if (user.plan !== "starter") {
-      throw new Error("API key management is only available for Starter tier users");
+      throw new Error(
+        "API key management is only available for Starter tier users",
+      );
     }
 
     // Check if key already exists for this service
@@ -53,7 +55,7 @@ export const upsertApiKey = mutation({
 
     const encryptedKey = encryptApiKey(args.apiKey);
     const keyHash = hashApiKey(args.apiKey);
-    
+
     const keyData = {
       userId: user._id,
       service: args.service,
@@ -69,11 +71,11 @@ export const upsertApiKey = mutation({
     if (existingKey) {
       // Update existing key
       await ctx.db.patch(existingKey._id, keyData);
-      
-      return { 
-        success: true, 
+
+      return {
+        success: true,
         keyId: existingKey._id,
-        action: "updated" 
+        action: "updated",
       };
     } else {
       // Create new key
@@ -81,11 +83,11 @@ export const upsertApiKey = mutation({
         ...keyData,
         createdAt: Date.now(),
       });
-      
-      return { 
-        success: true, 
+
+      return {
+        success: true,
         keyId,
-        action: "created" 
+        action: "created",
       };
     }
   },
@@ -98,14 +100,16 @@ export const deleteApiKey = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Only starter tier users can manage their own API keys
     if (user.plan !== "starter") {
-      throw new Error("API key management is only available for Starter tier users");
+      throw new Error(
+        "API key management is only available for Starter tier users",
+      );
     }
 
     const apiKey = await ctx.db.get(args.keyId);
-    
+
     if (!apiKey) {
       throw new Error("API key not found");
     }
@@ -115,7 +119,7 @@ export const deleteApiKey = mutation({
     }
 
     await ctx.db.delete(args.keyId);
-    
+
     return { success: true };
   },
 });
@@ -128,14 +132,16 @@ export const toggleApiKey = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Only starter tier users can manage their own API keys
     if (user.plan !== "starter") {
-      throw new Error("API key management is only available for Starter tier users");
+      throw new Error(
+        "API key management is only available for Starter tier users",
+      );
     }
 
     const apiKey = await ctx.db.get(args.keyId);
-    
+
     if (!apiKey) {
       throw new Error("API key not found");
     }
@@ -148,7 +154,7 @@ export const toggleApiKey = mutation({
       isActive: args.isActive,
       updatedAt: Date.now(),
     });
-    
+
     return { success: true };
   },
 });
@@ -160,7 +166,7 @@ export const recordApiKeyUsage = mutation({
       v.literal("openai"),
       v.literal("google_maps"),
       v.literal("findymail"),
-      v.literal("apify")
+      v.literal("apify"),
     ),
     userId: v.id("users"),
   },
@@ -194,7 +200,7 @@ export const updateValidationStatus = mutation({
   },
   handler: async (ctx, args) => {
     const apiKey = await ctx.db.get(args.keyId);
-    
+
     if (!apiKey) {
       throw new Error("API key not found");
     }

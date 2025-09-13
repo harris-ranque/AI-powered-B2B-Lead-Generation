@@ -6,18 +6,18 @@ import { api } from "../_generated/api";
 // Get current billing period dates
 function getCurrentBillingPeriod(periodStart: number, periodEnd: number) {
   const now = Date.now();
-  
+
   if (now >= periodStart && now <= periodEnd) {
     return { start: periodStart, end: periodEnd };
   }
-  
+
   // Calculate next period if current period has ended
   const periodLength = periodEnd - periodStart;
   const periodsSinceStart = Math.floor((now - periodStart) / periodLength);
-  
+
   return {
-    start: periodStart + (periodsSinceStart * periodLength),
-    end: periodStart + ((periodsSinceStart + 1) * periodLength),
+    start: periodStart + periodsSinceStart * periodLength,
+    end: periodStart + (periodsSinceStart + 1) * periodLength,
   };
 }
 
@@ -78,9 +78,12 @@ export const trackSearchUsage = mutation({
       .filter((q) => q.eq(q.field("userId"), args.userId))
       .unique();
 
-    const billingPeriod = billing ? 
-      getCurrentBillingPeriod(billing.currentPeriodStart, billing.currentPeriodEnd) :
-      { start: Date.now(), end: Date.now() + (30 * 24 * 60 * 60 * 1000) }; // 30 days default
+    const billingPeriod = billing
+      ? getCurrentBillingPeriod(
+          billing.currentPeriodStart,
+          billing.currentPeriodEnd,
+        )
+      : { start: Date.now(), end: Date.now() + 30 * 24 * 60 * 60 * 1000 }; // 30 days default
 
     // Get or create current usage tracking
     let usage = await ctx.db
@@ -91,11 +94,14 @@ export const trackSearchUsage = mutation({
 
     if (!usage) {
       // Initialize if doesn't exist
-      await ctx.runMutation(api.usageTracking.mutations.initializeUsageTracking, {
-        userId: args.userId,
-        billingPeriodStart: billingPeriod.start,
-        billingPeriodEnd: billingPeriod.end,
-      });
+      await ctx.runMutation(
+        api.usageTracking.mutations.initializeUsageTracking,
+        {
+          userId: args.userId,
+          billingPeriodStart: billingPeriod.start,
+          billingPeriodEnd: billingPeriod.end,
+        },
+      );
 
       usage = await ctx.db
         .query("usageTracking")
@@ -205,9 +211,9 @@ export const checkUsageLimits = mutation({
     userId: v.id("users"),
     operation: v.union(
       v.literal("search"),
-      v.literal("email_generation"), 
+      v.literal("email_generation"),
       v.literal("export"),
-      v.literal("api_call")
+      v.literal("api_call"),
     ),
     count: v.optional(v.number()),
   },
@@ -239,11 +245,11 @@ export const checkUsageLimits = mutation({
         .unique();
 
       if (!usage) {
-        return { 
-          allowed: true, 
+        return {
+          allowed: true,
           reason: "No usage tracking found",
           limits: starterLimits,
-          usage: { searchesUsed: 0, emailsGenerated: 0, exportsCompleted: 0 }
+          usage: { searchesUsed: 0, emailsGenerated: 0, exportsCompleted: 0 },
         };
       }
 
@@ -251,8 +257,8 @@ export const checkUsageLimits = mutation({
       switch (args.operation) {
         case "search":
           if (usage.searchesUsed >= starterLimits.monthlySearches) {
-            return { 
-              allowed: false, 
+            return {
+              allowed: false,
               reason: `Monthly search limit of ${starterLimits.monthlySearches} reached`,
               limits: starterLimits,
               usage,
@@ -261,8 +267,8 @@ export const checkUsageLimits = mutation({
           break;
         case "email_generation":
           if (!starterLimits.emailGeneration) {
-            return { 
-              allowed: false, 
+            return {
+              allowed: false,
               reason: "Email generation not available on Starter tier",
               limits: starterLimits,
               usage,
@@ -271,8 +277,8 @@ export const checkUsageLimits = mutation({
           break;
         case "export":
           if (usage.exportsCompleted >= starterLimits.monthlyExports) {
-            return { 
-              allowed: false, 
+            return {
+              allowed: false,
               reason: `Monthly export limit of ${starterLimits.monthlyExports} reached`,
               limits: starterLimits,
               usage,
@@ -281,7 +287,7 @@ export const checkUsageLimits = mutation({
           break;
       }
 
-      return { 
+      return {
         allowed: true,
         limits: starterLimits,
         usage,
@@ -297,11 +303,11 @@ export const checkUsageLimits = mutation({
       .unique();
 
     if (!usage) {
-      return { 
-        allowed: true, 
+      return {
+        allowed: true,
         reason: "No usage tracking found",
         limits,
-        usage: { searchesUsed: 0, emailsGenerated: 0, exportsCompleted: 0 }
+        usage: { searchesUsed: 0, emailsGenerated: 0, exportsCompleted: 0 },
       };
     }
 
@@ -310,9 +316,12 @@ export const checkUsageLimits = mutation({
     // Check limits based on operation and plan
     switch (args.operation) {
       case "search":
-        if (limits.monthlySearches !== -1 && usage.searchesUsed + requestCount > limits.monthlySearches) {
-          return { 
-            allowed: false, 
+        if (
+          limits.monthlySearches !== -1 &&
+          usage.searchesUsed + requestCount > limits.monthlySearches
+        ) {
+          return {
+            allowed: false,
             reason: `Monthly search limit of ${limits.monthlySearches} would be exceeded`,
             limits,
             usage,
@@ -321,8 +330,8 @@ export const checkUsageLimits = mutation({
         break;
       case "email_generation":
         if (!limits.emailGeneration) {
-          return { 
-            allowed: false, 
+          return {
+            allowed: false,
             reason: "Email generation not available on your plan",
             limits,
             usage,
@@ -330,9 +339,12 @@ export const checkUsageLimits = mutation({
         }
         break;
       case "export":
-        if (limits.monthlyExports !== -1 && usage.exportsCompleted + requestCount > limits.monthlyExports) {
-          return { 
-            allowed: false, 
+        if (
+          limits.monthlyExports !== -1 &&
+          usage.exportsCompleted + requestCount > limits.monthlyExports
+        ) {
+          return {
+            allowed: false,
             reason: `Monthly export limit of ${limits.monthlyExports} would be exceeded`,
             limits,
             usage,
@@ -341,7 +353,7 @@ export const checkUsageLimits = mutation({
         break;
     }
 
-    return { 
+    return {
       allowed: true,
       limits,
       usage,

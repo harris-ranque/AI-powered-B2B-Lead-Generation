@@ -25,11 +25,16 @@ function ConvexErrorFallback() {
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Connection Error</AlertTitle>
           <AlertDescription className="mt-2">
-            Unable to connect to the backend service. 
-            {!convexUrl || convexUrl.includes('placeholder') ? (
+            Unable to connect to the backend service.
+            {!convexUrl || convexUrl.includes("placeholder") ? (
               <div className="mt-2">
-                <strong>Configuration Issue:</strong> Missing or invalid Convex URL.
-                {isDev && <div className="text-xs mt-1 font-mono">Current URL: {convexUrl || 'undefined'}</div>}
+                <strong>Configuration Issue:</strong> Missing or invalid Convex
+                URL.
+                {isDev && (
+                  <div className="text-xs mt-1 font-mono">
+                    Current URL: {convexUrl || "undefined"}
+                  </div>
+                )}
               </div>
             ) : (
               <div>
@@ -51,10 +56,17 @@ function ConvexErrorFallback() {
         </div>
         {isDev && (
           <div className="mt-4 text-xs text-gray-600 bg-gray-100 p-2 rounded">
-            <div><strong>Debug Info:</strong></div>
+            <div>
+              <strong>Debug Info:</strong>
+            </div>
             <div>Environment: {import.meta.env.MODE}</div>
-            <div>Convex URL: {convexUrl || 'Not set'}</div>
-            <div>All VITE_ vars: {Object.keys(import.meta.env).filter(k => k.startsWith('VITE_')).join(', ')}</div>
+            <div>Convex URL: {convexUrl || "Not set"}</div>
+            <div>
+              All VITE_ vars:{" "}
+              {Object.keys(import.meta.env)
+                .filter((k) => k.startsWith("VITE_"))
+                .join(", ")}
+            </div>
           </div>
         )}
       </div>
@@ -69,7 +81,7 @@ export function ConvexProvider({ children }: ConvexProviderProps) {
   }
 
   const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-  
+
   if (!clerkPublishableKey) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
@@ -77,7 +89,8 @@ export function ConvexProvider({ children }: ConvexProviderProps) {
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Configuration Error</AlertTitle>
           <AlertDescription>
-            Missing Clerk publishable key. Please check your environment configuration.
+            Missing Clerk publishable key. Please check your environment
+            configuration.
           </AlertDescription>
         </Alert>
       </div>

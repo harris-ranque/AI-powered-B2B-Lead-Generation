@@ -62,7 +62,7 @@ const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
 export class SubscriptionMiddleware {
   constructor(
     private db: DatabaseReader | DatabaseWriter,
-    private user: Doc<"users">
+    private user: Doc<"users">,
   ) {}
 
   // Get current plan limits
@@ -71,20 +71,31 @@ export class SubscriptionMiddleware {
   }
 
   // Check if user has access to a feature
-  hasFeature(feature: keyof Omit<PlanLimits, 'monthlySearches' | 'maxLeadsPerSearch' | 'monthlyEnrichments' | 'monthlyExports'>): boolean {
+  hasFeature(
+    feature: keyof Omit<
+      PlanLimits,
+      | "monthlySearches"
+      | "maxLeadsPerSearch"
+      | "monthlyEnrichments"
+      | "monthlyExports"
+    >,
+  ): boolean {
     const limits = this.getPlanLimits();
     return limits[feature];
   }
 
   // Check usage limits and enforce restrictions
-  async checkUsageLimit(operation: "search" | "enrichment" | "export", count: number = 1): Promise<{
+  async checkUsageLimit(
+    operation: "search" | "enrichment" | "export",
+    count: number = 1,
+  ): Promise<{
     allowed: boolean;
     reason?: string;
     remaining?: number;
     limit?: number;
   }> {
     const limits = this.getPlanLimits();
-    
+
     // Get current usage
     const usage = await this.db
       .query("usageTracking")
@@ -103,36 +114,48 @@ export class SubscriptionMiddleware {
         if (limits.monthlySearches === -1) {
           return { allowed: true, remaining: -1, limit: -1 };
         }
-        const searchesRemaining = limits.monthlySearches - currentUsage.searchesUsed;
+        const searchesRemaining =
+          limits.monthlySearches - currentUsage.searchesUsed;
         return {
           allowed: searchesRemaining >= count,
           remaining: searchesRemaining,
           limit: limits.monthlySearches,
-          reason: searchesRemaining < count ? `Monthly search limit exceeded. Used ${currentUsage.searchesUsed}/${limits.monthlySearches}` : undefined,
+          reason:
+            searchesRemaining < count
+              ? `Monthly search limit exceeded. Used ${currentUsage.searchesUsed}/${limits.monthlySearches}`
+              : undefined,
         };
 
       case "enrichment":
         if (limits.monthlyEnrichments === -1) {
           return { allowed: true, remaining: -1, limit: -1 };
         }
-        const enrichmentsRemaining = limits.monthlyEnrichments - currentUsage.leadsEnriched;
+        const enrichmentsRemaining =
+          limits.monthlyEnrichments - currentUsage.leadsEnriched;
         return {
           allowed: enrichmentsRemaining >= count,
           remaining: enrichmentsRemaining,
           limit: limits.monthlyEnrichments,
-          reason: enrichmentsRemaining < count ? `Monthly enrichment limit exceeded. Used ${currentUsage.leadsEnriched}/${limits.monthlyEnrichments}` : undefined,
+          reason:
+            enrichmentsRemaining < count
+              ? `Monthly enrichment limit exceeded. Used ${currentUsage.leadsEnriched}/${limits.monthlyEnrichments}`
+              : undefined,
         };
 
       case "export":
         if (limits.monthlyExports === -1) {
           return { allowed: true, remaining: -1, limit: -1 };
         }
-        const exportsRemaining = limits.monthlyExports - currentUsage.exportsCompleted;
+        const exportsRemaining =
+          limits.monthlyExports - currentUsage.exportsCompleted;
         return {
           allowed: exportsRemaining >= count,
           remaining: exportsRemaining,
           limit: limits.monthlyExports,
-          reason: exportsRemaining < count ? `Monthly export limit exceeded. Used ${currentUsage.exportsCompleted}/${limits.monthlyExports}` : undefined,
+          reason:
+            exportsRemaining < count
+              ? `Monthly export limit exceeded. Used ${currentUsage.exportsCompleted}/${limits.monthlyExports}`
+              : undefined,
         };
 
       default:
@@ -141,15 +164,28 @@ export class SubscriptionMiddleware {
   }
 
   // Enforce feature access
-  async enforceFeatureAccess(feature: keyof Omit<PlanLimits, 'monthlySearches' | 'maxLeadsPerSearch' | 'monthlyEnrichments' | 'monthlyExports'>): Promise<void> {
+  async enforceFeatureAccess(
+    feature: keyof Omit<
+      PlanLimits,
+      | "monthlySearches"
+      | "maxLeadsPerSearch"
+      | "monthlyEnrichments"
+      | "monthlyExports"
+    >,
+  ): Promise<void> {
     if (!this.hasFeature(feature)) {
       const currentPlan = this.user.plan;
-      throw new Error(`Feature '${feature}' is not available on the ${currentPlan} plan. Please upgrade your subscription.`);
+      throw new Error(
+        `Feature '${feature}' is not available on the ${currentPlan} plan. Please upgrade your subscription.`,
+      );
     }
   }
 
   // Enforce usage limits
-  async enforceUsageLimit(operation: "search" | "enrichment" | "export", count: number = 1): Promise<void> {
+  async enforceUsageLimit(
+    operation: "search" | "enrichment" | "export",
+    count: number = 1,
+  ): Promise<void> {
     const result = await this.checkUsageLimit(operation, count);
     if (!result.allowed) {
       throw new Error(result.reason || `Usage limit exceeded for ${operation}`);
@@ -157,19 +193,28 @@ export class SubscriptionMiddleware {
   }
 
   // Get upgrade suggestions
-  getUpgradeSuggestion(requiredFeature?: string): { suggestedPlan: PlanTier; benefits: string[] } {
+  getUpgradeSuggestion(requiredFeature?: string): {
+    suggestedPlan: PlanTier;
+    benefits: string[];
+  } {
     const currentPlan = this.user.plan as PlanTier;
-    
-    const planOrder: PlanTier[] = ["starter", "professional", "business", "enterprise"];
+
+    const planOrder: PlanTier[] = [
+      "starter",
+      "professional",
+      "business",
+      "enterprise",
+    ];
     const currentIndex = planOrder.indexOf(currentPlan);
-    
+
     if (currentIndex < planOrder.length - 1) {
       const nextPlan = planOrder[currentIndex + 1];
-      if (!nextPlan) return { suggestedPlan: "enterprise" as PlanTier, benefits: [] };
+      if (!nextPlan)
+        return { suggestedPlan: "enterprise" as PlanTier, benefits: [] };
       const nextLimits = PLAN_LIMITS[nextPlan];
-      
+
       const benefits = [];
-      
+
       if (currentPlan === "starter") {
         benefits.push("Email generation");
         benefits.push("Bulk operations");
@@ -179,18 +224,23 @@ export class SubscriptionMiddleware {
         benefits.push("Team collaboration");
         benefits.push("Custom integrations");
         benefits.push(`${nextLimits.monthlySearches} searches/month`);
-        benefits.push(`${nextLimits.monthlyEnrichments.toLocaleString()} enrichments/month`);
+        benefits.push(
+          `${nextLimits.monthlyEnrichments.toLocaleString()} enrichments/month`,
+        );
       } else if (currentPlan === "business") {
         benefits.push("Unlimited usage");
         benefits.push("White-label options");
         benefits.push("Dedicated support");
         benefits.push("Custom API keys (optional)");
       }
-      
+
       return { suggestedPlan: nextPlan, benefits };
     }
-    
-    return { suggestedPlan: "enterprise", benefits: ["Maximum features and limits"] };
+
+    return {
+      suggestedPlan: "enterprise",
+      benefits: ["Maximum features and limits"],
+    };
   }
 
   // Check if user can perform bulk operations
@@ -214,17 +264,21 @@ export class SubscriptionMiddleware {
   }
 
   // Validate search parameters against plan limits
-  validateSearchParameters(maxLeads: number): { valid: boolean; adjustedMaxLeads?: number; reason?: string } {
+  validateSearchParameters(maxLeads: number): {
+    valid: boolean;
+    adjustedMaxLeads?: number;
+    reason?: string;
+  } {
     const limits = this.getPlanLimits();
-    
+
     if (limits.maxLeadsPerSearch === -1) {
       return { valid: true }; // unlimited
     }
-    
+
     if (maxLeads <= limits.maxLeadsPerSearch) {
       return { valid: true };
     }
-    
+
     return {
       valid: false,
       adjustedMaxLeads: limits.maxLeadsPerSearch,
@@ -236,7 +290,7 @@ export class SubscriptionMiddleware {
 // Helper function to create middleware instance
 export async function createSubscriptionMiddleware(
   db: DatabaseReader | DatabaseWriter,
-  identity: UserIdentity
+  identity: UserIdentity,
 ): Promise<SubscriptionMiddleware> {
   const user = await db
     .query("users")
@@ -254,23 +308,32 @@ export async function createSubscriptionMiddleware(
 export async function withSubscriptionCheck<T>(
   db: DatabaseReader | DatabaseWriter,
   identity: UserIdentity,
-  operation: "search" | "enrichment" | "export" | "email_generation" | "bulk_operation",
+  operation:
+    | "search"
+    | "enrichment"
+    | "export"
+    | "email_generation"
+    | "bulk_operation",
   count: number = 1,
-  callback: (middleware: SubscriptionMiddleware) => Promise<T>
+  callback: (middleware: SubscriptionMiddleware) => Promise<T>,
 ): Promise<T> {
   const middleware = await createSubscriptionMiddleware(db, identity);
-  
+
   // Check feature access
   if (operation === "email_generation") {
     await middleware.enforceFeatureAccess("emailGeneration");
   } else if (operation === "bulk_operation") {
     await middleware.enforceFeatureAccess("bulkOperations");
   }
-  
+
   // Check usage limits
-  if (operation === "search" || operation === "enrichment" || operation === "export") {
+  if (
+    operation === "search" ||
+    operation === "enrichment" ||
+    operation === "export"
+  ) {
     await middleware.enforceUsageLimit(operation, count);
   }
-  
+
   return callback(middleware);
 }

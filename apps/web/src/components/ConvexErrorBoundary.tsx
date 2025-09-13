@@ -1,7 +1,7 @@
-import React from 'react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import React from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 
 interface ConvexErrorBoundaryState {
   hasError: boolean;
@@ -32,13 +32,13 @@ export class ConvexErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('ConvexErrorBoundary caught an error:', error, errorInfo);
+    console.error("ConvexErrorBoundary caught an error:", error, errorInfo);
     this.props.onError?.(error, errorInfo);
-    
+
     // Log to external error tracking service if available
-    if (typeof window !== 'undefined' && 'gtag' in window) {
+    if (typeof window !== "undefined" && "gtag" in window) {
       // @ts-expect-error gtag is loaded dynamically by Google Analytics
-      window.gtag('event', 'exception', {
+      window.gtag("event", "exception", {
         description: error.message,
         fatal: false,
       });
@@ -57,9 +57,11 @@ export class ConvexErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       const { fallback: Fallback } = this.props;
-      
+
       if (Fallback) {
-        return <Fallback error={this.state.error} resetError={this.resetError} />;
+        return (
+          <Fallback error={this.state.error} resetError={this.resetError} />
+        );
       }
 
       return (
@@ -68,7 +70,8 @@ export class ConvexErrorBoundary extends React.Component<
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Something went wrong</AlertTitle>
             <AlertDescription className="mt-2">
-              We encountered an error while loading this section. This might be due to:
+              We encountered an error while loading this section. This might be
+              due to:
               <ul className="list-disc list-inside mt-2 space-y-1">
                 <li>Network connectivity issues</li>
                 <li>Temporary server problems</li>
@@ -80,17 +83,17 @@ export class ConvexErrorBoundary extends React.Component<
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Try Again
               </Button>
-              <Button 
-                onClick={() => window.location.reload()} 
-                variant="outline" 
+              <Button
+                onClick={() => window.location.reload()}
+                variant="outline"
                 size="sm"
               >
                 Reload Page
               </Button>
             </div>
           </Alert>
-          
-          {process.env.NODE_ENV === 'development' && (
+
+          {process.env.NODE_ENV === "development" && (
             <details className="mt-4">
               <summary className="cursor-pointer text-sm text-gray-600">
                 Error Details (Development Only)
@@ -124,24 +127,25 @@ const ConvexErrorBoundaryContext = React.createContext<{
   reportError: () => {},
 });
 
-export function ConvexErrorBoundaryProvider({ 
+export function ConvexErrorBoundaryProvider({
   children,
   onError,
 }: {
   children: React.ReactNode;
   onError?: (error: Error) => void;
 }) {
-  const reportError = React.useCallback((error: Error) => {
-    console.error('Reported error:', error);
-    onError?.(error);
-    throw error; // Re-throw to trigger error boundary
-  }, [onError]);
+  const reportError = React.useCallback(
+    (error: Error) => {
+      console.error("Reported error:", error);
+      onError?.(error);
+      throw error; // Re-throw to trigger error boundary
+    },
+    [onError],
+  );
 
   return (
     <ConvexErrorBoundaryContext.Provider value={{ reportError }}>
-      <ConvexErrorBoundary onError={onError}>
-        {children}
-      </ConvexErrorBoundary>
+      <ConvexErrorBoundary onError={onError}>{children}</ConvexErrorBoundary>
     </ConvexErrorBoundaryContext.Provider>
   );
 }

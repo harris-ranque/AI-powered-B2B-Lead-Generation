@@ -2,13 +2,36 @@ import { internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { createOperationLogger } from "../lib/logger";
+import { Doc, Id } from "../_generated/dataModel";
+import { DatabaseReader } from "../_generated/server";
 
-// Helper function to determine plan from price ID
-function getPlanFromPriceId(priceId: string): "starter" | "professional" | "business" | "enterprise" {
-  if (priceId?.includes("professional") || priceId?.includes("pro")) return "professional";
-  if (priceId?.includes("business")) return "business";
-  if (priceId?.includes("enterprise")) return "enterprise";
-  return "starter";
+// Helper: robust plan resolution using planConfigurations mapping; falls back to heuristic
+async function resolvePlanFromPriceId(
+  db: DatabaseReader,
+  priceId?: string,
+): Promise<{
+  plan: "starter" | "professional" | "business" | "enterprise";
+  billingCycle?: "monthly" | "yearly";
+}> {
+  if (!priceId) return { plan: "starter" };
+  try {
+    const plans = await db.query("planConfigurations").collect();
+    for (const cfg of plans) {
+      if (cfg.stripePriceIdMonthly === priceId) {
+        return { plan: cfg.planId as any, billingCycle: "monthly" };
+      }
+      if (cfg.stripePriceIdYearly === priceId) {
+        return { plan: cfg.planId as any, billingCycle: "yearly" };
+      }
+    }
+  } catch {}
+  // Fallback heuristic
+  const lower = priceId.toLowerCase();
+  if (lower.includes("enterprise")) return { plan: "enterprise" };
+  if (lower.includes("business")) return { plan: "business" };
+  if (lower.includes("professional") || lower.includes("pro"))
+    return { plan: "professional" };
+  return { plan: "starter" };
 }
 
 // Helper function to get plan limits
@@ -73,16 +96,33 @@ export const handleCheckoutCompleted = internalMutation({
   handler: async (ctx, args) => {
     try {
       console.log(`Processing checkout completion: ${args.sessionId}`);
-      
-      // Find user by customer ID
-      const user = await ctx.db
+
+      // Find user by customer ID first
+      let user: Doc<"users"> | null = await ctx.db
         .query("users")
         .filter((q) => q.eq(q.field("stripeCustomerId"), args.customerId))
         .unique();
 
+      // If not found, try metadata.userId
+      if (!user && args.metadata?.userId) {
+        try {
+          user = await ctx.db.get(args.metadata.userId as Id<"users">);
+        } catch {}
+      }
+
       if (!user) {
-        console.error(`User not found for customer: ${args.customerId}`);
+        console.error(`User not found for checkout session: ${args.sessionId}`);
         return { success: false, error: "User not found" };
+      }
+
+      // Ensure user has stripeCustomerId and subscription linkage
+      const patches: Partial<Doc<"users">> = {} as any;
+      if (!user.stripeCustomerId && args.customerId)
+        patches.stripeCustomerId = args.customerId;
+      if (!user.stripeSubscriptionId && args.subscriptionId)
+        patches.stripeSubscriptionId = args.subscriptionId;
+      if (Object.keys(patches).length > 0) {
+        await ctx.db.patch(user._id, { ...patches, updatedAt: Date.now() });
       }
 
       // Log the event
@@ -98,7 +138,10 @@ export const handleCheckoutCompleted = internalMutation({
       return { success: true };
     } catch (error) {
       console.error("Error handling checkout completed:", error);
-      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   },
 });
@@ -114,42 +157,63 @@ export const handleSubscriptionCreated = internalMutation({
     currentPeriodEnd: v.number(),
     trialStart: v.optional(v.number()),
     trialEnd: v.optional(v.number()),
+    // Optional extras when present
+    metadata: v.optional(v.any()),
+    interval: v.optional(v.union(v.literal("month"), v.literal("year"))),
   },
   handler: async (ctx, args) => {
-    const logger = createOperationLogger.webhook("system", "subscription_created");
-    const timer = logger.start(`Creating subscription for customer: ${args.customerId}`);
+    const logger = createOperationLogger.webhook(
+      "system",
+      "subscription_created",
+    );
+    const timer = logger.start(
+      `Creating subscription for customer: ${args.customerId}`,
+    );
     try {
       console.log(`Creating subscription: ${args.subscriptionId}`);
-      
+
       // Find user by customer ID
-      const user = await ctx.db
+      let user: Doc<"users"> | null = await ctx.db
         .query("users")
         .filter((q) => q.eq(q.field("stripeCustomerId"), args.customerId))
         .unique();
+
+      if (!user && args.metadata?.userId) {
+        user = await ctx.db
+          .get(args.metadata.userId as Id<"users">)
+          .catch(() => null as any);
+      }
 
       if (!user) {
         console.error(`User not found for customer: ${args.customerId}`);
         return { success: false, error: "User not found" };
       }
+      const u = user as Doc<"users">;
 
-      // Determine plan from price ID
-      const plan = getPlanFromPriceId(args.priceId || "");
+      // Determine plan and billing cycle from price ID
+      const { plan, billingCycle } = await resolvePlanFromPriceId(
+        ctx.db,
+        args.priceId || "",
+      );
       const planLimits = getPlanLimits(plan);
-      
+
       // Determine subscription status
       let subscriptionStatus: any = "active";
       const isTrialing = !!args.trialStart && !!args.trialEnd;
-      
+
       if (isTrialing) {
         subscriptionStatus = "trialing";
-      } else if (args.status === "incomplete" || args.status === "incomplete_expired") {
+      } else if (
+        args.status === "incomplete" ||
+        args.status === "incomplete_expired"
+      ) {
         subscriptionStatus = args.status;
       }
 
       // Create or update billing record
       const existingBilling = await ctx.db
         .query("billing")
-        .filter((q) => q.eq(q.field("userId"), user._id))
+        .filter((q) => q.eq(q.field("userId"), u._id))
         .unique();
 
       if (existingBilling) {
@@ -163,17 +227,24 @@ export const handleSubscriptionCreated = internalMutation({
           trialStart: args.trialStart,
           trialEnd: args.trialEnd,
           isTrialing,
+          billingCycle:
+            billingCycle === "yearly" || args.interval === "year"
+              ? "yearly"
+              : "monthly",
           planLimits,
           updatedAt: Date.now(),
         });
       } else {
         await ctx.db.insert("billing", {
-          userId: user._id,
+          userId: u._id,
           stripeCustomerId: args.customerId,
           stripeSubscriptionId: args.subscriptionId,
           stripePriceId: args.priceId,
           plan: plan,
-          billingCycle: "monthly", // Default, will be updated if needed
+          billingCycle:
+            billingCycle === "yearly" || args.interval === "year"
+              ? "yearly"
+              : "monthly",
           amount: 0, // Will be updated from invoice
           currency: "usd",
           status: subscriptionStatus,
@@ -190,22 +261,23 @@ export const handleSubscriptionCreated = internalMutation({
       }
 
       // Update user plan
-      await ctx.db.patch(user._id, {
+      await ctx.db.patch(u._id, {
         plan: plan,
         stripeSubscriptionId: args.subscriptionId,
+        stripeCustomerId: u.stripeCustomerId || args.customerId,
         updatedAt: Date.now(),
       });
 
       // Create usage tracking record for the current period
       const existingUsage = await ctx.db
         .query("usageTracking")
-        .filter((q) => q.eq(q.field("userId"), user._id))
+        .filter((q) => q.eq(q.field("userId"), u._id))
         .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
         .unique();
 
       if (!existingUsage) {
         await ctx.db.insert("usageTracking", {
-          userId: user._id,
+          userId: u._id,
           billingPeriodStart: args.currentPeriodStart,
           billingPeriodEnd: args.currentPeriodEnd,
           searchesUsed: 0,
@@ -222,7 +294,7 @@ export const handleSubscriptionCreated = internalMutation({
 
       // Log the event
       await ctx.db.insert("subscriptionEvents", {
-        userId: user._id,
+        userId: u._id,
         stripeCustomerId: args.customerId,
         stripeSubscriptionId: args.subscriptionId,
         eventType: "subscription_created",
@@ -230,19 +302,31 @@ export const handleSubscriptionCreated = internalMutation({
         createdAt: Date.now(),
       });
 
-      logger.complete(timer, `Subscription created for user ${user._id}: ${plan} plan`, {
-        userId: user._id,
-        subscriptionId: args.subscriptionId,
-        plan,
-        isTrialing
-      });
+      logger.complete(
+        timer,
+        `Subscription created for user ${u._id}: ${plan} plan`,
+        {
+          userId: u._id,
+          subscriptionId: args.subscriptionId,
+          plan,
+          isTrialing,
+        },
+      );
       return { success: true, plan };
     } catch (error) {
-      logger.failure(timer, error as Error, "Error handling subscription created", {
-        subscriptionId: args.subscriptionId,
-        customerId: args.customerId
-      });
-      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+      logger.failure(
+        timer,
+        error as Error,
+        "Error handling subscription created",
+        {
+          subscriptionId: args.subscriptionId,
+          customerId: args.customerId,
+        },
+      );
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   },
 });
@@ -259,46 +343,66 @@ export const handleSubscriptionUpdated = internalMutation({
     cancelAtPeriodEnd: v.boolean(),
     cancelAt: v.optional(v.number()),
     canceledAt: v.optional(v.number()),
+    metadata: v.optional(v.any()),
+    interval: v.optional(v.union(v.literal("month"), v.literal("year"))),
   },
   handler: async (ctx, args) => {
-    const logger = createOperationLogger.webhook("system", "subscription_updated");
+    const logger = createOperationLogger.webhook(
+      "system",
+      "subscription_updated",
+    );
     const timer = logger.start(`Updating subscription: ${args.subscriptionId}`);
-    
+
     try {
       // Find user by subscription ID
-      const user = await ctx.db
+      let user: Doc<"users"> | null = await ctx.db
         .query("users")
-        .filter((q) => q.eq(q.field("stripeSubscriptionId"), args.subscriptionId))
+        .filter((q) =>
+          q.eq(q.field("stripeSubscriptionId"), args.subscriptionId),
+        )
         .unique();
 
+      if (!user && args.metadata?.userId) {
+        user = await ctx.db
+          .get(args.metadata.userId as Id<"users">)
+          .catch(() => null as any);
+      }
+
       if (!user) {
-        logger.error(`User not found for subscription: ${args.subscriptionId}`, {
-          subscriptionId: args.subscriptionId
-        });
+        logger.error(
+          `User not found for subscription: ${args.subscriptionId}`,
+          {
+            subscriptionId: args.subscriptionId,
+          },
+        );
         return { success: false, error: "User not found" };
       }
+      const u2 = user as Doc<"users">;
 
       // Get existing billing record
       const billing = await ctx.db
         .query("billing")
-        .filter((q) => q.eq(q.field("userId"), user._id))
+        .filter((q) => q.eq(q.field("userId"), u2._id))
         .unique();
 
       if (!billing) {
         logger.error(`Billing record not found for user: ${user._id}`, {
           userId: user._id,
-          subscriptionId: args.subscriptionId
+          subscriptionId: args.subscriptionId,
         });
         return { success: false, error: "Billing record not found" };
       }
 
       logger.debug("Found user and billing record for subscription update", {
-        userId: user._id,
-        subscriptionId: args.subscriptionId
+        userId: u2._id,
+        subscriptionId: args.subscriptionId,
       });
 
       const oldPlan = billing.plan;
-      const newPlan = getPlanFromPriceId(args.priceId || "");
+      const { plan: newPlan, billingCycle } = await resolvePlanFromPriceId(
+        ctx.db,
+        args.priceId || "",
+      );
       const planLimits = getPlanLimits(newPlan);
 
       // Update billing record
@@ -311,13 +415,17 @@ export const handleSubscriptionUpdated = internalMutation({
         cancelAtPeriodEnd: args.cancelAtPeriodEnd,
         cancelAt: args.cancelAt,
         canceledAt: args.canceledAt,
+        billingCycle:
+          billingCycle === "yearly" || args.interval === "year"
+            ? "yearly"
+            : billing.billingCycle || "monthly",
         planLimits,
         updatedAt: Date.now(),
       });
 
       // Update user plan if changed
       if (oldPlan !== newPlan) {
-        await ctx.db.patch(user._id, {
+        await ctx.db.patch(u2._id, {
           plan: newPlan,
           updatedAt: Date.now(),
         });
@@ -326,11 +434,14 @@ export const handleSubscriptionUpdated = internalMutation({
       // Update usage tracking period if period changed
       const currentUsage = await ctx.db
         .query("usageTracking")
-        .filter((q) => q.eq(q.field("userId"), user._id))
+        .filter((q) => q.eq(q.field("userId"), u2._id))
         .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
         .unique();
 
-      if (currentUsage && currentUsage.billingPeriodEnd !== args.currentPeriodEnd) {
+      if (
+        currentUsage &&
+        currentUsage.billingPeriodEnd !== args.currentPeriodEnd
+      ) {
         // Mark current period as not current
         await ctx.db.patch(currentUsage._id, {
           isCurrentPeriod: false,
@@ -339,7 +450,7 @@ export const handleSubscriptionUpdated = internalMutation({
 
         // Create new current period
         await ctx.db.insert("usageTracking", {
-          userId: user._id,
+          userId: u2._id,
           billingPeriodStart: args.currentPeriodStart,
           billingPeriodEnd: args.currentPeriodEnd,
           searchesUsed: 0,
@@ -356,28 +467,41 @@ export const handleSubscriptionUpdated = internalMutation({
 
       // Log the event
       await ctx.db.insert("subscriptionEvents", {
-        userId: user._id,
+        userId: u2._id,
         stripeCustomerId: args.customerId,
         stripeSubscriptionId: args.subscriptionId,
-        eventType: oldPlan !== newPlan ? "plan_changed" : "subscription_updated",
+        eventType:
+          oldPlan !== newPlan ? "plan_changed" : "subscription_updated",
         oldPlan,
         newPlan,
         createdAt: Date.now(),
       });
 
-      logger.complete(timer, `Subscription updated for user ${user._id}: ${oldPlan} -> ${newPlan}`, {
-        userId: user._id,
-        subscriptionId: args.subscriptionId,
-        oldPlan,
-        newPlan
-      });
+      logger.complete(
+        timer,
+        `Subscription updated for user ${u2._id}: ${oldPlan} -> ${newPlan}`,
+        {
+          userId: u2._id,
+          subscriptionId: args.subscriptionId,
+          oldPlan,
+          newPlan,
+        },
+      );
       return { success: true, oldPlan, newPlan };
     } catch (error) {
-      logger.failure(timer, error as Error, `Error handling subscription updated: ${args.subscriptionId}`, {
-        subscriptionId: args.subscriptionId,
-        customerId: args.customerId
-      });
-      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+      logger.failure(
+        timer,
+        error as Error,
+        `Error handling subscription updated: ${args.subscriptionId}`,
+        {
+          subscriptionId: args.subscriptionId,
+          customerId: args.customerId,
+        },
+      );
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   },
 });
@@ -391,15 +515,19 @@ export const handleSubscriptionDeleted = internalMutation({
   handler: async (ctx, args) => {
     try {
       console.log(`Deleting subscription: ${args.subscriptionId}`);
-      
+
       // Find user by subscription ID
       const user = await ctx.db
         .query("users")
-        .filter((q) => q.eq(q.field("stripeSubscriptionId"), args.subscriptionId))
+        .filter((q) =>
+          q.eq(q.field("stripeSubscriptionId"), args.subscriptionId),
+        )
         .unique();
 
       if (!user) {
-        console.error(`User not found for subscription: ${args.subscriptionId}`);
+        console.error(
+          `User not found for subscription: ${args.subscriptionId}`,
+        );
         return { success: false, error: "User not found" };
       }
 
@@ -439,11 +567,19 @@ export const handleSubscriptionDeleted = internalMutation({
         createdAt: Date.now(),
       });
 
-      console.log(`Subscription cancelled for user ${user._id}: ${oldPlan} -> starter`);
+      console.log(
+        `Subscription cancelled for user ${user._id}: ${oldPlan} -> starter`,
+      );
       return { success: true, oldPlan, newPlan: "starter" };
     } catch (error) {
-      console.error(`Error handling subscription deleted: ${args.subscriptionId}`, error);
-      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+      console.error(
+        `Error handling subscription deleted: ${args.subscriptionId}`,
+        error,
+      );
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   },
 });
@@ -461,7 +597,7 @@ export const handlePaymentSucceeded = internalMutation({
   handler: async (ctx, args) => {
     try {
       console.log(`Payment succeeded for invoice: ${args.invoiceId}`);
-      
+
       // Find user by customer ID
       const user = await ctx.db
         .query("users")
@@ -500,11 +636,16 @@ export const handlePaymentSucceeded = internalMutation({
         createdAt: Date.now(),
       });
 
-      console.log(`Payment successful for user ${user._id}: $${(args.amount / 100).toFixed(2)}`);
+      console.log(
+        `Payment successful for user ${user._id}: $${(args.amount / 100).toFixed(2)}`,
+      );
       return { success: true };
     } catch (error) {
       console.error("Error handling payment succeeded:", error);
-      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   },
 });
@@ -523,7 +664,7 @@ export const handlePaymentFailed = internalMutation({
   handler: async (ctx, args) => {
     try {
       console.log(`Payment failed for invoice: ${args.invoiceId}`);
-      
+
       // Find user by customer ID
       const user = await ctx.db
         .query("users")
@@ -556,19 +697,24 @@ export const handlePaymentFailed = internalMutation({
         eventType: "payment_failed",
         amount: args.amount,
         currency: args.currency,
-        metadata: { 
-          invoiceId: args.invoiceId, 
+        metadata: {
+          invoiceId: args.invoiceId,
           attemptCount: args.attemptCount,
-          nextPaymentAttempt: args.nextPaymentAttempt 
+          nextPaymentAttempt: args.nextPaymentAttempt,
         },
         createdAt: Date.now(),
       });
 
-      console.log(`Payment failed for user ${user._id}: attempt ${args.attemptCount}`);
+      console.log(
+        `Payment failed for user ${user._id}: attempt ${args.attemptCount}`,
+      );
       return { success: true };
     } catch (error) {
       console.error("Error handling payment failed:", error);
-      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   },
 });

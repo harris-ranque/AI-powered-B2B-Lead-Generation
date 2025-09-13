@@ -11,7 +11,11 @@ export const getCurrentProfile = query({
     const user = await getCurrentUser(ctx);
 
     if (!user) {
-      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+      throw createError(
+        "Authentication required",
+        ERROR_CODES.UNAUTHORIZED,
+        401,
+      );
     }
 
     const profile = await ctx.db
@@ -30,7 +34,11 @@ export const getProfileCompleteness = query({
     const user = await getCurrentUser(ctx);
 
     if (!user) {
-      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+      throw createError(
+        "Authentication required",
+        ERROR_CODES.UNAUTHORIZED,
+        401,
+      );
     }
 
     const profile = await ctx.db
@@ -56,7 +64,7 @@ export const getProfileCompleteness = query({
 
     const requiredFields = [
       "companyName",
-      "industry", 
+      "industry",
       "valueProposition",
       "services",
       "targetMarkets",
@@ -74,7 +82,8 @@ export const getProfileCompleteness = query({
     if (!profile.industry?.trim()) missingFields.push("industry");
     else completedFields++;
 
-    if (!profile.valueProposition?.trim()) missingFields.push("valueProposition");
+    if (!profile.valueProposition?.trim())
+      missingFields.push("valueProposition");
     else completedFields++;
 
     if (!profile.services?.length) missingFields.push("services");
@@ -83,14 +92,17 @@ export const getProfileCompleteness = query({
     if (!profile.targetMarkets?.length) missingFields.push("targetMarkets");
     else completedFields++;
 
-    if (!profile.keyDifferentiators?.length) missingFields.push("keyDifferentiators");
+    if (!profile.keyDifferentiators?.length)
+      missingFields.push("keyDifferentiators");
     else completedFields++;
 
     // Check contact info (at least email should be provided)
     if (!profile.contactInfo?.email?.trim()) missingFields.push("contactInfo");
     else completedFields++;
 
-    const completionPercentage = Math.round((completedFields / requiredFields.length) * 100);
+    const completionPercentage = Math.round(
+      (completedFields / requiredFields.length) * 100,
+    );
     const isComplete = missingFields.length === 0;
 
     return {
@@ -138,7 +150,7 @@ export const getProfileTemplate = query({
   handler: async (ctx, args) => {
     // Return industry-specific templates to help users get started
     const templates = {
-      "Technology": {
+      Technology: {
         services: [
           "Software Development",
           "Cloud Solutions",
@@ -158,10 +170,11 @@ export const getProfileTemplate = query({
           "Scalable Solutions",
           "Rapid Implementation",
         ],
-        valueProposition: "We leverage cutting-edge technology to transform businesses and drive growth through innovative digital solutions.",
+        valueProposition:
+          "We leverage cutting-edge technology to transform businesses and drive growth through innovative digital solutions.",
       },
-      
-      "Marketing": {
+
+      Marketing: {
         services: [
           "Digital Marketing",
           "Content Creation",
@@ -181,10 +194,11 @@ export const getProfileTemplate = query({
           "ROI-Focused Campaigns",
           "Industry Expertise",
         ],
-        valueProposition: "We create compelling marketing strategies that drive measurable results and accelerate business growth.",
+        valueProposition:
+          "We create compelling marketing strategies that drive measurable results and accelerate business growth.",
       },
-      
-      "Consulting": {
+
+      Consulting: {
         services: [
           "Strategic Planning",
           "Process Optimization",
@@ -204,10 +218,11 @@ export const getProfileTemplate = query({
           "Measurable Results",
           "Long-term Partnership",
         ],
-        valueProposition: "We partner with organizations to optimize performance, drive efficiency, and achieve sustainable growth.",
+        valueProposition:
+          "We partner with organizations to optimize performance, drive efficiency, and achieve sustainable growth.",
       },
-      
-      "Healthcare": {
+
+      Healthcare: {
         services: [
           "Healthcare IT Solutions",
           "Medical Device Development",
@@ -227,9 +242,10 @@ export const getProfileTemplate = query({
           "Evidence-Based Solutions",
           "Patient-Centered Approach",
         ],
-        valueProposition: "We improve patient outcomes and healthcare efficiency through innovative, compliant technology solutions.",
+        valueProposition:
+          "We improve patient outcomes and healthcare efficiency through innovative, compliant technology solutions.",
       },
-      
+
       "Financial Services": {
         services: [
           "Financial Planning",
@@ -250,16 +266,19 @@ export const getProfileTemplate = query({
           "Personalized Service",
           "Advanced Analytics",
         ],
-        valueProposition: "We provide secure, compliant financial solutions that protect and grow our clients' wealth.",
+        valueProposition:
+          "We provide secure, compliant financial solutions that protect and grow our clients' wealth.",
       },
     };
 
-    return templates[args.industry as keyof typeof templates] || {
-      services: [],
-      targetMarkets: [],
-      keyDifferentiators: [],
-      valueProposition: "",
-    };
+    return (
+      templates[args.industry as keyof typeof templates] || {
+        services: [],
+        targetMarkets: [],
+        keyDifferentiators: [],
+        valueProposition: "",
+      }
+    );
   },
 });
 

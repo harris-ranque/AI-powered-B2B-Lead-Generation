@@ -7,27 +7,35 @@ import { createOperationLogger } from "../lib/logger";
 const EmailGenerationResult = v.object({
   request_id: v.string(),
   status: v.string(),
-  result: v.optional(v.object({
-    relevance_score: v.optional(v.number()),
-    pain_points_identified: v.optional(v.array(v.string())),
-    value_matches: v.optional(v.array(v.string())),
-    recommendations: v.optional(v.array(v.string())),
-    lead_analysis: v.optional(v.any()),
-    processing_time: v.optional(v.number()),
-    primary_email: v.optional(v.object({
-      subject: v.string(),
-      body: v.string(),
-      personalization_notes: v.optional(v.array(v.string())),
-      estimated_effectiveness: v.optional(v.number()),
-    })),
-    agent_results: v.optional(v.array(v.object({
-      agentName: v.string(),
-      role: v.string(),
-      output: v.string(),
-      confidenceScore: v.number(),
-      executionTime: v.number(),
-    }))),
-  })),
+  result: v.optional(
+    v.object({
+      relevance_score: v.optional(v.number()),
+      pain_points_identified: v.optional(v.array(v.string())),
+      value_matches: v.optional(v.array(v.string())),
+      recommendations: v.optional(v.array(v.string())),
+      lead_analysis: v.optional(v.any()),
+      processing_time: v.optional(v.number()),
+      primary_email: v.optional(
+        v.object({
+          subject: v.string(),
+          body: v.string(),
+          personalization_notes: v.optional(v.array(v.string())),
+          estimated_effectiveness: v.optional(v.number()),
+        }),
+      ),
+      agent_results: v.optional(
+        v.array(
+          v.object({
+            agentName: v.string(),
+            role: v.string(),
+            output: v.string(),
+            confidenceScore: v.number(),
+            executionTime: v.number(),
+          }),
+        ),
+      ),
+    }),
+  ),
   error: v.optional(v.string()),
   quality_score: v.optional(v.number()),
   approved: v.optional(v.boolean()),
@@ -37,18 +45,20 @@ const AnalysisResult = v.object({
   request_id: v.string(),
   lead_id: v.string(),
   status: v.string(),
-  analysis: v.optional(v.object({
-    relevance_score: v.number(),
-    qualification_level: v.string(),
-    fit_assessment: v.string(),
-    key_factors: v.array(v.string()),
-    opportunities: v.array(v.string()),
-    red_flags: v.array(v.string()),
-    confidence: v.number(),
-    pain_points: v.array(v.string()),
-    value_matches: v.array(v.string()),
-    recommended_approach: v.string(),
-  })),
+  analysis: v.optional(
+    v.object({
+      relevance_score: v.number(),
+      qualification_level: v.string(),
+      fit_assessment: v.string(),
+      key_factors: v.array(v.string()),
+      opportunities: v.array(v.string()),
+      red_flags: v.array(v.string()),
+      confidence: v.number(),
+      pain_points: v.array(v.string()),
+      value_matches: v.array(v.string()),
+      recommended_approach: v.string(),
+    }),
+  ),
   error: v.optional(v.string()),
   processing_time: v.optional(v.number()),
 });
@@ -59,42 +69,53 @@ export const handleEmailGenerationCompleted = internalMutation({
     payload: EmailGenerationResult,
   },
   handler: async (ctx, args) => {
-    const logger = createOperationLogger.webhook("system", "email_generation_webhook");
-    const timer = logger.start(`Processing email generation webhook: ${args.payload.request_id}`);
-    
+    const logger = createOperationLogger.webhook(
+      "system",
+      "email_generation_webhook",
+    );
+    const timer = logger.start(
+      `Processing email generation webhook: ${args.payload.request_id}`,
+    );
+
     try {
       // Validate status
-      if (args.payload.status !== "completed" && args.payload.status !== "error") {
+      if (
+        args.payload.status !== "completed" &&
+        args.payload.status !== "error"
+      ) {
         logger.error(`Invalid status: ${args.payload.status}`, {
           requestId: args.payload.request_id,
-          status: args.payload.status
+          status: args.payload.status,
         });
         return { success: false, error: "Invalid status" };
       }
 
       // Extract search and lead IDs from request_id pattern: searchId_leadId_attempt
-      const requestIdParts = args.payload.request_id.split('_');
+      const requestIdParts = args.payload.request_id.split("_");
       if (requestIdParts.length < 2) {
         logger.error(`Invalid request ID format: ${args.payload.request_id}`, {
           requestId: args.payload.request_id,
-          parts: requestIdParts
+          parts: requestIdParts,
         });
         return { success: false, error: "Invalid request ID format" };
       }
 
       logger.debug("Webhook validation passed", {
         requestId: args.payload.request_id,
-        status: args.payload.status
+        status: args.payload.status,
       });
 
       const searchId = requestIdParts[0];
       const leadId = requestIdParts[1];
 
       // Get search and validate
-      const search = await ctx.runQuery(internal.search.internal.getSearchInternal, {
-        searchId: searchId as any,
-      });
-      
+      const search = await ctx.runQuery(
+        internal.search.internal.getSearchInternal,
+        {
+          searchId: searchId as any,
+        },
+      );
+
       if (!search) {
         console.error(`Search not found: ${searchId}`);
         return { success: false, error: "Search not found" };
@@ -104,7 +125,7 @@ export const handleEmailGenerationCompleted = internalMutation({
       const lead = await ctx.runQuery(internal.leads.internal.getLeadInternal, {
         leadId: leadId as any,
       });
-      
+
       if (!lead) {
         console.error(`Lead not found: ${leadId}`);
         return { success: false, error: "Lead not found" };
@@ -126,53 +147,78 @@ export const handleEmailGenerationCompleted = internalMutation({
             processingTime: result.processing_time || 0,
             confidence: result.relevance_score || 0.5,
           },
-          emailContent: result.primary_email ? {
-            subject: result.primary_email.subject,
-            body: result.primary_email.body,
-            personalizationNotes: result.primary_email.personalization_notes || [],
-            estimatedEffectiveness: result.primary_email.estimated_effectiveness || 0.5,
-          } : undefined,
+          emailContent: result.primary_email
+            ? {
+                subject: result.primary_email.subject,
+                body: result.primary_email.body,
+                personalizationNotes:
+                  result.primary_email.personalization_notes || [],
+                estimatedEffectiveness:
+                  result.primary_email.estimated_effectiveness || 0.5,
+              }
+            : undefined,
         });
 
-        // Create email sequence record if we have email content
+        // Create email sequence record if we have email content (idempotent by request_id per lead)
         if (result.primary_email) {
-          await ctx.runMutation(internal.leads.internal.createEmailSequence, {
-            leadId: leadId as any,
-            userId: search.userId,
-            requestId: args.payload.request_id,
-            emailContent: {
-              subject: result.primary_email.subject,
-              body: result.primary_email.body,
-              personalizationNotes: result.primary_email.personalization_notes || [],
-              estimatedEffectiveness: result.primary_email.estimated_effectiveness || 0.5,
-            },
-            agentResults: result.agent_results || [],
-            processingTime: result.processing_time || 0,
-            recommendations: result.recommendations || [],
-          });
+          // Check existing sequences for this lead with same requestId
+          const existingForLead = await ctx.db
+            .query("emailSequences")
+            .withIndex("by_lead", (q) => q.eq("leadId", lead._id))
+            .collect();
+          const alreadyExists = existingForLead.some(
+            (seq) => seq.requestId === args.payload.request_id,
+          );
+
+          if (!alreadyExists) {
+            await ctx.runMutation(internal.leads.internal.createEmailSequence, {
+              leadId: leadId as any,
+              userId: search.userId,
+              requestId: args.payload.request_id,
+              emailContent: {
+                subject: result.primary_email.subject,
+                body: result.primary_email.body,
+                personalizationNotes:
+                  result.primary_email.personalization_notes || [],
+                estimatedEffectiveness:
+                  result.primary_email.estimated_effectiveness || 0.5,
+              },
+              agentResults: result.agent_results || [],
+              processingTime: result.processing_time || 0,
+              recommendations: result.recommendations || [],
+            });
+          }
         }
 
         // Broadcast success update via SSE
-        await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
-          userId: search.userId,
-          searchId: searchId as any,
-          stage: "analysis_completed",
-          progress: 100,
-          message: `AI analysis completed for ${lead.businessName}. Quality score: ${args.payload.quality_score || 0}`,
-          data: {
-            leadId: leadId,
-            leadName: lead.businessName,
-            relevanceScore: result.relevance_score || 0,
-            qualityScore: args.payload.quality_score || 0,
-            approved: args.payload.approved || false,
-            emailGenerated: !!result.primary_email,
-            processingTime: result.processing_time || 0,
-          }
-        });
+        await ctx.runMutation(
+          internal.realtime.broadcaster.broadcastPipelineUpdate,
+          {
+            userId: search.userId,
+            searchId: searchId as any,
+            stage: "analysis_completed",
+            progress: 100,
+            message: `AI analysis completed for ${lead.businessName}. Quality score: ${args.payload.quality_score || 0}`,
+            data: {
+              leadId: leadId,
+              leadName: lead.businessName,
+              relevanceScore: result.relevance_score || 0,
+              qualityScore: args.payload.quality_score || 0,
+              approved: args.payload.approved || false,
+              emailGenerated: !!result.primary_email,
+              processingTime: result.processing_time || 0,
+            },
+          },
+        );
 
-        console.log(`Email generation completed successfully for lead ${leadId}`);
-        return { success: true, leadId, emailGenerated: !!result.primary_email };
-
+        console.log(
+          `Email generation completed successfully for lead ${leadId}`,
+        );
+        return {
+          success: true,
+          leadId,
+          emailGenerated: !!result.primary_email,
+        };
       } else {
         // Handle error case
         const errorMessage = args.payload.error || "Unknown error";
@@ -193,29 +239,33 @@ export const handleEmailGenerationCompleted = internalMutation({
         });
 
         // Broadcast error via SSE
-        await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
-          userId: search.userId,
-          searchId: searchId as any,
-          stage: "analysis_failed",
-          progress: 0,
-          message: `AI analysis failed for ${lead.businessName}: ${errorMessage}`,
-          error: errorMessage,
-          data: {
-            leadId: leadId,
-            leadName: lead.businessName,
+        await ctx.runMutation(
+          internal.realtime.broadcaster.broadcastPipelineUpdate,
+          {
+            userId: search.userId,
+            searchId: searchId as any,
+            stage: "analysis_failed",
+            progress: 0,
+            message: `AI analysis failed for ${lead.businessName}: ${errorMessage}`,
             error: errorMessage,
-          }
-        });
+            data: {
+              leadId: leadId,
+              leadName: lead.businessName,
+              error: errorMessage,
+            },
+          },
+        );
 
-        console.error(`Email generation failed for lead ${leadId}: ${errorMessage}`);
+        console.error(
+          `Email generation failed for lead ${leadId}: ${errorMessage}`,
+        );
         return { success: false, error: errorMessage, leadId };
       }
-
     } catch (error) {
       console.error("Error handling email generation webhook:", error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : "Unknown error" 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   },
@@ -229,7 +279,7 @@ export const handleAnalysisCompleted = internalMutation({
   handler: async (ctx, args) => {
     try {
       console.log(`Processing analysis webhook: ${args.payload.request_id}`);
-      
+
       // Validate required fields
       if (!args.payload.lead_id) {
         console.error("Missing lead_id in payload");
@@ -240,16 +290,19 @@ export const handleAnalysisCompleted = internalMutation({
       const lead = await ctx.runQuery(internal.leads.internal.getLeadInternal, {
         leadId: args.payload.lead_id as any,
       });
-      
+
       if (!lead) {
         console.error(`Lead not found: ${args.payload.lead_id}`);
         return { success: false, error: "Lead not found" };
       }
 
       // Get search for broadcasting
-      const search = await ctx.runQuery(internal.search.internal.getSearchInternal, {
-        searchId: lead.searchId,
-      });
+      const search = await ctx.runQuery(
+        internal.search.internal.getSearchInternal,
+        {
+          searchId: lead.searchId,
+        },
+      );
 
       if (!search) {
         console.error(`Search not found: ${lead.searchId}`);
@@ -284,27 +337,35 @@ export const handleAnalysisCompleted = internalMutation({
         });
 
         // Broadcast success update via SSE
-        await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
-          userId: search.userId,
-          searchId: lead.searchId,
-          stage: "lead_analysis_completed",
-          progress: 100,
-          message: `Lead analysis completed for ${lead.businessName}. Relevance: ${Math.round(analysis.relevance_score * 100)}%`,
-          data: {
-            leadId: args.payload.lead_id,
-            leadName: lead.businessName,
-            relevanceScore: analysis.relevance_score,
-            qualificationLevel: analysis.qualification_level,
-            keyFactors: analysis.key_factors.length,
-            opportunities: analysis.opportunities.length,
-            redFlags: analysis.red_flags.length,
-            processingTime: args.payload.processing_time || 0,
-          }
-        });
+        await ctx.runMutation(
+          internal.realtime.broadcaster.broadcastPipelineUpdate,
+          {
+            userId: search.userId,
+            searchId: lead.searchId,
+            stage: "lead_analysis_completed",
+            progress: 100,
+            message: `Lead analysis completed for ${lead.businessName}. Relevance: ${Math.round(analysis.relevance_score * 100)}%`,
+            data: {
+              leadId: args.payload.lead_id,
+              leadName: lead.businessName,
+              relevanceScore: analysis.relevance_score,
+              qualificationLevel: analysis.qualification_level,
+              keyFactors: analysis.key_factors.length,
+              opportunities: analysis.opportunities.length,
+              redFlags: analysis.red_flags.length,
+              processingTime: args.payload.processing_time || 0,
+            },
+          },
+        );
 
-        console.log(`Analysis completed successfully for lead ${args.payload.lead_id}`);
-        return { success: true, leadId: args.payload.lead_id, relevanceScore: analysis.relevance_score };
-
+        console.log(
+          `Analysis completed successfully for lead ${args.payload.lead_id}`,
+        );
+        return {
+          success: true,
+          leadId: args.payload.lead_id,
+          relevanceScore: analysis.relevance_score,
+        };
       } else {
         // Handle error case
         const errorMessage = args.payload.error || "Analysis failed";
@@ -325,29 +386,37 @@ export const handleAnalysisCompleted = internalMutation({
         });
 
         // Broadcast error via SSE
-        await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
-          userId: search.userId,
-          searchId: lead.searchId,
-          stage: "lead_analysis_failed",
-          progress: 0,
-          message: `Lead analysis failed for ${lead.businessName}: ${errorMessage}`,
-          error: errorMessage,
-          data: {
-            leadId: args.payload.lead_id,
-            leadName: lead.businessName,
+        await ctx.runMutation(
+          internal.realtime.broadcaster.broadcastPipelineUpdate,
+          {
+            userId: search.userId,
+            searchId: lead.searchId,
+            stage: "lead_analysis_failed",
+            progress: 0,
+            message: `Lead analysis failed for ${lead.businessName}: ${errorMessage}`,
             error: errorMessage,
-          }
-        });
+            data: {
+              leadId: args.payload.lead_id,
+              leadName: lead.businessName,
+              error: errorMessage,
+            },
+          },
+        );
 
-        console.error(`Analysis failed for lead ${args.payload.lead_id}: ${errorMessage}`);
-        return { success: false, error: errorMessage, leadId: args.payload.lead_id };
+        console.error(
+          `Analysis failed for lead ${args.payload.lead_id}: ${errorMessage}`,
+        );
+        return {
+          success: false,
+          error: errorMessage,
+          leadId: args.payload.lead_id,
+        };
       }
-
     } catch (error) {
       console.error("Error handling analysis webhook:", error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : "Unknown error" 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   },
@@ -361,10 +430,15 @@ export const handleAnalysisError = internalMutation({
     error: v.string(),
   },
   handler: async (ctx, args) => {
-    console.log(`Legacy handleAnalysisError called for lead ${args.leadId}: ${args.error}`);
+    console.log(
+      `Legacy handleAnalysisError called for lead ${args.leadId}: ${args.error}`,
+    );
     // For legacy compatibility, just log the error
     // The new webhook handlers should be used for new integrations
-    return { success: true, message: "Legacy handler - please update to new webhook format" };
+    return {
+      success: true,
+      message: "Legacy handler - please update to new webhook format",
+    };
   },
 });
 
@@ -375,10 +449,15 @@ export const handleEmailGenerationWebhook = internalMutation({
     result: v.any(),
   },
   handler: async (ctx, args) => {
-    console.log(`Legacy handleEmailGenerationWebhook called for search ${args.searchId}, lead ${args.leadId}`);
-    // For legacy compatibility, just log 
+    console.log(
+      `Legacy handleEmailGenerationWebhook called for search ${args.searchId}, lead ${args.leadId}`,
+    );
+    // For legacy compatibility, just log
     // The new webhook handlers should be used for new integrations
-    return { success: true, message: "Legacy handler - please update to new webhook format" };
+    return {
+      success: true,
+      message: "Legacy handler - please update to new webhook format",
+    };
   },
 });
 
@@ -388,7 +467,12 @@ export const handleAnalysisWebhook = internalMutation({
     result: v.any(),
   },
   handler: async (ctx, args) => {
-    console.log(`Legacy analysis webhook for search ${args.searchId} - consider updating to new handler`);
-    return { success: true, message: "Legacy handler - please update to new webhook format" };
+    console.log(
+      `Legacy analysis webhook for search ${args.searchId} - consider updating to new handler`,
+    );
+    return {
+      success: true,
+      message: "Legacy handler - please update to new webhook format",
+    };
   },
 });

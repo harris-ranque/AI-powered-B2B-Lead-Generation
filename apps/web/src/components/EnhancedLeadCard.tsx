@@ -1,15 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
-import { 
-  Building, 
-  Globe, 
-  Phone, 
-  Mail, 
-  Users, 
+import {
+  Building,
+  Globe,
+  Phone,
+  Mail,
+  Users,
   MapPin,
   Sparkles,
   Brain,
@@ -20,11 +20,11 @@ import {
   ExternalLink,
   Bot,
   Microscope,
-  TrendingUp
-} from 'lucide-react';
-import { BusinessContextDisplay } from './BusinessContextDisplay';
-import type { Lead } from '@/lib/api-client';
-import { cn } from '@/lib/utils';
+  TrendingUp,
+} from "lucide-react";
+import { BusinessContextDisplay } from "./BusinessContextDisplay";
+import type { Lead } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 
 interface BusinessContext {
   company_overview: string;
@@ -64,44 +64,44 @@ interface EnhancedLeadCardProps {
   showFullContext?: boolean;
 }
 
-export function EnhancedLeadCard({ 
-  lead, 
-  businessContext, 
+export function EnhancedLeadCard({
+  lead,
+  businessContext,
   onGenerateEmail,
   className,
-  showFullContext = false
+  showFullContext = false,
 }: EnhancedLeadCardProps) {
   const [isExpanded, setIsExpanded] = useState(showFullContext);
 
   // Get research tier display info
   const getResearchTierInfo = (tier?: string) => {
     switch (tier) {
-      case 'tavily':
-        return { 
-          label: 'Standard Research', 
-          icon: Search, 
-          color: 'text-blue-500', 
-          bg: 'bg-blue-50',
-          description: 'Fast business context',
-          variant: 'secondary' as const
+      case "tavily":
+        return {
+          label: "Standard Research",
+          icon: Search,
+          color: "text-blue-500",
+          bg: "bg-blue-50",
+          description: "Fast business context",
+          variant: "secondary" as const,
         };
-      case 'exa':
-        return { 
-          label: 'Enhanced Research', 
-          icon: Microscope, 
-          color: 'text-purple-500', 
-          bg: 'bg-purple-50',
-          description: 'Deep competitor analysis',
-          variant: 'outline' as const
+      case "exa":
+        return {
+          label: "Enhanced Research",
+          icon: Microscope,
+          color: "text-purple-500",
+          bg: "bg-purple-50",
+          description: "Deep competitor analysis",
+          variant: "outline" as const,
         };
-      case 'perplexity':
-        return { 
-          label: 'Premium Research', 
-          icon: Zap, 
-          color: 'text-amber-600', 
-          bg: 'bg-amber-50',
-          description: 'Comprehensive report',
-          variant: 'default' as const
+      case "perplexity":
+        return {
+          label: "Premium Research",
+          icon: Zap,
+          color: "text-amber-600",
+          bg: "bg-amber-50",
+          description: "Comprehensive report",
+          variant: "default" as const,
         };
       default:
         return null;
@@ -112,7 +112,9 @@ export function EnhancedLeadCard({
   const ResearchTierIcon = researchTierInfo?.icon;
 
   return (
-    <Card className={cn("hover:shadow-md transition-all duration-200", className)}>
+    <Card
+      className={cn("hover:shadow-md transition-all duration-200", className)}
+    >
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="space-y-1 flex-1">
@@ -120,16 +122,18 @@ export function EnhancedLeadCard({
               <Building className="h-5 w-5 text-muted-foreground" />
               {lead.company_name}
               {businessContext && (
-                <Badge 
-                  variant={researchTierInfo?.variant || "secondary"} 
+                <Badge
+                  variant={researchTierInfo?.variant || "secondary"}
                   className={cn("ml-2", researchTierInfo?.bg)}
                 >
-                  {ResearchTierIcon && <ResearchTierIcon className="w-3 h-3 mr-1" />}
+                  {ResearchTierIcon && (
+                    <ResearchTierIcon className="w-3 h-3 mr-1" />
+                  )}
                   AI Research
                 </Badge>
               )}
             </CardTitle>
-            
+
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
               {lead.industry && (
                 <span className="flex items-center gap-1">
@@ -145,7 +149,7 @@ export function EnhancedLeadCard({
               )}
             </div>
           </div>
-          
+
           {businessContext?.confidence_score && (
             <div className="text-right">
               <div className="flex items-center gap-2 mb-1">
@@ -154,7 +158,9 @@ export function EnhancedLeadCard({
                   {Math.round(businessContext.confidence_score * 100)}%
                 </span>
               </div>
-              <div className="text-xs text-muted-foreground">Research Quality</div>
+              <div className="text-xs text-muted-foreground">
+                Research Quality
+              </div>
             </div>
           )}
         </div>
@@ -166,25 +172,25 @@ export function EnhancedLeadCard({
           {lead.website && (
             <div className="flex items-center gap-2 text-sm">
               <Globe className="h-4 w-4 text-muted-foreground" />
-              <a 
-                href={lead.website} 
-                target="_blank" 
+              <a
+                href={lead.website}
+                target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-600 hover:underline truncate"
               >
-                {lead.website.replace(/^https?:\/\//, '')}
+                {lead.website.replace(/^https?:\/\//, "")}
               </a>
               <ExternalLink className="h-3 w-3 text-muted-foreground" />
             </div>
           )}
-          
+
           {lead.contact_info?.phone && (
             <div className="flex items-center gap-2 text-sm">
               <Phone className="h-4 w-4 text-muted-foreground" />
               <span>{lead.contact_info.phone}</span>
             </div>
           )}
-          
+
           {lead.contact_info?.email && (
             <div className="flex items-center gap-2 text-sm">
               <Mail className="h-4 w-4 text-muted-foreground" />
@@ -197,13 +203,17 @@ export function EnhancedLeadCard({
         {businessContext && (
           <div className="space-y-3">
             <Separator />
-            
+
             {/* Research Tier Info */}
             {researchTierInfo && (
               <div className={cn("p-3 rounded-lg", researchTierInfo.bg)}>
                 <div className="flex items-center gap-2 mb-2">
-                  <ResearchTierIcon className={cn("h-4 w-4", researchTierInfo.color)} />
-                  <span className="font-medium text-sm">{researchTierInfo.label}</span>
+                  <ResearchTierIcon
+                    className={cn("h-4 w-4", researchTierInfo.color)}
+                  />
+                  <span className="font-medium text-sm">
+                    {researchTierInfo.label}
+                  </span>
                   {businessContext.sources_analyzed && (
                     <Badge variant="outline" className="text-xs ml-auto">
                       {businessContext.sources_analyzed} sources
@@ -213,12 +223,14 @@ export function EnhancedLeadCard({
                 <p className="text-xs text-muted-foreground">
                   {researchTierInfo.description}
                   {businessContext.escalation_reason && (
-                    <span className="ml-1 font-medium">• Escalated: {businessContext.escalation_reason}</span>
+                    <span className="ml-1 font-medium">
+                      • Escalated: {businessContext.escalation_reason}
+                    </span>
                   )}
                 </p>
               </div>
             )}
-            
+
             {/* Business Overview */}
             <div className="space-y-2">
               <h4 className="font-medium text-sm flex items-center gap-2">
@@ -233,11 +245,13 @@ export function EnhancedLeadCard({
             {/* Key Services */}
             {businessContext.key_services?.length > 0 && (
               <div className="flex flex-wrap gap-1">
-                {businessContext.key_services.slice(0, 3).map((service, index) => (
-                  <Badge key={index} variant="outline" className="text-xs">
-                    {service}
-                  </Badge>
-                ))}
+                {businessContext.key_services
+                  .slice(0, 3)
+                  .map((service, index) => (
+                    <Badge key={index} variant="outline" className="text-xs">
+                      {service}
+                    </Badge>
+                  ))}
                 {businessContext.key_services.length > 3 && (
                   <Badge variant="outline" className="text-xs">
                     +{businessContext.key_services.length - 3} more
@@ -247,26 +261,35 @@ export function EnhancedLeadCard({
             )}
 
             {/* Competitors Preview */}
-            {businessContext.competitors && businessContext.competitors.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="font-medium text-sm flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-orange-500" />
-                  Discovered Competitors
-                </h4>
-                <div className="flex flex-wrap gap-1">
-                  {businessContext.competitors.slice(0, 3).map((competitor, index) => (
-                    <Badge key={index} variant="outline" className="text-xs">
-                      {(competitor.name as string) || (competitor.title as string) || `Competitor ${index + 1}`}
-                    </Badge>
-                  ))}
-                  {businessContext.competitors.length > 3 && (
-                    <Badge variant="outline" className="text-xs">
-                      +{businessContext.competitors.length - 3} more
-                    </Badge>
-                  )}
+            {businessContext.competitors &&
+              businessContext.competitors.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-medium text-sm flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-orange-500" />
+                    Discovered Competitors
+                  </h4>
+                  <div className="flex flex-wrap gap-1">
+                    {businessContext.competitors
+                      .slice(0, 3)
+                      .map((competitor, index) => (
+                        <Badge
+                          key={index}
+                          variant="outline"
+                          className="text-xs"
+                        >
+                          {(competitor.name as string) ||
+                            (competitor.title as string) ||
+                            `Competitor ${index + 1}`}
+                        </Badge>
+                      ))}
+                    {businessContext.competitors.length > 3 && (
+                      <Badge variant="outline" className="text-xs">
+                        +{businessContext.competitors.length - 3} more
+                      </Badge>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* Expand/Collapse Button */}
             <Button
@@ -308,7 +331,7 @@ export function EnhancedLeadCard({
               Generate Email
             </Button>
           )}
-          
+
           {lead.website && (
             <Button variant="outline" asChild>
               <a href={lead.website} target="_blank" rel="noopener noreferrer">

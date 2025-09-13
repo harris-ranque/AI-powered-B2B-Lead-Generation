@@ -3,20 +3,26 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { 
-  Bot, 
-  CreditCard, 
-  Calendar, 
-  AlertCircle, 
-  ExternalLink, 
+import {
+  Bot,
+  CreditCard,
+  Calendar,
+  AlertCircle,
+  ExternalLink,
   Loader2,
   TrendingUp,
   Download,
   Settings,
-  ArrowLeft
+  ArrowLeft,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { convex } from "@/lib/convex";
@@ -29,9 +35,12 @@ export default function SubscriptionManage() {
 
   // Get subscription status
   const { data: subscription, isLoading } = useQuery({
-    queryKey: ['subscription-status'],
+    queryKey: ["subscription-status"],
     queryFn: async () => {
-      const result = await convex.mutation("billing/mutations:getSubscriptionStatus", {});
+      const result = await convex.mutation(
+        "billing/mutations:getSubscriptionStatus",
+        {},
+      );
       return result;
     },
     enabled: !!isSignedIn,
@@ -39,9 +48,12 @@ export default function SubscriptionManage() {
 
   // Get current usage
   const { data: usage } = useQuery({
-    queryKey: ['current-usage'],
+    queryKey: ["current-usage"],
     queryFn: async () => {
-      const result = await convex.query("usageTracking/queries:getCurrentUsage", {});
+      const result = await convex.query(
+        "usageTracking/queries:getCurrentUsage",
+        {},
+      );
       return result;
     },
     enabled: !!isSignedIn,
@@ -49,7 +61,10 @@ export default function SubscriptionManage() {
 
   const createPortalSession = useMutation({
     mutationFn: async () => {
-      const result = await convex.action("billing/mutations:createPortalSession", {});
+      const result = await convex.action(
+        "billing/mutations:createPortalSession",
+        {},
+      );
       return result;
     },
     onSuccess: (data) => {
@@ -67,15 +82,20 @@ export default function SubscriptionManage() {
 
   const cancelSubscription = useMutation({
     mutationFn: async (cancelAtPeriodEnd: boolean) => {
-      const result = await convex.action("billing/mutations:cancelSubscription", {
-        cancelAtPeriodEnd,
-      });
+      const result = await convex.action(
+        "billing/mutations:cancelSubscription",
+        {
+          cancelAtPeriodEnd,
+        },
+      );
       return result;
     },
     onSuccess: (data) => {
       toast({
-        title: data.cancelAtPeriodEnd ? "Subscription Canceled" : "Cancellation Undone",
-        description: data.cancelAtPeriodEnd 
+        title: data.cancelAtPeriodEnd
+          ? "Subscription Canceled"
+          : "Cancellation Undone",
+        description: data.cancelAtPeriodEnd
           ? "Your subscription will end at the end of the current period"
           : "Your subscription will continue",
       });
@@ -104,24 +124,26 @@ export default function SubscriptionManage() {
   };
 
   if (!isSignedIn) {
-    navigate('/signin');
+    navigate("/signin");
     return null;
   }
 
   const planDisplayNames = {
     starter: "Starter",
     professional: "Professional",
-    business: "Business", 
-    enterprise: "Enterprise"
+    business: "Business",
+    enterprise: "Enterprise",
   };
 
-  const planName = subscription?.plan ? planDisplayNames[subscription.plan as keyof typeof planDisplayNames] : "Loading...";
+  const planName = subscription?.plan
+    ? planDisplayNames[subscription.plan as keyof typeof planDisplayNames]
+    : "Loading...";
 
   const getStatusBadge = (status: string, isTrialing: boolean) => {
     if (isTrialing) {
       return <Badge className="bg-blue-500">Free Trial</Badge>;
     }
-    
+
     switch (status) {
       case "active":
         return <Badge className="bg-green-500">Active</Badge>;
@@ -143,7 +165,7 @@ export default function SubscriptionManage() {
             <Bot className="h-8 w-8 text-primary" />
             <span className="font-bold text-xl">Genni</span>
           </Link>
-          
+
           <div className="flex items-center space-x-4">
             <Link to="/app">
               <Button variant="ghost">
@@ -181,9 +203,15 @@ export default function SubscriptionManage() {
                         <CreditCard className="h-5 w-5" />
                         Current Plan
                       </CardTitle>
-                      <CardDescription>Your active subscription details</CardDescription>
+                      <CardDescription>
+                        Your active subscription details
+                      </CardDescription>
                     </div>
-                    {subscription?.billing && getStatusBadge(subscription.billing.status, subscription.isTrialing)}
+                    {subscription?.billing &&
+                      getStatusBadge(
+                        subscription.billing.status,
+                        subscription.isTrialing,
+                      )}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -192,31 +220,47 @@ export default function SubscriptionManage() {
                       <div className="flex justify-between items-center">
                         <span className="font-medium text-lg">{planName}</span>
                         <span className="text-2xl font-bold">
-                          ${subscription.billing.amount}/{subscription.billing.billingCycle === "yearly" ? "year" : "month"}
+                          ${subscription.billing.amount}/
+                          {subscription.billing.billingCycle === "yearly"
+                            ? "year"
+                            : "month"}
                         </span>
                       </div>
-                      
+
                       <div className="grid md:grid-cols-2 gap-4 text-sm">
                         <div>
-                          <span className="text-muted-foreground">Billing Cycle:</span>
-                          <span className="ml-2 capitalize">{subscription.billing.billingCycle}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Next Payment:</span>
-                          <span className="ml-2">
-                            {new Date(subscription.billing.currentPeriodEnd).toLocaleDateString()}
+                          <span className="text-muted-foreground">
+                            Billing Cycle:
+                          </span>
+                          <span className="ml-2 capitalize">
+                            {subscription.billing.billingCycle}
                           </span>
                         </div>
-                        {subscription.isTrialing && subscription.billing.trialEnd && (
-                          <>
-                            <div className="md:col-span-2">
-                              <span className="text-muted-foreground">Trial Ends:</span>
-                              <span className="ml-2 font-medium">
-                                {new Date(subscription.billing.trialEnd).toLocaleDateString()}
-                              </span>
-                            </div>
-                          </>
-                        )}
+                        <div>
+                          <span className="text-muted-foreground">
+                            Next Payment:
+                          </span>
+                          <span className="ml-2">
+                            {new Date(
+                              subscription.billing.currentPeriodEnd,
+                            ).toLocaleDateString()}
+                          </span>
+                        </div>
+                        {subscription.isTrialing &&
+                          subscription.billing.trialEnd && (
+                            <>
+                              <div className="md:col-span-2">
+                                <span className="text-muted-foreground">
+                                  Trial Ends:
+                                </span>
+                                <span className="ml-2 font-medium">
+                                  {new Date(
+                                    subscription.billing.trialEnd,
+                                  ).toLocaleDateString()}
+                                </span>
+                              </div>
+                            </>
+                          )}
                       </div>
 
                       {subscription.billing.cancelAtPeriodEnd && (
@@ -224,14 +268,18 @@ export default function SubscriptionManage() {
                           <AlertCircle className="h-4 w-4 text-orange-600" />
                           <p className="text-sm text-orange-800">
                             Your subscription will end on{" "}
-                            {new Date(subscription.billing.currentPeriodEnd).toLocaleDateString()}
+                            {new Date(
+                              subscription.billing.currentPeriodEnd,
+                            ).toLocaleDateString()}
                           </p>
                         </div>
                       )}
                     </>
                   ) : (
                     <div className="text-center py-4">
-                      <p className="text-muted-foreground">No active subscription found</p>
+                      <p className="text-muted-foreground">
+                        No active subscription found
+                      </p>
                       <Link to="/pricing">
                         <Button className="mt-2">View Plans</Button>
                       </Link>
@@ -260,11 +308,14 @@ export default function SubscriptionManage() {
                         <div className="flex justify-between text-sm">
                           <span>Searches</span>
                           <span>
-                            {usage.searchesUsed} / {usage.limits.monthlySearches === -1 ? "∞" : usage.limits.monthlySearches}
+                            {usage.searchesUsed} /{" "}
+                            {usage.limits.monthlySearches === -1
+                              ? "∞"
+                              : usage.limits.monthlySearches}
                           </span>
                         </div>
-                        <Progress 
-                          value={usage.percentUsed.searches} 
+                        <Progress
+                          value={usage.percentUsed.searches}
                           className="h-2"
                         />
                       </div>
@@ -274,11 +325,14 @@ export default function SubscriptionManage() {
                         <div className="flex justify-between text-sm">
                           <span>Enrichments</span>
                           <span>
-                            {usage.leadsEnriched.toLocaleString()} / {usage.limits.monthlyEnrichments === -1 ? "∞" : usage.limits.monthlyEnrichments.toLocaleString()}
+                            {usage.leadsEnriched.toLocaleString()} /{" "}
+                            {usage.limits.monthlyEnrichments === -1
+                              ? "∞"
+                              : usage.limits.monthlyEnrichments.toLocaleString()}
                           </span>
                         </div>
-                        <Progress 
-                          value={usage.percentUsed.enrichments} 
+                        <Progress
+                          value={usage.percentUsed.enrichments}
                           className="h-2"
                         />
                       </div>
@@ -288,11 +342,14 @@ export default function SubscriptionManage() {
                         <div className="flex justify-between text-sm">
                           <span>Exports</span>
                           <span>
-                            {usage.exportsCompleted} / {usage.limits.monthlyExports === -1 ? "∞" : usage.limits.monthlyExports}
+                            {usage.exportsCompleted} /{" "}
+                            {usage.limits.monthlyExports === -1
+                              ? "∞"
+                              : usage.limits.monthlyExports}
                           </span>
                         </div>
-                        <Progress 
-                          value={usage.percentUsed.exports} 
+                        <Progress
+                          value={usage.percentUsed.exports}
                           className="h-2"
                         />
                       </div>
@@ -304,7 +361,9 @@ export default function SubscriptionManage() {
                           <span>{usage.emailsGenerated}</span>
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {usage.limits.emailGeneration ? "Unlimited" : "Not available on your plan"}
+                          {usage.limits.emailGeneration
+                            ? "Unlimited"
+                            : "Not available on your plan"}
                         </div>
                       </div>
                     </div>
@@ -327,8 +386,8 @@ export default function SubscriptionManage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button 
-                    onClick={handlePortalAccess} 
+                  <Button
+                    onClick={handlePortalAccess}
                     disabled={isLoadingPortal}
                     className="w-full"
                   >
@@ -361,18 +420,24 @@ export default function SubscriptionManage() {
                       View All Plans
                     </Button>
                   </Link>
-                  
+
                   {subscription?.hasActiveSubscription && (
                     <Button
                       onClick={handleCancelSubscription}
                       disabled={isCanceling}
-                      variant={subscription.billing?.cancelAtPeriodEnd ? "default" : "destructive"}
+                      variant={
+                        subscription.billing?.cancelAtPeriodEnd
+                          ? "default"
+                          : "destructive"
+                      }
                       className="w-full"
                     >
                       {isCanceling ? (
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       ) : null}
-                      {subscription.billing?.cancelAtPeriodEnd ? "Reactivate Subscription" : "Cancel Subscription"}
+                      {subscription.billing?.cancelAtPeriodEnd
+                        ? "Reactivate Subscription"
+                        : "Cancel Subscription"}
                     </Button>
                   )}
                 </CardContent>
@@ -386,19 +451,29 @@ export default function SubscriptionManage() {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Plan</span>
+                      <span className="text-sm text-muted-foreground">
+                        Plan
+                      </span>
                       <span className="font-medium">{planName}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Searches Used</span>
+                      <span className="text-sm text-muted-foreground">
+                        Searches Used
+                      </span>
                       <span className="font-medium">{usage.searchesUsed}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Leads Enriched</span>
-                      <span className="font-medium">{usage.leadsEnriched.toLocaleString()}</span>
+                      <span className="text-sm text-muted-foreground">
+                        Leads Enriched
+                      </span>
+                      <span className="font-medium">
+                        {usage.leadsEnriched.toLocaleString()}
+                      </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Period End</span>
+                      <span className="text-sm text-muted-foreground">
+                        Period End
+                      </span>
                       <span className="font-medium">
                         {new Date(usage.period.end).toLocaleDateString()}
                       </span>

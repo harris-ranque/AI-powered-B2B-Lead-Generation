@@ -17,12 +17,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": [
-    "**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "_generated",
-    "**/*.js"
-  ]
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "_generated", "**/*.js"]
 }

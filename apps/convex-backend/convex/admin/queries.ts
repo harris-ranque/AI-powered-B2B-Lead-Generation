@@ -10,58 +10,67 @@ export const getAdminMetrics = query({
     await requireAdmin(ctx);
 
     const now = Date.now();
-    const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
-    const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
 
     // Get user statistics
-    const totalUsers = await ctx.db.query("users").collect().then(users => users.length);
+    const totalUsers = await ctx.db
+      .query("users")
+      .collect()
+      .then((users) => users.length);
     const activeUsers = await ctx.db
       .query("users")
       .filter((q) => q.eq(q.field("isActive"), true))
       .collect()
-      .then(users => users.length);
+      .then((users) => users.length);
 
     const newUsers7d = await ctx.db
       .query("users")
       .filter((q) => q.gte(q.field("createdAt"), sevenDaysAgo))
       .collect()
-      .then(users => users.length);
+      .then((users) => users.length);
 
     const newUsers30d = await ctx.db
       .query("users")
       .filter((q) => q.gte(q.field("createdAt"), thirtyDaysAgo))
       .collect()
-      .then(users => users.length);
+      .then((users) => users.length);
 
     // Get search statistics
-    const totalSearches = await ctx.db.query("searches").collect().then(searches => searches.length);
+    const totalSearches = await ctx.db
+      .query("searches")
+      .collect()
+      .then((searches) => searches.length);
     const completedSearches = await ctx.db
       .query("searches")
       .filter((q) => q.eq(q.field("status"), "completed"))
       .collect()
-      .then(searches => searches.length);
+      .then((searches) => searches.length);
 
     const searches7d = await ctx.db
       .query("searches")
       .filter((q) => q.gte(q.field("createdAt"), sevenDaysAgo))
       .collect()
-      .then(searches => searches.length);
+      .then((searches) => searches.length);
 
     const searches30d = await ctx.db
       .query("searches")
       .filter((q) => q.gte(q.field("createdAt"), thirtyDaysAgo))
       .collect()
-      .then(searches => searches.length);
+      .then((searches) => searches.length);
 
     // Get plan distribution
     const planDistribution = await ctx.db
       .query("users")
       .collect()
-      .then(users => {
-        const distribution = users.reduce((acc, user) => {
-          acc[user.plan] = (acc[user.plan] || 0) + 1;
-          return acc;
-        }, {} as Record<string, number>);
+      .then((users) => {
+        const distribution = users.reduce(
+          (acc, user) => {
+            acc[user.plan] = (acc[user.plan] || 0) + 1;
+            return acc;
+          },
+          {} as Record<string, number>,
+        );
         return distribution;
       });
 
@@ -70,21 +79,21 @@ export const getAdminMetrics = query({
       .query("creditTransactions")
       .filter((q) => q.eq(q.field("type"), "usage"))
       .collect()
-      .then(txs => txs.reduce((sum, tx) => sum + tx.amount, 0));
+      .then((txs) => txs.reduce((sum, tx) => sum + tx.amount, 0));
 
     const creditsSpent7d = await ctx.db
       .query("creditTransactions")
       .filter((q) => q.eq(q.field("type"), "usage"))
       .filter((q) => q.gte(q.field("createdAt"), sevenDaysAgo))
       .collect()
-      .then(txs => txs.reduce((sum, tx) => sum + tx.amount, 0));
+      .then((txs) => txs.reduce((sum, tx) => sum + tx.amount, 0));
 
     const creditsSpent30d = await ctx.db
       .query("creditTransactions")
       .filter((q) => q.eq(q.field("type"), "usage"))
       .filter((q) => q.gte(q.field("createdAt"), thirtyDaysAgo))
       .collect()
-      .then(txs => txs.reduce((sum, tx) => sum + tx.amount, 0));
+      .then((txs) => txs.reduce((sum, tx) => sum + tx.amount, 0));
 
     return {
       users: {
@@ -97,7 +106,8 @@ export const getAdminMetrics = query({
       searches: {
         total: totalSearches,
         completed: completedSearches,
-        completionRate: totalSearches > 0 ? (completedSearches / totalSearches * 100) : 0,
+        completionRate:
+          totalSearches > 0 ? (completedSearches / totalSearches) * 100 : 0,
         new7d: searches7d,
         new30d: searches30d,
       },
@@ -105,7 +115,8 @@ export const getAdminMetrics = query({
         totalSpent: totalCreditsSpent,
         spent7d: creditsSpent7d,
         spent30d: creditsSpent30d,
-        avgPerUser: totalUsers > 0 ? Math.round(totalCreditsSpent / totalUsers) : 0,
+        avgPerUser:
+          totalUsers > 0 ? Math.round(totalCreditsSpent / totalUsers) : 0,
       },
       growth: {
         userGrowth7d: newUsers7d,
@@ -134,10 +145,7 @@ export const getRecentActivity = query({
       .take(limit);
 
     // Get recent user registrations
-    const recentUsers = await ctx.db
-      .query("users")
-      .order("desc")
-      .take(limit);
+    const recentUsers = await ctx.db.query("users").order("desc").take(limit);
 
     // Get recent credit transactions
     const recentTransactions = await ctx.db
@@ -160,7 +168,7 @@ export const getSystemHealth = query({
     await requireAdmin(ctx);
 
     const now = Date.now();
-    const oneHourAgo = now - (60 * 60 * 1000);
+    const oneHourAgo = now - 60 * 60 * 1000;
 
     // Check for recent failures
     const failedSearches = await ctx.db
@@ -181,8 +189,9 @@ export const getSystemHealth = query({
       .filter((q) => q.eq(q.field("status"), "processing"))
       .collect();
 
-    const stuckSearches = processingSearches.filter(search => 
-      (now - (search.lastOrchestrationAt || search.createdAt)) > (30 * 60 * 1000) // Stuck for more than 30 minutes
+    const stuckSearches = processingSearches.filter(
+      (search) =>
+        now - (search.lastOrchestrationAt || search.createdAt) > 30 * 60 * 1000, // Stuck for more than 30 minutes
     );
 
     return {
@@ -205,7 +214,14 @@ export const getAllUsers = query({
   args: {
     limit: v.optional(v.number()),
     offset: v.optional(v.number()),
-    plan: v.optional(v.union(v.literal("starter"), v.literal("professional"), v.literal("business"), v.literal("enterprise"))),
+    plan: v.optional(
+      v.union(
+        v.literal("starter"),
+        v.literal("professional"),
+        v.literal("business"),
+        v.literal("enterprise"),
+      ),
+    ),
     role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
     isActive: v.optional(v.boolean()),
   },
@@ -235,7 +251,7 @@ export const getAllUsers = query({
 
     // Apply additional filters
     if (args.isActive !== undefined) {
-      users = users.filter(user => user.isActive === args.isActive);
+      users = users.filter((user) => user.isActive === args.isActive);
     }
 
     // Apply pagination
@@ -256,7 +272,7 @@ export const getAnalytics = query({
     await requireAdmin(ctx);
 
     const now = Date.now();
-    const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
 
     // Get user growth over time
     const users = await ctx.db.query("users").collect();
@@ -267,11 +283,12 @@ export const getAnalytics = query({
       userGrowth: users.length,
       searchVolume: searches.length,
       revenueGrowth: transactions
-        .filter(t => t.type === "purchase" && t.createdAt > thirtyDaysAgo)
+        .filter((t) => t.type === "purchase" && t.createdAt > thirtyDaysAgo)
         .reduce((sum, t) => sum + t.amount, 0),
       engagement: {
-        activeUsers: users.filter(u => u.isActive).length,
-        averageSearchesPerUser: users.length > 0 ? searches.length / users.length : 0,
+        activeUsers: users.filter((u) => u.isActive).length,
+        averageSearchesPerUser:
+          users.length > 0 ? searches.length / users.length : 0,
       },
     };
   },
@@ -289,16 +306,16 @@ export const getRevenueStats = query({
       .collect();
 
     const now = Date.now();
-    const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
-    const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
 
     return {
       totalRevenue: transactions.reduce((sum, t) => sum + t.amount, 0),
       revenueThisMonth: transactions
-        .filter(t => t.createdAt > thirtyDaysAgo)
+        .filter((t) => t.createdAt > thirtyDaysAgo)
         .reduce((sum, t) => sum + t.amount, 0),
       revenueThisWeek: transactions
-        .filter(t => t.createdAt > sevenDaysAgo)
+        .filter((t) => t.createdAt > sevenDaysAgo)
         .reduce((sum, t) => sum + t.amount, 0),
       transactionCount: transactions.length,
     };
@@ -321,8 +338,12 @@ export const getUsageStats = query({
     return {
       totalSearches: searches.length,
       totalLeads: leads.length,
-      totalCreditsSpent: creditTransactions.reduce((sum, t) => sum + t.amount, 0),
-      averageLeadsPerSearch: searches.length > 0 ? leads.length / searches.length : 0,
+      totalCreditsSpent: creditTransactions.reduce(
+        (sum, t) => sum + t.amount,
+        0,
+      ),
+      averageLeadsPerSearch:
+        searches.length > 0 ? leads.length / searches.length : 0,
     };
   },
 });
@@ -333,9 +354,7 @@ export const getSystemControlStatus = query({
   handler: async (ctx) => {
     await requireAdmin(ctx);
 
-    const systemConfig = await ctx.db
-      .query("systemConfiguration")
-      .unique();
+    const systemConfig = await ctx.db.query("systemConfiguration").unique();
 
     // Get current processing statistics
     const processingSearches = await ctx.db
@@ -370,10 +389,18 @@ export const getSystemControlStatus = query({
       processingQueue: {
         processing: processingSearches.length + inProgressSearches.length,
         queued: queuedSearches.length,
-        total: processingSearches.length + inProgressSearches.length + queuedSearches.length,
+        total:
+          processingSearches.length +
+          inProgressSearches.length +
+          queuedSearches.length,
       },
       systemLoad: {
-        status: processingSearches.length > 10 ? "high" : processingSearches.length > 5 ? "medium" : "low",
+        status:
+          processingSearches.length > 10
+            ? "high"
+            : processingSearches.length > 5
+              ? "medium"
+              : "low",
         activeProcesses: processingSearches.length + inProgressSearches.length,
       },
     };
@@ -390,7 +417,7 @@ export const getSystemActivity = query({
 
     const limit = args.limit || 50;
     const now = Date.now();
-    const oneHourAgo = now - (60 * 60 * 1000);
+    const oneHourAgo = now - 60 * 60 * 1000;
 
     // Get recent system logs
     const systemLogs = await ctx.db
@@ -414,14 +441,14 @@ export const getSystemActivity = query({
       .collect();
 
     return {
-      systemLogs: systemLogs.map(log => ({
+      systemLogs: systemLogs.map((log) => ({
         id: log._id,
         type: log.type,
         action: log.action,
         timestamp: log.timestamp,
         data: log.data,
       })),
-      recentSearches: recentSearches.map(search => ({
+      recentSearches: recentSearches.map((search) => ({
         id: search._id,
         userId: search.userId,
         status: search.status,
@@ -433,9 +460,14 @@ export const getSystemActivity = query({
       activitySummary: {
         totalSearches: recentSearches.length,
         failedSearches: failedOperations.length,
-        successRate: recentSearches.length > 0 
-          ? Math.round(((recentSearches.length - failedOperations.length) / recentSearches.length) * 100)
-          : 100,
+        successRate:
+          recentSearches.length > 0
+            ? Math.round(
+                ((recentSearches.length - failedOperations.length) /
+                  recentSearches.length) *
+                  100,
+              )
+            : 100,
       },
     };
   },
@@ -446,9 +478,7 @@ export const getSystemConfiguration = query({
   args: {},
   handler: async (ctx) => {
     // No auth required - this is used by system processes
-    const systemConfig = await ctx.db
-      .query("systemConfiguration")
-      .unique();
+    const systemConfig = await ctx.db.query("systemConfiguration").unique();
 
     return systemConfig;
   },
@@ -460,12 +490,11 @@ export const getAdminSettings = query({
   handler: async (ctx) => {
     await requireAdmin(ctx);
 
-    const systemConfig = await ctx.db
-      .query("systemConfiguration")
-      .unique();
+    const systemConfig = await ctx.db.query("systemConfiguration").unique();
 
     return {
-      maintenanceMode: systemConfig?.orchestrationSettings?.maintenanceMode || false,
+      maintenanceMode:
+        systemConfig?.orchestrationSettings?.maintenanceMode || false,
       registrationEnabled: true, // Not available in current schema
       maxDailySearches: 100, // Not available in current schema
       systemMessage: "", // Not available in current schema
@@ -501,7 +530,7 @@ export const getRecentCreditTransactions = query({
           userEmail: user?.email || "Unknown",
           userName: user?.name || "Unknown User",
         };
-      })
+      }),
     );
 
     return transactionsWithUsers;
@@ -515,7 +544,7 @@ export const getSystemStatus = query({
     await requireAdmin(ctx);
 
     const now = Date.now();
-    const oneHourAgo = now - (60 * 60 * 1000);
+    const oneHourAgo = now - 60 * 60 * 1000;
 
     try {
       // Get processing queue status
@@ -536,17 +565,22 @@ export const getSystemStatus = query({
         .collect();
 
       // Check for stuck operations (processing for more than 30 minutes)
-      const stuckSearches = processingSearches.filter(search => 
-        (now - (search.lastOrchestrationAt || search.createdAt)) > (30 * 60 * 1000)
+      const stuckSearches = processingSearches.filter(
+        (search) =>
+          now - (search.lastOrchestrationAt || search.createdAt) >
+          30 * 60 * 1000,
       );
 
       // Get system resource status
-      const totalUsers = await ctx.db.query("users").collect().then(users => users.length);
+      const totalUsers = await ctx.db
+        .query("users")
+        .collect()
+        .then((users) => users.length);
       const activeUsers = await ctx.db
         .query("users")
         .filter((q) => q.eq(q.field("isActive"), true))
         .collect()
-        .then(users => users.length);
+        .then((users) => users.length);
 
       // Check LangGraph worker status
       const recentLangGraphRequests = await ctx.db
@@ -554,7 +588,9 @@ export const getSystemStatus = query({
         .filter((q) => q.gte(q.field("createdAt"), oneHourAgo))
         .collect();
 
-      const failedLangGraphRequests = recentLangGraphRequests.filter(req => req.status === "failed");
+      const failedLangGraphRequests = recentLangGraphRequests.filter(
+        (req) => req.status === "failed",
+      );
 
       // Determine overall system health
       let systemHealth: "healthy" | "degraded" | "critical";
@@ -562,20 +598,30 @@ export const getSystemStatus = query({
 
       if (stuckSearches.length > 5 || failedSearches.length > 10) {
         systemHealth = "critical";
-        if (stuckSearches.length > 5) issues.push(`${stuckSearches.length} stuck searches`);
-        if (failedSearches.length > 10) issues.push(`${failedSearches.length} failed searches`);
+        if (stuckSearches.length > 5)
+          issues.push(`${stuckSearches.length} stuck searches`);
+        if (failedSearches.length > 10)
+          issues.push(`${failedSearches.length} failed searches`);
       } else if (stuckSearches.length > 0 || failedSearches.length > 5) {
         systemHealth = "degraded";
-        if (stuckSearches.length > 0) issues.push(`${stuckSearches.length} stuck searches`);
-        if (failedSearches.length > 5) issues.push(`${failedSearches.length} failed searches`);
+        if (stuckSearches.length > 0)
+          issues.push(`${stuckSearches.length} stuck searches`);
+        if (failedSearches.length > 5)
+          issues.push(`${failedSearches.length} failed searches`);
       } else {
         systemHealth = "healthy";
       }
 
       // Calculate success rates
-      const searchSuccessRate = recentLangGraphRequests.length > 0
-        ? Math.round(((recentLangGraphRequests.length - failedLangGraphRequests.length) / recentLangGraphRequests.length) * 100)
-        : 100;
+      const searchSuccessRate =
+        recentLangGraphRequests.length > 0
+          ? Math.round(
+              ((recentLangGraphRequests.length -
+                failedLangGraphRequests.length) /
+                recentLangGraphRequests.length) *
+                100,
+            )
+          : 100;
 
       return {
         systemHealth,
@@ -589,7 +635,8 @@ export const getSystemStatus = query({
         users: {
           total: totalUsers,
           active: activeUsers,
-          activePercentage: totalUsers > 0 ? Math.round((activeUsers / totalUsers) * 100) : 0,
+          activePercentage:
+            totalUsers > 0 ? Math.round((activeUsers / totalUsers) * 100) : 0,
         },
         aiService: {
           requestsLastHour: recentLangGraphRequests.length,

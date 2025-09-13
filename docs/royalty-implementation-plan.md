@@ -144,33 +144,37 @@ export const updateDeveloperConfig = mutation({
   args: {
     stripeConnectAccountId: v.optional(v.string()),
     payoutMethod: v.union(v.literal("automatic"), v.literal("manual")),
-    bankDetails: v.optional(v.object({
-      accountName: v.string(),
-      accountNumber: v.string(),
-      routingNumber: v.string(),
-      bankName: v.string(),
-      swift: v.optional(v.string()),
-    })),
+    bankDetails: v.optional(
+      v.object({
+        accountName: v.string(),
+        accountNumber: v.string(),
+        routingNumber: v.string(),
+        bankName: v.string(),
+        swift: v.optional(v.string()),
+      }),
+    ),
     paypalEmail: v.optional(v.string()),
     preferredPaymentMethod: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
-    
+
     // Check if user is developer
-    const user = await ctx.db.query("users")
-      .withIndex("by_email", q => q.eq("email", identity.email))
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", identity.email))
       .first();
-      
+
     if (user?.role !== "developer") {
       throw new Error("Not authorized");
     }
-    
-    const existing = await ctx.db.query("developerConfig")
-      .withIndex("by_developer", q => q.eq("developerId", user._id))
+
+    const existing = await ctx.db
+      .query("developerConfig")
+      .withIndex("by_developer", (q) => q.eq("developerId", user._id))
       .first();
-    
+
     if (existing) {
       await ctx.db.patch(existing._id, {
         ...args,
@@ -185,7 +189,7 @@ export const updateDeveloperConfig = mutation({
         updatedAt: Date.now(),
       });
     }
-    
+
     // Log the update
     await ctx.db.insert("royaltyAuditLog", {
       timestamp: Date.now(),
@@ -200,15 +204,17 @@ export const getDeveloperConfig = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
-    
-    const user = await ctx.db.query("users")
-      .withIndex("by_email", q => q.eq("email", identity.email))
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", identity.email))
       .first();
-      
+
     if (user?.role !== "developer") return null;
-    
-    return await ctx.db.query("developerConfig")
-      .withIndex("by_developer", q => q.eq("developerId", user._id))
+
+    return await ctx.db
+      .query("developerConfig")
+      .withIndex("by_developer", (q) => q.eq("developerId", user._id))
       .first();
   },
 });
@@ -228,37 +234,42 @@ export const recordRevenue = internalMutation({
   },
   handler: async (ctx, args) => {
     const { stripeEvent } = args;
-    
+
     // Prevent duplicate processing
-    const existing = await ctx.db.query("revenueTracking")
-      .withIndex("by_stripe_event", q => q.eq("stripeEventId", stripeEvent.id))
+    const existing = await ctx.db
+      .query("revenueTracking")
+      .withIndex("by_stripe_event", (q) =>
+        q.eq("stripeEventId", stripeEvent.id),
+      )
       .first();
-      
+
     if (existing) return;
-    
+
     let amount = 0;
     let type: "subscription" | "one_time" | "refund" = "subscription";
     let description = "";
-    
+
     switch (stripeEvent.type) {
       case "invoice.payment_succeeded":
         amount = stripeEvent.data.object.amount_paid;
-        type = stripeEvent.data.object.subscription ? "subscription" : "one_time";
+        type = stripeEvent.data.object.subscription
+          ? "subscription"
+          : "one_time";
         description = `Invoice ${stripeEvent.data.object.number}`;
         break;
-        
+
       case "charge.refunded":
         amount = -stripeEvent.data.object.amount_refunded;
         type = "refund";
         description = `Refund for ${stripeEvent.data.object.id}`;
         break;
-        
+
       default:
         return; // Ignore other events
     }
-    
+
     await ctx.db.insert("revenueTracking", {
-      date: new Date().toISOString().split('T')[0],
+      date: new Date().toISOString().split("T")[0],
       type,
       amount,
       currency: stripeEvent.data.object.currency || "usd",
@@ -269,7 +280,7 @@ export const recordRevenue = internalMutation({
       stripeEventId: stripeEvent.id,
       metadata: stripeEvent.data.object.metadata || {},
     });
-    
+
     await ctx.db.insert("royaltyAuditLog", {
       timestamp: Date.now(),
       action: "revenue_recorded",
@@ -294,43 +305,53 @@ export const calculateMonthlyRoyalty = scheduledFunction(
   async (ctx) => {
     const lastMonth = new Date();
     lastMonth.setMonth(lastMonth.getMonth() - 1);
-    
+
     const monthStr = lastMonth.toISOString().slice(0, 7); // YYYY-MM
     const startDate = `${monthStr}-01`;
-    const endDate = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0)
-      .toISOString().split('T')[0];
-    
+    const endDate = new Date(
+      lastMonth.getFullYear(),
+      lastMonth.getMonth() + 1,
+      0,
+    )
+      .toISOString()
+      .split("T")[0];
+
     // Check if already calculated
-    const existing = await ctx.db.query("royaltyPayments")
-      .withIndex("by_month", q => q.eq("month", monthStr))
+    const existing = await ctx.db
+      .query("royaltyPayments")
+      .withIndex("by_month", (q) => q.eq("month", monthStr))
       .first();
-      
+
     if (existing) return;
-    
+
     // Calculate total revenue for the month
-    const revenues = await ctx.db.query("revenueTracking")
-      .withIndex("by_date", q => 
-        q.gte("date", startDate).lte("date", endDate)
+    const revenues = await ctx.db
+      .query("revenueTracking")
+      .withIndex("by_date", (q) =>
+        q.gte("date", startDate).lte("date", endDate),
       )
       .collect();
-    
-    const breakdown = revenues.reduce((acc, rev) => {
-      const type = rev.type;
-      if (!acc[type]) {
-        acc[type] = { type, count: 0, amount: 0 };
-      }
-      acc[type].count += 1;
-      acc[type].amount += rev.amount;
-      return acc;
-    }, {} as Record<string, any>);
-    
+
+    const breakdown = revenues.reduce(
+      (acc, rev) => {
+        const type = rev.type;
+        if (!acc[type]) {
+          acc[type] = { type, count: 0, amount: 0 };
+        }
+        acc[type].count += 1;
+        acc[type].amount += rev.amount;
+        return acc;
+      },
+      {} as Record<string, any>,
+    );
+
     const totalRevenue = revenues.reduce((sum, rev) => sum + rev.amount, 0);
     const royaltyAmount = Math.floor(totalRevenue * 0.05); // 5%
-    
+
     // Due on the 15th of the following month
     const dueDate = new Date();
     dueDate.setDate(15);
-    
+
     await ctx.db.insert("royaltyPayments", {
       month: monthStr,
       startDate,
@@ -344,20 +365,24 @@ export const calculateMonthlyRoyalty = scheduledFunction(
       createdAt: Date.now(),
       dueDate: dueDate.getTime(),
     });
-    
+
     await ctx.db.insert("royaltyAuditLog", {
       timestamp: Date.now(),
       action: "royalty_calculated",
       performedBy: "system",
       details: { month: monthStr, totalRevenue, royaltyAmount },
     });
-    
+
     // Send notification to developer and admin
-    await ctx.scheduler.runAfter(0, internal.notifications.sendRoyaltyCalculated, {
-      month: monthStr,
-      amount: royaltyAmount,
-    });
-  }
+    await ctx.scheduler.runAfter(
+      0,
+      internal.notifications.sendRoyaltyCalculated,
+      {
+        month: monthStr,
+        amount: royaltyAmount,
+      },
+    );
+  },
 );
 ```
 
@@ -368,7 +393,7 @@ export const calculateMonthlyRoyalty = scheduledFunction(
 
 import { action, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
-import Stripe from 'stripe';
+import Stripe from "stripe";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -380,23 +405,28 @@ export const processAutomaticPayment = action({
     const payment = await ctx.runQuery(internal.royalty.getPayment, {
       paymentId: args.paymentId,
     });
-    
+
     if (!payment || payment.status !== "pending") {
       throw new Error("Invalid payment");
     }
-    
-    const config = await ctx.runQuery(internal.royalty.getDeveloperConfigInternal);
-    
-    if (!config?.stripeConnectAccountId || config.payoutMethod !== "automatic") {
+
+    const config = await ctx.runQuery(
+      internal.royalty.getDeveloperConfigInternal,
+    );
+
+    if (
+      !config?.stripeConnectAccountId ||
+      config.payoutMethod !== "automatic"
+    ) {
       throw new Error("Automatic payments not configured");
     }
-    
+
     // Update status to processing
     await ctx.runMutation(internal.royalty.updatePaymentStatus, {
       paymentId: args.paymentId,
       status: "processing",
     });
-    
+
     try {
       // Create transfer via Stripe Connect
       const transfer = await stripe.transfers.create({
@@ -409,23 +439,22 @@ export const processAutomaticPayment = action({
           month: payment.month,
         },
       });
-      
+
       // Update payment record
       await ctx.runMutation(internal.royalty.completePayment, {
         paymentId: args.paymentId,
         transactionId: transfer.id,
         paymentMethod: "stripe_connect",
       });
-      
+
       return { success: true, transferId: transfer.id };
-      
     } catch (error) {
       // Handle failure
       await ctx.runMutation(internal.royalty.failPayment, {
         paymentId: args.paymentId,
         reason: error.message,
       });
-      
+
       throw error;
     }
   },
@@ -446,10 +475,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { 
-  DollarSign, 
-  TrendingUp, 
-  CreditCard, 
+import {
+  DollarSign,
+  TrendingUp,
+  CreditCard,
   Download,
   Settings,
   AlertCircle,
@@ -571,24 +600,24 @@ export function DeveloperRoyaltyDashboard() {
             </TabsList>
 
             <TabsContent value="all" className="space-y-4">
-              <PaymentTable 
-                payments={payments || []} 
+              <PaymentTable
+                payments={payments || []}
                 config={config}
                 filter="all"
               />
             </TabsContent>
 
             <TabsContent value="pending" className="space-y-4">
-              <PaymentTable 
-                payments={payments?.filter(p => p.status === "pending") || []} 
+              <PaymentTable
+                payments={payments?.filter(p => p.status === "pending") || []}
                 config={config}
                 filter="pending"
               />
             </TabsContent>
 
             <TabsContent value="paid" className="space-y-4">
-              <PaymentTable 
-                payments={payments?.filter(p => p.status === "paid") || []} 
+              <PaymentTable
+                payments={payments?.filter(p => p.status === "paid") || []}
                 config={config}
                 filter="paid"
               />
@@ -599,7 +628,7 @@ export function DeveloperRoyaltyDashboard() {
 
       {/* Configuration Modal */}
       {showConfig && (
-        <PaymentConfigModal 
+        <PaymentConfigModal
           config={config}
           onClose={() => setShowConfig(false)}
         />
@@ -706,7 +735,7 @@ export function PaymentConfigModal({ config, onClose }) {
                   <p className="text-sm text-muted-foreground">
                     Click the button below to connect your Stripe account and enable automatic payments.
                   </p>
-                  <Button 
+                  <Button
                     onClick={() => window.open('/api/stripe/connect', '_blank')}
                     className="w-full"
                   >
@@ -830,7 +859,7 @@ export function PaymentConfigModal({ config, onClose }) {
 
               <TabsContent value="other" className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Please contact support to arrange alternative payment methods such as 
+                  Please contact support to arrange alternative payment methods such as
                   cryptocurrency or check payments.
                 </p>
                 <Button variant="outline" className="w-full">
@@ -897,7 +926,7 @@ export function PaymentTable({ payments, config, filter }) {
       paid: 'success',
       failed: 'destructive',
     };
-    
+
     return (
       <Badge variant={variants[status] || 'default'}>
         {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -1017,7 +1046,7 @@ export function CompanyRoyaltyView() {
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            You have {pendingPayments.length} pending royalty payment(s) totaling 
+            You have {pendingPayments.length} pending royalty payment(s) totaling
             ${pendingPayments.reduce((sum, p) => sum + p.royaltyAmount, 0) / 100}
           </AlertDescription>
         </Alert>
@@ -1037,7 +1066,7 @@ export function CompanyRoyaltyView() {
                       {format(new Date(payment.month + '-01'), 'MMMM yyyy')}
                     </h4>
                     <p className="text-sm text-muted-foreground">
-                      Revenue: ${payment.totalRevenue / 100} → 
+                      Revenue: ${payment.totalRevenue / 100} →
                       Royalty: ${payment.royaltyAmount / 100}
                     </p>
                   </div>
@@ -1075,30 +1104,35 @@ export function CompanyRoyaltyView() {
 ## Implementation Steps
 
 ### Phase 1: Database & Core Logic (Week 1)
+
 1. Add royalty tables to schema
 2. Implement revenue tracking webhook
 3. Create monthly calculation cron job
 4. Build developer config API
 
 ### Phase 2: Developer Dashboard (Week 2)
+
 1. Create royalty dashboard UI
 2. Implement payment configuration modal
 3. Add payment history table
 4. Build export functionality
 
 ### Phase 3: Payment Processing (Week 3)
+
 1. Integrate Stripe Connect OAuth
 2. Implement automatic payment flow
 3. Add manual payment tracking
 4. Create invoice generation
 
 ### Phase 4: Admin Tools (Week 4)
+
 1. Build admin royalty view
 2. Add manual payment marking
 3. Implement audit logging
 4. Create dispute resolution flow
 
 ### Phase 5: Testing & Polish (Week 5)
+
 1. Test all payment scenarios
 2. Add comprehensive error handling
 3. Implement notifications

@@ -2,10 +2,10 @@ import { useSubscription } from "./useSubscription";
 import { useUsage } from "./useUsage";
 
 export type PlanTier = "starter" | "professional" | "business" | "enterprise";
-export type FeatureKey = 
-  | "email_generation" 
-  | "bulk_operations" 
-  | "api_access" 
+export type FeatureKey =
+  | "email_generation"
+  | "bulk_operations"
+  | "api_access"
   | "advanced_analytics"
   | "team_collaboration"
   | "custom_integrations"
@@ -35,7 +35,12 @@ const PLAN_FEATURES: PlanFeatures = {
     },
   },
   professional: {
-    features: ["email_generation", "bulk_operations", "api_access", "advanced_analytics"],
+    features: [
+      "email_generation",
+      "bulk_operations",
+      "api_access",
+      "advanced_analytics",
+    ],
     limits: {
       monthlySearches: 50,
       maxLeadsPerSearch: 500,
@@ -45,12 +50,12 @@ const PLAN_FEATURES: PlanFeatures = {
   },
   business: {
     features: [
-      "email_generation", 
-      "bulk_operations", 
-      "api_access", 
+      "email_generation",
+      "bulk_operations",
+      "api_access",
       "advanced_analytics",
       "team_collaboration",
-      "custom_integrations"
+      "custom_integrations",
     ],
     limits: {
       monthlySearches: 200,
@@ -62,13 +67,13 @@ const PLAN_FEATURES: PlanFeatures = {
   enterprise: {
     features: [
       "email_generation",
-      "bulk_operations", 
-      "api_access", 
+      "bulk_operations",
+      "api_access",
       "advanced_analytics",
       "team_collaboration",
       "custom_integrations",
       "white_label",
-      "dedicated_support"
+      "dedicated_support",
     ],
     limits: {
       monthlySearches: -1, // unlimited
@@ -80,7 +85,14 @@ const PLAN_FEATURES: PlanFeatures = {
 };
 
 export function useSubscriptionGuard() {
-  const { subscription, isLoading: subscriptionLoading, isStarter, isProfessional, isBusiness, isEnterprise } = useSubscription();
+  const {
+    subscription,
+    isLoading: subscriptionLoading,
+    isStarter,
+    isProfessional,
+    isBusiness,
+    isEnterprise,
+  } = useSubscription();
   const { usage, isLoading: usageLoading } = useUsage();
 
   const currentPlan: PlanTier = subscription?.plan || "starter";
@@ -92,8 +104,10 @@ export function useSubscriptionGuard() {
   };
 
   // Usage limit checks
-  const canPerformAction = (action: "search" | "export" | "bulk_operation"): { 
-    allowed: boolean; 
+  const canPerformAction = (
+    action: "search" | "export" | "bulk_operation",
+  ): {
+    allowed: boolean;
     reason?: string;
     upgradeRequired?: PlanTier;
   } => {
@@ -105,14 +119,18 @@ export function useSubscriptionGuard() {
       case "search": {
         const searchLimit = planFeatures.limits.monthlySearches;
         if (searchLimit === -1) return { allowed: true }; // unlimited
-        
+
         const searchesRemaining = searchLimit - usage.searchesUsed;
         if (searchesRemaining <= 0) {
-          return { 
-            allowed: false, 
+          return {
+            allowed: false,
             reason: `Monthly search limit reached (${searchLimit})`,
-            upgradeRequired: currentPlan === "starter" ? "professional" : 
-                           currentPlan === "professional" ? "business" : "enterprise"
+            upgradeRequired:
+              currentPlan === "starter"
+                ? "professional"
+                : currentPlan === "professional"
+                  ? "business"
+                  : "enterprise",
           };
         }
         return { allowed: true };
@@ -121,14 +139,18 @@ export function useSubscriptionGuard() {
       case "export": {
         const exportLimit = planFeatures.limits.monthlyExports;
         if (exportLimit === -1) return { allowed: true }; // unlimited
-        
+
         const exportsRemaining = exportLimit - usage.exportsCompleted;
         if (exportsRemaining <= 0) {
-          return { 
-            allowed: false, 
+          return {
+            allowed: false,
             reason: `Monthly export limit reached (${exportLimit})`,
-            upgradeRequired: currentPlan === "starter" ? "professional" : 
-                           currentPlan === "professional" ? "business" : "enterprise"
+            upgradeRequired:
+              currentPlan === "starter"
+                ? "professional"
+                : currentPlan === "professional"
+                  ? "business"
+                  : "enterprise",
           };
         }
         return { allowed: true };
@@ -136,10 +158,10 @@ export function useSubscriptionGuard() {
 
       case "bulk_operation": {
         if (!hasFeature("bulk_operations")) {
-          return { 
-            allowed: false, 
+          return {
+            allowed: false,
             reason: "Bulk operations not available on your plan",
-            upgradeRequired: "professional"
+            upgradeRequired: "professional",
           };
         }
         return { allowed: true };
@@ -151,24 +173,26 @@ export function useSubscriptionGuard() {
   };
 
   // Plan upgrade suggestions
-  const getUpgradeSuggestion = (requiredFeature: FeatureKey): {
+  const getUpgradeSuggestion = (
+    requiredFeature: FeatureKey,
+  ): {
     suggestedPlan: PlanTier;
     reason: string;
   } => {
     const plans: PlanTier[] = ["professional", "business", "enterprise"];
-    
+
     for (const plan of plans) {
       if (PLAN_FEATURES[plan].features.includes(requiredFeature)) {
         return {
           suggestedPlan: plan,
-          reason: `Upgrade to ${plan.charAt(0).toUpperCase() + plan.slice(1)} to access this feature`
+          reason: `Upgrade to ${plan.charAt(0).toUpperCase() + plan.slice(1)} to access this feature`,
         };
       }
     }
 
     return {
       suggestedPlan: "professional",
-      reason: "Upgrade required to access this feature"
+      reason: "Upgrade required to access this feature",
     };
   };
 
@@ -186,45 +210,56 @@ export function useSubscriptionGuard() {
 
     // Search warnings
     if (limits.monthlySearches > 0) {
-      const searchPercentage = (usage.searchesUsed / limits.monthlySearches) * 100;
+      const searchPercentage =
+        (usage.searchesUsed / limits.monthlySearches) * 100;
       if (searchPercentage >= 80) {
         warnings.push({
           type: "search" as const,
           percentage: searchPercentage,
-          message: searchPercentage >= 95 
-            ? `Critical: ${usage.searchesUsed}/${limits.monthlySearches} searches used`
-            : `Warning: ${usage.searchesUsed}/${limits.monthlySearches} searches used`,
-          severity: searchPercentage >= 95 ? "danger" as const : "warning" as const
+          message:
+            searchPercentage >= 95
+              ? `Critical: ${usage.searchesUsed}/${limits.monthlySearches} searches used`
+              : `Warning: ${usage.searchesUsed}/${limits.monthlySearches} searches used`,
+          severity:
+            searchPercentage >= 95 ? ("danger" as const) : ("warning" as const),
         });
       }
     }
 
     // Enrichment warnings
     if (limits.monthlyEnrichments > 0) {
-      const enrichmentPercentage = (usage.leadsEnriched / limits.monthlyEnrichments) * 100;
+      const enrichmentPercentage =
+        (usage.leadsEnriched / limits.monthlyEnrichments) * 100;
       if (enrichmentPercentage >= 80) {
         warnings.push({
           type: "enrichment" as const,
           percentage: enrichmentPercentage,
-          message: enrichmentPercentage >= 95
-            ? `Critical: ${usage.leadsEnriched.toLocaleString()}/${limits.monthlyEnrichments.toLocaleString()} enrichments used`
-            : `Warning: ${usage.leadsEnriched.toLocaleString()}/${limits.monthlyEnrichments.toLocaleString()} enrichments used`,
-          severity: enrichmentPercentage >= 95 ? "danger" as const : "warning" as const
+          message:
+            enrichmentPercentage >= 95
+              ? `Critical: ${usage.leadsEnriched.toLocaleString()}/${limits.monthlyEnrichments.toLocaleString()} enrichments used`
+              : `Warning: ${usage.leadsEnriched.toLocaleString()}/${limits.monthlyEnrichments.toLocaleString()} enrichments used`,
+          severity:
+            enrichmentPercentage >= 95
+              ? ("danger" as const)
+              : ("warning" as const),
         });
       }
     }
 
     // Export warnings
     if (limits.monthlyExports > 0) {
-      const exportPercentage = (usage.exportsCompleted / limits.monthlyExports) * 100;
+      const exportPercentage =
+        (usage.exportsCompleted / limits.monthlyExports) * 100;
       if (exportPercentage >= 80) {
         warnings.push({
           type: "export" as const,
           percentage: exportPercentage,
-          message: exportPercentage >= 95
-            ? `Critical: ${usage.exportsCompleted}/${limits.monthlyExports} exports used`
-            : `Warning: ${usage.exportsCompleted}/${limits.monthlyExports} exports used`,
-          severity: exportPercentage >= 95 ? "danger" as const : "warning" as const
+          message:
+            exportPercentage >= 95
+              ? `Critical: ${usage.exportsCompleted}/${limits.monthlyExports} exports used`
+              : `Warning: ${usage.exportsCompleted}/${limits.monthlyExports} exports used`,
+          severity:
+            exportPercentage >= 95 ? ("danger" as const) : ("warning" as const),
         });
       }
     }
@@ -237,19 +272,19 @@ export function useSubscriptionGuard() {
     currentPlan,
     planFeatures,
     isStarter,
-    isProfessional, 
+    isProfessional,
     isBusiness,
     isEnterprise,
-    
+
     // Loading states
     isLoading: subscriptionLoading || usageLoading,
-    
+
     // Feature checks
     hasFeature,
     canPerformAction,
     getUpgradeSuggestion,
     getUsageWarnings,
-    
+
     // Quick access
     hasActiveSubscription: subscription?.hasActiveSubscription || false,
     canGenerateEmails: hasFeature("email_generation"),

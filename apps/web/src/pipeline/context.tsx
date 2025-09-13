@@ -1,23 +1,36 @@
-import React, { createContext, useContext, useReducer, useCallback } from 'react';
-import type { PipelineState, PipelineStage, LeadSourceType } from './types';
-import type { Lead, EmailGenerationResult } from '@/lib/api-client';
+import React, {
+  createContext,
+  useContext,
+  useReducer,
+  useCallback,
+} from "react";
+import type { PipelineState, PipelineStage, LeadSourceType } from "./types";
+import type { Lead, EmailGenerationResult } from "@/lib/api-client";
 import type { Id } from "@genni/convex-types/dataModel";
 
 interface PipelineAction {
-  type: 'SET_STAGE' | 'SET_SOURCE' | 'SET_SEARCH_ID' | 'SET_LEADS' | 'SET_ENRICHED_LEADS' | 
-        'SET_EMAILS' | 'SET_PROCESSING' | 'MARK_STAGE_COMPLETE' | 'RESET_PIPELINE';
-  payload?: 
-    | PipelineStage 
-    | LeadSourceType 
-    | Id<"searches"> 
-    | Lead[] 
-    | EmailGenerationResult[] 
-    | boolean 
+  type:
+    | "SET_STAGE"
+    | "SET_SOURCE"
+    | "SET_SEARCH_ID"
+    | "SET_LEADS"
+    | "SET_ENRICHED_LEADS"
+    | "SET_EMAILS"
+    | "SET_PROCESSING"
+    | "MARK_STAGE_COMPLETE"
+    | "RESET_PIPELINE";
+  payload?:
+    | PipelineStage
+    | LeadSourceType
+    | Id<"searches">
+    | Lead[]
+    | EmailGenerationResult[]
+    | boolean
     | null;
 }
 
 const initialState: PipelineState = {
-  currentStage: 'source_selection',
+  currentStage: "source_selection",
   completedStages: [],
   selectedSource: null,
   searchId: null,
@@ -28,44 +41,47 @@ const initialState: PipelineState = {
   isProcessing: false,
 };
 
-function pipelineReducer(state: PipelineState, action: PipelineAction): PipelineState {
+function pipelineReducer(
+  state: PipelineState,
+  action: PipelineAction,
+): PipelineState {
   switch (action.type) {
-    case 'SET_STAGE':
+    case "SET_STAGE":
       return { ...state, currentStage: action.payload };
-    
-    case 'SET_SOURCE':
-      return { 
-        ...state, 
+
+    case "SET_SOURCE":
+      return {
+        ...state,
         selectedSource: action.payload,
-        canProgress: action.payload !== null 
+        canProgress: action.payload !== null,
       };
-    
-    case 'SET_SEARCH_ID':
+
+    case "SET_SEARCH_ID":
       return { ...state, searchId: action.payload };
-    
-    case 'SET_LEADS':
+
+    case "SET_LEADS":
       return { ...state, leads: action.payload };
-    
-    case 'SET_ENRICHED_LEADS':
+
+    case "SET_ENRICHED_LEADS":
       return { ...state, enrichedLeads: action.payload };
-    
-    case 'SET_EMAILS':
+
+    case "SET_EMAILS":
       return { ...state, generatedEmails: action.payload };
-    
-    case 'SET_PROCESSING':
+
+    case "SET_PROCESSING":
       return { ...state, isProcessing: action.payload };
-    
-    case 'MARK_STAGE_COMPLETE': {
+
+    case "MARK_STAGE_COMPLETE": {
       const newCompletedStages = [...state.completedStages];
       if (!newCompletedStages.includes(action.payload as PipelineStage)) {
         newCompletedStages.push(action.payload as PipelineStage);
       }
       return { ...state, completedStages: newCompletedStages };
     }
-    
-    case 'RESET_PIPELINE':
+
+    case "RESET_PIPELINE":
       return { ...initialState };
-    
+
     default:
       return state;
   }
@@ -86,81 +102,86 @@ interface PipelineContextType {
   progressToNextStage: () => void;
 }
 
-const PipelineContext = createContext<PipelineContextType | undefined>(undefined);
+const PipelineContext = createContext<PipelineContextType | undefined>(
+  undefined,
+);
 
 export function PipelineProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(pipelineReducer, initialState);
 
   const setStage = useCallback((stage: PipelineStage) => {
-    dispatch({ type: 'SET_STAGE', payload: stage });
+    dispatch({ type: "SET_STAGE", payload: stage });
   }, []);
 
   const setSource = useCallback((source: LeadSourceType) => {
-    dispatch({ type: 'SET_SOURCE', payload: source });
+    dispatch({ type: "SET_SOURCE", payload: source });
   }, []);
 
   const setSearchId = useCallback((searchId: Id<"searches">) => {
-    dispatch({ type: 'SET_SEARCH_ID', payload: searchId });
+    dispatch({ type: "SET_SEARCH_ID", payload: searchId });
   }, []);
 
   const setLeads = useCallback((leads: Lead[]) => {
-    dispatch({ type: 'SET_LEADS', payload: leads });
+    dispatch({ type: "SET_LEADS", payload: leads });
   }, []);
 
   const setEnrichedLeads = useCallback((leads: Lead[]) => {
-    dispatch({ type: 'SET_ENRICHED_LEADS', payload: leads });
+    dispatch({ type: "SET_ENRICHED_LEADS", payload: leads });
   }, []);
 
   const setEmails = useCallback((emails: EmailGenerationResult[]) => {
-    dispatch({ type: 'SET_EMAILS', payload: emails });
+    dispatch({ type: "SET_EMAILS", payload: emails });
   }, []);
 
   const setProcessing = useCallback((processing: boolean) => {
-    dispatch({ type: 'SET_PROCESSING', payload: processing });
+    dispatch({ type: "SET_PROCESSING", payload: processing });
   }, []);
 
   const markStageComplete = useCallback((stage: PipelineStage) => {
-    dispatch({ type: 'MARK_STAGE_COMPLETE', payload: stage });
+    dispatch({ type: "MARK_STAGE_COMPLETE", payload: stage });
   }, []);
 
   const resetPipeline = useCallback(() => {
-    dispatch({ type: 'RESET_PIPELINE' });
+    dispatch({ type: "RESET_PIPELINE" });
   }, []);
 
-  const canProgressToStage = useCallback((stage: PipelineStage) => {
-    const stageOrder: PipelineStage[] = [
-      'source_selection',
-      'lead_discovery', 
-      'enrichment',
-      'ai_analysis',
-      'email_generation',
-      'review_export'
-    ];
+  const canProgressToStage = useCallback(
+    (stage: PipelineStage) => {
+      const stageOrder: PipelineStage[] = [
+        "source_selection",
+        "lead_discovery",
+        "enrichment",
+        "ai_analysis",
+        "email_generation",
+        "review_export",
+      ];
 
-    const targetIndex = stageOrder.indexOf(stage);
-    const currentIndex = stageOrder.indexOf(state.currentStage);
-    
-    // Can always go backward
-    if (targetIndex <= currentIndex) return true;
-    
-    // Can only go forward if previous stages are complete
-    for (let i = 0; i < targetIndex; i++) {
-      if (!state.completedStages.includes(stageOrder[i])) {
-        return false;
+      const targetIndex = stageOrder.indexOf(stage);
+      const currentIndex = stageOrder.indexOf(state.currentStage);
+
+      // Can always go backward
+      if (targetIndex <= currentIndex) return true;
+
+      // Can only go forward if previous stages are complete
+      for (let i = 0; i < targetIndex; i++) {
+        if (!state.completedStages.includes(stageOrder[i])) {
+          return false;
+        }
       }
-    }
-    
-    return true;
-  }, [state.currentStage, state.completedStages]);
+
+      return true;
+    },
+    [state.currentStage, state.completedStages],
+  );
 
   const progressToNextStage = useCallback(() => {
     const stageOrder: PipelineStage[] = [
-      'source_selection',
-      'lead_discovery',
-      'enrichment', 
-      'ai_analysis',
-      'email_generation',
-      'review_export'
+      "source_selection",
+      "lead_discovery",
+      "enrichment",
+      "ai_analysis",
+      "email_generation",
+      "review_export",
     ];
 
     const currentIndex = stageOrder.indexOf(state.currentStage);
@@ -197,7 +218,7 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
 export function usePipeline() {
   const context = useContext(PipelineContext);
   if (context === undefined) {
-    throw new Error('usePipeline must be used within a PipelineProvider');
+    throw new Error("usePipeline must be used within a PipelineProvider");
   }
   return context;
 }

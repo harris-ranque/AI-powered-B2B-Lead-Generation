@@ -28,8 +28,8 @@ export function LeadsPage() {
 
   const handleViewWebsite = (website: string) => {
     if (website) {
-      const url = website.startsWith('http') ? website : `https://${website}`;
-      window.open(url, '_blank');
+      const url = website.startsWith("http") ? website : `https://${website}`;
+      window.open(url, "_blank");
     }
   };
 
@@ -47,24 +47,28 @@ export function LeadsPage() {
       {isLoading ? (
         <Alert>
           <Clock className="h-4 w-4 animate-spin" />
-          <AlertDescription>
-            Loading your leads...
-          </AlertDescription>
+          <AlertDescription>Loading your leads...</AlertDescription>
         </Alert>
       ) : (
         <>
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="glass-card p-6 text-center hover-scale transition-smooth">
-              <div className="text-3xl font-bold text-primary mb-1">{stats?.totalLeads || 0}</div>
+              <div className="text-3xl font-bold text-primary mb-1">
+                {stats?.totalLeads || 0}
+              </div>
               <div className="text-sm text-muted-foreground">Total Leads</div>
             </Card>
             <Card className="glass-card p-6 text-center hover-scale transition-smooth">
-              <div className="text-3xl font-bold text-primary mb-1">{stats?.withEmails || 0}</div>
+              <div className="text-3xl font-bold text-primary mb-1">
+                {stats?.withEmails || 0}
+              </div>
               <div className="text-sm text-muted-foreground">With Emails</div>
             </Card>
             <Card className="glass-card p-6 text-center hover-scale transition-smooth">
-              <div className="text-3xl font-bold text-primary mb-1">{stats?.thisWeek || 0}</div>
+              <div className="text-3xl font-bold text-primary mb-1">
+                {stats?.thisWeek || 0}
+              </div>
               <div className="text-sm text-muted-foreground">New This Week</div>
             </Card>
           </div>
@@ -76,33 +80,47 @@ export function LeadsPage() {
         <div className="space-y-4">
           {leads && leads.length > 0 ? (
             leads.map((lead) => (
-              <Card key={lead._id} className="glass-card p-5 hover-slide transition-smooth cursor-pointer hover-accent">
+              <Card
+                key={lead._id}
+                className="glass-card p-5 hover-slide transition-smooth cursor-pointer hover-accent"
+              >
                 <div className="flex justify-between items-start mb-3">
                   <div>
                     <h3 className="font-semibold text-base mb-1">
-                      {lead.contactInfo?.contacts?.[0]?.name || 'No Contact Name'}
+                      {lead.contactInfo?.contacts?.[0]?.name ||
+                        "No Contact Name"}
                     </h3>
-                    <p className="text-sm text-muted-foreground">{lead.businessName}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {lead.businessName}
+                    </p>
                     <p className="text-xs text-muted-foreground">
-                      {lead.contactInfo?.contacts?.[0]?.title && `${lead.contactInfo.contacts[0].title} • `}
+                      {lead.contactInfo?.contacts?.[0]?.title &&
+                        `${lead.contactInfo.contacts[0].title} • `}
                       {lead.location?.formattedAddress || lead.address}
                     </p>
                   </div>
                   <div className="flex flex-col gap-2">
-                    <Badge 
-                      variant={lead.status === 'new' ? 'default' : lead.status === 'contacted' ? 'secondary' : 'outline'}
+                    <Badge
+                      variant={
+                        lead.status === "new"
+                          ? "default"
+                          : lead.status === "contacted"
+                            ? "secondary"
+                            : "outline"
+                      }
                       className="capitalize"
                     >
                       {lead.status}
                     </Badge>
                     {lead.aiAnalysis?.relevanceScore && (
                       <Badge className="bg-primary/10 text-primary border border-primary/20 font-semibold">
-                        {Math.round(lead.aiAnalysis.relevanceScore * 100)}% Match
+                        {Math.round(lead.aiAnalysis.relevanceScore * 100)}%
+                        Match
                       </Badge>
                     )}
                   </div>
                 </div>
-                
+
                 {lead.description && (
                   <p className="text-sm text-muted-foreground leading-relaxed mb-4">
                     {lead.description}
@@ -110,25 +128,31 @@ export function LeadsPage() {
                 )}
 
                 <div className="flex gap-2 flex-wrap">
-                  <Button variant="secondary" size="sm" className="transition-smooth">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="transition-smooth"
+                  >
                     <Eye className="h-3 w-3 mr-1" />
                     View Details
                   </Button>
                   {lead.contactInfo?.emails?.[0]?.email && (
-                    <Button 
-                      variant="secondary" 
-                      size="sm" 
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       className="transition-smooth"
-                      onClick={() => handleCopyEmail(lead.contactInfo.emails[0].email)}
+                      onClick={() =>
+                        handleCopyEmail(lead.contactInfo.emails[0].email)
+                      }
                     >
                       <Mail className="h-3 w-3 mr-1" />
                       Copy Email
                     </Button>
                   )}
                   {lead.website && (
-                    <Button 
-                      variant="secondary" 
-                      size="sm" 
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       className="transition-smooth"
                       onClick={() => handleViewWebsite(lead.website!)}
                     >
@@ -148,8 +172,10 @@ export function LeadsPage() {
                       {lead.rating && (
                         <Badge variant="outline">★ {lead.rating}</Badge>
                       )}
-                      {lead.enrichmentStatus === 'completed' && (
-                        <Badge variant="outline" className="text-green-600">Enriched</Badge>
+                      {lead.enrichmentStatus === "completed" && (
+                        <Badge variant="outline" className="text-green-600">
+                          Enriched
+                        </Badge>
                       )}
                     </div>
                   </div>
@@ -159,7 +185,8 @@ export function LeadsPage() {
           ) : (
             <Alert>
               <AlertDescription>
-                No leads found. Start a search to discover new leads for your business.
+                No leads found. Start a search to discover new leads for your
+                business.
               </AlertDescription>
             </Alert>
           )}

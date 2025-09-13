@@ -6,7 +6,8 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { Link } from "react-router-dom";
 
 export function SubscriptionStatusCard() {
-  const { subscription, isLoading, planName, getStatusBadge, isStarter } = useSubscription();
+  const { subscription, isLoading, planName, getStatusBadge, isStarter } =
+    useSubscription();
 
   if (isLoading) {
     return (
@@ -18,7 +19,9 @@ export function SubscriptionStatusCard() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">Loading subscription status...</p>
+          <p className="text-sm text-muted-foreground">
+            Loading subscription status...
+          </p>
         </CardContent>
       </Card>
     );
@@ -47,18 +50,27 @@ export function SubscriptionStatusCard() {
     );
   }
 
-  const statusBadge = subscription?.billing ? getStatusBadge(subscription.billing.status, subscription.isTrialing) : null;
+  const statusBadge = subscription?.billing
+    ? getStatusBadge(subscription.billing.status, subscription.isTrialing)
+    : null;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {isStarter ? <Key className="h-5 w-5" /> : <CreditCard className="h-5 w-5" />}
+            {isStarter ? (
+              <Key className="h-5 w-5" />
+            ) : (
+              <CreditCard className="h-5 w-5" />
+            )}
             Current Plan
           </div>
           {statusBadge && (
-            <Badge variant={statusBadge.variant} className={statusBadge.className}>
+            <Badge
+              variant={statusBadge.variant}
+              className={statusBadge.className}
+            >
               {statusBadge.text}
             </Badge>
           )}
@@ -72,7 +84,10 @@ export function SubscriptionStatusCard() {
             </div>
             {subscription?.billing && (
               <p className="text-sm text-muted-foreground">
-                ${subscription.billing.amount}/{subscription.billing.billingCycle === "yearly" ? "year" : "month"}
+                ${subscription.billing.amount}/
+                {subscription.billing.billingCycle === "yearly"
+                  ? "year"
+                  : "month"}
               </p>
             )}
             {isStarter && (
@@ -91,11 +106,15 @@ export function SubscriptionStatusCard() {
           <>
             <div className="text-xs text-muted-foreground space-y-1">
               <p>
-                Next billing: {new Date(subscription.billing.currentPeriodEnd).toLocaleDateString()}
+                Next billing:{" "}
+                {new Date(
+                  subscription.billing.currentPeriodEnd,
+                ).toLocaleDateString()}
               </p>
               {subscription.isTrialing && subscription.billing.trialEnd && (
                 <p className="text-blue-600">
-                  Trial ends: {new Date(subscription.billing.trialEnd).toLocaleDateString()}
+                  Trial ends:{" "}
+                  {new Date(subscription.billing.trialEnd).toLocaleDateString()}
                 </p>
               )}
             </div>
@@ -104,7 +123,10 @@ export function SubscriptionStatusCard() {
               <div className="flex items-center gap-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
                 <AlertCircle className="h-4 w-4 text-orange-600" />
                 <p className="text-xs text-orange-800">
-                  Subscription ends {new Date(subscription.billing.currentPeriodEnd).toLocaleDateString()}
+                  Subscription ends{" "}
+                  {new Date(
+                    subscription.billing.currentPeriodEnd,
+                  ).toLocaleDateString()}
                 </p>
               </div>
             )}

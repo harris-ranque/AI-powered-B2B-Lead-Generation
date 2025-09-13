@@ -2,8 +2,8 @@ import { mutation } from "../_generated/server";
 import { v } from "convex/values";
 
 export const markAsRead = mutation({
-  args: { 
-    notificationId: v.id("notifications") 
+  args: {
+    notificationId: v.id("notifications"),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -31,8 +31,8 @@ export const markAllAsRead = mutation({
 });
 
 export const deleteNotification = mutation({
-  args: { 
-    notificationId: v.id("notifications") 
+  args: {
+    notificationId: v.id("notifications"),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();

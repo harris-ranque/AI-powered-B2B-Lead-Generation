@@ -15,9 +15,7 @@ export const pauseAllLeadGeneration = mutation({
     const adminUser = await requireAdmin(ctx);
 
     // Update system configuration
-    let systemConfig = await ctx.db
-      .query("systemConfiguration")
-      .unique();
+    let systemConfig = await ctx.db.query("systemConfiguration").unique();
 
     if (!systemConfig) {
       // Create initial config with paused state
@@ -67,15 +65,17 @@ export const pauseAllLeadGeneration = mutation({
         updatedAt: Date.now(),
         updatedBy: adminUser._id,
       });
-      
+
       systemConfig = await ctx.db.get(configId);
     } else {
       // Update existing config to pause
       await ctx.db.patch(systemConfig._id, {
         orchestrationSettings: {
           leadGenerationEnabled: false,
-          maintenanceMode: systemConfig.orchestrationSettings?.maintenanceMode || false,
-          maxConcurrentSearches: systemConfig.orchestrationSettings?.maxConcurrentSearches || 10,
+          maintenanceMode:
+            systemConfig.orchestrationSettings?.maintenanceMode || false,
+          maxConcurrentSearches:
+            systemConfig.orchestrationSettings?.maxConcurrentSearches || 10,
           pauseReason: args.reason || "Emergency stop by administrator",
           pausedAt: Date.now(),
           pausedBy: adminUser._id,
@@ -88,17 +88,17 @@ export const pauseAllLeadGeneration = mutation({
     // Cancel all active searches
     const activeSearches = await ctx.db
       .query("searches")
-      .filter((q) => 
+      .filter((q) =>
         q.or(
           q.eq(q.field("status"), "in_progress"),
           q.eq(q.field("status"), "pending"),
-          q.eq(q.field("status"), "processing")
-        )
+          q.eq(q.field("status"), "processing"),
+        ),
       )
       .collect();
 
     let totalRefunded = 0;
-    
+
     for (const search of activeSearches) {
       await ctx.db.patch(search._id, {
         status: "cancelled",
@@ -108,14 +108,17 @@ export const pauseAllLeadGeneration = mutation({
 
       // Refund credits if any were used
       if (search.creditsUsed && search.creditsUsed > 0) {
-        const refundResult = await ctx.runMutation(internal.credits.transactions.refundCredits, {
-          userId: search.userId,
-          amount: search.creditsUsed,
-          reason: "Search cancelled due to emergency stop",
-          relatedEntityType: "search",
-          relatedEntityId: search._id,
-        });
-        
+        const refundResult = await ctx.runMutation(
+          internal.credits.transactions.refundCredits,
+          {
+            userId: search.userId,
+            amount: search.creditsUsed,
+            reason: "Search cancelled due to emergency stop",
+            relatedEntityType: "search",
+            relatedEntityId: search._id,
+          },
+        );
+
         if (refundResult.success) {
           totalRefunded += search.creditsUsed;
         }
@@ -137,8 +140,8 @@ export const pauseAllLeadGeneration = mutation({
       },
     });
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       message: "Lead generation paused successfully",
       cancelledSearches: activeSearches.length,
       creditsRefunded: totalRefunded,
@@ -153,9 +156,7 @@ export const resumeAllLeadGeneration = mutation({
     const adminUser = await requireAdmin(ctx);
 
     // Update system configuration
-    let systemConfig = await ctx.db
-      .query("systemConfiguration")
-      .unique();
+    let systemConfig = await ctx.db.query("systemConfiguration").unique();
 
     if (!systemConfig) {
       // Create initial config with enabled state
@@ -210,8 +211,10 @@ export const resumeAllLeadGeneration = mutation({
       await ctx.db.patch(systemConfig._id, {
         orchestrationSettings: {
           leadGenerationEnabled: true,
-          maintenanceMode: systemConfig.orchestrationSettings?.maintenanceMode || false,
-          maxConcurrentSearches: systemConfig.orchestrationSettings?.maxConcurrentSearches || 10,
+          maintenanceMode:
+            systemConfig.orchestrationSettings?.maintenanceMode || false,
+          maxConcurrentSearches:
+            systemConfig.orchestrationSettings?.maxConcurrentSearches || 10,
           pauseReason: undefined,
           pausedAt: undefined,
           pausedBy: undefined,
@@ -250,10 +253,12 @@ export const clearAllActiveSearches = mutation({
     // Get all processing or queued searches
     const activeSearches = await ctx.db
       .query("searches")
-      .filter((q) => q.or(
-        q.eq(q.field("status"), "processing"),
-        q.eq(q.field("status"), "queued")
-      ))
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("status"), "processing"),
+          q.eq(q.field("status"), "queued"),
+        ),
+      )
       .collect();
 
     let clearedCount = 0;
@@ -301,10 +306,10 @@ export const clearAllActiveSearches = mutation({
       },
     });
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       message: `Cleared ${clearedCount} active searches`,
-      clearedCount 
+      clearedCount,
     };
   },
 });

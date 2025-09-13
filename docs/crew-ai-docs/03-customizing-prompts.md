@@ -18,10 +18,10 @@ This guide explores how to tap into CrewAI's prompts at a lower level, giving yo
 
 Under the hood, CrewAI employs a modular prompt system that you can customize extensively:
 
-* **Agent templates** – Govern each agent's approach to their assigned role.
-* **Prompt slices** – Control specialized behaviors such as tasks, tool usage, and output structure.
-* **Error handling** – Direct how agents respond to failures, exceptions, or timeouts.
-* **Tool-specific prompts** – Define detailed instructions for how tools are invoked or utilized.
+- **Agent templates** – Govern each agent's approach to their assigned role.
+- **Prompt slices** – Control specialized behaviors such as tasks, tool usage, and output structure.
+- **Error handling** – Direct how agents respond to failures, exceptions, or timeouts.
+- **Tool-specific prompts** – Define detailed instructions for how tools are invoked or utilized.
 
 Check out the [original prompt templates in CrewAI's repository](https://github.com/crewAIInc/crewAI/blob/main/src/crewai/translations/en.json) to see how these elements are organized. From there, you can override or adapt them as needed to unlock advanced behaviors.
 
@@ -263,7 +263,7 @@ Different models thrive on differently structured prompts. Making deeper adjustm
 ### Example: Llama 3.3 Prompting Template
 
 For instance, when dealing with Meta's Llama 3.3, deeper-level customization may reflect the recommended structure described at:
-[https://www.llama.com/docs/model-cards-and-prompt-formats/llama3\_1/#prompt-template](https://www.llama.com/docs/model-cards-and-prompt-formats/llama3_1/#prompt-template)
+[https://www.llama.com/docs/model-cards-and-prompt-formats/llama3_1/#prompt-template](https://www.llama.com/docs/model-cards-and-prompt-formats/llama3_1/#prompt-template)
 
 Here's an example to highlight how you might fine-tune an Agent to leverage Llama 3.3 in code:
 

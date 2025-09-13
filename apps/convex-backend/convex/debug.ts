@@ -7,13 +7,13 @@ export const debugAuth = query({
     try {
       // Get the identity directly from Convex auth context
       const identity = await ctx.auth.getUserIdentity();
-      
+
       if (!identity) {
         return {
           status: "no_identity",
           identity: null,
           hasAuth: false,
-          message: "No identity found in auth context"
+          message: "No identity found in auth context",
         };
       }
 
@@ -36,7 +36,7 @@ export const debugAuth = query({
         hasAuth: true,
         userExists: !!user,
         userId: user?._id,
-        message: user ? "User found in database" : "User not found in database"
+        message: user ? "User found in database" : "User not found in database",
       };
     } catch (error) {
       console.error("Debug auth error:", error);
@@ -45,7 +45,7 @@ export const debugAuth = query({
         identity: null,
         hasAuth: false,
         error: error instanceof Error ? error.message : String(error),
-        message: "Error occurred during auth check"
+        message: "Error occurred during auth check",
       };
     }
   },

@@ -71,11 +71,24 @@ async def broadcast_research_progress(search_id: str, stage: str, tier: str, con
             "dataPoints": data_points,
             "message": message,
         }
-        
-        # Add optional fields from kwargs
-        for key in ["sourcesAnalyzed", "escalationReason", "error", "metadata"]:
-            if key in kwargs and kwargs[key] is not None:
-                payload[key] = kwargs[key]
+
+        # Normalize and add optional fields from kwargs (accept snake_case and camelCase)
+        # sourcesAnalyzed
+        if kwargs.get("sourcesAnalyzed") is not None:
+            payload["sourcesAnalyzed"] = kwargs["sourcesAnalyzed"]
+        elif kwargs.get("sources_analyzed") is not None:
+            payload["sourcesAnalyzed"] = kwargs["sources_analyzed"]
+        # escalationReason
+        if kwargs.get("escalationReason") is not None:
+            payload["escalationReason"] = kwargs["escalationReason"]
+        elif kwargs.get("escalation_reason") is not None:
+            payload["escalationReason"] = kwargs["escalation_reason"]
+        # error
+        if kwargs.get("error") is not None:
+            payload["error"] = kwargs["error"]
+        # metadata
+        if kwargs.get("metadata") is not None:
+            payload["metadata"] = kwargs["metadata"]
         
         # Make HTTP request to Convex webhook
         headers = {
@@ -253,6 +266,7 @@ async def business_context_researcher_node(state: EmailGenerationState) -> Dict[
             8. Competitive landscape, positioning, and market opportunities
             9. Growth stage, maturity, and scaling indicators
             10. Recent developments, news, and strategic initiatives
+            11. A list of concrete data sources used (titles and URLs) for transparency
             """),
             ("human", """Analyze this comprehensive tiered research data:
             
@@ -360,7 +374,8 @@ async def business_context_researcher_node(state: EmailGenerationState) -> Dict[
                 "industry_insights": research_result.industry_insights,
                 "research_tier": research_result.tier.value,
                 "confidence_score": research_result.confidence_score,
-                "data_sources": research_result.data_sources,
+                # Data sources should come from the structured analysis
+                "data_sources": analysis.data_sources,
                 "research_time": research_result.response_time,
                 "escalation_reason": research_result.escalation_reason,
                 "sources_analyzed": research_result.sources_analyzed,

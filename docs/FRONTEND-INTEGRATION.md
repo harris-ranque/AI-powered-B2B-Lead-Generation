@@ -5,38 +5,45 @@ This document outlines the completed Phase 1 frontend integration with the Conve
 ## ✅ Phase 1 Completed (Foundation & Backend Integration)
 
 ### 1. Dependencies Added
+
 ```json
 {
   "@convex-dev/auth": "^0.0.70",
-  "@stripe/react-stripe-js": "^2.4.0", 
+  "@stripe/react-stripe-js": "^2.4.0",
   "@stripe/stripe-js": "^2.4.0",
   "convex": "^1.16.4"
 }
 ```
 
 ### 2. Convex Configuration
+
 - **convex.json**: Points to the separate Convex backend functions directory
 - **src/lib/convex.ts**: Convex client configuration
 - **src/lib/stripe.ts**: Stripe client setup
 
-### 3. Provider Integration  
+### 3. Provider Integration
+
 - **ConvexProvider**: Wraps app with Convex and ConvexAuth
 - **App.tsx**: Updated to include ConvexProvider at root level
 - **ProtectedRoute**: Handles authentication routing
 
 ### 4. Authentication System
+
 - **LoginForm**: Complete authentication UI with email/password, GitHub, Google
 - **useAuth**: Hook for authentication state and actions
 - **Index.tsx**: Protected with authentication wrapper
 
 ### 5. Type System
+
 - **src/lib/types.ts**: Complete TypeScript types based on Convex schema
 - **Convex schema integration**: Types match backend data model
 
 ### 6. API Hooks Created
+
 Placeholder hooks ready for activation when backend is connected:
+
 - **useUser**: User management and credits
-- **useProfile**: Business profile CRUD operations  
+- **useProfile**: Business profile CRUD operations
 - **useSearches**: Search creation and management
 - **useLeads**: Lead management and enrichment
 - **useCrewAI**: AI email generation and analysis
@@ -44,6 +51,7 @@ Placeholder hooks ready for activation when backend is connected:
 - **useNotifications**: User notifications
 
 ### 7. API Client Refactored
+
 - **api-client.ts**: Refactored to use Convex types
 - **Helper functions**: Data formatting and default values
 - **Type exports**: Unified type system
@@ -51,7 +59,9 @@ Placeholder hooks ready for activation when backend is connected:
 ## 🔧 Environment Setup Required
 
 ### Frontend Environment Variables
+
 Create `apps/web/.env.local`:
+
 ```env
 VITE_CONVEX_URL=https://your-convex-deployment-url
 VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
@@ -59,8 +69,10 @@ VITE_POSTHOG_KEY=phc_...
 VITE_POSTHOG_HOST=https://app.posthog.com
 ```
 
-### Backend Environment Variables  
+### Backend Environment Variables
+
 Ensure `convex/.env.local` has:
+
 ```env
 # API Keys
 OPENAI_API_KEY=sk-...
@@ -77,7 +89,7 @@ CREWAI_API_KEY=your_secure_api_key
 ADMIN_EMAILS=admin@example.com
 DEVELOPER_EMAIL=dev@example.com
 
-# URLs  
+# URLs
 APP_URL=http://localhost:3000
 ```
 
@@ -86,6 +98,7 @@ APP_URL=http://localhost:3000
 ### Immediate Actions Required:
 
 1. **Deploy Convex Backend**
+
    ```bash
    cd ../genni-convex
    npx convex dev    # For development
@@ -105,6 +118,7 @@ APP_URL=http://localhost:3000
 ### Phase 2 Implementation Tasks:
 
 #### Task 1: BusinessProfileWizard Integration
+
 ```typescript
 // In BusinessProfileWizard.tsx
 import { useProfile } from "@/hooks/useProfile";
@@ -116,7 +130,8 @@ const handleSubmit = async (data) => {
 };
 ```
 
-#### Task 2: Lead Search Integration  
+#### Task 2: Lead Search Integration
+
 ```typescript
 // In LeadDiscoveryStage (or any caller)
 import { useSearches } from "@/hooks/useSearches";
@@ -135,6 +150,7 @@ const handleSearch = async (params) => {
 ```
 
 #### Task 3: Real-time Lead Display
+
 ```typescript
 // In LeadCard component
 import { useLeads } from "@/hooks/useLeads";
@@ -148,6 +164,7 @@ useEffect(() => {
 ```
 
 #### Task 4: AI Email Generation
+
 ```typescript
 // In AIEmailGenerator.tsx
 import { useEmailGeneration } from "@/hooks/useCrewAI";
@@ -209,7 +226,7 @@ apps/web/src/
 Once backend is connected, the following real-time features will work automatically:
 
 1. **Live search progress**: Search status updates in real-time
-2. **Lead enrichment tracking**: Contact discovery and AI analysis progress  
+2. **Lead enrichment tracking**: Contact discovery and AI analysis progress
 3. **Email generation status**: AI processing status and results
 4. **Notifications**: System alerts and updates
 5. **Credit usage**: Real-time credit balance updates
@@ -217,7 +234,7 @@ Once backend is connected, the following real-time features will work automatica
 ## 🎯 Success Metrics
 
 - ✅ Authentication flow working
-- ✅ ConvexProvider integrated  
+- ✅ ConvexProvider integrated
 - ✅ All hooks ready for activation
 - ✅ Type system aligned with backend
 - ✅ Environment configuration documented

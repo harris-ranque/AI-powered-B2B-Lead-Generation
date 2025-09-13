@@ -19,7 +19,7 @@ export const getUserBroadcasts = query({
   },
 });
 
-// ⚠️ DEPRECATED: Use SSE useSearchBroadcasts hook instead  
+// ⚠️ DEPRECATED: Use SSE useSearchBroadcasts hook instead
 export const getSearchStatusUpdates = query({
   args: {
     searchId: v.id("searches"),

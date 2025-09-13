@@ -3,18 +3,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Bug, 
-  Activity, 
-  Database, 
-  Zap, 
-  AlertTriangle, 
+import {
+  Bug,
+  Activity,
+  Database,
+  Zap,
+  AlertTriangle,
   CheckCircle,
   Clock,
   TrendingUp,
   Settings,
   Download,
-  RefreshCw
+  RefreshCw,
 } from "lucide-react";
 import { CorrelationDebugPanel } from "@/components/CorrelationDebugPanel";
 import { useCorrelationLogs } from "@/hooks/useCorrelationLogs";
@@ -32,57 +32,65 @@ interface DebugDashboardProps {
  * Provides correlation tracking, performance monitoring, and system health
  */
 export function DebugDashboard({ className }: DebugDashboardProps) {
-  const { 
-    logs, 
-    errorLogs, 
-    performanceLogs, 
-    correlationTrees, 
+  const {
+    logs,
+    errorLogs,
+    performanceLogs,
+    correlationTrees,
     hasErrors,
     hasPerformanceData,
-    clearLogs
+    clearLogs,
   } = useCorrelationLogs();
-  
-  const { 
-    broadcasts, 
-    urgentBroadcasts,
-    acknowledgeBroadcast 
-  } = useStatusBroadcasts();
-  
+
+  const { broadcasts, urgentBroadcasts, acknowledgeBroadcast } =
+    useStatusBroadcasts();
+
   const { searches } = useSearches();
-  
+
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
-  
+
   // Auto-refresh every 5 seconds when enabled
   useEffect(() => {
     if (!autoRefresh) return;
-    
+
     const interval = setInterval(() => {
-      setRefreshKey(prev => prev + 1);
+      setRefreshKey((prev) => prev + 1);
     }, 5000);
-    
+
     return () => clearInterval(interval);
   }, [autoRefresh]);
 
   // Calculate system health metrics
-  const activeSearches = searches?.filter(s => s.status === 'in_progress') || [];
-  const recentErrors = errorLogs.filter(log => 
-    Date.now() - log._creationTime < 5 * 60 * 1000 // Last 5 minutes
+  const activeSearches =
+    searches?.filter((s) => s.status === "in_progress") || [];
+  const recentErrors = errorLogs.filter(
+    (log) => Date.now() - log._creationTime < 5 * 60 * 1000, // Last 5 minutes
   );
-  const runningOperations = correlationTrees.filter(tree => tree.status === 'running');
-  
+  const runningOperations = correlationTrees.filter(
+    (tree) => tree.status === "running",
+  );
+
   // Performance metrics
-  const avgPerformance = performanceLogs.length > 0 
-    ? performanceLogs.reduce((sum, log) => sum + (log.metadata.duration || 0), 0) / performanceLogs.length
-    : 0;
-  
-  const slowOperations = performanceLogs.filter(log => 
-    (log.metadata.duration || 0) > 5000 // Slower than 5 seconds
+  const avgPerformance =
+    performanceLogs.length > 0
+      ? performanceLogs.reduce(
+          (sum, log) => sum + (log.metadata.duration || 0),
+          0,
+        ) / performanceLogs.length
+      : 0;
+
+  const slowOperations = performanceLogs.filter(
+    (log) => (log.metadata.duration || 0) > 5000, // Slower than 5 seconds
   );
 
   // System health status
-  const systemHealth = recentErrors.length === 0 && runningOperations.length < 10 
-    ? 'healthy' : recentErrors.length > 5 ? 'critical' : 'warning';
+  const systemHealth =
+    recentErrors.length === 0 && runningOperations.length < 10
+      ? "healthy"
+      : recentErrors.length > 5
+        ? "critical"
+        : "warning";
 
   const exportSystemReport = () => {
     const report = {
@@ -102,15 +110,16 @@ export function DebugDashboard({ className }: DebugDashboardProps) {
       broadcasts: broadcasts.slice(0, 20),
       performanceData: performanceLogs.slice(0, 20),
     };
-    
+
     const dataStr = JSON.stringify(report, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    
-    const exportFileDefaultName = `system-debug-report-${new Date().toISOString().split('T')[0]}.json`;
-    
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
+    const dataUri =
+      "data:application/json;charset=utf-8," + encodeURIComponent(dataStr);
+
+    const exportFileDefaultName = `system-debug-report-${new Date().toISOString().split("T")[0]}.json`;
+
+    const linkElement = document.createElement("a");
+    linkElement.setAttribute("href", dataUri);
+    linkElement.setAttribute("download", exportFileDefaultName);
     linkElement.click();
   };
 
@@ -127,31 +136,25 @@ export function DebugDashboard({ className }: DebugDashboardProps) {
             System monitoring, correlation tracking, and performance analysis
           </p>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() => setAutoRefresh(!autoRefresh)}
           >
-            <RefreshCw className={cn("h-4 w-4 mr-1", autoRefresh && "animate-spin")} />
-            {autoRefresh ? 'Auto' : 'Manual'}
+            <RefreshCw
+              className={cn("h-4 w-4 mr-1", autoRefresh && "animate-spin")}
+            />
+            {autoRefresh ? "Auto" : "Manual"}
           </Button>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportSystemReport}
-          >
+
+          <Button variant="outline" size="sm" onClick={exportSystemReport}>
             <Download className="h-4 w-4 mr-1" />
             Export Report
           </Button>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => clearLogs(1)}
-          >
+
+          <Button variant="outline" size="sm" onClick={() => clearLogs(1)}>
             Clear Logs
           </Button>
         </div>
@@ -162,17 +165,28 @@ export function DebugDashboard({ className }: DebugDashboardProps) {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <div className={cn(
-                "p-2 rounded-full",
-                systemHealth === 'healthy' ? 'bg-green-100' :
-                systemHealth === 'warning' ? 'bg-yellow-100' : 'bg-red-100'
-              )}>
-                {systemHealth === 'healthy' ? 
-                  <CheckCircle className="h-5 w-5 text-green-600" /> :
-                  <AlertTriangle className={cn("h-5 w-5", 
-                    systemHealth === 'warning' ? 'text-yellow-600' : 'text-red-600'
-                  )} />
-                }
+              <div
+                className={cn(
+                  "p-2 rounded-full",
+                  systemHealth === "healthy"
+                    ? "bg-green-100"
+                    : systemHealth === "warning"
+                      ? "bg-yellow-100"
+                      : "bg-red-100",
+                )}
+              >
+                {systemHealth === "healthy" ? (
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                ) : (
+                  <AlertTriangle
+                    className={cn(
+                      "h-5 w-5",
+                      systemHealth === "warning"
+                        ? "text-yellow-600"
+                        : "text-red-600",
+                    )}
+                  />
+                )}
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">System Health</p>
@@ -189,7 +203,9 @@ export function DebugDashboard({ className }: DebugDashboardProps) {
                 <Activity className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Active Operations</p>
+                <p className="text-sm text-muted-foreground">
+                  Active Operations
+                </p>
                 <p className="font-semibold">{runningOperations.length}</p>
               </div>
             </div>
@@ -219,7 +235,9 @@ export function DebugDashboard({ className }: DebugDashboardProps) {
               <div>
                 <p className="text-sm text-muted-foreground">Avg Performance</p>
                 <p className="font-semibold">
-                  {avgPerformance > 0 ? `${Math.round(avgPerformance)}ms` : 'N/A'}
+                  {avgPerformance > 0
+                    ? `${Math.round(avgPerformance)}ms`
+                    : "N/A"}
                 </p>
               </div>
             </div>
@@ -236,9 +254,7 @@ export function DebugDashboard({ className }: DebugDashboardProps) {
               <span className="font-medium">
                 {recentErrors.length} errors in the last 5 minutes
               </span>
-              <Badge variant="destructive">
-                Needs attention
-              </Badge>
+              <Badge variant="destructive">Needs attention</Badge>
             </div>
           </AlertDescription>
         </Alert>
@@ -252,9 +268,11 @@ export function DebugDashboard({ className }: DebugDashboardProps) {
               <span className="font-medium">
                 {urgentBroadcasts.length} urgent system notifications
               </span>
-              <Button 
-                size="sm" 
-                onClick={() => urgentBroadcasts.forEach(b => acknowledgeBroadcast(b._id))}
+              <Button
+                size="sm"
+                onClick={() =>
+                  urgentBroadcasts.forEach((b) => acknowledgeBroadcast(b._id))
+                }
               >
                 Acknowledge All
               </Button>
@@ -305,31 +323,48 @@ export function DebugDashboard({ className }: DebugDashboardProps) {
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="text-center">
-                      <p className="text-2xl font-bold">{Math.round(avgPerformance)}ms</p>
-                      <p className="text-sm text-muted-foreground">Average Duration</p>
+                      <p className="text-2xl font-bold">
+                        {Math.round(avgPerformance)}ms
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Average Duration
+                      </p>
                     </div>
                     <div className="text-center">
-                      <p className="text-2xl font-bold">{slowOperations.length}</p>
-                      <p className="text-sm text-muted-foreground">Slow Operations</p>
+                      <p className="text-2xl font-bold">
+                        {slowOperations.length}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Slow Operations
+                      </p>
                     </div>
                     <div className="text-center">
-                      <p className="text-2xl font-bold">{performanceLogs.length}</p>
-                      <p className="text-sm text-muted-foreground">Total Measured</p>
+                      <p className="text-2xl font-bold">
+                        {performanceLogs.length}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Total Measured
+                      </p>
                     </div>
                   </div>
-                  
+
                   {slowOperations.length > 0 && (
                     <div className="space-y-2">
                       <h4 className="font-medium">Slow Operations (&gt;5s)</h4>
                       {slowOperations.slice(0, 10).map((log) => (
-                        <div key={log._id} className="p-2 border rounded bg-yellow-50">
+                        <div
+                          key={log._id}
+                          className="p-2 border rounded bg-yellow-50"
+                        >
                           <div className="flex items-center justify-between">
                             <span className="font-medium">{log.operation}</span>
                             <Badge variant="outline">
                               {Math.round(log.metadata.duration || 0)}ms
                             </Badge>
                           </div>
-                          <p className="text-sm text-muted-foreground">{log.message}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {log.message}
+                          </p>
                         </div>
                       ))}
                     </div>
@@ -338,7 +373,9 @@ export function DebugDashboard({ className }: DebugDashboardProps) {
               ) : (
                 <div className="text-center py-8">
                   <Clock className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-muted-foreground">No performance data available</p>
+                  <p className="text-muted-foreground">
+                    No performance data available
+                  </p>
                   <p className="text-sm text-muted-foreground">
                     Performance metrics will appear as operations complete
                   </p>
@@ -366,7 +403,13 @@ export function DebugDashboard({ className }: DebugDashboardProps) {
                   <div key={broadcast._id} className="p-3 border rounded">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <Badge variant={broadcast.priority >= 4 ? "destructive" : "secondary"}>
+                        <Badge
+                          variant={
+                            broadcast.priority >= 4
+                              ? "destructive"
+                              : "secondary"
+                          }
+                        >
                           {broadcast.type}
                         </Badge>
                         <span className="text-sm text-muted-foreground">
@@ -378,14 +421,18 @@ export function DebugDashboard({ className }: DebugDashboardProps) {
                       </Badge>
                     </div>
                     <h4 className="font-medium">{broadcast.title}</h4>
-                    <p className="text-sm text-muted-foreground">{broadcast.message}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {broadcast.message}
+                    </p>
                   </div>
                 ))}
-                
+
                 {broadcasts.length === 0 && (
                   <div className="text-center py-8">
                     <Database className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                    <p className="text-muted-foreground">No recent broadcasts</p>
+                    <p className="text-muted-foreground">
+                      No recent broadcasts
+                    </p>
                   </div>
                 )}
               </div>
@@ -406,7 +453,9 @@ export function DebugDashboard({ className }: DebugDashboardProps) {
                 </div>
                 <div className="flex justify-between">
                   <span>Error Logs:</span>
-                  <span className="font-medium text-red-600">{errorLogs.length}</span>
+                  <span className="font-medium text-red-600">
+                    {errorLogs.length}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Correlation Trees:</span>
@@ -418,7 +467,9 @@ export function DebugDashboard({ className }: DebugDashboardProps) {
                 </div>
                 <div className="flex justify-between">
                   <span>Running Operations:</span>
-                  <span className="font-medium">{runningOperations.length}</span>
+                  <span className="font-medium">
+                    {runningOperations.length}
+                  </span>
                 </div>
               </CardContent>
             </Card>
@@ -428,33 +479,33 @@ export function DebugDashboard({ className }: DebugDashboardProps) {
                 <CardTitle className="text-sm">Quick Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   className="w-full justify-start"
                   onClick={() => clearLogs(0.1)} // Clear logs older than 6 minutes
                 >
                   Clear Recent Logs
                 </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   className="w-full justify-start"
                   onClick={() => clearLogs(24)} // Clear logs older than 24 hours
                 >
                   Clear Old Logs
                 </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   className="w-full justify-start"
                   onClick={exportSystemReport}
                 >
                   Export Debug Report
                 </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   className="w-full justify-start"
                   onClick={() => window.location.reload()}
                 >

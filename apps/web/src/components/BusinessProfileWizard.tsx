@@ -8,17 +8,17 @@ import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
-  CheckCircle, 
-  ArrowRight, 
-  ArrowLeft, 
-  Building2, 
-  Target, 
-  MessageSquare, 
+import {
+  CheckCircle,
+  ArrowRight,
+  ArrowLeft,
+  Building2,
+  Target,
+  MessageSquare,
   Sparkles,
   Info,
   Plus,
-  X
+  X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useProfile } from "@/hooks/useProfile";
@@ -42,73 +42,77 @@ interface BusinessProfileWizardProps {
   initialData?: Partial<BusinessProfile>;
 }
 
-export function BusinessProfileWizard({ onComplete, onSkip, initialData }: BusinessProfileWizardProps) {
+export function BusinessProfileWizard({
+  onComplete,
+  onSkip,
+  initialData,
+}: BusinessProfileWizardProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   // State for form inputs
-  const [newTargetIndustry, setNewTargetIndustry] = useState('');
-  const [newOffering, setNewOffering] = useState('');
-  const [newDifferentiator, setNewDifferentiator] = useState('');
-  const [newPainPoint, setNewPainPoint] = useState('');
-  const [newChallenge, setNewChallenge] = useState('');
-  
+  const [newTargetIndustry, setNewTargetIndustry] = useState("");
+  const [newOffering, setNewOffering] = useState("");
+  const [newDifferentiator, setNewDifferentiator] = useState("");
+  const [newPainPoint, setNewPainPoint] = useState("");
+  const [newChallenge, setNewChallenge] = useState("");
+
   // Convex hooks
   const { profile: existingProfile, createOrUpdateProfile } = useProfile();
-  
+
   const [profile, setProfile] = useState<BusinessProfile>({
-    companyName: '',
-    industry: '',
+    companyName: "",
+    industry: "",
     targetIndustries: [],
     offerings: [],
-    toneOfVoice: 'professional',
-    valueProposition: '',
+    toneOfVoice: "professional",
+    valueProposition: "",
     keyDifferentiators: [],
     painPointsWeSolve: [],
-    idealCustomerProfile: '',
+    idealCustomerProfile: "",
     currentChallenges: [],
     ...initialData,
     // If we have existing profile data, use it
     ...(existingProfile && {
-      companyName: existingProfile.companyName || '',
-      industry: existingProfile.industry || '',
+      companyName: existingProfile.companyName || "",
+      industry: existingProfile.industry || "",
       targetIndustries: existingProfile.targetIndustries || [],
       offerings: existingProfile.offerings || [],
-      toneOfVoice: existingProfile.toneOfVoice || 'professional',
-      valueProposition: existingProfile.valueProposition || '',
+      toneOfVoice: existingProfile.toneOfVoice || "professional",
+      valueProposition: existingProfile.valueProposition || "",
       keyDifferentiators: existingProfile.keyDifferentiators || [],
       painPointsWeSolve: existingProfile.painPointsWeSolve || [],
-      idealCustomerProfile: existingProfile.idealCustomerProfile || '',
+      idealCustomerProfile: existingProfile.idealCustomerProfile || "",
       currentChallenges: existingProfile.currentChallenges || [],
-    })
+    }),
   });
-  
+
   const { toast } = useToast();
   const totalSteps = 4;
 
   const addToArray = (field: keyof BusinessProfile, value: string) => {
     if (!value.trim()) return;
-    
+
     const currentArray = profile[field] as string[];
     if (!currentArray.includes(value.trim())) {
-      setProfile(prev => ({
+      setProfile((prev) => ({
         ...prev,
-        [field]: [...currentArray, value.trim()]
+        [field]: [...currentArray, value.trim()],
       }));
     }
   };
 
   const removeFromArray = (field: keyof BusinessProfile, value: string) => {
     const currentArray = profile[field] as string[];
-    setProfile(prev => ({
+    setProfile((prev) => ({
       ...prev,
-      [field]: currentArray.filter(item => item !== value)
+      [field]: currentArray.filter((item) => item !== value),
     }));
   };
 
   const handleNext = () => {
     if (currentStep < totalSteps) {
-      setCurrentStep(prev => prev + 1);
+      setCurrentStep((prev) => prev + 1);
     } else {
       handleComplete();
     }
@@ -116,23 +120,28 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
 
   const handlePrevious = () => {
     if (currentStep > 1) {
-      setCurrentStep(prev => prev - 1);
+      setCurrentStep((prev) => prev - 1);
     }
   };
 
   const handleComplete = async () => {
     // Basic validation
-    if (!profile.companyName || !profile.industry || !profile.valueProposition) {
+    if (
+      !profile.companyName ||
+      !profile.industry ||
+      !profile.valueProposition
+    ) {
       toast({
         title: "Missing Information",
-        description: "Please fill in the required fields (Company Name, Industry, Value Proposition).",
+        description:
+          "Please fill in the required fields (Company Name, Industry, Value Proposition).",
         variant: "destructive",
       });
       return;
     }
 
     setIsSaving(true);
-    
+
     try {
       // Save profile to Convex - map frontend fields to backend schema
       await createOrUpdateProfile({
@@ -154,7 +163,8 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
       onComplete(profile);
       toast({
         title: "Profile Saved!",
-        description: "Your business profile has been saved and will be used to personalize all AI-generated emails.",
+        description:
+          "Your business profile has been saved and will be used to personalize all AI-generated emails.",
       });
     } catch (error) {
       console.error("Error saving profile:", error);
@@ -173,9 +183,13 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
       case 1:
         return profile.companyName && profile.industry;
       case 2:
-        return profile.targetIndustries.length > 0 && profile.offerings.length > 0;
+        return (
+          profile.targetIndustries.length > 0 && profile.offerings.length > 0
+        );
       case 3:
-        return profile.valueProposition && profile.keyDifferentiators.length > 0;
+        return (
+          profile.valueProposition && profile.keyDifferentiators.length > 0
+        );
       case 4:
         return profile.idealCustomerProfile;
       default:
@@ -199,7 +213,9 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
           <Input
             id="companyName"
             value={profile.companyName}
-            onChange={(e) => setProfile(prev => ({ ...prev, companyName: e.target.value }))}
+            onChange={(e) =>
+              setProfile((prev) => ({ ...prev, companyName: e.target.value }))
+            }
             placeholder="Enter your company name"
             className="mt-1"
           />
@@ -212,7 +228,9 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
           <Input
             id="industry"
             value={profile.industry}
-            onChange={(e) => setProfile(prev => ({ ...prev, industry: e.target.value }))}
+            onChange={(e) =>
+              setProfile((prev) => ({ ...prev, industry: e.target.value }))
+            }
             placeholder="e.g., Software Development, Marketing Agency, E-commerce"
             className="mt-1"
           />
@@ -223,12 +241,14 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
             Preferred Communication Tone
           </Label>
           <div className="grid grid-cols-3 gap-2 mt-2">
-            {['professional', 'friendly', 'casual'].map((tone) => (
+            {["professional", "friendly", "casual"].map((tone) => (
               <Button
                 key={tone}
                 variant={profile.toneOfVoice === tone ? "default" : "outline"}
                 size="sm"
-                onClick={() => setProfile(prev => ({ ...prev, toneOfVoice: tone }))}
+                onClick={() =>
+                  setProfile((prev) => ({ ...prev, toneOfVoice: tone }))
+                }
                 className="capitalize"
               >
                 {tone}
@@ -241,13 +261,14 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
   );
 
   const renderStep2 = () => {
-
     return (
       <div className="space-y-6">
         <div className="text-center mb-8">
           <Target className="h-12 w-12 text-primary mx-auto mb-4" />
           <h2 className="text-2xl font-bold">Target Market & Offerings</h2>
-          <p className="text-muted-foreground">Define who you serve and what you offer</p>
+          <p className="text-muted-foreground">
+            Define who you serve and what you offer
+          </p>
         </div>
 
         <div className="space-y-6">
@@ -262,16 +283,16 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
                 onChange={(e) => setNewTargetIndustry(e.target.value)}
                 placeholder="e.g., SaaS, Healthcare, E-commerce"
                 onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    addToArray('targetIndustries', newTargetIndustry);
-                    setNewTargetIndustry('');
+                  if (e.key === "Enter") {
+                    addToArray("targetIndustries", newTargetIndustry);
+                    setNewTargetIndustry("");
                   }
                 }}
               />
-              <Button 
+              <Button
                 onClick={() => {
-                  addToArray('targetIndustries', newTargetIndustry);
-                  setNewTargetIndustry('');
+                  addToArray("targetIndustries", newTargetIndustry);
+                  setNewTargetIndustry("");
                 }}
                 size="sm"
               >
@@ -280,11 +301,17 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
             </div>
             <div className="flex flex-wrap gap-2">
               {profile.targetIndustries.map((industry) => (
-                <Badge key={industry} variant="secondary" className="flex items-center gap-1">
+                <Badge
+                  key={industry}
+                  variant="secondary"
+                  className="flex items-center gap-1"
+                >
                   {industry}
-                  <X 
-                    className="h-3 w-3 cursor-pointer" 
-                    onClick={() => removeFromArray('targetIndustries', industry)}
+                  <X
+                    className="h-3 w-3 cursor-pointer"
+                    onClick={() =>
+                      removeFromArray("targetIndustries", industry)
+                    }
                   />
                 </Badge>
               ))}
@@ -302,16 +329,16 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
                 onChange={(e) => setNewOffering(e.target.value)}
                 placeholder="e.g., Web Development, SEO Services, AI Consulting"
                 onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    addToArray('offerings', newOffering);
-                    setNewOffering('');
+                  if (e.key === "Enter") {
+                    addToArray("offerings", newOffering);
+                    setNewOffering("");
                   }
                 }}
               />
-              <Button 
+              <Button
                 onClick={() => {
-                  addToArray('offerings', newOffering);
-                  setNewOffering('');
+                  addToArray("offerings", newOffering);
+                  setNewOffering("");
                 }}
                 size="sm"
               >
@@ -320,11 +347,15 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
             </div>
             <div className="flex flex-wrap gap-2">
               {profile.offerings.map((offering) => (
-                <Badge key={offering} variant="secondary" className="flex items-center gap-1">
+                <Badge
+                  key={offering}
+                  variant="secondary"
+                  className="flex items-center gap-1"
+                >
                   {offering}
-                  <X 
-                    className="h-3 w-3 cursor-pointer" 
-                    onClick={() => removeFromArray('offerings', offering)}
+                  <X
+                    className="h-3 w-3 cursor-pointer"
+                    onClick={() => removeFromArray("offerings", offering)}
                   />
                 </Badge>
               ))}
@@ -336,13 +367,14 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
   };
 
   const renderStep3 = () => {
-
     return (
       <div className="space-y-6">
         <div className="text-center mb-8">
           <Sparkles className="h-12 w-12 text-primary mx-auto mb-4" />
           <h2 className="text-2xl font-bold">Value Proposition</h2>
-          <p className="text-muted-foreground">What makes you unique and valuable?</p>
+          <p className="text-muted-foreground">
+            What makes you unique and valuable?
+          </p>
         </div>
 
         <div className="space-y-6">
@@ -356,7 +388,12 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
             <Textarea
               id="valueProposition"
               value={profile.valueProposition}
-              onChange={(e) => setProfile(prev => ({ ...prev, valueProposition: e.target.value }))}
+              onChange={(e) =>
+                setProfile((prev) => ({
+                  ...prev,
+                  valueProposition: e.target.value,
+                }))
+              }
               placeholder="We help growing businesses scale their operations through AI-powered automation solutions that reduce manual work by 60% while improving accuracy and customer satisfaction."
               className="min-h-[80px]"
             />
@@ -373,16 +410,16 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
                 onChange={(e) => setNewDifferentiator(e.target.value)}
                 placeholder="e.g., 24/7 support, AI-powered solutions, 10+ years experience"
                 onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    addToArray('keyDifferentiators', newDifferentiator);
-                    setNewDifferentiator('');
+                  if (e.key === "Enter") {
+                    addToArray("keyDifferentiators", newDifferentiator);
+                    setNewDifferentiator("");
                   }
                 }}
               />
-              <Button 
+              <Button
                 onClick={() => {
-                  addToArray('keyDifferentiators', newDifferentiator);
-                  setNewDifferentiator('');
+                  addToArray("keyDifferentiators", newDifferentiator);
+                  setNewDifferentiator("");
                 }}
                 size="sm"
               >
@@ -391,11 +428,15 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
             </div>
             <div className="flex flex-wrap gap-2">
               {profile.keyDifferentiators.map((diff) => (
-                <Badge key={diff} variant="secondary" className="flex items-center gap-1">
+                <Badge
+                  key={diff}
+                  variant="secondary"
+                  className="flex items-center gap-1"
+                >
                   {diff}
-                  <X 
-                    className="h-3 w-3 cursor-pointer" 
-                    onClick={() => removeFromArray('keyDifferentiators', diff)}
+                  <X
+                    className="h-3 w-3 cursor-pointer"
+                    onClick={() => removeFromArray("keyDifferentiators", diff)}
                   />
                 </Badge>
               ))}
@@ -405,7 +446,8 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
           <div>
             <Label className="text-sm font-medium">Pain Points You Solve</Label>
             <p className="text-xs text-muted-foreground mb-2">
-              What problems do your clients typically face before working with you?
+              What problems do your clients typically face before working with
+              you?
             </p>
             <div className="flex gap-2 mb-2">
               <Input
@@ -413,16 +455,16 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
                 onChange={(e) => setNewPainPoint(e.target.value)}
                 placeholder="e.g., Manual processes, Poor lead quality, High customer acquisition costs"
                 onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    addToArray('painPointsWeSolve', newPainPoint);
-                    setNewPainPoint('');
+                  if (e.key === "Enter") {
+                    addToArray("painPointsWeSolve", newPainPoint);
+                    setNewPainPoint("");
                   }
                 }}
               />
-              <Button 
+              <Button
                 onClick={() => {
-                  addToArray('painPointsWeSolve', newPainPoint);
-                  setNewPainPoint('');
+                  addToArray("painPointsWeSolve", newPainPoint);
+                  setNewPainPoint("");
                 }}
                 size="sm"
               >
@@ -431,11 +473,15 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
             </div>
             <div className="flex flex-wrap gap-2">
               {profile.painPointsWeSolve.map((pain) => (
-                <Badge key={pain} variant="secondary" className="flex items-center gap-1">
+                <Badge
+                  key={pain}
+                  variant="secondary"
+                  className="flex items-center gap-1"
+                >
                   {pain}
-                  <X 
-                    className="h-3 w-3 cursor-pointer" 
-                    onClick={() => removeFromArray('painPointsWeSolve', pain)}
+                  <X
+                    className="h-3 w-3 cursor-pointer"
+                    onClick={() => removeFromArray("painPointsWeSolve", pain)}
                   />
                 </Badge>
               ))}
@@ -447,34 +493,46 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
   };
 
   const renderStep4 = () => {
-
     return (
       <div className="space-y-6">
         <div className="text-center mb-8">
           <MessageSquare className="h-12 w-12 text-primary mx-auto mb-4" />
           <h2 className="text-2xl font-bold">Ideal Customer & Challenges</h2>
-          <p className="text-muted-foreground">Help us understand your perfect client</p>
+          <p className="text-muted-foreground">
+            Help us understand your perfect client
+          </p>
         </div>
 
         <div className="space-y-6">
           <div>
-            <Label htmlFor="idealCustomerProfile" className="text-sm font-medium">
+            <Label
+              htmlFor="idealCustomerProfile"
+              className="text-sm font-medium"
+            >
               Ideal Customer Profile *
             </Label>
             <p className="text-xs text-muted-foreground mb-2">
-              Describe your ideal customer in detail (company size, role, challenges, goals)
+              Describe your ideal customer in detail (company size, role,
+              challenges, goals)
             </p>
             <Textarea
               id="idealCustomerProfile"
               value={profile.idealCustomerProfile}
-              onChange={(e) => setProfile(prev => ({ ...prev, idealCustomerProfile: e.target.value }))}
+              onChange={(e) =>
+                setProfile((prev) => ({
+                  ...prev,
+                  idealCustomerProfile: e.target.value,
+                }))
+              }
               placeholder="Growing SaaS companies with 50-200 employees, led by founders or VPs of Marketing who are struggling to scale their lead generation processes while maintaining personalization. They typically have strong product-market fit but need help optimizing their sales funnel and improving conversion rates."
               className="min-h-[120px]"
             />
           </div>
 
           <div>
-            <Label className="text-sm font-medium">Current Business Challenges</Label>
+            <Label className="text-sm font-medium">
+              Current Business Challenges
+            </Label>
             <p className="text-xs text-muted-foreground mb-2">
               What challenges are you currently facing in your business?
             </p>
@@ -484,16 +542,16 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
                 onChange={(e) => setNewChallenge(e.target.value)}
                 placeholder="e.g., Scaling lead generation, Improving conversion rates, Reducing manual work"
                 onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    addToArray('currentChallenges', newChallenge);
-                    setNewChallenge('');
+                  if (e.key === "Enter") {
+                    addToArray("currentChallenges", newChallenge);
+                    setNewChallenge("");
                   }
                 }}
               />
-              <Button 
+              <Button
                 onClick={() => {
-                  addToArray('currentChallenges', newChallenge);
-                  setNewChallenge('');
+                  addToArray("currentChallenges", newChallenge);
+                  setNewChallenge("");
                 }}
                 size="sm"
               >
@@ -502,11 +560,17 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
             </div>
             <div className="flex flex-wrap gap-2">
               {profile.currentChallenges.map((challenge) => (
-                <Badge key={challenge} variant="secondary" className="flex items-center gap-1">
+                <Badge
+                  key={challenge}
+                  variant="secondary"
+                  className="flex items-center gap-1"
+                >
                   {challenge}
-                  <X 
-                    className="h-3 w-3 cursor-pointer" 
-                    onClick={() => removeFromArray('currentChallenges', challenge)}
+                  <X
+                    className="h-3 w-3 cursor-pointer"
+                    onClick={() =>
+                      removeFromArray("currentChallenges", challenge)
+                    }
                   />
                 </Badge>
               ))}
@@ -516,7 +580,9 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
           <Alert>
             <Info className="h-4 w-4" />
             <AlertDescription>
-              This information will help our AI agents create highly personalized emails that resonate with your prospects and speak directly to their needs.
+              This information will help our AI agents create highly
+              personalized emails that resonate with your prospects and speak
+              directly to their needs.
             </AlertDescription>
           </Alert>
         </div>
@@ -535,7 +601,7 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
             </Button>
           )}
         </div>
-        
+
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-muted-foreground">
             Step {currentStep} of {totalSteps}
@@ -544,7 +610,7 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
             {Math.round((currentStep / totalSteps) * 100)}% complete
           </span>
         </div>
-        
+
         <Progress value={(currentStep / totalSteps) * 100} className="h-2" />
       </div>
 
@@ -572,7 +638,7 @@ export function BusinessProfileWizard({ onComplete, onSkip, initialData }: Busin
               <div
                 key={i}
                 className={`h-2 w-8 rounded-full ${
-                  i + 1 <= currentStep ? 'bg-primary' : 'bg-muted'
+                  i + 1 <= currentStep ? "bg-primary" : "bg-muted"
                 }`}
               />
             ))}

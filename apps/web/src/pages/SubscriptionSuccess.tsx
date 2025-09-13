@@ -2,8 +2,21 @@ import { useEffect, useState } from "react";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, Bot, ArrowRight, Mail, Calendar, CreditCard } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  CheckCircle,
+  Bot,
+  ArrowRight,
+  Mail,
+  Calendar,
+  CreditCard,
+} from "lucide-react";
 import { convex } from "@/lib/convex";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
@@ -11,20 +24,23 @@ export default function SubscriptionSuccess() {
   const [searchParams] = useSearchParams();
   const { isSignedIn, user } = useAuth();
   const navigate = useNavigate();
-  const sessionId = searchParams.get('session_id');
+  const sessionId = searchParams.get("session_id");
 
   // Redirect if not signed in
   useEffect(() => {
     if (!isSignedIn) {
-      navigate('/signin');
+      navigate("/signin");
     }
   }, [isSignedIn, navigate]);
 
   // Get subscription status
   const { data: subscription, isLoading } = useQuery({
-    queryKey: ['subscription-status'],
+    queryKey: ["subscription-status"],
     queryFn: async () => {
-      const result = await convex.mutation("billing/mutations:getSubscriptionStatus", {});
+      const result = await convex.mutation(
+        "billing/mutations:getSubscriptionStatus",
+        {},
+      );
       return result;
     },
     enabled: !!isSignedIn,
@@ -38,12 +54,14 @@ export default function SubscriptionSuccess() {
 
   const planDisplayNames = {
     starter: "Starter",
-    professional: "Professional", 
+    professional: "Professional",
     business: "Business",
-    enterprise: "Enterprise"
+    enterprise: "Enterprise",
   };
 
-  const planName = subscription?.plan ? planDisplayNames[subscription.plan as keyof typeof planDisplayNames] : "Premium";
+  const planName = subscription?.plan
+    ? planDisplayNames[subscription.plan as keyof typeof planDisplayNames]
+    : "Premium";
 
   return (
     <div className="min-h-screen bg-background">
@@ -54,7 +72,7 @@ export default function SubscriptionSuccess() {
             <Bot className="h-8 w-8 text-primary" />
             <span className="font-bold text-xl">Genni</span>
           </Link>
-          
+
           <div className="flex items-center space-x-4">
             <Link to="/app">
               <Button variant="ghost">Dashboard</Button>
@@ -73,7 +91,8 @@ export default function SubscriptionSuccess() {
           </div>
           <h1 className="text-3xl font-bold mb-2">Welcome to {planName}! 🎉</h1>
           <p className="text-muted-foreground">
-            Your subscription is now active and you're ready to supercharge your lead generation.
+            Your subscription is now active and you're ready to supercharge your
+            lead generation.
           </p>
         </div>
 
@@ -97,33 +116,49 @@ export default function SubscriptionSuccess() {
                     <span className="font-medium">{planName}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Status</span>
+                    <span className="text-sm text-muted-foreground">
+                      Status
+                    </span>
                     <span className="font-medium text-green-600">
                       {subscription.isTrialing ? "Free Trial" : "Active"}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Billing Cycle</span>
-                    <span className="font-medium capitalize">{subscription.billing.billingCycle}</span>
+                    <span className="text-sm text-muted-foreground">
+                      Billing Cycle
+                    </span>
+                    <span className="font-medium capitalize">
+                      {subscription.billing.billingCycle}
+                    </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Next Payment</span>
+                    <span className="text-sm text-muted-foreground">
+                      Next Payment
+                    </span>
                     <span className="font-medium">
-                      {new Date(subscription.billing.currentPeriodEnd).toLocaleDateString()}
+                      {new Date(
+                        subscription.billing.currentPeriodEnd,
+                      ).toLocaleDateString()}
                     </span>
                   </div>
                   {subscription.isTrialing && subscription.billing.trialEnd && (
                     <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Trial Ends</span>
+                      <span className="text-sm text-muted-foreground">
+                        Trial Ends
+                      </span>
                       <span className="font-medium">
-                        {new Date(subscription.billing.trialEnd).toLocaleDateString()}
+                        {new Date(
+                          subscription.billing.trialEnd,
+                        ).toLocaleDateString()}
                       </span>
                     </div>
                   )}
                 </>
               ) : (
                 <div className="text-center py-4">
-                  <p className="text-muted-foreground">Loading subscription details...</p>
+                  <p className="text-muted-foreground">
+                    Loading subscription details...
+                  </p>
                 </div>
               )}
             </CardContent>
@@ -187,25 +222,40 @@ export default function SubscriptionSuccess() {
               <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="text-center p-4 bg-muted/50 rounded-lg">
                   <div className="text-2xl font-bold text-primary mb-1">
-                    {subscription.billing.planLimits.monthlySearches === -1 ? "∞" : subscription.billing.planLimits.monthlySearches}
+                    {subscription.billing.planLimits.monthlySearches === -1
+                      ? "∞"
+                      : subscription.billing.planLimits.monthlySearches}
                   </div>
-                  <p className="text-sm text-muted-foreground">Searches/month</p>
+                  <p className="text-sm text-muted-foreground">
+                    Searches/month
+                  </p>
                 </div>
                 <div className="text-center p-4 bg-muted/50 rounded-lg">
                   <div className="text-2xl font-bold text-primary mb-1">
-                    {subscription.billing.planLimits.maxLeadsPerSearch === -1 ? "∞" : subscription.billing.planLimits.maxLeadsPerSearch}
+                    {subscription.billing.planLimits.maxLeadsPerSearch === -1
+                      ? "∞"
+                      : subscription.billing.planLimits.maxLeadsPerSearch}
                   </div>
                   <p className="text-sm text-muted-foreground">Leads/search</p>
                 </div>
                 <div className="text-center p-4 bg-muted/50 rounded-lg">
                   <div className="text-2xl font-bold text-primary mb-1">
-                    {subscription.billing.planLimits.monthlyEnrichments === -1 ? "∞" : (subscription.billing.planLimits.monthlyEnrichments / 1000).toFixed(0) + "K"}
+                    {subscription.billing.planLimits.monthlyEnrichments === -1
+                      ? "∞"
+                      : (
+                          subscription.billing.planLimits.monthlyEnrichments /
+                          1000
+                        ).toFixed(0) + "K"}
                   </div>
-                  <p className="text-sm text-muted-foreground">Enrichments/month</p>
+                  <p className="text-sm text-muted-foreground">
+                    Enrichments/month
+                  </p>
                 </div>
                 <div className="text-center p-4 bg-muted/50 rounded-lg">
                   <div className="text-2xl font-bold text-primary mb-1">
-                    {subscription.billing.planLimits.monthlyExports === -1 ? "∞" : subscription.billing.planLimits.monthlyExports}
+                    {subscription.billing.planLimits.monthlyExports === -1
+                      ? "∞"
+                      : subscription.billing.planLimits.monthlyExports}
                   </div>
                   <p className="text-sm text-muted-foreground">Exports/month</p>
                 </div>

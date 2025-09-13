@@ -27,8 +27,12 @@ export function CompanyCard({ company }: CompanyCardProps) {
             </span>
           </div>
           <div>
-            <h3 className="text-lg font-bold text-card-foreground mb-1">{company.name}</h3>
-            <p className="text-sm text-muted-foreground">{company.description}</p>
+            <h3 className="text-lg font-bold text-card-foreground mb-1">
+              {company.name}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {company.description}
+            </p>
           </div>
         </div>
         <CircularProgress value={company.score} size={50} />
@@ -36,9 +40,9 @@ export function CompanyCard({ company }: CompanyCardProps) {
 
       <div className="flex flex-wrap gap-2 mb-4">
         {company.tags.map((tag, index) => (
-          <Badge 
-            key={index} 
-            variant="secondary" 
+          <Badge
+            key={index}
+            variant="secondary"
             className="bg-secondary/50 text-secondary-foreground text-xs"
           >
             {tag}
@@ -53,11 +57,11 @@ export function CompanyCard({ company }: CompanyCardProps) {
             {company.quickScore || `${company.score}%`}
           </span>
         </div>
-        
+
         <div className="flex gap-2">
           {company.score > 70 && (
-            <Button 
-              size="sm" 
+            <Button
+              size="sm"
               className="bg-primary hover:bg-primary/90 text-primary-foreground gap-1"
             >
               <Mail className="h-3 w-3" />

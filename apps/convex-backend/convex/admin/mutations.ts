@@ -32,10 +32,10 @@ export const updateUserStatus = mutation({
       userId: args.userId,
       type: "system_alert",
       title: args.isActive ? "Account Reactivated" : "Account Suspended",
-      message: args.isActive 
+      message: args.isActive
         ? "Your account has been reactivated. You can now access all features of Genni."
         : `Your account has been suspended. ${args.reason ? `Reason: ${args.reason}. ` : ""}Please contact support if you believe this is an error.`,
-      data: { 
+      data: {
         reason: args.reason,
         statusChange: args.isActive ? "reactivated" : "suspended",
         timestamp: Date.now(),
@@ -53,7 +53,12 @@ export const updateUserStatus = mutation({
 export const updateUserPlan = mutation({
   args: {
     userId: v.id("users"),
-    plan: v.union(v.literal("starter"), v.literal("professional"), v.literal("business"), v.literal("enterprise")),
+    plan: v.union(
+      v.literal("starter"),
+      v.literal("professional"),
+      v.literal("business"),
+      v.literal("enterprise"),
+    ),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
@@ -64,7 +69,7 @@ export const updateUserPlan = mutation({
     }
 
     const oldPlan = targetUser.plan;
-    
+
     await ctx.db.patch(args.userId, {
       plan: args.plan,
       updatedAt: Date.now(),
@@ -76,7 +81,7 @@ export const updateUserPlan = mutation({
       type: "system_alert",
       title: "Plan Updated",
       message: `Your plan has been updated from ${oldPlan} to ${args.plan} by an administrator.`,
-      data: { 
+      data: {
         oldPlan,
         newPlan: args.plan,
         updatedBy: "admin",
@@ -134,7 +139,7 @@ export const addUserCredits = mutation({
       type: "system_alert",
       title: "Bonus Credits Awarded",
       message: `You've been awarded ${args.amount} bonus credits! Reason: ${args.reason}`,
-      data: { 
+      data: {
         creditsAwarded: args.amount,
         newBalance,
         reason: args.reason,
@@ -153,11 +158,20 @@ export const addUserCredits = mutation({
 export const exportUsers = mutation({
   args: {
     format: v.union(v.literal("csv"), v.literal("json")),
-    filters: v.optional(v.object({
-      plan: v.optional(v.union(v.literal("starter"), v.literal("professional"), v.literal("business"), v.literal("enterprise"))),
-      role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
-      isActive: v.optional(v.boolean()),
-    })),
+    filters: v.optional(
+      v.object({
+        plan: v.optional(
+          v.union(
+            v.literal("starter"),
+            v.literal("professional"),
+            v.literal("business"),
+            v.literal("enterprise"),
+          ),
+        ),
+        role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
+        isActive: v.optional(v.boolean()),
+      }),
+    ),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
@@ -166,17 +180,17 @@ export const exportUsers = mutation({
     let users = await ctx.db.query("users").collect();
 
     if (args.filters?.plan) {
-      users = users.filter(u => u.plan === args.filters!.plan);
+      users = users.filter((u) => u.plan === args.filters!.plan);
     }
     if (args.filters?.role) {
-      users = users.filter(u => u.role === args.filters!.role);
+      users = users.filter((u) => u.role === args.filters!.role);
     }
     if (args.filters?.isActive !== undefined) {
-      users = users.filter(u => u.isActive === args.filters!.isActive);
+      users = users.filter((u) => u.isActive === args.filters!.isActive);
     }
 
     // Sanitize sensitive data
-    const sanitizedUsers = users.map(user => ({
+    const sanitizedUsers = users.map((user) => ({
       id: user._id,
       email: user.email,
       name: user.name,
@@ -189,19 +203,21 @@ export const exportUsers = mutation({
     }));
 
     let exportData: string;
-    
+
     if (args.format === "csv") {
       // Convert to CSV
       const headers = Object.keys(sanitizedUsers[0] || {});
       const csvContent = [
         headers.join(","),
-        ...sanitizedUsers.map(user => 
-          headers.map(header => 
-            typeof user[header as keyof typeof user] === "string" 
-              ? `"${user[header as keyof typeof user]}"` 
-              : user[header as keyof typeof user]
-          ).join(",")
-        )
+        ...sanitizedUsers.map((user) =>
+          headers
+            .map((header) =>
+              typeof user[header as keyof typeof user] === "string"
+                ? `"${user[header as keyof typeof user]}"`
+                : user[header as keyof typeof user],
+            )
+            .join(","),
+        ),
       ].join("\n");
       exportData = csvContent;
     } else {
@@ -245,18 +261,20 @@ export const resetSystemCache = mutation({
 // Run system maintenance
 export const runSystemMaintenance = mutation({
   args: {
-    tasks: v.array(v.union(
-      v.literal("cleanup_old_logs"),
-      v.literal("optimize_database"),
-      v.literal("reset_rate_limits"),
-      v.literal("cleanup_expired_sessions")
-    )),
+    tasks: v.array(
+      v.union(
+        v.literal("cleanup_old_logs"),
+        v.literal("optimize_database"),
+        v.literal("reset_rate_limits"),
+        v.literal("cleanup_expired_sessions"),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const adminUser = await requireAdmin(ctx);
 
     const results = [];
-    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
     for (const task of args.tasks) {
       try {
@@ -267,11 +285,11 @@ export const runSystemMaintenance = mutation({
               .query("systemLogs")
               .filter((q) => q.lt(q.field("timestamp"), thirtyDaysAgo))
               .collect();
-            
+
             for (const log of oldLogs) {
               await ctx.db.delete(log._id);
             }
-            
+
             results.push({ task, success: true, deletedCount: oldLogs.length });
             break;
 
@@ -281,18 +299,30 @@ export const runSystemMaintenance = mutation({
             for (const record of rateLimits) {
               await ctx.db.delete(record._id);
             }
-            
-            results.push({ task, success: true, clearedCount: rateLimits.length });
+
+            results.push({
+              task,
+              success: true,
+              clearedCount: rateLimits.length,
+            });
             break;
 
           case "optimize_database":
             // Placeholder for database optimization
-            results.push({ task, success: true, message: "Database optimization completed" });
+            results.push({
+              task,
+              success: true,
+              message: "Database optimization completed",
+            });
             break;
 
           case "cleanup_expired_sessions":
             // Placeholder for session cleanup
-            results.push({ task, success: true, message: "Expired sessions cleaned up" });
+            results.push({
+              task,
+              success: true,
+              message: "Expired sessions cleaned up",
+            });
             break;
 
           default:
@@ -323,48 +353,56 @@ export const runSystemMaintenance = mutation({
 export const updateAdminSettings = mutation({
   args: {
     settings: v.object({
-      creditCosts: v.optional(v.object({
-        LEAD_DISCOVERY: v.optional(v.number()),
-        EMAIL_ENRICHMENT: v.optional(v.number()),
-        AI_ANALYSIS: v.optional(v.number()),
-        EMAIL_GENERATION: v.optional(v.number()),
-        BULK_ANALYSIS: v.optional(v.number()),
-      })),
-      planLimits: v.optional(v.object({
-        free: v.optional(v.object({
-          monthlyCredits: v.optional(v.number()),
-          maxSearches: v.optional(v.number()),
-          maxLeadsPerSearch: v.optional(v.number()),
-          emailGeneration: v.optional(v.boolean()),
-          bulkOperations: v.optional(v.boolean()),
-          apiAccess: v.optional(v.boolean()),
-        })),
-        pro: v.optional(v.object({
-          monthlyCredits: v.optional(v.number()),
-          maxSearches: v.optional(v.number()),
-          maxLeadsPerSearch: v.optional(v.number()),
-          emailGeneration: v.optional(v.boolean()),
-          bulkOperations: v.optional(v.boolean()),
-          apiAccess: v.optional(v.boolean()),
-        })),
-        enterprise: v.optional(v.object({
-          monthlyCredits: v.optional(v.number()),
-          maxSearches: v.optional(v.number()),
-          maxLeadsPerSearch: v.optional(v.number()),
-          emailGeneration: v.optional(v.boolean()),
-          bulkOperations: v.optional(v.boolean()),
-          apiAccess: v.optional(v.boolean()),
-        })),
-      })),
+      creditCosts: v.optional(
+        v.object({
+          LEAD_DISCOVERY: v.optional(v.number()),
+          EMAIL_ENRICHMENT: v.optional(v.number()),
+          AI_ANALYSIS: v.optional(v.number()),
+          EMAIL_GENERATION: v.optional(v.number()),
+          BULK_ANALYSIS: v.optional(v.number()),
+        }),
+      ),
+      planLimits: v.optional(
+        v.object({
+          free: v.optional(
+            v.object({
+              monthlyCredits: v.optional(v.number()),
+              maxSearches: v.optional(v.number()),
+              maxLeadsPerSearch: v.optional(v.number()),
+              emailGeneration: v.optional(v.boolean()),
+              bulkOperations: v.optional(v.boolean()),
+              apiAccess: v.optional(v.boolean()),
+            }),
+          ),
+          pro: v.optional(
+            v.object({
+              monthlyCredits: v.optional(v.number()),
+              maxSearches: v.optional(v.number()),
+              maxLeadsPerSearch: v.optional(v.number()),
+              emailGeneration: v.optional(v.boolean()),
+              bulkOperations: v.optional(v.boolean()),
+              apiAccess: v.optional(v.boolean()),
+            }),
+          ),
+          enterprise: v.optional(
+            v.object({
+              monthlyCredits: v.optional(v.number()),
+              maxSearches: v.optional(v.number()),
+              maxLeadsPerSearch: v.optional(v.number()),
+              emailGeneration: v.optional(v.boolean()),
+              bulkOperations: v.optional(v.boolean()),
+              apiAccess: v.optional(v.boolean()),
+            }),
+          ),
+        }),
+      ),
     }),
   },
   handler: async (ctx, args) => {
     const adminUser = await requireAdmin(ctx);
 
     // Get or create system configuration
-    let systemConfig = await ctx.db
-      .query("systemConfiguration")
-      .unique();
+    let systemConfig = await ctx.db.query("systemConfiguration").unique();
 
     if (!systemConfig) {
       // Create initial system configuration
@@ -414,7 +452,7 @@ export const updateAdminSettings = mutation({
         updatedAt: Date.now(),
         updatedBy: adminUser._id,
       });
-      
+
       systemConfig = await ctx.db.get(configId);
     }
 

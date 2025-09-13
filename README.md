@@ -7,10 +7,12 @@
 This is a multi-repository system with the following structure:
 
 ### Frontend & AI Worker (This Repository)
+
 - **Frontend** (`apps/web/`): React + TypeScript + Vite application using shadcn/ui components
 - **LangGraph Worker** (`apps/langgraph-worker/`): Python FastAPI service with LangGraph multi-agent system
 
 ### Backend Repository (`apps/convex-backend/`)
+
 - **Convex Backend**: Real-time database with complete business logic
 - **Deployment**: Integrated in monorepo structure
 
@@ -53,6 +55,7 @@ This is a multi-repository system with the following structure:
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - Node.js 18+ and pnpm
 - Python 3.11+ for LangGraph worker
 - Convex CLI and Railway CLI for deployment
@@ -79,10 +82,12 @@ pnpm dev
 ```
 
 This will start:
+
 - React frontend on `http://localhost:3000`
 - LangGraph worker on `http://localhost:8080`
 
 ### Backend Setup (Integrated)
+
 ```bash
 # In the same repository - separate terminal
 cd apps/convex-backend
@@ -93,6 +98,7 @@ npx convex dev
 ## 🛠️ Technology Stack
 
 ### Frontend
+
 - **Framework**: React 18 with TypeScript
 - **Build Tool**: Vite
 - **UI Components**: shadcn/ui (Radix UI primitives)
@@ -102,12 +108,14 @@ npx convex dev
 - **Form Handling**: React Hook Form with Zod validation
 
 ### LangGraph Worker
+
 - **Framework**: FastAPI
 - **AI System**: LangGraph with OpenAI integration
 - **Dependencies**: LangChain, LangGraph, Pydantic
 - **Python Version**: 3.11+
 
 ### Infrastructure
+
 - **Package Manager**: pnpm with workspaces
 - **Monorepo**: Turborepo
 - **Deployment**: Railway (both frontend and worker)
@@ -222,15 +230,15 @@ The Python worker implements an **optimized 3-agent LangGraph system** for email
 
 ### 🚀 **Architecture Optimization Benefits**
 
-| Metric | Previous (7 Agents) | Optimized (3 Agents) | Improvement |
-|--------|--------------------|-----------------------|-------------|
-| **LLM Calls** | 7 calls | 3 calls | **57% reduction** |
-| **Execution Time** | 45-60 seconds | 25-30 seconds | **50% faster** |
-| **Business Context** | Disconnected research | Fully integrated | **Complete integration** |
-| **Quality Assurance** | No QA validation | Dedicated QA agent | **New capability** |
-| **Personalization** | Fragmented context | Rich consolidated context | **Better quality** |
-| **Maintenance** | Complex 7-component system | Simple 3-agent flow | **Much simpler** |
-| **Debugging** | 7 agents + supervisor routing | 3 clear stage boundaries | **Easier troubleshooting** |
+| Metric                | Previous (7 Agents)           | Optimized (3 Agents)      | Improvement                |
+| --------------------- | ----------------------------- | ------------------------- | -------------------------- |
+| **LLM Calls**         | 7 calls                       | 3 calls                   | **57% reduction**          |
+| **Execution Time**    | 45-60 seconds                 | 25-30 seconds             | **50% faster**             |
+| **Business Context**  | Disconnected research         | Fully integrated          | **Complete integration**   |
+| **Quality Assurance** | No QA validation              | Dedicated QA agent        | **New capability**         |
+| **Personalization**   | Fragmented context            | Rich consolidated context | **Better quality**         |
+| **Maintenance**       | Complex 7-component system    | Simple 3-agent flow       | **Much simpler**           |
+| **Debugging**         | 7 agents + supervisor routing | 3 clear stage boundaries  | **Easier troubleshooting** |
 
 ## 🔬 Tiered Business Context Research System
 
@@ -291,12 +299,14 @@ Genni implements a sophisticated three-tier research system that intelligently e
 ### Intelligent Escalation Logic
 
 **Tier 1 → Tier 2 Escalation Triggers:**
+
 - Confidence score < 0.6
 - User subscription: Pro or Enterprise
 - Lead estimated value > $5,000
 - Insufficient company information found
 
 **Tier 2 → Tier 3 Escalation Triggers:**
+
 - Confidence score < 0.4
 - User subscription: Enterprise
 - Lead estimated value > $10,000
@@ -304,22 +314,22 @@ Genni implements a sophisticated three-tier research system that intelligently e
 
 ### Research Capabilities by Tier
 
-| Feature | Tier 1 (Tavily) | Tier 2 (Exa) | Tier 3 (Perplexity) |
-|---------|-----------------|---------------|---------------------|
-| **Response Time** | 2-3 seconds | 3-4 seconds | 10-15 seconds |
-| **Cost per Search** | $0.001 | $0.005 | $0.01 |
-| **Company Overview** | ✅ Basic | ✅ Enhanced | ✅ Comprehensive |
-| **Industry Analysis** | ❌ | ✅ | ✅ Premium |
-| **Competitor Discovery** | ❌ | ✅ Top 5 | ✅ Complete Market |
-| **Business Model Analysis** | ✅ Basic | ✅ Detailed | ✅ Strategic |
-| **Technology Stack** | ✅ Basic | ✅ Detailed | ✅ Architecture |
-| **Recent News & Events** | ✅ | ✅ | ✅ Analysis |
-| **Growth Stage Assessment** | ✅ | ✅ | ✅ Detailed |
-| **Pain Points Identification** | ❌ | ✅ | ✅ Deep Analysis |
-| **Market Positioning** | ❌ | ✅ | ✅ Strategic |
-| **Financial Insights** | ❌ | ❌ | ✅ |
-| **Trend Analysis** | ❌ | ❌ | ✅ |
-| **Comprehensive Reports** | ❌ | ❌ | ✅ |
+| Feature                        | Tier 1 (Tavily) | Tier 2 (Exa) | Tier 3 (Perplexity) |
+| ------------------------------ | --------------- | ------------ | ------------------- |
+| **Response Time**              | 2-3 seconds     | 3-4 seconds  | 10-15 seconds       |
+| **Cost per Search**            | $0.001          | $0.005       | $0.01               |
+| **Company Overview**           | ✅ Basic        | ✅ Enhanced  | ✅ Comprehensive    |
+| **Industry Analysis**          | ❌              | ✅           | ✅ Premium          |
+| **Competitor Discovery**       | ❌              | ✅ Top 5     | ✅ Complete Market  |
+| **Business Model Analysis**    | ✅ Basic        | ✅ Detailed  | ✅ Strategic        |
+| **Technology Stack**           | ✅ Basic        | ✅ Detailed  | ✅ Architecture     |
+| **Recent News & Events**       | ✅              | ✅           | ✅ Analysis         |
+| **Growth Stage Assessment**    | ✅              | ✅           | ✅ Detailed         |
+| **Pain Points Identification** | ❌              | ✅           | ✅ Deep Analysis    |
+| **Market Positioning**         | ❌              | ✅           | ✅ Strategic        |
+| **Financial Insights**         | ❌              | ❌           | ✅                  |
+| **Trend Analysis**             | ❌              | ❌           | ✅                  |
+| **Comprehensive Reports**      | ❌              | ❌           | ✅                  |
 
 ### Real-time Progress Broadcasting
 
@@ -327,39 +337,41 @@ Genni implements a sophisticated three-tier research system that intelligently e
 
 ```typescript
 // Real-time progress stages broadcast to frontend
-type ResearchProgressStage = 
-  | 'research_started'      // Initial research begins
-  | 'tier1_tavily'         // Tavily search in progress  
-  | 'tier1_complete'       // Tavily results ready
-  | 'escalating_tier2'     // Escalating to Exa search
-  | 'tier2_exa'           // Exa search in progress
-  | 'tier2_complete'       // Exa results ready  
-  | 'escalating_tier3'     // Escalating to Perplexity
-  | 'tier3_perplexity'    // Perplexity analysis in progress
-  | 'research_completed'   // All research complete
-  | 'research_failed'      // Research encountered errors
+type ResearchProgressStage =
+  | "research_started" // Initial research begins
+  | "tier1_tavily" // Tavily search in progress
+  | "tier1_complete" // Tavily results ready
+  | "escalating_tier2" // Escalating to Exa search
+  | "tier2_exa" // Exa search in progress
+  | "tier2_complete" // Exa results ready
+  | "escalating_tier3" // Escalating to Perplexity
+  | "tier3_perplexity" // Perplexity analysis in progress
+  | "research_completed" // All research complete
+  | "research_failed"; // Research encountered errors
 
 // Progress data includes:
 interface ResearchProgress {
   searchId: string;
   stage: ResearchProgressStage;
-  tier: 'tavily' | 'exa' | 'perplexity';
-  confidence: number;        // 0.0 - 1.0
-  dataPoints: number;        // Data points collected
-  sourcesAnalyzed: number;   // Sources processed
+  tier: "tavily" | "exa" | "perplexity";
+  confidence: number; // 0.0 - 1.0
+  dataPoints: number; // Data points collected
+  sourcesAnalyzed: number; // Sources processed
   escalationReason?: string; // Why escalation occurred
-  message: string;           // Human readable status
+  message: string; // Human readable status
 }
 ```
 
 ### Cost Optimization Strategy
 
 **Average Cost per Lead by Research Tier:**
+
 - **Free Plan**: Tier 1 only → $0.001 per lead
-- **Pro Plan**: Tier 1-2 escalation → $0.003 average per lead  
+- **Pro Plan**: Tier 1-2 escalation → $0.003 average per lead
 - **Enterprise Plan**: All tiers → $0.011 average per lead
 
 **ROI Optimization:**
+
 - **High-value leads** ($10K+) → Automatic Tier 3 for maximum insight
 - **Medium-value leads** ($5K+) → Pro tier escalation logic
 - **Low-value leads** (<$5K) → Tier 1 optimization for cost efficiency
@@ -367,12 +379,13 @@ interface ResearchProgress {
 ### API Integration Architecture
 
 **Research Client Infrastructure:**
+
 ```python
 # Multi-tier research orchestration
 class ResearchOrchestrator:
     def __init__(self):
         self.tavily = TavilyClient()      # Tier 1: Fast web search
-        self.exa = ExaClient()            # Tier 2: Semantic search  
+        self.exa = ExaClient()            # Tier 2: Semantic search
         self.perplexity = PerplexityClient()  # Tier 3: Comprehensive
 
     async def research_company(
@@ -386,20 +399,21 @@ class ResearchOrchestrator:
 ```
 
 **Enhanced Business Context Model:**
+
 ```python
 class BusinessContext(BaseModel):
     # Core research fields
     company_overview: str
-    industry_focus: str  
+    industry_focus: str
     business_model: str
     key_services: List[str]
     target_customers: str
-    
+
     # Enhanced tier 2/3 fields
     competitors: List[Dict[str, Any]]
     industry_insights: str
     comprehensive_report: Optional[str]
-    
+
     # Research metadata
     research_tier: str
     confidence_score: float
@@ -411,6 +425,7 @@ class BusinessContext(BaseModel):
 ## 🔄 Search Flow Excellence
 
 ### Enterprise-Grade Lead Generation Pipeline
+
 **Real-time Orchestration with Advanced Reliability Engineering**
 
 ```
@@ -421,8 +436,9 @@ Updates      Transaction       Broadcasting       Progress Tracking   Correlatio
 ```
 
 ### Advanced Pipeline Features
+
 - **🔄 Real-time Status Broadcasting**: Live pipeline progress with priority messaging system
-- **⚡ Performance Monitoring**: <100ms correlation tracking with comprehensive performance metrics  
+- **⚡ Performance Monitoring**: <100ms correlation tracking with comprehensive performance metrics
 - **🛡️ Reliability Engineering**: 99.9% uptime with comprehensive error recovery and retry mechanisms
 - **📊 Advanced Observability**: Complete operation tracing with parent/child correlation trees
 - **🎯 Intelligent Processing**: Adaptive rate limiting, dynamic batch sizing, and credit transaction management
@@ -431,8 +447,9 @@ Updates      Transaction       Broadcasting       Progress Tracking   Correlatio
 - **📈 Real-time Analytics**: Operation metrics, performance trends, and automated alerting
 
 ### Data Flow & Pipeline Orchestration
+
 1. **Search Creation**: User creates search in React frontend with real-time validation
-2. **Credit Reservation**: Atomic credit reservation with transaction-based management  
+2. **Credit Reservation**: Atomic credit reservation with transaction-based management
 3. **Pipeline Orchestration**: State machine coordination with intelligent queue processing
 4. **Google Maps Discovery**: Parallel lead discovery with real-time progress broadcasting
 5. **Lead Enrichment**: FindyMail API enrichment with batch processing and rate limiting
@@ -441,6 +458,7 @@ Updates      Transaction       Broadcasting       Progress Tracking   Correlatio
 8. **Completion & Export**: Results stored in Convex with CSV export and user notifications
 
 ### Technical Excellence
+
 - **Correlation ID System**: Complete operation genealogy for instant debugging
 - **Multi-tier Rate Limiting**: Plan-based limits with burst allowances and adaptive adjustments
 - **Batch Intelligence**: Dynamic sizing based on system load and user subscription tier
@@ -448,6 +466,7 @@ Updates      Transaction       Broadcasting       Progress Tracking   Correlatio
 - **Comprehensive Error Recovery**: Exponential backoff retry with intelligent failure handling
 
 ### AI Processing Flow
+
 ```
 Lead Data ──▶ HTTP POST ──▶ Railway Worker
      │            │               │
@@ -459,7 +478,7 @@ Lead Data ──▶ HTTP POST ──▶ Railway Worker
                      ├────────────────────────┤
                      │ 1. Business Intel      │ ◄─┐
                      │    (Research+Analysis) │   │ Tavily
-                     │ 2. Email Generation    │   │ Exa  
+                     │ 2. Email Generation    │   │ Exa
                      │    (Writing+Follow-up) │   │ Perplexity
                      │ 3. Quality Assurance   │ ◄─┘
                      │    (Validation+QA)     │
@@ -476,6 +495,7 @@ Lead Data ──▶ HTTP POST ──▶ Railway Worker
 ## ⚙️ Development Commands
 
 ### Root Level Commands (Turbo-managed)
+
 ```bash
 # Start all development servers
 pnpm dev
@@ -497,6 +517,7 @@ pnpm format
 ```
 
 ### Frontend Development (`apps/web/`)
+
 ```bash
 cd apps/web
 
@@ -517,6 +538,7 @@ pnpm preview
 ```
 
 ### LangGraph Worker Development (`apps/langgraph-worker/`)
+
 ```bash
 cd apps/langgraph-worker
 
@@ -537,6 +559,7 @@ python test_convex_integration.py
 ## 🧪 Testing & Debugging
 
 ### Visual Debugging with LangGraph Studio
+
 ```bash
 cd apps/langgraph-worker
 
@@ -546,6 +569,7 @@ python launch_langgraph_studio.py
 ```
 
 ### Testing Suite
+
 ```bash
 cd apps/langgraph-worker
 
@@ -560,6 +584,7 @@ python test_workflow_demo.py
 ```
 
 ### What Each Test Does
+
 - **Visual Debugging**: Interactive workflow graph with real-time execution monitoring
 - **Integration Tests**: Comprehensive testing of all endpoints and workflows without using OpenAI credits
 - **OpenAI Verification**: Full end-to-end testing with real AI responses (requires valid OpenAI API key with credits)
@@ -568,7 +593,9 @@ python test_workflow_demo.py
 ## 🔧 Environment Configuration
 
 ### Frontend Environment Variables
+
 Create `apps/web/.env.local`:
+
 ```env
 NEXT_PUBLIC_CONVEX_URL=your_convex_url
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
@@ -577,7 +604,9 @@ NEXT_PUBLIC_POSTHOG_HOST=
 ```
 
 ### LangGraph Worker Environment Variables
+
 Create `apps/langgraph-worker/.env`:
+
 ```env
 # Required Core APIs
 OPENAI_API_KEY=sk-your-openai-api-key-here
@@ -586,7 +615,7 @@ CONVEX_URL=https://your-convex-deployment.convex.site
 
 # Tiered Research System APIs
 TAVILY_API_KEY=tvly-your-tavily-api-key-here
-EXA_API_KEY=your-exa-api-key-here  
+EXA_API_KEY=your-exa-api-key-here
 PERPLEXITY_API_KEY=pplx-your-perplexity-api-key-here
 
 # Optional - webhook URL is auto-constructed from CONVEX_URL
@@ -602,7 +631,9 @@ MAX_TOKENS=2000
 ```
 
 ### Convex Backend Environment Variables
+
 Create `apps/convex-backend/.env.local`:
+
 ```env
 # API Keys
 OPENAI_API_KEY=sk-...
@@ -639,6 +670,7 @@ APP_URL=http://localhost:3000
 ## 🚀 Deployment
 
 ### Integrated Monorepo Development
+
 ```bash
 # Single Repository - All services
 cd genni-app
@@ -652,6 +684,7 @@ npx convex dev    # Runs Convex in development mode
 ```
 
 ### Deployment to Production
+
 ```bash
 # Deploy Frontend to Railway
 cd apps/web
@@ -667,6 +700,7 @@ npx convex deploy
 ```
 
 ### Service Access
+
 1. **Frontend**: Accessible at `http://localhost:3000`
 2. **API Worker**: Accessible at `http://localhost:8080`
 3. **Backend**: Convex backend deployed separately with real-time sync
@@ -674,6 +708,7 @@ npx convex deploy
 ## 📊 Key Features
 
 ### Core Functionality
+
 - **Smart Lead Discovery**: Google Maps API integration for business discovery
 - **Contact Enrichment**: FindyMail API for email and contact information
 - **AI-Powered Analysis**: LangGraph multi-agent system for lead intelligence
@@ -682,6 +717,7 @@ npx convex deploy
 - **User Management**: Authentication, profiles, and business configuration
 
 ### Advanced Features
+
 - **Admin Dashboard**: Comprehensive metrics and user management
 - **Billing Integration**: Stripe-powered subscription and credit system
 - **Royalty System**: Developer revenue sharing and payment processing
@@ -744,6 +780,7 @@ The LangGraph worker integrates seamlessly with the Convex backend through REST 
 ### Configuration
 
 The LangGraph worker automatically constructs webhook URLs:
+
 ```bash
 # Set in LangGraph worker
 CONVEX_URL=https://your-convex.convex.site
@@ -756,12 +793,14 @@ CONVEX_URL=https://your-convex.convex.site
 ### Testing Integration
 
 Test the integration with the provided test script:
+
 ```bash
 cd apps/langgraph-worker
 python test_convex_integration.py
 ```
 
 This verifies:
+
 - ✅ Health endpoint accessibility
 - ✅ Webhook configuration
 - ✅ API authentication

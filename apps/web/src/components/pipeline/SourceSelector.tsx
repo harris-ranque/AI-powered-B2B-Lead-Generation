@@ -1,22 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { usePipeline } from '@/pipeline/context';
-import type { LeadSourceType } from '@/pipeline/types';
-import { SourceRegistry } from '@/pipeline/sources/SourceRegistry';
-import { 
-  MapPin, 
-  Upload, 
-  Database, 
+import { usePipeline } from "@/pipeline/context";
+import type { LeadSourceType } from "@/pipeline/types";
+import { SourceRegistry } from "@/pipeline/sources/SourceRegistry";
+import {
+  MapPin,
+  Upload,
+  Database,
   ArrowRight,
   Sparkles,
   CheckCircle,
   Info,
-  Mail
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
+  Mail,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const SOURCE_ICONS = {
   MapPin,
@@ -25,15 +25,16 @@ const SOURCE_ICONS = {
 };
 
 export function SourceSelector() {
-  const { state, setSource, markStageComplete, progressToNextStage } = usePipeline();
+  const { state, setSource, markStageComplete, progressToNextStage } =
+    usePipeline();
   const [hoveredSource, setHoveredSource] = useState<string | null>(null);
-  
+
   const availableSources = SourceRegistry.getAvailableSources();
 
   const handleSourceSelect = (sourceType: LeadSourceType) => {
     setSource(sourceType);
-    markStageComplete('source_selection');
-    
+    markStageComplete("source_selection");
+
     // Small delay for visual feedback, then progress
     setTimeout(() => {
       progressToNextStage();
@@ -53,18 +54,18 @@ export function SourceSelector() {
       {/* Source Options */}
       <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
         {availableSources.map((source) => {
-          const IconComponent = source.type === 'google_maps' ? MapPin : Upload;
+          const IconComponent = source.type === "google_maps" ? MapPin : Upload;
           const isSelected = state.selectedSource === source.type;
           const isHovered = hoveredSource === source.type;
-          
+
           return (
-            <Card 
+            <Card
               key={source.type}
               className={cn(
                 "glass-card cursor-pointer transition-all duration-300 hover-lift",
                 "border-2 relative overflow-hidden",
                 isSelected && "border-primary glow-neon-lime",
-                isHovered && !isSelected && "border-primary/50"
+                isHovered && !isSelected && "border-primary/50",
               )}
               onMouseEnter={() => setHoveredSource(source.type)}
               onMouseLeave={() => setHoveredSource(null)}
@@ -76,30 +77,36 @@ export function SourceSelector() {
                   <CheckCircle className="h-5 w-5 text-green-500" />
                 </div>
               )}
-              
+
               {/* Animated background */}
-              <div className={cn(
-                "absolute inset-0 opacity-0 transition-opacity duration-300",
-                isHovered && "opacity-5",
-                isSelected && "opacity-10"
-              )}>
+              <div
+                className={cn(
+                  "absolute inset-0 opacity-0 transition-opacity duration-300",
+                  isHovered && "opacity-5",
+                  isSelected && "opacity-10",
+                )}
+              >
                 <div className="w-full h-full bg-gradient-neon-primary" />
               </div>
 
               <CardHeader className="relative">
                 <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "p-3 rounded-xl transition-all duration-300",
-                    isSelected && "bg-primary/20 glow-soft",
-                    !isSelected && "bg-muted/20"
-                  )}>
-                    <IconComponent className={cn(
-                      "h-6 w-6 transition-colors",
-                      isSelected && "text-primary",
-                      !isSelected && "text-muted-foreground"
-                    )} />
+                  <div
+                    className={cn(
+                      "p-3 rounded-xl transition-all duration-300",
+                      isSelected && "bg-primary/20 glow-soft",
+                      !isSelected && "bg-muted/20",
+                    )}
+                  >
+                    <IconComponent
+                      className={cn(
+                        "h-6 w-6 transition-colors",
+                        isSelected && "text-primary",
+                        !isSelected && "text-muted-foreground",
+                      )}
+                    />
                   </div>
-                  
+
                   <div>
                     <CardTitle className="text-lg">{source.name}</CardTitle>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -128,27 +135,29 @@ export function SourceSelector() {
                   </div>
 
                   {/* Source-specific information */}
-                  {source.type === 'google_maps' && (
+                  {source.type === "google_maps" && (
                     <Alert>
                       <Info className="h-4 w-4" />
                       <AlertDescription className="text-xs">
-                        Discover local businesses using Google Maps data. Perfect for location-based outreach.
+                        Discover local businesses using Google Maps data.
+                        Perfect for location-based outreach.
                       </AlertDescription>
                     </Alert>
                   )}
 
-                  {source.type === 'csv_upload' && (
+                  {source.type === "csv_upload" && (
                     <Alert>
                       <Info className="h-4 w-4" />
                       <AlertDescription className="text-xs">
-                        Import your existing lead lists. Supports CSV files up to 10MB with flexible column mapping.
+                        Import your existing lead lists. Supports CSV files up
+                        to 10MB with flexible column mapping.
                       </AlertDescription>
                     </Alert>
                   )}
 
                   {/* Selection Button */}
                   {!isSelected && (
-                    <Button 
+                    <Button
                       className="w-full mt-4"
                       variant={isHovered ? "default" : "outline"}
                       onClick={() => handleSourceSelect(source.type)}
@@ -159,7 +168,7 @@ export function SourceSelector() {
                   )}
 
                   {isSelected && (
-                    <Button 
+                    <Button
                       className="w-full mt-4"
                       variant="default"
                       onClick={progressToNextStage}
@@ -178,8 +187,9 @@ export function SourceSelector() {
 
       {/* Help Text */}
       <div className="text-center text-sm text-muted-foreground max-w-2xl mx-auto">
-        Choose your preferred method to find leads. Google Maps is great for discovering new local businesses, 
-        while CSV upload lets you work with your existing prospect lists.
+        Choose your preferred method to find leads. Google Maps is great for
+        discovering new local businesses, while CSV upload lets you work with
+        your existing prospect lists.
       </div>
     </div>
   );

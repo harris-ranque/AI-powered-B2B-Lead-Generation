@@ -1,14 +1,18 @@
 /**
  * End-to-End Subscription Flow Testing Utility
- * 
+ *
  * This file contains test scenarios and validation functions for the complete
  * subscription system implementation.
- * 
+ *
  * IMPORTANT: All pricing values are now loaded from environment variables.
  * No hardcoded pricing should exist in tests.
  */
 
-import { PRICING_CONFIG, getPlanPrice, formatPrice } from '../lib/pricing-config';
+import {
+  PRICING_CONFIG,
+  getPlanPrice,
+  formatPrice,
+} from "../lib/pricing-config";
 
 export interface TestScenario {
   name: string;
@@ -39,8 +43,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "User record created in database",
           "Default plan set to 'starter'",
           "User status set to active",
-          "Initial credit balance of 0"
-        ]
+          "Initial credit balance of 0",
+        ],
       },
       {
         action: "Clerk webhook processes user.created event",
@@ -50,11 +54,12 @@ export const subscriptionFlowTests: TestScenario[] = [
           "User exists in users table",
           "Plan field equals 'starter'",
           "CreatedAt timestamp is recent",
-          "IsActive is true"
-        ]
-      }
+          "IsActive is true",
+        ],
+      },
     ],
-    expectedOutcome: "New user has Starter plan with proper limits and no billing record"
+    expectedOutcome:
+      "New user has Starter plan with proper limits and no billing record",
   },
 
   // Test 2: Subscription Creation Flow
@@ -67,13 +72,13 @@ export const subscriptionFlowTests: TestScenario[] = [
         action: "User navigates to pricing page",
         expectedResult: "All 4 plans displayed correctly",
         validationChecks: [
-          `Starter plan shows ${formatPrice(getPlanPrice('starter', false))}/month`,
-          `Professional plan shows ${formatPrice(getPlanPrice('professional', false))}/month`, 
-          `Business plan shows ${formatPrice(getPlanPrice('business', false))}/month`,
-          `Enterprise plan shows ${formatPrice(getPlanPrice('enterprise', false))}/month`,
+          `Starter plan shows ${formatPrice(getPlanPrice("starter", false))}/month`,
+          `Professional plan shows ${formatPrice(getPlanPrice("professional", false))}/month`,
+          `Business plan shows ${formatPrice(getPlanPrice("business", false))}/month`,
+          `Enterprise plan shows ${formatPrice(getPlanPrice("enterprise", false))}/month`,
           "No free trial mentions",
-          "BYOK only mentioned for Enterprise"
-        ]
+          "BYOK only mentioned for Enterprise",
+        ],
       },
       {
         action: "User clicks 'Subscribe Now' for Professional",
@@ -81,9 +86,9 @@ export const subscriptionFlowTests: TestScenario[] = [
         validationChecks: [
           "URL is /subscribe/professional",
           "Plan details loaded correctly",
-          `Price shows ${formatPrice(getPlanPrice('professional', false))}/month`,
-          "Features list displays Professional benefits"
-        ]
+          `Price shows ${formatPrice(getPlanPrice("professional", false))}/month`,
+          "Features list displays Professional benefits",
+        ],
       },
       {
         action: "User clicks 'Subscribe Now' button",
@@ -93,8 +98,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Stripe session created with correct price ID",
           "Metadata includes planId and billingCycle",
           "Success URL points to /subscribe/success",
-          "Cancel URL points back to pricing"
-        ]
+          "Cancel URL points back to pricing",
+        ],
       },
       {
         action: "User completes payment in Stripe",
@@ -103,8 +108,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Stripe webhook checkout.session.completed fires",
           "Payment intent status is succeeded",
           "Customer created in Stripe",
-          "Subscription created in Stripe"
-        ]
+          "Subscription created in Stripe",
+        ],
       },
       {
         action: "Stripe webhook processes subscription creation",
@@ -115,8 +120,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "User plan updated to 'professional'",
           "Subscription status is 'active'",
           "Plan limits updated correctly",
-          "Usage tracking initialized"
-        ]
+          "Usage tracking initialized",
+        ],
       },
       {
         action: "User redirected to success page",
@@ -126,16 +131,17 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Status shows 'Active'",
           "Features list shows Professional benefits",
           "Next payment date displayed",
-          "Links to dashboard and billing work"
-        ]
-      }
+          "Links to dashboard and billing work",
+        ],
+      },
     ],
-    expectedOutcome: "User successfully subscribed to Professional plan with active billing"
+    expectedOutcome:
+      "User successfully subscribed to Professional plan with active billing",
   },
 
   // Test 3: Usage Tracking and Limits
   {
-    name: "Usage Tracking and Enforcement", 
+    name: "Usage Tracking and Enforcement",
     description: "Test usage limits are properly tracked and enforced",
     priority: "high",
     steps: [
@@ -147,8 +153,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Search record created with user ID",
           "Usage tracking updated (searchesUsed +1)",
           "Within Professional plan limits (50 searches/month)",
-          "No errors thrown"
-        ]
+          "No errors thrown",
+        ],
       },
       {
         action: "User reaches monthly search limit",
@@ -157,8 +163,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "SearchesUsed equals monthlySearches limit",
           "New search attempt throws limit exceeded error",
           "Usage warnings displayed in dashboard",
-          "Upgrade prompts shown"
-        ]
+          "Upgrade prompts shown",
+        ],
       },
       {
         action: "User tries to export leads at export limit",
@@ -168,11 +174,11 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Export attempt returns usage limit error",
           "Error message suggests upgrading to Business plan",
           "Export count remains at limit",
-          "User receives upgrade notification"
-        ]
-      }
+          "User receives upgrade notification",
+        ],
+      },
     ],
-    expectedOutcome: "Usage limits properly enforced with clear upgrade paths"
+    expectedOutcome: "Usage limits properly enforced with clear upgrade paths",
   },
 
   // Test 4: Plan Upgrade Flow
@@ -188,8 +194,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Pricing page loads with current plan highlighted",
           "Business plan shows upgrade benefits",
           "Price difference calculated correctly",
-          "Upgrade CTAs prominently displayed"
-        ]
+          "Upgrade CTAs prominently displayed",
+        ],
       },
       {
         action: "User subscribes to Business plan",
@@ -199,8 +205,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Stripe session created with Business price ID",
           "Proration calculated correctly",
           "Upgrade metadata included",
-          "Success URL includes plan change context"
-        ]
+          "Success URL includes plan change context",
+        ],
       },
       {
         action: "Stripe processes subscription change",
@@ -211,11 +217,12 @@ export const subscriptionFlowTests: TestScenario[] = [
           "User plan field updated to 'business'",
           "New usage limits applied (200 searches, etc.)",
           "Proration amount calculated correctly",
-          "Subscription event logged"
-        ]
-      }
+          "Subscription event logged",
+        ],
+      },
     ],
-    expectedOutcome: "User successfully upgraded with new limits and continued service"
+    expectedOutcome:
+      "User successfully upgraded with new limits and continued service",
   },
 
   // Test 5: Billing Management
@@ -231,8 +238,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Current plan and status shown",
           "Next billing date displayed",
           "Usage meters show current consumption",
-          "Billing portal access button available"
-        ]
+          "Billing portal access button available",
+        ],
       },
       {
         action: "User clicks 'Open Billing Portal'",
@@ -242,8 +249,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Portal URL generated successfully",
           "User redirected to Stripe portal",
           "Portal shows subscription details",
-          "Payment method management available"
-        ]
+          "Payment method management available",
+        ],
       },
       {
         action: "User cancels subscription in portal",
@@ -252,18 +259,19 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Stripe webhook customer.subscription.updated fires",
           "CancelAtPeriodEnd set to true in billing record",
           "User still has access until period end",
-          "Cancellation notice displayed in dashboard"
-        ]
-      }
+          "Cancellation notice displayed in dashboard",
+        ],
+      },
     ],
-    expectedOutcome: "Users can manage billing and subscriptions through Stripe portal"
+    expectedOutcome:
+      "Users can manage billing and subscriptions through Stripe portal",
   },
 
   // Test 6: Feature Access Control
   {
     name: "Feature Access by Plan",
     description: "Test feature access restrictions by subscription plan",
-    priority: "high", 
+    priority: "high",
     steps: [
       {
         action: "Starter user tries to generate emails",
@@ -272,8 +280,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Email generation feature returns access denied",
           "SubscriptionGuard component shows upgrade card",
           "Professional plan suggested as upgrade",
-          "Clear benefit explanation provided"
-        ]
+          "Clear benefit explanation provided",
+        ],
       },
       {
         action: "Professional user accesses email generation",
@@ -282,8 +290,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Email generation interface loads",
           "Feature flag allows access",
           "No subscription blocks encountered",
-          "Full feature functionality available"
-        ]
+          "Full feature functionality available",
+        ],
       },
       {
         action: "Business user tries bulk operations",
@@ -292,8 +300,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Bulk operations menu items visible",
           "Bulk operation endpoints accessible",
           "Feature flag returns true",
-          "Enhanced bulk capabilities available"
-        ]
+          "Enhanced bulk capabilities available",
+        ],
       },
       {
         action: "Enterprise user accesses all features",
@@ -302,17 +310,19 @@ export const subscriptionFlowTests: TestScenario[] = [
           "All feature flags return true",
           "White-label options visible",
           "Custom integrations available",
-          "Unlimited usage limits applied"
-        ]
-      }
+          "Unlimited usage limits applied",
+        ],
+      },
     ],
-    expectedOutcome: "Features properly gated by subscription tier with clear upgrade paths"
+    expectedOutcome:
+      "Features properly gated by subscription tier with clear upgrade paths",
   },
 
   // Test 7: Admin Revenue Management
   {
     name: "Admin Revenue Dashboard",
-    description: "Test admin capabilities for revenue and subscription management",
+    description:
+      "Test admin capabilities for revenue and subscription management",
     priority: "medium",
     steps: [
       {
@@ -323,8 +333,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "MRR and ARR calculations correct",
           "Subscription counts by plan accurate",
           "Churn rate calculated properly",
-          "Revenue growth trends displayed"
-        ]
+          "Revenue growth trends displayed",
+        ],
       },
       {
         action: "Admin views individual subscription",
@@ -334,22 +344,23 @@ export const subscriptionFlowTests: TestScenario[] = [
           "User billing history displayed",
           "Usage patterns shown",
           "Payment status visible",
-          "Admin actions available"
-        ]
+          "Admin actions available",
+        ],
       },
       {
         action: "Admin manually updates user plan",
-        endpoint: "admin/billing:updateSubscriptionPlan", 
+        endpoint: "admin/billing:updateSubscriptionPlan",
         expectedResult: "Plan change executed successfully",
         validationChecks: [
           "User plan updated in database",
           "New limits applied immediately",
           "Audit log entry created",
-          "User notified of change"
-        ]
-      }
+          "User notified of change",
+        ],
+      },
     ],
-    expectedOutcome: "Admins have full control over subscriptions and revenue tracking"
+    expectedOutcome:
+      "Admins have full control over subscriptions and revenue tracking",
   },
 
   // Test 8: Error Handling and Edge Cases
@@ -365,8 +376,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Error logged with correlation ID",
           "Webhook marked for retry",
           "User state remains consistent",
-          "Alert sent to admin monitoring"
-        ]
+          "Alert sent to admin monitoring",
+        ],
       },
       {
         action: "User tries to subscribe with failed payment",
@@ -375,8 +386,8 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Clear error message displayed",
           "User not charged or subscribed",
           "Payment failure logged",
-          "Retry options provided"
-        ]
+          "Retry options provided",
+        ],
       },
       {
         action: "Database connection temporarily fails",
@@ -385,12 +396,13 @@ export const subscriptionFlowTests: TestScenario[] = [
           "Loading states displayed appropriately",
           "User receives meaningful error message",
           "Retry mechanisms activated",
-          "Service recovers automatically"
-        ]
-      }
+          "Service recovers automatically",
+        ],
+      },
     ],
-    expectedOutcome: "System handles errors gracefully with proper user feedback"
-  }
+    expectedOutcome:
+      "System handles errors gracefully with proper user feedback",
+  },
 ];
 
 // Validation functions for testing
@@ -402,13 +414,22 @@ interface BillingRecord {
   billingCycle: string;
 }
 
-export const validateBillingRecord = (billing: BillingRecord, expectedPlan: string) => {
+export const validateBillingRecord = (
+  billing: BillingRecord,
+  expectedPlan: string,
+) => {
   const checks = [
     { name: "Plan matches", passed: billing.plan === expectedPlan },
     { name: "Status is active", passed: billing.status === "active" },
-    { name: "Stripe subscription ID exists", passed: !!billing.stripeSubscriptionId },
+    {
+      name: "Stripe subscription ID exists",
+      passed: !!billing.stripeSubscriptionId,
+    },
     { name: "Plan limits are set", passed: !!billing.planLimits },
-    { name: "Billing cycle is valid", passed: ["monthly", "yearly"].includes(billing.billingCycle) }
+    {
+      name: "Billing cycle is valid",
+      passed: ["monthly", "yearly"].includes(billing.billingCycle),
+    },
   ];
   return checks;
 };
@@ -425,57 +446,86 @@ interface ExpectedLimits {
   [key: string]: number;
 }
 
-export const validateUsageTracking = (usage: UsageRecord, expectedLimits: ExpectedLimits) => {
+export const validateUsageTracking = (
+  usage: UsageRecord,
+  expectedLimits: ExpectedLimits,
+) => {
   const checks = [
     { name: "Usage initialized", passed: usage !== null },
-    { name: "Searches within limit", passed: usage.searchesUsed <= expectedLimits.monthlySearches },
+    {
+      name: "Searches within limit",
+      passed: usage.searchesUsed <= expectedLimits.monthlySearches,
+    },
     { name: "Current period flag set", passed: usage.isCurrentPeriod === true },
-    { name: "Billing period dates valid", passed: usage.billingPeriodEnd > usage.billingPeriodStart }
+    {
+      name: "Billing period dates valid",
+      passed: usage.billingPeriodEnd > usage.billingPeriodStart,
+    },
   ];
   return checks;
 };
 
-export const validateFeatureAccess = (userPlan: string, feature: string, shouldHaveAccess: boolean) => {
+export const validateFeatureAccess = (
+  userPlan: string,
+  feature: string,
+  shouldHaveAccess: boolean,
+) => {
   const planFeatures = {
     starter: [],
     professional: ["email_generation", "bulk_operations", "api_access"],
-    business: ["email_generation", "bulk_operations", "api_access", "team_collaboration"],
-    enterprise: ["email_generation", "bulk_operations", "api_access", "team_collaboration", "white_label"]
+    business: [
+      "email_generation",
+      "bulk_operations",
+      "api_access",
+      "team_collaboration",
+    ],
+    enterprise: [
+      "email_generation",
+      "bulk_operations",
+      "api_access",
+      "team_collaboration",
+      "white_label",
+    ],
   };
-  
-  const hasAccess = (planFeatures as Record<string, string[]>)[userPlan]?.includes(feature) || false;
-  return { name: `${feature} access for ${userPlan}`, passed: hasAccess === shouldHaveAccess };
+
+  const hasAccess =
+    (planFeatures as Record<string, string[]>)[userPlan]?.includes(feature) ||
+    false;
+  return {
+    name: `${feature} access for ${userPlan}`,
+    passed: hasAccess === shouldHaveAccess,
+  };
 };
 
 // Test runner utility
 export const runSubscriptionFlowTests = async () => {
   console.log("🚀 Starting End-to-End Subscription Flow Tests");
-  console.log("=" .repeat(60));
-  
+  console.log("=".repeat(60));
+
   let totalTests = 0;
   let passedTests = 0;
-  
+
   for (const scenario of subscriptionFlowTests) {
     console.log(`\n📋 Testing: ${scenario.name}`);
     console.log(`Priority: ${scenario.priority.toUpperCase()}`);
     console.log(`Description: ${scenario.description}`);
     console.log("-".repeat(40));
-    
+
     for (let i = 0; i < scenario.steps.length; i++) {
       const step = scenario.steps[i];
       console.log(`\nStep ${i + 1}: ${step.action}`);
-      
+
       if (step.endpoint) {
         console.log(`  Endpoint: ${step.endpoint}`);
       }
-      
+
       console.log(`  Expected: ${step.expectedResult}`);
       console.log(`  Validations: ${step.validationChecks.length} checks`);
-      
+
       // In a real test environment, you would actually call the endpoints
       // and perform the validations here
       totalTests++;
-      
+
       // TODO: Implement real test logic here
       const testPassed = true; // For now, assume tests pass - implement real testing logic
       if (testPassed) {
@@ -485,22 +535,32 @@ export const runSubscriptionFlowTests = async () => {
         console.log(`  ❌ FAILED`);
       }
     }
-    
+
     console.log(`\nScenario Expected Outcome: ${scenario.expectedOutcome}`);
   }
-  
+
   console.log("\n" + "=".repeat(60));
   console.log(`🏁 Test Suite Complete`);
   console.log(`✅ Passed: ${passedTests}/${totalTests} tests`);
-  console.log(`📊 Success Rate: ${Math.round((passedTests / totalTests) * 100)}%`);
-  
+  console.log(
+    `📊 Success Rate: ${Math.round((passedTests / totalTests) * 100)}%`,
+  );
+
   if (passedTests === totalTests) {
-    console.log(`🎉 All tests passed! Subscription system is ready for production.`);
+    console.log(
+      `🎉 All tests passed! Subscription system is ready for production.`,
+    );
   } else {
-    console.log(`⚠️  Some tests failed. Review failed scenarios before production deployment.`);
+    console.log(
+      `⚠️  Some tests failed. Review failed scenarios before production deployment.`,
+    );
   }
-  
-  return { totalTests, passedTests, successRate: (passedTests / totalTests) * 100 };
+
+  return {
+    totalTests,
+    passedTests,
+    successRate: (passedTests / totalTests) * 100,
+  };
 };
 
 export default subscriptionFlowTests;

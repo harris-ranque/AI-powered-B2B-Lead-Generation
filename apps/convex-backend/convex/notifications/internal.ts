@@ -12,7 +12,7 @@ export const createNotification = internalMutation({
       v.literal("plan_updated"),
       v.literal("credit_alert"),
       v.literal("system_alert"),
-      v.literal("email_sent")
+      v.literal("email_sent"),
     ),
     title: v.string(),
     message: v.string(),
@@ -29,7 +29,7 @@ export const createNotification = internalMutation({
       sent: false, // Will be updated to true when actually sent
       createdAt: Date.now(),
     });
-    
+
     return notificationId;
   },
 });
@@ -48,16 +48,16 @@ export const getUserNotifications = internalQuery({
 
 // Internal mutation to mark notification as read
 export const markNotificationRead = internalMutation({
-  args: { 
+  args: {
     notificationId: v.id("notifications"),
-    userId: v.id("users")
+    userId: v.id("users"),
   },
   handler: async (ctx, args) => {
     const notification = await ctx.db.get(args.notificationId);
     if (!notification || notification.userId !== args.userId) {
       throw new Error("Notification not found or access denied");
     }
-    
+
     await ctx.db.patch(args.notificationId, { read: true });
     return { success: true };
   },
@@ -65,19 +65,19 @@ export const markNotificationRead = internalMutation({
 
 // Internal mutation to cleanup old notifications
 export const cleanupOldNotifications = internalMutation({
-  args: { 
-    olderThan: v.number() // timestamp
+  args: {
+    olderThan: v.number(), // timestamp
   },
   handler: async (ctx, args) => {
     const oldNotifications = await ctx.db
       .query("notifications")
       .filter((q) => q.lt(q.field("createdAt"), args.olderThan))
       .collect();
-    
+
     for (const notification of oldNotifications) {
       await ctx.db.delete(notification._id);
     }
-    
+
     return { deleted: oldNotifications.length };
   },
 });

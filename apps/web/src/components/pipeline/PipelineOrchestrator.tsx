@@ -1,77 +1,92 @@
-import React from 'react';
+import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { usePipeline } from '@/pipeline/context';
-import type { Lead } from '@/lib/api-client';
-import { STAGE_CONFIGS, STAGE_ORDER } from '@/pipeline/config';
-import { PipelineStepper } from './PipelineStepper';
-import { SourceSelector } from './SourceSelector';
-import { LeadDiscoveryStage } from './LeadDiscoveryStage';
-import { EnrichmentStage } from './EnrichmentStage';
-import { AIAnalysisStage } from './AIAnalysisStage';
-import { EmailGenerationStage } from './EmailGenerationStage';
-import { ReviewExportStage } from './ReviewExportStage';
-import { SearchProgressTracker } from '../SearchProgressTracker';
-import { CheckCircle, Clock, Sparkles, Search, Users, Brain, Zap, AlertTriangle } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useSearch } from '@/hooks/useSearches';
-import { useSearchBroadcasts } from '@/hooks/useStatusBroadcasts';
-import { useAdminSystemControl } from '@/hooks/useAdmin';
+import { usePipeline } from "@/pipeline/context";
+import type { Lead } from "@/lib/api-client";
+import { STAGE_CONFIGS, STAGE_ORDER } from "@/pipeline/config";
+import { PipelineStepper } from "./PipelineStepper";
+import { SourceSelector } from "./SourceSelector";
+import { LeadDiscoveryStage } from "./LeadDiscoveryStage";
+import { EnrichmentStage } from "./EnrichmentStage";
+import { AIAnalysisStage } from "./AIAnalysisStage";
+import { EmailGenerationStage } from "./EmailGenerationStage";
+import { ReviewExportStage } from "./ReviewExportStage";
+import { SearchProgressTracker } from "../SearchProgressTracker";
+import {
+  CheckCircle,
+  Clock,
+  Sparkles,
+  Search,
+  Users,
+  Brain,
+  Zap,
+  AlertTriangle,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useSearch } from "@/hooks/useSearches";
+import { useSearchBroadcasts } from "@/hooks/useStatusBroadcasts";
+import { useAdminSystemControl } from "@/hooks/useAdmin";
 
 interface PipelineOrchestratorProps {
   userCredits: number;
-  userPlan: 'free' | 'pro' | 'enterprise';
+  userPlan: "free" | "pro" | "enterprise";
   onGenerateEmail?: (lead: Lead) => void;
 }
 
-export function PipelineOrchestrator({ 
-  userCredits, 
-  userPlan, 
-  onGenerateEmail 
+export function PipelineOrchestrator({
+  userCredits,
+  userPlan,
+  onGenerateEmail,
 }: PipelineOrchestratorProps) {
   const { state, setStage } = usePipeline();
-  
+
   // Get search data and real-time updates
   const { search } = useSearch(state.searchId || undefined);
-  const { broadcasts, latestStatus } = useSearchBroadcasts(state.searchId || undefined);
-  
+  const { broadcasts, latestStatus } = useSearchBroadcasts(
+    state.searchId || undefined,
+  );
+
   // Get system status for emergency stop check
   const { systemStatus } = useAdminSystemControl();
-  
+
   const currentStageIndex = STAGE_ORDER.indexOf(state.currentStage);
-  const progressPercentage = (currentStageIndex / (STAGE_ORDER.length - 1)) * 100;
-  
+  const progressPercentage =
+    (currentStageIndex / (STAGE_ORDER.length - 1)) * 100;
+
   // Compute processing state from backend + local state
-  const isBusy = state.isProcessing || search?.status === 'in_progress' || search?.status === 'processing';
+  const isBusy =
+    state.isProcessing ||
+    search?.status === "in_progress" ||
+    search?.status === "processing";
 
   // Get research tier display info
   const getResearchTierInfo = (tier?: string) => {
     switch (tier) {
-      case 'tavily':
-        return { 
-          label: 'Standard Research', 
-          icon: Search, 
-          color: 'text-blue-500', 
-          bg: 'bg-blue-50',
-          description: 'Fast business context (2-3s)'
+      case "tavily":
+        return {
+          label: "Standard Research",
+          icon: Search,
+          color: "text-blue-500",
+          bg: "bg-blue-50",
+          description: "Fast business context (2-3s)",
         };
-      case 'exa':
-        return { 
-          label: 'Enhanced Research', 
-          icon: Brain, 
-          color: 'text-purple-500', 
-          bg: 'bg-purple-50',
-          description: 'Deep competitor analysis (3-4s)'
+      case "exa":
+        return {
+          label: "Enhanced Research",
+          icon: Brain,
+          color: "text-purple-500",
+          bg: "bg-purple-50",
+          description: "Deep competitor analysis (3-4s)",
         };
-      case 'perplexity':
-        return { 
-          label: 'Premium Research', 
-          icon: Zap, 
-          color: 'text-amber-600', 
-          bg: 'bg-amber-50',
-          description: 'Comprehensive report (10-15s)'
+      case "perplexity":
+        return {
+          label: "Premium Research",
+          icon: Zap,
+          color: "text-amber-600",
+          bg: "bg-amber-50",
+          description: "Comprehensive report (10-15s)",
         };
       default:
         return null;
@@ -82,17 +97,19 @@ export function PipelineOrchestrator({
 
   const renderStageContent = () => {
     switch (state.currentStage) {
-      case 'source_selection':
+      case "source_selection":
         return <SourceSelector />;
-      case 'lead_discovery':
-        return <LeadDiscoveryStage userCredits={userCredits} userPlan={userPlan} />;
-      case 'enrichment':
+      case "lead_discovery":
+        return (
+          <LeadDiscoveryStage userCredits={userCredits} userPlan={userPlan} />
+        );
+      case "enrichment":
         return <EnrichmentStage />;
-      case 'ai_analysis':
+      case "ai_analysis":
         return <AIAnalysisStage />;
-      case 'email_generation':
+      case "email_generation":
         return <EmailGenerationStage onGenerateEmail={onGenerateEmail} />;
-      case 'review_export':
+      case "review_export":
         return <ReviewExportStage />;
       default:
         return <SourceSelector />;
@@ -107,19 +124,22 @@ export function PipelineOrchestrator({
           <div>
             <h2 className="text-2xl font-bold">Lead Generation Pipeline</h2>
             <p className="text-muted-foreground">
-              Follow the guided workflow to discover, enrich, and generate personalized emails
+              Follow the guided workflow to discover, enrich, and generate
+              personalized emails
             </p>
           </div>
-          
+
           <div className="flex items-center gap-3">
             <Badge variant="secondary" className="bg-green-100 text-green-800">
               <Sparkles className="h-3 w-3 mr-1" />
               AI-Powered Pipeline
             </Badge>
-            
+
             <div className="text-right text-sm">
               <div className="font-medium">{userCredits} Credits</div>
-              <div className="text-xs text-muted-foreground capitalize">{userPlan} Plan</div>
+              <div className="text-xs text-muted-foreground capitalize">
+                {userPlan} Plan
+              </div>
             </div>
           </div>
         </div>
@@ -132,15 +152,13 @@ export function PipelineOrchestrator({
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">Pipeline Progress</span>
                   <span className="text-sm text-muted-foreground">
-                    {state.completedStages.length} of {STAGE_ORDER.length} stages
+                    {state.completedStages.length} of {STAGE_ORDER.length}{" "}
+                    stages
                   </span>
                 </div>
-                <Progress 
-                  value={progressPercentage} 
-                  className="h-2"
-                />
+                <Progress value={progressPercentage} className="h-2" />
               </div>
-              
+
               {isBusy && (
                 <div className="flex items-center gap-2 text-sm text-primary">
                   <Clock className="h-4 w-4 animate-spin" />
@@ -158,12 +176,17 @@ export function PipelineOrchestrator({
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
             <div className="space-y-1">
-              <div className="font-semibold">Lead generation is currently paused by administrator</div>
-              <div className="text-sm">
-                Reason: {systemStatus.orchestrationSettings?.pauseReason || "System maintenance"}
+              <div className="font-semibold">
+                Lead generation is currently paused by administrator
               </div>
               <div className="text-sm">
-                All pipeline operations are temporarily disabled. Please contact support for updates.
+                Reason:{" "}
+                {systemStatus.orchestrationSettings?.pauseReason ||
+                  "System maintenance"}
+              </div>
+              <div className="text-sm">
+                All pipeline operations are temporarily disabled. Please contact
+                support for updates.
               </div>
             </div>
           </AlertDescription>
@@ -174,16 +197,19 @@ export function PipelineOrchestrator({
       <PipelineStepper />
 
       {/* Current Stage Content */}
-      <div className={cn(
-        "transition-all duration-500 ease-in-out",
-        (isBusy || systemStatus?.leadGenerationPaused) && "opacity-75 pointer-events-none"
-      )}>
+      <div
+        className={cn(
+          "transition-all duration-500 ease-in-out",
+          (isBusy || systemStatus?.leadGenerationPaused) &&
+            "opacity-75 pointer-events-none",
+        )}
+      >
         {renderStageContent()}
       </div>
 
       {/* Real-Time Research Progress */}
       {state.searchId && search && (
-        <SearchProgressTracker 
+        <SearchProgressTracker
           searchId={state.searchId}
           compact={false}
           showHistory={true}
@@ -198,21 +224,28 @@ export function PipelineOrchestrator({
             {/* Status Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={cn(
-                  "w-3 h-3 rounded-full transition-colors",
-                  isBusy ? "bg-yellow-500 animate-pulse" : "bg-green-500"
-                )} />
+                <div
+                  className={cn(
+                    "w-3 h-3 rounded-full transition-colors",
+                    isBusy ? "bg-yellow-500 animate-pulse" : "bg-green-500",
+                  )}
+                />
                 <span className="text-sm font-medium">
-                  {isBusy ? 'Processing...' : 'Ready'}
+                  {isBusy ? "Processing..." : "Ready"}
                 </span>
                 {researchTierInfo && (
-                  <Badge variant="outline" className={cn("ml-2", researchTierInfo.bg)}>
-                    {React.createElement(researchTierInfo.icon, { className: "w-3 h-3 mr-1" })}
+                  <Badge
+                    variant="outline"
+                    className={cn("ml-2", researchTierInfo.bg)}
+                  >
+                    {React.createElement(researchTierInfo.icon, {
+                      className: "w-3 h-3 mr-1",
+                    })}
                     {researchTierInfo.label}
                   </Badge>
                 )}
               </div>
-              
+
               {latestStatus && (
                 <Badge variant="secondary" className="text-xs">
                   {latestStatus.title}
@@ -231,7 +264,9 @@ export function PipelineOrchestrator({
                   <div className="text-lg font-semibold">
                     {search?.progress?.discovered || state.leads.length || 0}
                   </div>
-                  <div className="text-xs text-muted-foreground">Discovered</div>
+                  <div className="text-xs text-muted-foreground">
+                    Discovered
+                  </div>
                 </div>
               </div>
 
@@ -242,7 +277,9 @@ export function PipelineOrchestrator({
                 </div>
                 <div>
                   <div className="text-lg font-semibold">
-                    {search?.progress?.enriched || state.enrichedLeads.length || 0}
+                    {search?.progress?.enriched ||
+                      state.enrichedLeads.length ||
+                      0}
                   </div>
                   <div className="text-xs text-muted-foreground">Enriched</div>
                 </div>
@@ -271,7 +308,9 @@ export function PipelineOrchestrator({
                     <div className="text-lg font-semibold">
                       {Math.round(search.researchConfidence * 100)}%
                     </div>
-                    <div className="text-xs text-muted-foreground">Confidence</div>
+                    <div className="text-xs text-muted-foreground">
+                      Confidence
+                    </div>
                   </div>
                 </div>
               )}
@@ -281,9 +320,13 @@ export function PipelineOrchestrator({
             {search?.researchStage && (
               <div className="pt-2 border-t">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Research Progress</span>
+                  <span className="text-muted-foreground">
+                    Research Progress
+                  </span>
                   <span className="font-medium">
-                    {search.researchStage.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    {search.researchStage
+                      .replace("_", " ")
+                      .replace(/\b\w/g, (l) => l.toUpperCase())}
                   </span>
                 </div>
                 {researchTierInfo && (

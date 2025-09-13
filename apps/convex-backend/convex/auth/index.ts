@@ -1,6 +1,11 @@
 import { internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
-import { auth as clerkAuth, getCurrentUser, requireAuth, requireAdmin } from "../auth";
+import {
+  auth as clerkAuth,
+  getCurrentUser,
+  requireAuth,
+  requireAdmin,
+} from "../auth";
 
 // Re-export Clerk auth functions for backward compatibility
 export const auth = clerkAuth;
@@ -26,11 +31,11 @@ export const validateApiKey = internalQuery({
       // Look for API key in the database
       const apiKeyRecord = await ctx.db
         .query("apiKeys")
-        .filter((q) => 
+        .filter((q) =>
           q.and(
             q.eq(q.field("keyHash"), args.apiKey),
-            q.eq(q.field("isActive"), true)
-          )
+            q.eq(q.field("isActive"), true),
+          ),
         )
         .unique();
 
@@ -65,7 +70,7 @@ export const validateApiKey = internalQuery({
 
 // User webhook handlers for Clerk integration
 export const handleUserCreated = internalMutation({
-  args: { 
+  args: {
     clerkId: v.string(),
     email: v.string(),
     name: v.optional(v.string()),
@@ -83,19 +88,19 @@ export const handleUserCreated = internalMutation({
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
-    
+
     // Only add optional fields if they exist
     if (args.name) userInsert.name = args.name;
     if (args.avatar) userInsert.avatar = args.avatar;
-    
+
     const userId = await ctx.db.insert("users", userInsert);
-    
+
     return userId;
   },
 });
 
 export const handleUserUpdated = internalMutation({
-  args: { 
+  args: {
     clerkId: v.string(),
     email: v.optional(v.string()),
     name: v.optional(v.string()),
@@ -106,16 +111,16 @@ export const handleUserUpdated = internalMutation({
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
       .unique();
-    
+
     if (user) {
       const updateData: any = {
         updatedAt: Date.now(),
       };
-      
+
       if (args.email) updateData.email = args.email;
       if (args.name) updateData.name = args.name;
       if (args.avatar) updateData.avatar = args.avatar;
-      
+
       await ctx.db.patch(user._id, updateData);
     }
   },
@@ -128,7 +133,7 @@ export const handleUserDeleted = internalMutation({
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
       .unique();
-    
+
     if (user) {
       await ctx.db.delete(user._id);
     }
@@ -137,7 +142,7 @@ export const handleUserDeleted = internalMutation({
 
 // Update API key usage (mutation)
 export const updateApiKeyUsage = internalMutation({
-  args: { 
+  args: {
     apiKey: v.string(),
     operation: v.optional(v.string()),
     resourcesUsed: v.optional(v.number()),
@@ -146,11 +151,11 @@ export const updateApiKeyUsage = internalMutation({
     try {
       const apiKeyRecord = await ctx.db
         .query("apiKeys")
-        .filter((q) => 
+        .filter((q) =>
           q.and(
             q.eq(q.field("keyHash"), args.apiKey),
-            q.eq(q.field("isActive"), true)
-          )
+            q.eq(q.field("isActive"), true),
+          ),
         )
         .unique();
 
@@ -171,7 +176,9 @@ export const updateApiKeyUsage = internalMutation({
         await ctx.db.patch(apiKeyRecord._id, updateData);
 
         // Log usage for monitoring
-        console.log(`API key usage: ${apiKeyRecord.name || 'unnamed'} - ${args.operation || 'unknown'} (total: ${updateData.usageCount})`);
+        console.log(
+          `API key usage: ${apiKeyRecord.name || "unnamed"} - ${args.operation || "unknown"} (total: ${updateData.usageCount})`,
+        );
       }
     } catch (error) {
       console.error("Error updating API key usage:", error);

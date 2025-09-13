@@ -3,13 +3,26 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, CheckCircle, ArrowLeft, Bot, CreditCard } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { convex } from "@/lib/convex";
-import { PRICING_CONFIG, getPlanPrice, getAnnualSavings, formatPrice, getStripePriceId, type PlanType } from "@/lib/pricing-config";
+import {
+  PRICING_CONFIG,
+  getPlanPrice,
+  getAnnualSavings,
+  formatPrice,
+  getStripePriceId,
+  type PlanType,
+} from "@/lib/pricing-config";
 
 interface PlanConfig {
   id: PlanType;
@@ -26,35 +39,35 @@ interface PlanConfig {
 
 const planConfigs: Record<string, PlanConfig> = {
   professional: {
-    id: 'professional',
+    id: "professional",
     name: "Professional",
     description: "For growing businesses and sales teams",
     features: [
       "50 searches per month",
-      "Up to 500 leads per search", 
+      "Up to 500 leads per search",
       "25,000 lead enrichments per month",
       "100 exports per month",
       "Managed API keys included",
       "Advanced AI analysis",
       "Email generation",
       "API access",
-      "Priority support"
+      "Priority support",
     ],
     limits: {
       monthlySearches: 50,
       maxLeadsPerSearch: 500,
       monthlyEnrichments: 25000,
       monthlyExports: 100,
-    }
+    },
   },
   business: {
-    id: 'business', 
+    id: "business",
     name: "Business",
     description: "For established teams scaling their outreach",
     features: [
       "200 searches per month",
       "Up to 2,000 leads per search",
-      "100,000 lead enrichments per month", 
+      "100,000 lead enrichments per month",
       "500 exports per month",
       "Managed API keys included",
       "Advanced AI analysis",
@@ -62,15 +75,15 @@ const planConfigs: Record<string, PlanConfig> = {
       "Full API access",
       "Team collaboration",
       "Custom reporting",
-      "CRM integrations"
+      "CRM integrations",
     ],
     limits: {
       monthlySearches: 200,
       maxLeadsPerSearch: 2000,
       monthlyEnrichments: 100000,
       monthlyExports: 500,
-    }
-  }
+    },
+  },
 };
 
 export default function Subscribe() {
@@ -83,11 +96,13 @@ export default function Subscribe() {
   // Redirect if not signed in
   useEffect(() => {
     if (!isSignedIn) {
-      navigate('/signin?redirect=' + encodeURIComponent(`/subscribe/${planId}`));
+      navigate(
+        "/signin?redirect=" + encodeURIComponent(`/subscribe/${planId}`),
+      );
     }
   }, [isSignedIn, navigate, planId]);
 
-  const plan = planConfigs[planId || ''];
+  const plan = planConfigs[planId || ""];
 
   // Redirect if plan not found
   useEffect(() => {
@@ -97,13 +112,20 @@ export default function Subscribe() {
         description: "The requested plan does not exist.",
         variant: "destructive",
       });
-      navigate('/pricing');
+      navigate("/pricing");
     }
   }, [plan, navigate]);
 
   const createCheckoutSession = useMutation({
-    mutationFn: async (variables: { priceId: string; planId: string; billingCycle: "monthly" | "yearly" }) => {
-      const result = await convex.action("billing/mutations:createCheckoutSession", variables);
+    mutationFn: async (variables: {
+      priceId: string;
+      planId: string;
+      billingCycle: "monthly" | "yearly";
+    }) => {
+      const result = await convex.action(
+        "billing/mutations:createCheckoutSession",
+        variables,
+      );
       return result;
     },
     onSuccess: (data) => {
@@ -122,11 +144,11 @@ export default function Subscribe() {
 
   const handleSubscribe = () => {
     if (!plan) return;
-    
+
     setIsLoading(true);
     const priceId = getStripePriceId(plan.id, isAnnual);
     const billingCycle = isAnnual ? "yearly" : "monthly";
-    
+
     createCheckoutSession.mutate({
       priceId,
       planId: plan.id,
@@ -157,7 +179,7 @@ export default function Subscribe() {
             <Bot className="h-8 w-8 text-primary" />
             <span className="font-bold text-xl">Genni</span>
           </Link>
-          
+
           <div className="flex items-center space-x-4">
             <Link to="/pricing">
               <Button variant="ghost">
@@ -191,15 +213,20 @@ export default function Subscribe() {
             <CardContent className="space-y-6">
               {/* Billing Toggle */}
               <div className="flex items-center justify-center gap-4 p-4 bg-muted/50 rounded-lg">
-                <span className={isAnnual ? "text-muted-foreground" : "font-medium"}>Monthly</span>
-                <Switch
-                  checked={isAnnual}
-                  onCheckedChange={setIsAnnual}
-                />
-                <span className={isAnnual ? "font-medium" : "text-muted-foreground"}>
+                <span
+                  className={isAnnual ? "text-muted-foreground" : "font-medium"}
+                >
+                  Monthly
+                </span>
+                <Switch checked={isAnnual} onCheckedChange={setIsAnnual} />
+                <span
+                  className={isAnnual ? "font-medium" : "text-muted-foreground"}
+                >
                   Annual
                   {savings > 0 && (
-                    <Badge variant="secondary" className="ml-2">Save {savings}%</Badge>
+                    <Badge variant="secondary" className="ml-2">
+                      Save {savings}%
+                    </Badge>
                   )}
                 </span>
               </div>
@@ -207,14 +234,19 @@ export default function Subscribe() {
               {/* Pricing */}
               <div className="text-center">
                 <div className="flex items-baseline justify-center">
-                  <span className="text-4xl font-bold">{formatPrice(currentPrice)}</span>
+                  <span className="text-4xl font-bold">
+                    {formatPrice(currentPrice)}
+                  </span>
                   <span className="text-muted-foreground ml-2">
-                    /{isAnnual ? 'month' : 'month'}
+                    /{isAnnual ? "month" : "month"}
                   </span>
                 </div>
                 {isAnnual && savings > 0 && (
                   <p className="text-sm text-muted-foreground mt-1">
-                    ${getPlanPrice(plan.id, true) * 12}/year • Save ${(getPlanPrice(plan.id, false) * 12) - (getPlanPrice(plan.id, true) * 12)}/year
+                    ${getPlanPrice(plan.id, true) * 12}/year • Save $
+                    {getPlanPrice(plan.id, false) * 12 -
+                      getPlanPrice(plan.id, true) * 12}
+                    /year
                   </p>
                 )}
               </div>
@@ -242,33 +274,48 @@ export default function Subscribe() {
                 Complete Your Subscription
               </CardTitle>
               <CardDescription>
-                Subscribe for {formatPrice(currentPrice)}/{isAnnual ? 'month' : 'month'} - cancel anytime
+                Subscribe for {formatPrice(currentPrice)}/
+                {isAnnual ? "month" : "month"} - cancel anytime
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Immediate Access Info */}
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-1">Immediate Access</h4>
+                <h4 className="font-medium text-blue-900 mb-1">
+                  Immediate Access
+                </h4>
                 <p className="text-sm text-blue-700">
-                  Get instant access to all {plan.name} features. Cancel anytime with no long-term commitment.
+                  Get instant access to all {plan.name} features. Cancel anytime
+                  with no long-term commitment.
                 </p>
               </div>
 
               {/* Billing Summary */}
               <div className="space-y-3">
                 <div className="flex justify-between">
-                  <span>{plan.name} Plan ({isAnnual ? 'Annual' : 'Monthly'})</span>
-                  <span>{formatPrice(currentPrice)}/{isAnnual ? 'month' : 'month'}</span>
+                  <span>
+                    {plan.name} Plan ({isAnnual ? "Annual" : "Monthly"})
+                  </span>
+                  <span>
+                    {formatPrice(currentPrice)}/{isAnnual ? "month" : "month"}
+                  </span>
                 </div>
                 {isAnnual && savings > 0 && (
                   <div className="flex justify-between text-green-600">
                     <span>Annual Discount</span>
-                    <span>-${getPlanPrice(plan.id, false) - getPlanPrice(plan.id, true)}/month</span>
+                    <span>
+                      -$
+                      {getPlanPrice(plan.id, false) -
+                        getPlanPrice(plan.id, true)}
+                      /month
+                    </span>
                   </div>
                 )}
                 <div className="border-t pt-3 flex justify-between font-semibold">
                   <span>Total</span>
-                  <span>{formatPrice(currentPrice)}/{isAnnual ? 'month' : 'month'}</span>
+                  <span>
+                    {formatPrice(currentPrice)}/{isAnnual ? "month" : "month"}
+                  </span>
                 </div>
               </div>
 
@@ -285,9 +332,7 @@ export default function Subscribe() {
                     Creating checkout...
                   </>
                 ) : (
-                  <>
-                    Subscribe Now
-                  </>
+                  <>Subscribe Now</>
                 )}
               </Button>
 

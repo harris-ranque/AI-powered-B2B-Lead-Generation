@@ -19,7 +19,7 @@ export interface UserCredits {
 export interface CreditTransaction {
   id: string;
   userId: string;
-  type: 'purchase' | 'usage' | 'refund';
+  type: "purchase" | "usage" | "refund";
   amount: number;
   description: string;
   searchSessionId?: string;

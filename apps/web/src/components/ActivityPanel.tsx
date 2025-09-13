@@ -1,20 +1,24 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Search, 
-  Mail, 
-  UserPlus, 
-  TrendingUp, 
-  Brain, 
-  Zap, 
-  Users, 
+import {
+  Search,
+  Mail,
+  UserPlus,
+  TrendingUp,
+  Brain,
+  Zap,
+  Users,
   Building,
   Clock,
   CheckCircle,
   AlertTriangle,
-  Microscope
+  Microscope,
 } from "lucide-react";
-import { useStatusBroadcasts, formatBroadcastTime, getPriorityDisplay } from "@/hooks/useStatusBroadcasts";
+import {
+  useStatusBroadcasts,
+  formatBroadcastTime,
+  getPriorityDisplay,
+} from "@/hooks/useStatusBroadcasts";
 import { useSearches } from "@/hooks/useSearches";
 import { useUserLeads } from "@/hooks/useLeads";
 
@@ -27,8 +31,8 @@ const fallbackActivities = [
     title: "Ready to start searching",
     description: "Create your first lead search to see activity",
     time: "now",
-    status: "info" as const
-  }
+    status: "info" as const,
+  },
 ];
 
 export function ActivityPanel() {
@@ -39,27 +43,32 @@ export function ActivityPanel() {
 
   // Convert broadcasts to activity format
   const getActivityIcon = (type: string, stage?: string) => {
-    if (stage?.includes('research')) return Brain;
-    if (stage?.includes('tier1_tavily')) return Search;
-    if (stage?.includes('tier2_exa')) return Microscope;
-    if (stage?.includes('tier3_perplexity')) return Zap;
-    if (stage?.includes('discovery')) return Building;
-    if (stage?.includes('enrichment')) return UserPlus;
-    if (stage?.includes('analysis')) return Brain;
-    
+    if (stage?.includes("research")) return Brain;
+    if (stage?.includes("tier1_tavily")) return Search;
+    if (stage?.includes("tier2_exa")) return Microscope;
+    if (stage?.includes("tier3_perplexity")) return Zap;
+    if (stage?.includes("discovery")) return Building;
+    if (stage?.includes("enrichment")) return UserPlus;
+    if (stage?.includes("analysis")) return Brain;
+
     switch (type) {
-      case 'search': return Search;
-      case 'lead': return Users;
-      case 'research': return Brain;
-      case 'email': return Mail;
-      default: return TrendingUp;
+      case "search":
+        return Search;
+      case "lead":
+        return Users;
+      case "research":
+        return Brain;
+      case "email":
+        return Mail;
+      default:
+        return TrendingUp;
     }
   };
 
   const getActivityStatus = (priority: number) => {
-    if (priority >= 4) return 'success';
-    if (priority >= 3) return 'warning';
-    return 'info';
+    if (priority >= 4) return "success";
+    if (priority >= 3) return "warning";
+    return "info";
   };
 
   // Create activities from real-time broadcasts
@@ -72,12 +81,13 @@ export function ActivityPanel() {
       title: broadcast.title,
       description: broadcast.message,
       time: formatBroadcastTime(broadcast.createdAt),
-      status: getActivityStatus(broadcast.priority)
+      status: getActivityStatus(broadcast.priority),
     };
   });
 
   // Use real-time activities or fallback
-  const activities = realtimeActivities.length > 0 ? realtimeActivities : fallbackActivities;
+  const activities =
+    realtimeActivities.length > 0 ? realtimeActivities : fallbackActivities;
 
   return (
     <div className="space-y-6">
@@ -89,33 +99,47 @@ export function ActivityPanel() {
           </Badge>
         )}
       </div>
-      
+
       <div className="space-y-3">
         {activities.map((activity) => {
           const Icon = activity.icon;
-          const priorityDisplay = activity.id.startsWith('fallback') 
-            ? { variant: 'secondary' as const, bgColor: 'bg-muted/20' }
-            : getPriorityDisplay(broadcasts.find(b => b._id === activity.id)?.priority || 1);
-          
+          const priorityDisplay = activity.id.startsWith("fallback")
+            ? { variant: "secondary" as const, bgColor: "bg-muted/20" }
+            : getPriorityDisplay(
+                broadcasts.find((b) => b._id === activity.id)?.priority || 1,
+              );
+
           return (
-            <Card key={activity.id} className="glass-card p-4 hover-accent transition-smooth cursor-pointer">
+            <Card
+              key={activity.id}
+              className="glass-card p-4 hover-accent transition-smooth cursor-pointer"
+            >
               <div className="flex items-start gap-3">
-                <div className={`
+                <div
+                  className={`
                   w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0
-                  ${activity.status === 'success' 
-                    ? 'bg-green-100 text-green-600' 
-                    : activity.status === 'warning'
-                    ? 'bg-amber-100 text-amber-600'
-                    : 'bg-blue-100 text-blue-600'
+                  ${
+                    activity.status === "success"
+                      ? "bg-green-100 text-green-600"
+                      : activity.status === "warning"
+                        ? "bg-amber-100 text-amber-600"
+                        : "bg-blue-100 text-blue-600"
                   }
-                `}>
+                `}
+                >
                   <Icon className="h-4 w-4" />
                 </div>
-                
+
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm mb-1">{activity.title}</div>
-                  <div className="text-xs text-muted-foreground mb-2">{activity.description}</div>
-                  <div className="text-xs text-muted-foreground">{activity.time}</div>
+                  <div className="font-medium text-sm mb-1">
+                    {activity.title}
+                  </div>
+                  <div className="text-xs text-muted-foreground mb-2">
+                    {activity.description}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {activity.time}
+                  </div>
                 </div>
               </div>
             </Card>
@@ -125,7 +149,9 @@ export function ActivityPanel() {
 
       {/* Real-Time Stats */}
       <div className="space-y-3 pt-4 border-t border-border">
-        <h4 className="text-sm font-medium text-muted-foreground">Current Stats</h4>
+        <h4 className="text-sm font-medium text-muted-foreground">
+          Current Stats
+        </h4>
         <div className="grid grid-cols-2 gap-3">
           <div className="text-center">
             <div className="text-lg font-bold text-primary">
@@ -140,18 +166,25 @@ export function ActivityPanel() {
             <div className="text-xs text-muted-foreground">Total Leads</div>
           </div>
         </div>
-        
+
         {/* Research Quality Indicator */}
-        {searches?.searches?.some(s => s.researchConfidence) && (
+        {searches?.searches?.some((s) => s.researchConfidence) && (
           <div className="pt-2 border-t">
             <div className="text-center">
               <div className="text-lg font-bold text-amber-600">
-                {Math.round((searches.searches
-                  .filter(s => s.researchConfidence)
-                  .reduce((sum, s) => sum + (s.researchConfidence || 0), 0) / 
-                  searches.searches.filter(s => s.researchConfidence).length) * 100)}%
+                {Math.round(
+                  (searches.searches
+                    .filter((s) => s.researchConfidence)
+                    .reduce((sum, s) => sum + (s.researchConfidence || 0), 0) /
+                    searches.searches.filter((s) => s.researchConfidence)
+                      .length) *
+                    100,
+                )}
+                %
               </div>
-              <div className="text-xs text-muted-foreground">Avg Research Quality</div>
+              <div className="text-xs text-muted-foreground">
+                Avg Research Quality
+              </div>
             </div>
           </div>
         )}

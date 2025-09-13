@@ -4,12 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
-import { 
-  ChevronDown, 
-  ChevronRight, 
-  Search, 
-  RefreshCw, 
-  Trash2, 
+import {
+  ChevronDown,
+  ChevronRight,
+  Search,
+  RefreshCw,
+  Trash2,
   Download,
   Filter,
   Clock,
@@ -18,16 +18,16 @@ import {
   Bug,
   Zap,
   Eye,
-  EyeOff
+  EyeOff,
 } from "lucide-react";
-import { 
-  useCorrelationLogs, 
+import {
+  useCorrelationLogs,
   useCorrelationTracker,
   formatDuration,
   getLogLevelColor,
   getOperationStatusIcon,
   type CorrelationTree,
-  type CorrelationLog 
+  type CorrelationLog,
 } from "@/hooks/useCorrelationLogs";
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -49,7 +49,7 @@ export function CorrelationDebugPanel({
   correlationId,
   compact = false,
   showOnlyErrors = false,
-  className
+  className,
 }: CorrelationDebugPanelProps) {
   const {
     logs,
@@ -61,7 +61,7 @@ export function CorrelationDebugPanel({
     clearLogs,
     isLoading,
     hasErrors,
-    hasPerformanceData
+    hasPerformanceData,
   } = useCorrelationLogs();
 
   const [searchFilter, setSearchFilter] = useState("");
@@ -80,50 +80,66 @@ export function CorrelationDebugPanel({
     }
 
     if (showOnlyErrors) {
-      filtered = filtered.filter(log => log.level === 'error');
+      filtered = filtered.filter((log) => log.level === "error");
     }
 
     if (searchFilter) {
-      filtered = filtered.filter(log =>
-        log.correlationId.toLowerCase().includes(searchFilter.toLowerCase()) ||
-        log.operation.toLowerCase().includes(searchFilter.toLowerCase()) ||
-        log.message.toLowerCase().includes(searchFilter.toLowerCase())
+      filtered = filtered.filter(
+        (log) =>
+          log.correlationId
+            .toLowerCase()
+            .includes(searchFilter.toLowerCase()) ||
+          log.operation.toLowerCase().includes(searchFilter.toLowerCase()) ||
+          log.message.toLowerCase().includes(searchFilter.toLowerCase()),
       );
     }
 
     if (operationFilter) {
-      filtered = filtered.filter(log =>
-        log.operation.toLowerCase().includes(operationFilter.toLowerCase())
+      filtered = filtered.filter((log) =>
+        log.operation.toLowerCase().includes(operationFilter.toLowerCase()),
       );
     }
 
     if (levelFilter !== "all") {
-      filtered = filtered.filter(log => log.level === levelFilter);
+      filtered = filtered.filter((log) => log.level === levelFilter);
     }
 
     if (!showDebugLogs) {
-      filtered = filtered.filter(log => log.level !== 'debug');
+      filtered = filtered.filter((log) => log.level !== "debug");
     }
 
     return filtered;
-  }, [logs, searchId, showOnlyErrors, searchFilter, operationFilter, levelFilter, showDebugLogs, getSearchLogs]);
+  }, [
+    logs,
+    searchId,
+    showOnlyErrors,
+    searchFilter,
+    operationFilter,
+    levelFilter,
+    showDebugLogs,
+    getSearchLogs,
+  ]);
 
   // Filter correlation trees
   const filteredTrees = useMemo(() => {
-    return correlationTrees.filter(tree => {
+    return correlationTrees.filter((tree) => {
       if (correlationId && tree.correlationId !== correlationId) {
         return false;
       }
       if (searchFilter) {
-        return tree.correlationId.toLowerCase().includes(searchFilter.toLowerCase()) ||
-               tree.operation.toLowerCase().includes(searchFilter.toLowerCase());
+        return (
+          tree.correlationId
+            .toLowerCase()
+            .includes(searchFilter.toLowerCase()) ||
+          tree.operation.toLowerCase().includes(searchFilter.toLowerCase())
+        );
       }
       return true;
     });
   }, [correlationTrees, correlationId, searchFilter]);
 
   const toggleNodeExpansion = (nodeId: string) => {
-    setExpandedNodes(prev => {
+    setExpandedNodes((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(nodeId)) {
         newSet.delete(nodeId);
@@ -136,13 +152,14 @@ export function CorrelationDebugPanel({
 
   const exportLogs = () => {
     const dataStr = JSON.stringify(filteredLogs, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    
-    const exportFileDefaultName = `correlation-logs-${new Date().toISOString().split('T')[0]}.json`;
-    
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
+    const dataUri =
+      "data:application/json;charset=utf-8," + encodeURIComponent(dataStr);
+
+    const exportFileDefaultName = `correlation-logs-${new Date().toISOString().split("T")[0]}.json`;
+
+    const linkElement = document.createElement("a");
+    linkElement.setAttribute("href", dataUri);
+    linkElement.setAttribute("download", exportFileDefaultName);
     linkElement.click();
   };
 
@@ -152,7 +169,9 @@ export function CorrelationDebugPanel({
         <CardContent className="p-6">
           <div className="flex items-center gap-2">
             <RefreshCw className="h-4 w-4 animate-spin" />
-            <span className="text-sm text-muted-foreground">Loading correlation data...</span>
+            <span className="text-sm text-muted-foreground">
+              Loading correlation data...
+            </span>
           </div>
         </CardContent>
       </Card>
@@ -182,7 +201,7 @@ export function CorrelationDebugPanel({
               </Badge>
             </div>
           </div>
-          
+
           {hasErrors && (
             <Alert className="mt-3 bg-red-50 border-red-200">
               <AlertTriangle className="h-4 w-4" />
@@ -211,9 +230,7 @@ export function CorrelationDebugPanel({
             <Badge variant={hasErrors ? "destructive" : "secondary"}>
               {logs.length} logs
             </Badge>
-            <Badge variant="outline">
-              {correlationTrees.length} traces
-            </Badge>
+            <Badge variant="outline">{correlationTrees.length} traces</Badge>
             {hasPerformanceData && (
               <Badge variant="outline" className="text-green-600">
                 <Zap className="h-3 w-3 mr-1" />
@@ -223,7 +240,7 @@ export function CorrelationDebugPanel({
           </div>
         </div>
       </CardHeader>
-      
+
       <CardContent className="space-y-6">
         {/* Controls */}
         <div className="flex flex-wrap items-center gap-3">
@@ -236,7 +253,7 @@ export function CorrelationDebugPanel({
               className="w-64"
             />
           </div>
-          
+
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
             <select
@@ -251,39 +268,35 @@ export function CorrelationDebugPanel({
               <option value="debug">Debug</option>
             </select>
           </div>
-          
+
           <Button
             variant="outline"
             size="sm"
             onClick={() => setShowDebugLogs(!showDebugLogs)}
           >
-            {showDebugLogs ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {showDebugLogs ? (
+              <EyeOff className="h-4 w-4" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
             Debug Logs
           </Button>
-          
+
           <Button
             variant="outline"
             size="sm"
             onClick={() => setAutoRefresh(!autoRefresh)}
           >
             <Activity className="h-4 w-4 mr-1" />
-            {autoRefresh ? 'Pause' : 'Resume'}
+            {autoRefresh ? "Pause" : "Resume"}
           </Button>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportLogs}
-          >
+
+          <Button variant="outline" size="sm" onClick={exportLogs}>
             <Download className="h-4 w-4 mr-1" />
             Export
           </Button>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => clearLogs(1)}
-          >
+
+          <Button variant="outline" size="sm" onClick={() => clearLogs(1)}>
             <Trash2 className="h-4 w-4 mr-1" />
             Clear Old
           </Button>
@@ -317,7 +330,7 @@ export function CorrelationDebugPanel({
               <Activity className="h-4 w-4" />
               Operation Traces ({filteredTrees.length})
             </h4>
-            
+
             <div className="space-y-3">
               {filteredTrees.map((tree) => (
                 <CorrelationTreeNode
@@ -338,12 +351,12 @@ export function CorrelationDebugPanel({
             <Clock className="h-4 w-4" />
             Recent Logs ({filteredLogs.length})
           </h4>
-          
+
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {filteredLogs.slice(0, 50).map((log) => (
               <LogEntry key={log._id} log={log} />
             ))}
-            
+
             {filteredLogs.length === 0 && (
               <div className="text-center py-8 text-muted-foreground">
                 <Bug className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -365,7 +378,7 @@ function CorrelationTreeNode({
   tree,
   expanded,
   onToggle,
-  level = 0
+  level = 0,
 }: {
   tree: CorrelationTree;
   expanded: boolean;
@@ -373,12 +386,12 @@ function CorrelationTreeNode({
   level: number;
 }) {
   const { progress } = useCorrelationTracker(tree.correlationId);
-  
+
   const levelColors = {
-    error: 'border-red-300 bg-red-50',
-    warn: 'border-yellow-300 bg-yellow-50',
-    info: 'border-blue-300 bg-blue-50',
-    debug: 'border-gray-300 bg-gray-50',
+    error: "border-red-300 bg-red-50",
+    warn: "border-yellow-300 bg-yellow-50",
+    info: "border-blue-300 bg-blue-50",
+    debug: "border-gray-300 bg-gray-50",
   };
 
   return (
@@ -392,14 +405,18 @@ function CorrelationTreeNode({
             className="h-6 w-6 p-0"
           >
             {tree.children.length > 0 ? (
-              expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />
+              expanded ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )
             ) : (
               <div className="w-4 h-4" />
             )}
           </Button>
-          
+
           <span className="text-lg">{getOperationStatusIcon(tree.status)}</span>
-          
+
           <div>
             <div className="flex items-center gap-2">
               <span className="font-medium text-sm">{tree.operation}</span>
@@ -408,25 +425,33 @@ function CorrelationTreeNode({
               </Badge>
             </div>
             <div className="text-xs text-muted-foreground">
-              {tree.duration ? formatDuration(tree.duration) : 'Running...'}
-              {tree.children.length > 0 && ` • ${tree.children.length} sub-operations`}
+              {tree.duration ? formatDuration(tree.duration) : "Running..."}
+              {tree.children.length > 0 &&
+                ` • ${tree.children.length} sub-operations`}
             </div>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2">
-          <Badge variant={tree.status === 'failed' ? 'destructive' : 
-                         tree.status === 'completed' ? 'default' : 'secondary'}>
+          <Badge
+            variant={
+              tree.status === "failed"
+                ? "destructive"
+                : tree.status === "completed"
+                  ? "default"
+                  : "secondary"
+            }
+          >
             {tree.status}
           </Badge>
-          {tree.status === 'running' && (
+          {tree.status === "running" && (
             <div className="w-20">
               <Progress value={progress} className="h-2" />
             </div>
           )}
         </div>
       </div>
-      
+
       {expanded && (
         <div className="mt-3 space-y-2">
           {/* Child operations */}
@@ -440,7 +465,7 @@ function CorrelationTreeNode({
               />
             </div>
           ))}
-          
+
           {/* Logs for this operation */}
           <div className="ml-6 space-y-1">
             {tree.logs.slice(0, 5).map((log) => (
@@ -461,10 +486,16 @@ function CorrelationTreeNode({
 /**
  * Individual log entry component
  */
-function LogEntry({ log, compact = false }: { log: CorrelationLog; compact?: boolean }) {
+function LogEntry({
+  log,
+  compact = false,
+}: {
+  log: CorrelationLog;
+  compact?: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
   const levelColor = getLogLevelColor(log.level);
-  
+
   return (
     <div className={cn("border rounded p-2 text-sm", levelColor)}>
       <div className="flex items-start justify-between">
@@ -485,17 +516,15 @@ function LogEntry({ log, compact = false }: { log: CorrelationLog; compact?: boo
               </Badge>
             )}
           </div>
-          
+
           <div className="flex items-center gap-2">
             <span className="font-medium">{log.operation}</span>
             <span>•</span>
             <span>{log.phase}</span>
           </div>
-          
-          <p className={cn("mt-1", compact && "truncate")}>
-            {log.message}
-          </p>
-          
+
+          <p className={cn("mt-1", compact && "truncate")}>{log.message}</p>
+
           {!compact && log.data && (
             <Button
               variant="ghost"
@@ -503,12 +532,12 @@ function LogEntry({ log, compact = false }: { log: CorrelationLog; compact?: boo
               onClick={() => setExpanded(!expanded)}
               className="mt-1 h-6 px-2 text-xs"
             >
-              {expanded ? 'Hide' : 'Show'} data
+              {expanded ? "Hide" : "Show"} data
             </Button>
           )}
         </div>
       </div>
-      
+
       {expanded && log.data && (
         <div className="mt-2 p-2 bg-background/50 rounded border text-xs">
           <pre className="whitespace-pre-wrap break-words">
@@ -516,7 +545,7 @@ function LogEntry({ log, compact = false }: { log: CorrelationLog; compact?: boo
           </pre>
         </div>
       )}
-      
+
       {log.metadata.error && (
         <div className="mt-2 p-2 bg-red-100 border border-red-200 rounded text-xs">
           <strong>Error:</strong> {log.metadata.error}

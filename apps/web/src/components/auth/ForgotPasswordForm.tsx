@@ -1,4 +1,10 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Bot, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -13,7 +19,8 @@ export function ForgotPasswordForm() {
           </div>
           <CardTitle className="text-2xl">Reset Your Password</CardTitle>
           <CardDescription>
-            Password reset is handled by Clerk. Please use the sign-in page to reset your password.
+            Password reset is handled by Clerk. Please use the sign-in page to
+            reset your password.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

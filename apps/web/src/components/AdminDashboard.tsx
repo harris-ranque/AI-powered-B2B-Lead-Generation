@@ -5,14 +5,21 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
-  Users, 
-  Building, 
-  DollarSign, 
-  Activity, 
-  Search, 
+import {
+  Users,
+  Building,
+  DollarSign,
+  Activity,
+  Search,
   Mail,
   TrendingUp,
   TrendingDown,
@@ -47,10 +54,16 @@ import {
   MapPin,
   Brain,
   Microscope,
-  FileText
+  FileText,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAdminDashboard, useAdminUsers, useAdminAnalytics, useAdminConfiguration, useAdminSystemControl } from "@/hooks/useAdmin";
+import {
+  useAdminDashboard,
+  useAdminUsers,
+  useAdminAnalytics,
+  useAdminConfiguration,
+  useAdminSystemControl,
+} from "@/hooks/useAdmin";
 import { CreditManagement } from "./admin/CreditManagement";
 
 interface AdminMetrics {
@@ -74,8 +87,8 @@ interface User {
   id: string;
   email: string;
   name: string;
-  plan: 'free' | 'pro' | 'enterprise';
-  status: 'active' | 'inactive' | 'banned';
+  plan: "free" | "pro" | "enterprise";
+  status: "active" | "inactive" | "banned";
   creditsRemaining: number;
   totalSpent: number;
   lastLogin: string;
@@ -90,8 +103,8 @@ interface Company {
   industry: string;
   userCount: number;
   totalRevenue: number;
-  plan: 'free' | 'pro' | 'enterprise';
-  status: 'active' | 'trial' | 'cancelled';
+  plan: "free" | "pro" | "enterprise";
+  status: "active" | "trial" | "cancelled";
   monthlySearches: number;
   conversionRate: number;
 }
@@ -129,8 +142,8 @@ interface ExternalService {
   description: string;
   icon: React.ComponentType<{ className?: string }>;
   url: string;
-  status?: 'operational' | 'degraded' | 'down' | 'maintenance';
-  category: 'infrastructure' | 'monitoring' | 'api' | 'development';
+  status?: "operational" | "degraded" | "down" | "maintenance";
+  category: "infrastructure" | "monitoring" | "api" | "development";
   quickActions?: Array<{
     label: string;
     url: string;
@@ -142,7 +155,7 @@ interface ExternalService {
 const validateUrl = (url: string): boolean => {
   try {
     const parsedUrl = new URL(url);
-    return parsedUrl.protocol === 'https:' && parsedUrl.hostname.length > 0;
+    return parsedUrl.protocol === "https:" && parsedUrl.hostname.length > 0;
   } catch {
     return false;
   }
@@ -154,233 +167,253 @@ const getExternalServices = (): ExternalService[] => {
     const services: ExternalService[] = [
       // Infrastructure & Deployment
       {
-        id: 'railway',
-        name: 'Railway',
-        description: 'Application deployment platform hosting frontend and LangGraph worker',
+        id: "railway",
+        name: "Railway",
+        description:
+          "Application deployment platform hosting frontend and LangGraph worker",
         icon: Server,
-        url: 'https://railway.app/dashboard',
-        status: 'operational',
-        category: 'infrastructure',
+        url: "https://railway.app/dashboard",
+        status: "operational",
+        category: "infrastructure",
         quickActions: [
-          { label: 'View Deployments', url: 'https://railway.app/project' },
-          { label: 'Check Logs', url: 'https://railway.app/project' },
-          { label: 'Variables', url: 'https://railway.app/project' },
-        ]
+          { label: "View Deployments", url: "https://railway.app/project" },
+          { label: "Check Logs", url: "https://railway.app/project" },
+          { label: "Variables", url: "https://railway.app/project" },
+        ],
       },
       {
-        id: 'convex',
-        name: 'Convex',
-        description: 'Real-time backend database with functions and webhooks',
+        id: "convex",
+        name: "Convex",
+        description: "Real-time backend database with functions and webhooks",
         icon: Database,
-        url: 'https://dashboard.convex.dev',
-        status: 'operational',
-        category: 'infrastructure',
+        url: "https://dashboard.convex.dev",
+        status: "operational",
+        category: "infrastructure",
         quickActions: [
-          { label: 'Dashboard', url: 'https://dashboard.convex.dev' },
-          { label: 'Functions', url: 'https://dashboard.convex.dev' },
-          { label: 'Data', url: 'https://dashboard.convex.dev' },
-        ]
+          { label: "Dashboard", url: "https://dashboard.convex.dev" },
+          { label: "Functions", url: "https://dashboard.convex.dev" },
+          { label: "Data", url: "https://dashboard.convex.dev" },
+        ],
       },
       {
-        id: 'github',
-        name: 'GitHub',
-        description: 'Source code repository, CI/CD, and project management',
+        id: "github",
+        name: "GitHub",
+        description: "Source code repository, CI/CD, and project management",
         icon: GitBranch,
-        url: 'https://github.com/settings/repositories',
-        status: 'operational',
-        category: 'development',
+        url: "https://github.com/settings/repositories",
+        status: "operational",
+        category: "development",
         quickActions: [
-          { label: 'Repository', url: 'https://github.com' },
-          { label: 'Issues', url: 'https://github.com/issues' },
-          { label: 'Actions', url: 'https://github.com/actions' },
-        ]
+          { label: "Repository", url: "https://github.com" },
+          { label: "Issues", url: "https://github.com/issues" },
+          { label: "Actions", url: "https://github.com/actions" },
+        ],
       },
-      
+
       // Monitoring & Analytics
       {
-        id: 'posthog',
-        name: 'PostHog',
-        description: 'User analytics, feature flags, and product insights',
+        id: "posthog",
+        name: "PostHog",
+        description: "User analytics, feature flags, and product insights",
         icon: BarChart3,
-        url: 'https://app.posthog.com',
-        status: 'operational',
-        category: 'monitoring',
+        url: "https://app.posthog.com",
+        status: "operational",
+        category: "monitoring",
         quickActions: [
-          { label: 'Analytics', url: 'https://app.posthog.com/insights' },
-          { label: 'Feature Flags', url: 'https://app.posthog.com/feature_flags' },
-          { label: 'Dashboards', url: 'https://app.posthog.com/dashboard' },
-        ]
+          { label: "Analytics", url: "https://app.posthog.com/insights" },
+          {
+            label: "Feature Flags",
+            url: "https://app.posthog.com/feature_flags",
+          },
+          { label: "Dashboards", url: "https://app.posthog.com/dashboard" },
+        ],
       },
       {
-        id: 'sentry',
-        name: 'Sentry',
-        description: 'Error monitoring, performance tracking, and debugging',
+        id: "sentry",
+        name: "Sentry",
+        description: "Error monitoring, performance tracking, and debugging",
         icon: Bug,
-        url: 'https://sentry.io/organizations/',
-        status: 'operational',
-        category: 'monitoring',
+        url: "https://sentry.io/organizations/",
+        status: "operational",
+        category: "monitoring",
         quickActions: [
-          { label: 'Issues', url: 'https://sentry.io/organizations/' },
-          { label: 'Performance', url: 'https://sentry.io/organizations/' },
-          { label: 'Releases', url: 'https://sentry.io/organizations/' },
-        ]
+          { label: "Issues", url: "https://sentry.io/organizations/" },
+          { label: "Performance", url: "https://sentry.io/organizations/" },
+          { label: "Releases", url: "https://sentry.io/organizations/" },
+        ],
       },
       {
-        id: 'semgrep',
-        name: 'Semgrep',
-        description: 'Static code analysis, security scanning, and vulnerability detection',
+        id: "semgrep",
+        name: "Semgrep",
+        description:
+          "Static code analysis, security scanning, and vulnerability detection",
         icon: Shield,
-        url: 'https://semgrep.dev/manage',
-        status: 'operational',
-        category: 'monitoring',
+        url: "https://semgrep.dev/manage",
+        status: "operational",
+        category: "monitoring",
         quickActions: [
-          { label: 'Dashboard', url: 'https://semgrep.dev/manage' },
-          { label: 'Findings', url: 'https://semgrep.dev/manage/findings' },
-          { label: 'Policies', url: 'https://semgrep.dev/manage/policies' },
-          { label: 'Rules', url: 'https://semgrep.dev/explore' },
-        ]
+          { label: "Dashboard", url: "https://semgrep.dev/manage" },
+          { label: "Findings", url: "https://semgrep.dev/manage/findings" },
+          { label: "Policies", url: "https://semgrep.dev/manage/policies" },
+          { label: "Rules", url: "https://semgrep.dev/explore" },
+        ],
       },
       {
-        id: 'langsmith',
-        name: 'LangSmith',
-        description: 'LangGraph workflow observability, tracing, and debugging for AI agent operations',
+        id: "langsmith",
+        name: "LangSmith",
+        description:
+          "LangGraph workflow observability, tracing, and debugging for AI agent operations",
         icon: Microscope,
-        url: 'https://smith.langchain.com',
-        status: 'operational',
-        category: 'monitoring',
+        url: "https://smith.langchain.com",
+        status: "operational",
+        category: "monitoring",
         quickActions: [
-          { label: 'Projects', url: 'https://smith.langchain.com/projects' },
-          { label: 'Traces', url: 'https://smith.langchain.com/traces' },
-          { label: 'Datasets', url: 'https://smith.langchain.com/datasets' },
-          { label: 'Settings', url: 'https://smith.langchain.com/settings' },
-        ]
+          { label: "Projects", url: "https://smith.langchain.com/projects" },
+          { label: "Traces", url: "https://smith.langchain.com/traces" },
+          { label: "Datasets", url: "https://smith.langchain.com/datasets" },
+          { label: "Settings", url: "https://smith.langchain.com/settings" },
+        ],
       },
-      
+
       // APIs & External Services
       {
-        id: 'google-cloud',
-        name: 'Google Cloud Console',
-        description: 'Google Maps API for business location discovery and geocoding',
+        id: "google-cloud",
+        name: "Google Cloud Console",
+        description:
+          "Google Maps API for business location discovery and geocoding",
         icon: MapPin,
-        url: 'https://console.cloud.google.com',
-        status: 'operational',
-        category: 'api',
+        url: "https://console.cloud.google.com",
+        status: "operational",
+        category: "api",
         quickActions: [
-          { label: 'APIs & Services', url: 'https://console.cloud.google.com/apis' },
-          { label: 'Billing', url: 'https://console.cloud.google.com/billing' },
-          { label: 'IAM', url: 'https://console.cloud.google.com/iam-admin' },
-        ]
+          {
+            label: "APIs & Services",
+            url: "https://console.cloud.google.com/apis",
+          },
+          { label: "Billing", url: "https://console.cloud.google.com/billing" },
+          { label: "IAM", url: "https://console.cloud.google.com/iam-admin" },
+        ],
       },
       {
-        id: 'findymail',
-        name: 'FindyMail',
-        description: 'Email enrichment and contact data verification service',
+        id: "findymail",
+        name: "FindyMail",
+        description: "Email enrichment and contact data verification service",
         icon: Mail,
-        url: 'https://app.findymail.com',
-        status: 'operational',
-        category: 'api',
+        url: "https://app.findymail.com",
+        status: "operational",
+        category: "api",
         quickActions: [
-          { label: 'Dashboard', url: 'https://app.findymail.com/dashboard' },
-          { label: 'Credits', url: 'https://app.findymail.com/credits' },
-          { label: 'API Docs', url: 'https://docs.findymail.com' },
-        ]
+          { label: "Dashboard", url: "https://app.findymail.com/dashboard" },
+          { label: "Credits", url: "https://app.findymail.com/credits" },
+          { label: "API Docs", url: "https://docs.findymail.com" },
+        ],
       },
       {
-        id: 'stripe',
-        name: 'Stripe',
-        description: 'Payment processing, subscriptions, and billing management',
+        id: "stripe",
+        name: "Stripe",
+        description:
+          "Payment processing, subscriptions, and billing management",
         icon: CreditCard,
-        url: 'https://dashboard.stripe.com',
-        status: 'operational',
-        category: 'api',
+        url: "https://dashboard.stripe.com",
+        status: "operational",
+        category: "api",
         quickActions: [
-          { label: 'Dashboard', url: 'https://dashboard.stripe.com' },
-          { label: 'Customers', url: 'https://dashboard.stripe.com/customers' },
-          { label: 'Payments', url: 'https://dashboard.stripe.com/payments' },
-          { label: 'Subscriptions', url: 'https://dashboard.stripe.com/subscriptions' },
-        ]
+          { label: "Dashboard", url: "https://dashboard.stripe.com" },
+          { label: "Customers", url: "https://dashboard.stripe.com/customers" },
+          { label: "Payments", url: "https://dashboard.stripe.com/payments" },
+          {
+            label: "Subscriptions",
+            url: "https://dashboard.stripe.com/subscriptions",
+          },
+        ],
       },
       {
-        id: 'clerk',
-        name: 'Clerk',
-        description: 'Authentication, user management, and session handling',
+        id: "clerk",
+        name: "Clerk",
+        description: "Authentication, user management, and session handling",
         icon: Key,
-        url: 'https://dashboard.clerk.com',
-        status: 'operational',
-        category: 'api',
+        url: "https://dashboard.clerk.com",
+        status: "operational",
+        category: "api",
         quickActions: [
-          { label: 'Dashboard', url: 'https://dashboard.clerk.com' },
-          { label: 'Users', url: 'https://dashboard.clerk.com/users' },
-          { label: 'Sessions', url: 'https://dashboard.clerk.com/sessions' },
-          { label: 'Webhooks', url: 'https://dashboard.clerk.com/webhooks' },
-        ]
+          { label: "Dashboard", url: "https://dashboard.clerk.com" },
+          { label: "Users", url: "https://dashboard.clerk.com/users" },
+          { label: "Sessions", url: "https://dashboard.clerk.com/sessions" },
+          { label: "Webhooks", url: "https://dashboard.clerk.com/webhooks" },
+        ],
       },
-      
+
       // AI Research Services - Tiered Research System
       {
-        id: 'openai',
-        name: 'OpenAI',
-        description: 'GPT models for AI analysis and email generation in LangGraph workflow',
+        id: "openai",
+        name: "OpenAI",
+        description:
+          "GPT models for AI analysis and email generation in LangGraph workflow",
         icon: Brain,
-        url: 'https://platform.openai.com',
-        status: 'operational',
-        category: 'ai-research',
+        url: "https://platform.openai.com",
+        status: "operational",
+        category: "ai-research",
         quickActions: [
-          { label: 'Dashboard', url: 'https://platform.openai.com/overview' },
-          { label: 'Usage', url: 'https://platform.openai.com/usage' },
-          { label: 'API Keys', url: 'https://platform.openai.com/api-keys' },
-          { label: 'Models', url: 'https://platform.openai.com/docs/models' },
-        ]
+          { label: "Dashboard", url: "https://platform.openai.com/overview" },
+          { label: "Usage", url: "https://platform.openai.com/usage" },
+          { label: "API Keys", url: "https://platform.openai.com/api-keys" },
+          { label: "Models", url: "https://platform.openai.com/docs/models" },
+        ],
       },
       {
-        id: 'tavily',
-        name: 'Tavily Search',
-        description: 'Tier 1: Fast business context research and web search API (2-3s)',
+        id: "tavily",
+        name: "Tavily Search",
+        description:
+          "Tier 1: Fast business context research and web search API (2-3s)",
         icon: Search,
-        url: 'https://tavily.com',
-        status: 'operational',
-        category: 'ai-research',
+        url: "https://tavily.com",
+        status: "operational",
+        category: "ai-research",
         quickActions: [
-          { label: 'Dashboard', url: 'https://app.tavily.com' },
-          { label: 'API Usage', url: 'https://app.tavily.com/usage' },
-          { label: 'Documentation', url: 'https://docs.tavily.com' },
-        ]
+          { label: "Dashboard", url: "https://app.tavily.com" },
+          { label: "API Usage", url: "https://app.tavily.com/usage" },
+          { label: "Documentation", url: "https://docs.tavily.com" },
+        ],
       },
       {
-        id: 'exa',
-        name: 'Exa Search',
-        description: 'Tier 2: Enhanced semantic search for competitor analysis (3-4s)',
+        id: "exa",
+        name: "Exa Search",
+        description:
+          "Tier 2: Enhanced semantic search for competitor analysis (3-4s)",
         icon: Microscope,
-        url: 'https://exa.ai',
-        status: 'operational',
-        category: 'ai-research',
+        url: "https://exa.ai",
+        status: "operational",
+        category: "ai-research",
         quickActions: [
-          { label: 'Dashboard', url: 'https://dashboard.exa.ai' },
-          { label: 'API Usage', url: 'https://dashboard.exa.ai/usage' },
-          { label: 'Documentation', url: 'https://docs.exa.ai' },
-        ]
+          { label: "Dashboard", url: "https://dashboard.exa.ai" },
+          { label: "API Usage", url: "https://dashboard.exa.ai/usage" },
+          { label: "Documentation", url: "https://docs.exa.ai" },
+        ],
       },
       {
-        id: 'perplexity',
-        name: 'Perplexity API',
-        description: 'Tier 3: Premium comprehensive research reports and analysis (10-15s)',
+        id: "perplexity",
+        name: "Perplexity API",
+        description:
+          "Tier 3: Premium comprehensive research reports and analysis (10-15s)",
         icon: FileText,
-        url: 'https://perplexity.ai',
-        status: 'operational',
-        category: 'ai-research',
+        url: "https://perplexity.ai",
+        status: "operational",
+        category: "ai-research",
         quickActions: [
-          { label: 'Lab', url: 'https://labs.perplexity.ai' },
-          { label: 'Pro Dashboard', url: 'https://perplexity.ai/pro' },
-          { label: 'API Docs', url: 'https://docs.perplexity.ai' },
-        ]
+          { label: "Lab", url: "https://labs.perplexity.ai" },
+          { label: "Pro Dashboard", url: "https://perplexity.ai/pro" },
+          { label: "API Docs", url: "https://docs.perplexity.ai" },
+        ],
       },
     ];
 
     // Validate all URLs before returning
-    return services.filter(service => {
+    return services.filter((service) => {
       const isMainUrlValid = validateUrl(service.url);
-      const areQuickActionsValid = service.quickActions?.every(action => validateUrl(action.url)) ?? true;
-      
+      const areQuickActionsValid =
+        service.quickActions?.every((action) => validateUrl(action.url)) ??
+        true;
+
       if (!isMainUrlValid || !areQuickActionsValid) {
         console.warn(`Invalid URL configuration for service: ${service.name}`);
         return false;
@@ -388,7 +421,7 @@ const getExternalServices = (): ExternalService[] => {
       return true;
     });
   } catch (error) {
-    console.error('Error initializing external services configuration:', error);
+    console.error("Error initializing external services configuration:", error);
     return [];
   }
 };
@@ -429,17 +462,35 @@ export function AdminDashboard() {
   });
 
   // Real Convex hooks
-  const { metrics, systemHealth, isLoading: metricsLoading } = useAdminDashboard();
-  const { users, updateUserStatus, updateUserPlan, isLoading: usersLoading } = useAdminUsers();
-  const { analytics, revenueStats, isLoading: analyticsLoading } = useAdminAnalytics();
-  const { configuration, updateCreditCosts, updatePlanLimits, isLoading: configLoading } = useAdminConfiguration();
-  const { 
-    systemStatus, 
-    systemActivity, 
-    pauseAllLeadGeneration, 
-    resumeAllLeadGeneration, 
+  const {
+    metrics,
+    systemHealth,
+    isLoading: metricsLoading,
+  } = useAdminDashboard();
+  const {
+    users,
+    updateUserStatus,
+    updateUserPlan,
+    isLoading: usersLoading,
+  } = useAdminUsers();
+  const {
+    analytics,
+    revenueStats,
+    isLoading: analyticsLoading,
+  } = useAdminAnalytics();
+  const {
+    configuration,
+    updateCreditCosts,
+    updatePlanLimits,
+    isLoading: configLoading,
+  } = useAdminConfiguration();
+  const {
+    systemStatus,
+    systemActivity,
+    pauseAllLeadGeneration,
+    resumeAllLeadGeneration,
     clearAllActiveSearches,
-    isLoading: systemControlLoading 
+    isLoading: systemControlLoading,
   } = useAdminSystemControl();
 
   // Companies data from backend (placeholder for future implementation)
@@ -449,24 +500,70 @@ export function AdminDashboard() {
   const adminMetrics: AdminMetrics = (() => {
     try {
       return {
-        totalUsers: (metrics?.totalUsers && typeof metrics.totalUsers === 'number') ? metrics.totalUsers : 0,
-        activeUsers: (metrics?.activeUsers && typeof metrics.activeUsers === 'number') ? metrics.activeUsers : 0,
-        totalRevenue: (revenueStats?.totalRevenue && typeof revenueStats.totalRevenue === 'number') ? revenueStats.totalRevenue : 0,
-        monthlyRevenue: (revenueStats?.monthlyRevenue && typeof revenueStats.monthlyRevenue === 'number') ? revenueStats.monthlyRevenue : 0,
-        searchesDaily: (analytics?.searchesDaily && typeof analytics.searchesDaily === 'number') ? analytics.searchesDaily : 0,
-        leadsGenerated: (analytics?.leadsGenerated && typeof analytics.leadsGenerated === 'number') ? analytics.leadsGenerated : 0,
-        emailsGenerated: (analytics?.emailsGenerated && typeof analytics.emailsGenerated === 'number') ? analytics.emailsGenerated : 0,
-        averageResponseRate: (analytics?.averageResponseRate && typeof analytics.averageResponseRate === 'number') ? analytics.averageResponseRate : 0,
+        totalUsers:
+          metrics?.totalUsers && typeof metrics.totalUsers === "number"
+            ? metrics.totalUsers
+            : 0,
+        activeUsers:
+          metrics?.activeUsers && typeof metrics.activeUsers === "number"
+            ? metrics.activeUsers
+            : 0,
+        totalRevenue:
+          revenueStats?.totalRevenue &&
+          typeof revenueStats.totalRevenue === "number"
+            ? revenueStats.totalRevenue
+            : 0,
+        monthlyRevenue:
+          revenueStats?.monthlyRevenue &&
+          typeof revenueStats.monthlyRevenue === "number"
+            ? revenueStats.monthlyRevenue
+            : 0,
+        searchesDaily:
+          analytics?.searchesDaily &&
+          typeof analytics.searchesDaily === "number"
+            ? analytics.searchesDaily
+            : 0,
+        leadsGenerated:
+          analytics?.leadsGenerated &&
+          typeof analytics.leadsGenerated === "number"
+            ? analytics.leadsGenerated
+            : 0,
+        emailsGenerated:
+          analytics?.emailsGenerated &&
+          typeof analytics.emailsGenerated === "number"
+            ? analytics.emailsGenerated
+            : 0,
+        averageResponseRate:
+          analytics?.averageResponseRate &&
+          typeof analytics.averageResponseRate === "number"
+            ? analytics.averageResponseRate
+            : 0,
         systemHealth: {
-          apiUptime: (systemHealth?.apiUptime && typeof systemHealth.apiUptime === 'number') ? systemHealth.apiUptime : 0,
-          queueHealth: (systemHealth?.queueHealth && typeof systemHealth.queueHealth === 'number') ? systemHealth.queueHealth : 0,
-          errorRate: (systemHealth?.errorRate && typeof systemHealth.errorRate === 'number') ? systemHealth.errorRate : 0,
-          avgResponseTime: (systemHealth?.avgResponseTime && typeof systemHealth.avgResponseTime === 'number') ? systemHealth.avgResponseTime : 0
-        }
+          apiUptime:
+            systemHealth?.apiUptime &&
+            typeof systemHealth.apiUptime === "number"
+              ? systemHealth.apiUptime
+              : 0,
+          queueHealth:
+            systemHealth?.queueHealth &&
+            typeof systemHealth.queueHealth === "number"
+              ? systemHealth.queueHealth
+              : 0,
+          errorRate:
+            systemHealth?.errorRate &&
+            typeof systemHealth.errorRate === "number"
+              ? systemHealth.errorRate
+              : 0,
+          avgResponseTime:
+            systemHealth?.avgResponseTime &&
+            typeof systemHealth.avgResponseTime === "number"
+              ? systemHealth.avgResponseTime
+              : 0,
+        },
       };
     } catch (error) {
-      console.error('Error constructing adminMetrics:', error);
-      setRenderError('Failed to load admin metrics data');
+      console.error("Error constructing adminMetrics:", error);
+      setRenderError("Failed to load admin metrics data");
       return {
         totalUsers: 0,
         activeUsers: 0,
@@ -480,8 +577,8 @@ export function AdminDashboard() {
           apiUptime: 0,
           queueHealth: 0,
           errorRate: 0,
-          avgResponseTime: 0
-        }
+          avgResponseTime: 0,
+        },
       };
     }
   })();
@@ -489,50 +586,114 @@ export function AdminDashboard() {
   // Initialize configuration state from loaded data with bulletproof error handling
   React.useEffect(() => {
     try {
-      if (configuration && typeof configuration === 'object') {
+      if (configuration && typeof configuration === "object") {
         // Safe credit costs update
-        if (configuration.creditCosts && typeof configuration.creditCosts === 'object') {
+        if (
+          configuration.creditCosts &&
+          typeof configuration.creditCosts === "object"
+        ) {
           try {
             setCreditCosts({
-              leadDiscovery: (typeof configuration.creditCosts.LEAD_DISCOVERY === 'number') ? configuration.creditCosts.LEAD_DISCOVERY : 1,
-              contactEnrichment: (typeof configuration.creditCosts.EMAIL_ENRICHMENT === 'number') ? configuration.creditCosts.EMAIL_ENRICHMENT : 2,
-              aiAnalysis: (typeof configuration.creditCosts.AI_ANALYSIS === 'number') ? configuration.creditCosts.AI_ANALYSIS : 3,
-              emailGeneration: (typeof configuration.creditCosts.EMAIL_GENERATION === 'number') ? configuration.creditCosts.EMAIL_GENERATION : 5,
-              bulkAnalysis: (typeof configuration.creditCosts.BULK_ANALYSIS === 'number') ? configuration.creditCosts.BULK_ANALYSIS : 10,
+              leadDiscovery:
+                typeof configuration.creditCosts.LEAD_DISCOVERY === "number"
+                  ? configuration.creditCosts.LEAD_DISCOVERY
+                  : 1,
+              contactEnrichment:
+                typeof configuration.creditCosts.EMAIL_ENRICHMENT === "number"
+                  ? configuration.creditCosts.EMAIL_ENRICHMENT
+                  : 2,
+              aiAnalysis:
+                typeof configuration.creditCosts.AI_ANALYSIS === "number"
+                  ? configuration.creditCosts.AI_ANALYSIS
+                  : 3,
+              emailGeneration:
+                typeof configuration.creditCosts.EMAIL_GENERATION === "number"
+                  ? configuration.creditCosts.EMAIL_GENERATION
+                  : 5,
+              bulkAnalysis:
+                typeof configuration.creditCosts.BULK_ANALYSIS === "number"
+                  ? configuration.creditCosts.BULK_ANALYSIS
+                  : 10,
             });
           } catch (error) {
-            console.error('Error setting credit costs:', error);
+            console.error("Error setting credit costs:", error);
           }
         }
-        
+
         // Safe plan limits update
-        if (configuration.planLimits && typeof configuration.planLimits === 'object') {
+        if (
+          configuration.planLimits &&
+          typeof configuration.planLimits === "object"
+        ) {
           try {
             setPlanLimits({
               free: {
-                monthlyCredits: (configuration.planLimits.free?.monthlyCredits && typeof configuration.planLimits.free.monthlyCredits === 'number') ? configuration.planLimits.free.monthlyCredits : 100,
-                maxLeadsPerSearch: (configuration.planLimits.free?.maxLeadsPerSearch && typeof configuration.planLimits.free.maxLeadsPerSearch === 'number') ? configuration.planLimits.free.maxLeadsPerSearch : 50,
-                maxSearches: (configuration.planLimits.free?.maxSearches && typeof configuration.planLimits.free.maxSearches === 'number') ? configuration.planLimits.free.maxSearches : 5,
+                monthlyCredits:
+                  configuration.planLimits.free?.monthlyCredits &&
+                  typeof configuration.planLimits.free.monthlyCredits ===
+                    "number"
+                    ? configuration.planLimits.free.monthlyCredits
+                    : 100,
+                maxLeadsPerSearch:
+                  configuration.planLimits.free?.maxLeadsPerSearch &&
+                  typeof configuration.planLimits.free.maxLeadsPerSearch ===
+                    "number"
+                    ? configuration.planLimits.free.maxLeadsPerSearch
+                    : 50,
+                maxSearches:
+                  configuration.planLimits.free?.maxSearches &&
+                  typeof configuration.planLimits.free.maxSearches === "number"
+                    ? configuration.planLimits.free.maxSearches
+                    : 5,
               },
               pro: {
-                monthlyCredits: (configuration.planLimits.pro?.monthlyCredits && typeof configuration.planLimits.pro.monthlyCredits === 'number') ? configuration.planLimits.pro.monthlyCredits : 500,
-                maxLeadsPerSearch: (configuration.planLimits.pro?.maxLeadsPerSearch && typeof configuration.planLimits.pro.maxLeadsPerSearch === 'number') ? configuration.planLimits.pro.maxLeadsPerSearch : 200,
-                maxSearches: (configuration.planLimits.pro?.maxSearches && typeof configuration.planLimits.pro.maxSearches === 'number') ? configuration.planLimits.pro.maxSearches : 25,
+                monthlyCredits:
+                  configuration.planLimits.pro?.monthlyCredits &&
+                  typeof configuration.planLimits.pro.monthlyCredits ===
+                    "number"
+                    ? configuration.planLimits.pro.monthlyCredits
+                    : 500,
+                maxLeadsPerSearch:
+                  configuration.planLimits.pro?.maxLeadsPerSearch &&
+                  typeof configuration.planLimits.pro.maxLeadsPerSearch ===
+                    "number"
+                    ? configuration.planLimits.pro.maxLeadsPerSearch
+                    : 200,
+                maxSearches:
+                  configuration.planLimits.pro?.maxSearches &&
+                  typeof configuration.planLimits.pro.maxSearches === "number"
+                    ? configuration.planLimits.pro.maxSearches
+                    : 25,
               },
               enterprise: {
-                monthlyCredits: (configuration.planLimits.enterprise?.monthlyCredits && typeof configuration.planLimits.enterprise.monthlyCredits === 'number') ? configuration.planLimits.enterprise.monthlyCredits : 2000,
-                maxLeadsPerSearch: (configuration.planLimits.enterprise?.maxLeadsPerSearch && typeof configuration.planLimits.enterprise.maxLeadsPerSearch === 'number') ? configuration.planLimits.enterprise.maxLeadsPerSearch : 1000,
-                maxSearches: (configuration.planLimits.enterprise?.maxSearches && typeof configuration.planLimits.enterprise.maxSearches === 'number') ? configuration.planLimits.enterprise.maxSearches : -1,
-              }
+                monthlyCredits:
+                  configuration.planLimits.enterprise?.monthlyCredits &&
+                  typeof configuration.planLimits.enterprise.monthlyCredits ===
+                    "number"
+                    ? configuration.planLimits.enterprise.monthlyCredits
+                    : 2000,
+                maxLeadsPerSearch:
+                  configuration.planLimits.enterprise?.maxLeadsPerSearch &&
+                  typeof configuration.planLimits.enterprise
+                    .maxLeadsPerSearch === "number"
+                    ? configuration.planLimits.enterprise.maxLeadsPerSearch
+                    : 1000,
+                maxSearches:
+                  configuration.planLimits.enterprise?.maxSearches &&
+                  typeof configuration.planLimits.enterprise.maxSearches ===
+                    "number"
+                    ? configuration.planLimits.enterprise.maxSearches
+                    : -1,
+              },
             });
           } catch (error) {
-            console.error('Error setting plan limits:', error);
+            console.error("Error setting plan limits:", error);
           }
         }
       }
     } catch (error) {
-      console.error('Error in configuration useEffect:', error);
-      setRenderError('Failed to initialize configuration data');
+      console.error("Error in configuration useEffect:", error);
+      setRenderError("Failed to initialize configuration data");
     }
   }, [configuration]);
 
@@ -546,7 +707,7 @@ export function AdminDashboard() {
           AI_ANALYSIS: creditCosts.aiAnalysis,
           EMAIL_GENERATION: creditCosts.emailGeneration,
           BULK_ANALYSIS: creditCosts.bulkAnalysis,
-        }
+        },
       });
       toast({
         title: "Credit Costs Updated",
@@ -589,7 +750,7 @@ export function AdminDashboard() {
             bulkOperations: true,
             apiAccess: true,
           },
-        }
+        },
       });
       toast({
         title: "Plan Limits Updated",
@@ -607,14 +768,14 @@ export function AdminDashboard() {
   // Admin action handlers
   const handleUserAction = async (userId: string, action: string) => {
     try {
-      if (action === 'ban' || action === 'activate') {
-        await updateUserStatus({ 
-          userId, 
-          status: action === 'ban' ? 'banned' : 'active' 
+      if (action === "ban" || action === "activate") {
+        await updateUserStatus({
+          userId,
+          status: action === "ban" ? "banned" : "active",
         });
         toast({
           title: "User Updated",
-          description: `User has been ${action === 'ban' ? 'banned' : 'activated'}.`,
+          description: `User has been ${action === "ban" ? "banned" : "activated"}.`,
         });
       }
     } catch (error) {
@@ -635,7 +796,7 @@ export function AdminDashboard() {
       // Additional export logic would go here
     } catch (error) {
       toast({
-        title: "Export Failed", 
+        title: "Export Failed",
         description: "Failed to export data. Please try again.",
         variant: "destructive",
       });
@@ -644,18 +805,24 @@ export function AdminDashboard() {
 
   // System Control Handlers
   const handlePauseAllLeadGeneration = async () => {
-    if (!confirm("Are you sure you want to pause ALL lead generation activities? This will cancel all active searches and refund credits to users.")) {
+    if (
+      !confirm(
+        "Are you sure you want to pause ALL lead generation activities? This will cancel all active searches and refund credits to users.",
+      )
+    ) {
       return;
     }
 
-    const reason = prompt("Enter reason for pause (optional):") || "Emergency pause by admin";
-    
+    const reason =
+      prompt("Enter reason for pause (optional):") ||
+      "Emergency pause by admin";
+
     try {
-      const result = await pauseAllLeadGeneration({ 
+      const result = await pauseAllLeadGeneration({
         reason,
-        maintenanceMode: false 
+        maintenanceMode: false,
       });
-      
+
       if (result.success) {
         toast({
           title: "System Paused",
@@ -678,15 +845,21 @@ export function AdminDashboard() {
   };
 
   const handleResumeAllLeadGeneration = async () => {
-    if (!confirm("Are you sure you want to resume all lead generation activities?")) {
+    if (
+      !confirm(
+        "Are you sure you want to resume all lead generation activities?",
+      )
+    ) {
       return;
     }
 
-    const reason = prompt("Enter reason for resume (optional):") || "System resumed by admin";
-    
+    const reason =
+      prompt("Enter reason for resume (optional):") ||
+      "System resumed by admin";
+
     try {
       const result = await resumeAllLeadGeneration({ reason });
-      
+
       if (result.success) {
         toast({
           title: "System Resumed",
@@ -709,7 +882,11 @@ export function AdminDashboard() {
   };
 
   const handleClearAllActiveSearches = async () => {
-    if (!confirm("Are you sure you want to CLEAR all active searches? This action cannot be undone.")) {
+    if (
+      !confirm(
+        "Are you sure you want to CLEAR all active searches? This action cannot be undone.",
+      )
+    ) {
       return;
     }
 
@@ -723,17 +900,19 @@ export function AdminDashboard() {
       return;
     }
 
-    const refundCredits = confirm("Refund credits to users? (Recommended: Yes)");
-    
+    const refundCredits = confirm(
+      "Refund credits to users? (Recommended: Yes)",
+    );
+
     try {
-      const result = await clearAllActiveSearches({ 
+      const result = await clearAllActiveSearches({
         reason,
-        refundCredits 
+        refundCredits,
       });
-      
+
       toast({
         title: "Searches Cleared",
-        description: `Cleared ${result.clearedSearches} searches, cleared ${result.batchesCleared} batches${refundCredits ? `, refunded ${result.totalCreditsRefunded} credits` : ''}.`,
+        description: `Cleared ${result.clearedSearches} searches, cleared ${result.batchesCleared} batches${refundCredits ? `, refunded ${result.totalCreditsRefunded} credits` : ""}.`,
       });
     } catch (error) {
       toast({
@@ -746,15 +925,32 @@ export function AdminDashboard() {
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
-      active: { variant: "default" as const, color: "bg-green-100 text-green-800" },
-      inactive: { variant: "secondary" as const, color: "bg-gray-100 text-gray-800" },
-      banned: { variant: "destructive" as const, color: "bg-red-100 text-red-800" },
-      trial: { variant: "outline" as const, color: "bg-blue-100 text-blue-800" },
-      cancelled: { variant: "destructive" as const, color: "bg-red-100 text-red-800" }
+      active: {
+        variant: "default" as const,
+        color: "bg-green-100 text-green-800",
+      },
+      inactive: {
+        variant: "secondary" as const,
+        color: "bg-gray-100 text-gray-800",
+      },
+      banned: {
+        variant: "destructive" as const,
+        color: "bg-red-100 text-red-800",
+      },
+      trial: {
+        variant: "outline" as const,
+        color: "bg-blue-100 text-blue-800",
+      },
+      cancelled: {
+        variant: "destructive" as const,
+        color: "bg-red-100 text-red-800",
+      },
     };
 
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.inactive;
-    
+    const config =
+      statusConfig[status as keyof typeof statusConfig] ||
+      statusConfig.inactive;
+
     return (
       <Badge variant={config.variant} className={config.color}>
         {status}
@@ -765,12 +961,19 @@ export function AdminDashboard() {
   const getPlanBadge = (plan: string) => {
     const planConfig = {
       free: { color: "bg-gray-100 text-gray-800", icon: null },
-      pro: { color: "bg-blue-100 text-blue-800", icon: <CheckCircle className="h-3 w-3 mr-1" /> },
-      enterprise: { color: "bg-purple-100 text-purple-800", icon: <Shield className="h-3 w-3 mr-1" /> }
+      pro: {
+        color: "bg-blue-100 text-blue-800",
+        icon: <CheckCircle className="h-3 w-3 mr-1" />,
+      },
+      enterprise: {
+        color: "bg-purple-100 text-purple-800",
+        icon: <Shield className="h-3 w-3 mr-1" />,
+      },
     };
 
-    const config = planConfig[plan as keyof typeof planConfig] || planConfig.free;
-    
+    const config =
+      planConfig[plan as keyof typeof planConfig] || planConfig.free;
+
     return (
       <Badge variant="secondary" className={config.color}>
         {config.icon}
@@ -780,42 +983,49 @@ export function AdminDashboard() {
   };
 
   // Safe render wrapper to catch any render errors
-  const safeRender = (renderFunction: () => JSX.Element, fallbackMessage: string) => {
+  const safeRender = (
+    renderFunction: () => JSX.Element,
+    fallbackMessage: string,
+  ) => {
     try {
       return renderFunction();
     } catch (error) {
-      console.error('Render error in AdminDashboard:', error);
-      setRenderError(`${fallbackMessage}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("Render error in AdminDashboard:", error);
+      setRenderError(
+        `${fallbackMessage}: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
       return (
         <Alert className="m-4">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
             <strong>Render Error:</strong> {fallbackMessage}
             <br />
-            <small>Error: {error instanceof Error ? error.message : 'Unknown error'}</small>
+            <small>
+              Error: {error instanceof Error ? error.message : "Unknown error"}
+            </small>
           </AlertDescription>
         </Alert>
       );
     }
   };
 
-  // Filter users based on search term with bulletproof error handling  
+  // Filter users based on search term with bulletproof error handling
   const filteredUsers = (() => {
     try {
       if (!users || !Array.isArray(users)) return [];
-      return users.filter(user => {
+      return users.filter((user) => {
         try {
-          const name = user?.name?.toLowerCase() || '';
-          const email = user?.email?.toLowerCase() || '';
-          const term = searchTerm?.toLowerCase() || '';
+          const name = user?.name?.toLowerCase() || "";
+          const email = user?.email?.toLowerCase() || "";
+          const term = searchTerm?.toLowerCase() || "";
           return name.includes(term) || email.includes(term);
         } catch (error) {
-          console.error('Error filtering user:', user, error);
+          console.error("Error filtering user:", user, error);
           return false;
         }
       });
     } catch (error) {
-      console.error('Error in filteredUsers:', error);
+      console.error("Error in filteredUsers:", error);
       return [];
     }
   })();
@@ -828,8 +1038,12 @@ export function AdminDashboard() {
           <div className="flex items-center">
             <Users className="h-8 w-8 text-blue-500" />
             <div className="ml-4">
-              <p className="text-sm font-medium text-muted-foreground">Total Users</p>
-              <p className="text-2xl font-bold">{adminMetrics.totalUsers.toLocaleString()}</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                Total Users
+              </p>
+              <p className="text-2xl font-bold">
+                {adminMetrics.totalUsers.toLocaleString()}
+              </p>
               <p className="text-sm text-green-600">
                 <TrendingUp className="h-3 w-3 inline mr-1" />
                 +12% from last month
@@ -842,8 +1056,12 @@ export function AdminDashboard() {
           <div className="flex items-center">
             <DollarSign className="h-8 w-8 text-green-500" />
             <div className="ml-4">
-              <p className="text-sm font-medium text-muted-foreground">Monthly Revenue</p>
-              <p className="text-2xl font-bold">${adminMetrics.monthlyRevenue.toLocaleString()}</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                Monthly Revenue
+              </p>
+              <p className="text-2xl font-bold">
+                ${adminMetrics.monthlyRevenue.toLocaleString()}
+              </p>
               <p className="text-sm text-green-600">
                 <TrendingUp className="h-3 w-3 inline mr-1" />
                 +8% from last month
@@ -856,10 +1074,18 @@ export function AdminDashboard() {
           <div className="flex items-center">
             <Activity className="h-8 w-8 text-purple-500" />
             <div className="ml-4">
-              <p className="text-sm font-medium text-muted-foreground">Active Users</p>
-              <p className="text-2xl font-bold">{adminMetrics.activeUsers.toLocaleString()}</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                Active Users
+              </p>
+              <p className="text-2xl font-bold">
+                {adminMetrics.activeUsers.toLocaleString()}
+              </p>
               <p className="text-sm text-muted-foreground">
-                {((adminMetrics.activeUsers / adminMetrics.totalUsers) * 100).toFixed(1)}% of total
+                {(
+                  (adminMetrics.activeUsers / adminMetrics.totalUsers) *
+                  100
+                ).toFixed(1)}
+                % of total
               </p>
             </div>
           </div>
@@ -869,8 +1095,12 @@ export function AdminDashboard() {
           <div className="flex items-center">
             <Mail className="h-8 w-8 text-orange-500" />
             <div className="ml-4">
-              <p className="text-sm font-medium text-muted-foreground">Avg Response Rate</p>
-              <p className="text-2xl font-bold">{adminMetrics.averageResponseRate}%</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                Avg Response Rate
+              </p>
+              <p className="text-2xl font-bold">
+                {adminMetrics.averageResponseRate}%
+              </p>
               <p className="text-sm text-green-600">
                 <TrendingUp className="h-3 w-3 inline mr-1" />
                 +2.1% from last month
@@ -887,33 +1117,56 @@ export function AdminDashboard() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium">API Uptime</span>
-              <span className="text-sm font-bold text-green-600">{adminMetrics.systemHealth.apiUptime}%</span>
+              <span className="text-sm font-bold text-green-600">
+                {adminMetrics.systemHealth.apiUptime}%
+              </span>
             </div>
-            <Progress value={adminMetrics.systemHealth.apiUptime} className="h-2" />
+            <Progress
+              value={adminMetrics.systemHealth.apiUptime}
+              className="h-2"
+            />
           </div>
-          
+
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium">Queue Health</span>
-              <span className="text-sm font-bold text-green-600">{adminMetrics.systemHealth.queueHealth}%</span>
+              <span className="text-sm font-bold text-green-600">
+                {adminMetrics.systemHealth.queueHealth}%
+              </span>
             </div>
-            <Progress value={adminMetrics.systemHealth.queueHealth} className="h-2" />
+            <Progress
+              value={adminMetrics.systemHealth.queueHealth}
+              className="h-2"
+            />
           </div>
-          
+
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium">Error Rate</span>
-              <span className="text-sm font-bold text-red-600">{adminMetrics.systemHealth.errorRate}%</span>
+              <span className="text-sm font-bold text-red-600">
+                {adminMetrics.systemHealth.errorRate}%
+              </span>
             </div>
-            <Progress value={100 - (adminMetrics.systemHealth.errorRate * 10)} className="h-2" />
+            <Progress
+              value={100 - adminMetrics.systemHealth.errorRate * 10}
+              className="h-2"
+            />
           </div>
-          
+
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium">Avg Response</span>
-              <span className="text-sm font-bold">{adminMetrics.systemHealth.avgResponseTime}ms</span>
+              <span className="text-sm font-bold">
+                {adminMetrics.systemHealth.avgResponseTime}ms
+              </span>
             </div>
-            <Progress value={Math.max(0, 100 - (adminMetrics.systemHealth.avgResponseTime / 10))} className="h-2" />
+            <Progress
+              value={Math.max(
+                0,
+                100 - adminMetrics.systemHealth.avgResponseTime / 10,
+              )}
+              className="h-2"
+            />
           </div>
         </div>
       </Card>
@@ -943,10 +1196,12 @@ export function AdminDashboard() {
             <div>
               <p className="text-sm font-medium">System Status</p>
               <p className="text-lg font-bold text-green-600">
-                {systemStatus?.leadGenerationPaused ? 'PAUSED' : 'OPERATIONAL'}
+                {systemStatus?.leadGenerationPaused ? "PAUSED" : "OPERATIONAL"}
               </p>
             </div>
-            <Power className={`h-8 w-8 ${systemStatus?.leadGenerationPaused ? 'text-red-500' : 'text-green-500'}`} />
+            <Power
+              className={`h-8 w-8 ${systemStatus?.leadGenerationPaused ? "text-red-500" : "text-green-500"}`}
+            />
           </div>
 
           <div className="flex items-center justify-between p-4 border rounded-lg">
@@ -963,7 +1218,8 @@ export function AdminDashboard() {
             <div>
               <p className="text-sm font-medium">Queue Status</p>
               <p className="text-lg font-bold">
-                {(systemActivity?.queueStatus?.batchPlans || 0) + (systemActivity?.queueStatus?.searchBatches || 0)}
+                {(systemActivity?.queueStatus?.batchPlans || 0) +
+                  (systemActivity?.queueStatus?.searchBatches || 0)}
               </p>
             </div>
             <Clock className="h-8 w-8 text-orange-500" />
@@ -1048,7 +1304,9 @@ export function AdminDashboard() {
                 <DollarSign className="h-4 w-4 text-orange-500" />
                 <span className="text-sm">Revenue Today</span>
               </div>
-              <span className="font-bold">${adminMetrics.monthlyRevenue.toLocaleString()}</span>
+              <span className="font-bold">
+                ${adminMetrics.monthlyRevenue.toLocaleString()}
+              </span>
             </div>
           </div>
         </Card>
@@ -1079,7 +1337,9 @@ export function AdminDashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">User Management</h3>
-          <p className="text-sm text-muted-foreground">Manage user accounts and permissions</p>
+          <p className="text-sm text-muted-foreground">
+            Manage user accounts and permissions
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => handleExportData("users")}>
@@ -1108,55 +1368,65 @@ export function AdminDashboard() {
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead>Plan</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Credits</TableHead>
-              <TableHead>Total Spent</TableHead>
-              <TableHead>Last Login</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredUsers.map((user) => (
-              <TableRow key={user.id}>
-                <TableCell>
-                  <div>
-                    <div className="font-medium">{user.name}</div>
-                    <div className="text-sm text-muted-foreground">{user.email}</div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {getPlanBadge(user.plan)}
-                </TableCell>
-                <TableCell>
-                  {getStatusBadge(user.status)}
-                </TableCell>
-                <TableCell>{user.creditsRemaining}</TableCell>
-                <TableCell>${user.totalSpent}</TableCell>
-                <TableCell>
-                  {new Date(user.lastLogin).toLocaleDateString()}
-                </TableCell>
-                <TableCell>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => handleUserAction(user.id, "View")}>
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleUserAction(user.id, "Edit")}>
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    {user.status !== "banned" && (
-                      <Button variant="ghost" size="sm" onClick={() => handleUserAction(user.id, "Ban")}>
-                        <Ban className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </TableCell>
+            <TableHeader>
+              <TableRow>
+                <TableHead>User</TableHead>
+                <TableHead>Plan</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Credits</TableHead>
+                <TableHead>Total Spent</TableHead>
+                <TableHead>Last Login</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
+            </TableHeader>
+            <TableBody>
+              {filteredUsers.map((user) => (
+                <TableRow key={user.id}>
+                  <TableCell>
+                    <div>
+                      <div className="font-medium">{user.name}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {user.email}
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>{getPlanBadge(user.plan)}</TableCell>
+                  <TableCell>{getStatusBadge(user.status)}</TableCell>
+                  <TableCell>{user.creditsRemaining}</TableCell>
+                  <TableCell>${user.totalSpent}</TableCell>
+                  <TableCell>
+                    {new Date(user.lastLogin).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleUserAction(user.id, "View")}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleUserAction(user.id, "Edit")}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      {user.status !== "banned" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleUserAction(user.id, "Ban")}
+                        >
+                          <Ban className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
           </Table>
         </div>
       </Card>
@@ -1168,7 +1438,9 @@ export function AdminDashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">Company Insights</h3>
-          <p className="text-sm text-muted-foreground">Monitor company performance and usage</p>
+          <p className="text-sm text-muted-foreground">
+            Monitor company performance and usage
+          </p>
         </div>
         <Button variant="outline" onClick={() => handleExportData("companies")}>
           <Download className="h-4 w-4 mr-2" />
@@ -1179,41 +1451,41 @@ export function AdminDashboard() {
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Company</TableHead>
-              <TableHead>Industry</TableHead>
-              <TableHead>Users</TableHead>
-              <TableHead>Plan</TableHead>
-              <TableHead>Revenue</TableHead>
-              <TableHead>Monthly Searches</TableHead>
-              <TableHead>Conversion Rate</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {companies.map((company) => (
-              <TableRow key={company.id}>
-                <TableCell className="font-medium">{company.name}</TableCell>
-                <TableCell>{company.industry}</TableCell>
-                <TableCell>{company.userCount}</TableCell>
-                <TableCell>{getPlanBadge(company.plan)}</TableCell>
-                <TableCell>${company.totalRevenue}</TableCell>
-                <TableCell>{company.monthlySearches}</TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    {company.conversionRate}%
-                    {company.conversionRate > 15 ? (
-                      <TrendingUp className="h-3 w-3 text-green-500" />
-                    ) : (
-                      <TrendingDown className="h-3 w-3 text-red-500" />
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell>{getStatusBadge(company.status)}</TableCell>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Company</TableHead>
+                <TableHead>Industry</TableHead>
+                <TableHead>Users</TableHead>
+                <TableHead>Plan</TableHead>
+                <TableHead>Revenue</TableHead>
+                <TableHead>Monthly Searches</TableHead>
+                <TableHead>Conversion Rate</TableHead>
+                <TableHead>Status</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
+            </TableHeader>
+            <TableBody>
+              {companies.map((company) => (
+                <TableRow key={company.id}>
+                  <TableCell className="font-medium">{company.name}</TableCell>
+                  <TableCell>{company.industry}</TableCell>
+                  <TableCell>{company.userCount}</TableCell>
+                  <TableCell>{getPlanBadge(company.plan)}</TableCell>
+                  <TableCell>${company.totalRevenue}</TableCell>
+                  <TableCell>{company.monthlySearches}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      {company.conversionRate}%
+                      {company.conversionRate > 15 ? (
+                        <TrendingUp className="h-3 w-3 text-green-500" />
+                      ) : (
+                        <TrendingDown className="h-3 w-3 text-red-500" />
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>{getStatusBadge(company.status)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
           </Table>
         </div>
       </Card>
@@ -1225,7 +1497,9 @@ export function AdminDashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">System Configuration</h3>
-          <p className="text-sm text-muted-foreground">Manage credit costs and plan limits</p>
+          <p className="text-sm text-muted-foreground">
+            Manage credit costs and plan limits
+          </p>
         </div>
       </div>
 
@@ -1239,17 +1513,21 @@ export function AdminDashboard() {
               Save Changes
             </Button>
           </div>
-          
+
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Lead Discovery</label>
+              <label className="text-sm font-medium text-muted-foreground">
+                Lead Discovery
+              </label>
               <Input
                 type="number"
                 value={creditCosts.leadDiscovery}
-                onChange={(e) => setCreditCosts(prev => ({
-                  ...prev,
-                  leadDiscovery: parseInt(e.target.value) || 0
-                }))}
+                onChange={(e) =>
+                  setCreditCosts((prev) => ({
+                    ...prev,
+                    leadDiscovery: parseInt(e.target.value) || 0,
+                  }))
+                }
                 className="mt-1"
                 min="0"
               />
@@ -1259,14 +1537,18 @@ export function AdminDashboard() {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Contact Enrichment</label>
+              <label className="text-sm font-medium text-muted-foreground">
+                Contact Enrichment
+              </label>
               <Input
                 type="number"
                 value={creditCosts.contactEnrichment}
-                onChange={(e) => setCreditCosts(prev => ({
-                  ...prev,
-                  contactEnrichment: parseInt(e.target.value) || 0
-                }))}
+                onChange={(e) =>
+                  setCreditCosts((prev) => ({
+                    ...prev,
+                    contactEnrichment: parseInt(e.target.value) || 0,
+                  }))
+                }
                 className="mt-1"
                 min="0"
               />
@@ -1276,14 +1558,18 @@ export function AdminDashboard() {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-muted-foreground">AI Analysis</label>
+              <label className="text-sm font-medium text-muted-foreground">
+                AI Analysis
+              </label>
               <Input
                 type="number"
                 value={creditCosts.aiAnalysis}
-                onChange={(e) => setCreditCosts(prev => ({
-                  ...prev,
-                  aiAnalysis: parseInt(e.target.value) || 0
-                }))}
+                onChange={(e) =>
+                  setCreditCosts((prev) => ({
+                    ...prev,
+                    aiAnalysis: parseInt(e.target.value) || 0,
+                  }))
+                }
                 className="mt-1"
                 min="0"
               />
@@ -1293,14 +1579,18 @@ export function AdminDashboard() {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Email Generation</label>
+              <label className="text-sm font-medium text-muted-foreground">
+                Email Generation
+              </label>
               <Input
                 type="number"
                 value={creditCosts.emailGeneration}
-                onChange={(e) => setCreditCosts(prev => ({
-                  ...prev,
-                  emailGeneration: parseInt(e.target.value) || 0
-                }))}
+                onChange={(e) =>
+                  setCreditCosts((prev) => ({
+                    ...prev,
+                    emailGeneration: parseInt(e.target.value) || 0,
+                  }))
+                }
                 className="mt-1"
                 min="0"
               />
@@ -1310,14 +1600,18 @@ export function AdminDashboard() {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Bulk Analysis</label>
+              <label className="text-sm font-medium text-muted-foreground">
+                Bulk Analysis
+              </label>
               <Input
                 type="number"
                 value={creditCosts.bulkAnalysis}
-                onChange={(e) => setCreditCosts(prev => ({
-                  ...prev,
-                  bulkAnalysis: parseInt(e.target.value) || 0
-                }))}
+                onChange={(e) =>
+                  setCreditCosts((prev) => ({
+                    ...prev,
+                    bulkAnalysis: parseInt(e.target.value) || 0,
+                  }))
+                }
                 className="mt-1"
                 min="0"
               />
@@ -1347,40 +1641,61 @@ export function AdminDashboard() {
               </h5>
               <div className="space-y-3 pl-5">
                 <div>
-                  <label className="text-xs text-muted-foreground">Monthly Credits</label>
+                  <label className="text-xs text-muted-foreground">
+                    Monthly Credits
+                  </label>
                   <Input
                     type="number"
                     value={planLimits.free.monthlyCredits}
-                    onChange={(e) => setPlanLimits(prev => ({
-                      ...prev,
-                      free: { ...prev.free, monthlyCredits: parseInt(e.target.value) || 0 }
-                    }))}
+                    onChange={(e) =>
+                      setPlanLimits((prev) => ({
+                        ...prev,
+                        free: {
+                          ...prev.free,
+                          monthlyCredits: parseInt(e.target.value) || 0,
+                        },
+                      }))
+                    }
                     className="mt-1"
                     min="0"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">Max Leads Per Search</label>
+                  <label className="text-xs text-muted-foreground">
+                    Max Leads Per Search
+                  </label>
                   <Input
                     type="number"
                     value={planLimits.free.maxLeadsPerSearch}
-                    onChange={(e) => setPlanLimits(prev => ({
-                      ...prev,
-                      free: { ...prev.free, maxLeadsPerSearch: parseInt(e.target.value) || 0 }
-                    }))}
+                    onChange={(e) =>
+                      setPlanLimits((prev) => ({
+                        ...prev,
+                        free: {
+                          ...prev.free,
+                          maxLeadsPerSearch: parseInt(e.target.value) || 0,
+                        },
+                      }))
+                    }
                     className="mt-1"
                     min="0"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">Max Searches</label>
+                  <label className="text-xs text-muted-foreground">
+                    Max Searches
+                  </label>
                   <Input
                     type="number"
                     value={planLimits.free.maxSearches}
-                    onChange={(e) => setPlanLimits(prev => ({
-                      ...prev,
-                      free: { ...prev.free, maxSearches: parseInt(e.target.value) || 0 }
-                    }))}
+                    onChange={(e) =>
+                      setPlanLimits((prev) => ({
+                        ...prev,
+                        free: {
+                          ...prev.free,
+                          maxSearches: parseInt(e.target.value) || 0,
+                        },
+                      }))
+                    }
                     className="mt-1"
                     min="0"
                   />
@@ -1396,40 +1711,61 @@ export function AdminDashboard() {
               </h5>
               <div className="space-y-3 pl-5">
                 <div>
-                  <label className="text-xs text-muted-foreground">Monthly Credits</label>
+                  <label className="text-xs text-muted-foreground">
+                    Monthly Credits
+                  </label>
                   <Input
                     type="number"
                     value={planLimits.pro.monthlyCredits}
-                    onChange={(e) => setPlanLimits(prev => ({
-                      ...prev,
-                      pro: { ...prev.pro, monthlyCredits: parseInt(e.target.value) || 0 }
-                    }))}
+                    onChange={(e) =>
+                      setPlanLimits((prev) => ({
+                        ...prev,
+                        pro: {
+                          ...prev.pro,
+                          monthlyCredits: parseInt(e.target.value) || 0,
+                        },
+                      }))
+                    }
                     className="mt-1"
                     min="0"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">Max Leads Per Search</label>
+                  <label className="text-xs text-muted-foreground">
+                    Max Leads Per Search
+                  </label>
                   <Input
                     type="number"
                     value={planLimits.pro.maxLeadsPerSearch}
-                    onChange={(e) => setPlanLimits(prev => ({
-                      ...prev,
-                      pro: { ...prev.pro, maxLeadsPerSearch: parseInt(e.target.value) || 0 }
-                    }))}
+                    onChange={(e) =>
+                      setPlanLimits((prev) => ({
+                        ...prev,
+                        pro: {
+                          ...prev.pro,
+                          maxLeadsPerSearch: parseInt(e.target.value) || 0,
+                        },
+                      }))
+                    }
                     className="mt-1"
                     min="0"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">Max Searches</label>
+                  <label className="text-xs text-muted-foreground">
+                    Max Searches
+                  </label>
                   <Input
                     type="number"
                     value={planLimits.pro.maxSearches}
-                    onChange={(e) => setPlanLimits(prev => ({
-                      ...prev,
-                      pro: { ...prev.pro, maxSearches: parseInt(e.target.value) || 0 }
-                    }))}
+                    onChange={(e) =>
+                      setPlanLimits((prev) => ({
+                        ...prev,
+                        pro: {
+                          ...prev.pro,
+                          maxSearches: parseInt(e.target.value) || 0,
+                        },
+                      }))
+                    }
                     className="mt-1"
                     min="0"
                   />
@@ -1445,40 +1781,61 @@ export function AdminDashboard() {
               </h5>
               <div className="space-y-3 pl-5">
                 <div>
-                  <label className="text-xs text-muted-foreground">Monthly Credits</label>
+                  <label className="text-xs text-muted-foreground">
+                    Monthly Credits
+                  </label>
                   <Input
                     type="number"
                     value={planLimits.enterprise.monthlyCredits}
-                    onChange={(e) => setPlanLimits(prev => ({
-                      ...prev,
-                      enterprise: { ...prev.enterprise, monthlyCredits: parseInt(e.target.value) || 0 }
-                    }))}
+                    onChange={(e) =>
+                      setPlanLimits((prev) => ({
+                        ...prev,
+                        enterprise: {
+                          ...prev.enterprise,
+                          monthlyCredits: parseInt(e.target.value) || 0,
+                        },
+                      }))
+                    }
                     className="mt-1"
                     min="0"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">Max Leads Per Search</label>
+                  <label className="text-xs text-muted-foreground">
+                    Max Leads Per Search
+                  </label>
                   <Input
                     type="number"
                     value={planLimits.enterprise.maxLeadsPerSearch}
-                    onChange={(e) => setPlanLimits(prev => ({
-                      ...prev,
-                      enterprise: { ...prev.enterprise, maxLeadsPerSearch: parseInt(e.target.value) || 0 }
-                    }))}
+                    onChange={(e) =>
+                      setPlanLimits((prev) => ({
+                        ...prev,
+                        enterprise: {
+                          ...prev.enterprise,
+                          maxLeadsPerSearch: parseInt(e.target.value) || 0,
+                        },
+                      }))
+                    }
                     className="mt-1"
                     min="0"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">Max Searches (-1 for unlimited)</label>
+                  <label className="text-xs text-muted-foreground">
+                    Max Searches (-1 for unlimited)
+                  </label>
                   <Input
                     type="number"
                     value={planLimits.enterprise.maxSearches}
-                    onChange={(e) => setPlanLimits(prev => ({
-                      ...prev,
-                      enterprise: { ...prev.enterprise, maxSearches: parseInt(e.target.value) || 0 }
-                    }))}
+                    onChange={(e) =>
+                      setPlanLimits((prev) => ({
+                        ...prev,
+                        enterprise: {
+                          ...prev.enterprise,
+                          maxSearches: parseInt(e.target.value) || 0,
+                        },
+                      }))
+                    }
                     className="mt-1"
                     min="-1"
                   />
@@ -1491,7 +1848,9 @@ export function AdminDashboard() {
 
       {/* Current Configuration Summary */}
       <Card className="p-6">
-        <h4 className="text-lg font-semibold mb-4">Current Configuration Summary</h4>
+        <h4 className="text-lg font-semibold mb-4">
+          Current Configuration Summary
+        </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <h5 className="font-medium mb-2">Credit Costs</h5>
@@ -1546,20 +1905,20 @@ export function AdminDashboard() {
     const getStatusBadgeColor = (status?: string): string => {
       try {
         switch (status) {
-          case 'operational':
-            return 'bg-green-100 text-green-800 border-green-200';
-          case 'degraded':
-            return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-          case 'down':
-            return 'bg-red-100 text-red-800 border-red-200';
-          case 'maintenance':
-            return 'bg-blue-100 text-blue-800 border-blue-200';
+          case "operational":
+            return "bg-green-100 text-green-800 border-green-200";
+          case "degraded":
+            return "bg-yellow-100 text-yellow-800 border-yellow-200";
+          case "down":
+            return "bg-red-100 text-red-800 border-red-200";
+          case "maintenance":
+            return "bg-blue-100 text-blue-800 border-blue-200";
           default:
-            return 'bg-gray-100 text-gray-800 border-gray-200';
+            return "bg-gray-100 text-gray-800 border-gray-200";
         }
       } catch (error) {
-        console.error('Error determining status badge color:', error);
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        console.error("Error determining status badge color:", error);
+        return "bg-gray-100 text-gray-800 border-gray-200";
       }
     };
 
@@ -1574,7 +1933,7 @@ export function AdminDashboard() {
           });
           return;
         }
-        window.open(url, '_blank', 'noopener,noreferrer');
+        window.open(url, "_blank", "noopener,noreferrer");
       } catch (error) {
         console.error(`Failed to open URL for ${serviceName}:`, error);
         toast({
@@ -1588,208 +1947,253 @@ export function AdminDashboard() {
     try {
       // Early return if no services available
       if (!externalServices || externalServices.length === 0) {
-          return (
-            <div className="space-y-6">
-              <Alert>
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription>
-                  No external services configured. Please contact system administrator.
-                </AlertDescription>
-              </Alert>
-            </div>
-          );
-        }
+        return (
+          <div className="space-y-6">
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                No external services configured. Please contact system
+                administrator.
+              </AlertDescription>
+            </Alert>
+          </div>
+        );
+      }
 
-        // Safe grouping of services by category
-        const servicesByCategory = externalServices.reduce((acc, service) => {
+      // Safe grouping of services by category
+      const servicesByCategory = externalServices.reduce(
+        (acc, service) => {
           try {
             if (!service || !service.category) {
-              console.warn('Invalid service configuration:', service);
+              console.warn("Invalid service configuration:", service);
               return acc;
             }
             if (!acc[service.category]) acc[service.category] = [];
             acc[service.category].push(service);
             return acc;
           } catch (error) {
-            console.error('Error grouping service:', service, error);
+            console.error("Error grouping service:", service, error);
             return acc;
           }
-        }, {} as Record<string, ExternalService[]>);
+        },
+        {} as Record<string, ExternalService[]>,
+      );
 
-        const categoryTitles: Record<string, string> = {
-          infrastructure: 'Infrastructure & Deployment',
-          monitoring: 'Monitoring & Analytics', 
-          api: 'APIs & External Services',
-          development: 'Development Tools',
-          'ai-research': 'AI Research Services (Tiered System)'
-        };
+      const categoryTitles: Record<string, string> = {
+        infrastructure: "Infrastructure & Deployment",
+        monitoring: "Monitoring & Analytics",
+        api: "APIs & External Services",
+        development: "Development Tools",
+        "ai-research": "AI Research Services (Tiered System)",
+      };
 
-        // Calculate stats safely
-        const operationalServices = externalServices.filter(s => s?.status === 'operational').length;
-        const totalQuickActions = externalServices.reduce((sum, service) => {
-          try {
-            return sum + (service?.quickActions?.length || 0);
-          } catch {
-            return sum;
-          }
-        }, 0);
+      // Calculate stats safely
+      const operationalServices = externalServices.filter(
+        (s) => s?.status === "operational",
+      ).length;
+      const totalQuickActions = externalServices.reduce((sum, service) => {
+        try {
+          return sum + (service?.quickActions?.length || 0);
+        } catch {
+          return sum;
+        }
+      }, 0);
 
-        return (
-          <div className="space-y-8">
-            {/* Header Section */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-semibold">External Services</h3>
-                <p className="text-sm text-muted-foreground">
-                  Quick access to all external service dashboards and management consoles
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  {operationalServices} of {externalServices.length} Operational
-                </Badge>
-              </div>
+      return (
+        <div className="space-y-8">
+          {/* Header Section */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold">External Services</h3>
+              <p className="text-sm text-muted-foreground">
+                Quick access to all external service dashboards and management
+                consoles
+              </p>
             </div>
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className="bg-green-50 text-green-700 border-green-200"
+              >
+                <CheckCircle className="h-3 w-3 mr-1" />
+                {operationalServices} of {externalServices.length} Operational
+              </Badge>
+            </div>
+          </div>
 
-            {/* Services by Category */}
-            {Object.entries(servicesByCategory).map(([category, services]) => {
-              const categoryTitle = categoryTitles[category] || category;
-              
-              return (
-                <div key={category} className="space-y-4">
-                  <h4 className="text-md font-medium text-muted-foreground border-b pb-2">
-                    {categoryTitle} ({services.length})
-                  </h4>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {services.map((service) => {
-                      try {
-                        const IconComponent = service.icon;
-                        
-                        return (
-                          <Card key={service.id} className="p-6 hover:shadow-lg transition-shadow duration-200 border-2">
-                            <div className="space-y-4">
-                              {/* Header */}
-                              <div className="flex items-start justify-between">
-                                <div className="flex items-center gap-3">
-                                  <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">
-                                    <IconComponent className="h-6 w-6 text-blue-600" />
-                                  </div>
-                                  <div>
-                                    <h5 className="font-semibold text-lg">{service.name}</h5>
-                                    {service.status && (
-                                      <Badge 
-                                        variant="outline" 
-                                        className={`mt-1 text-xs ${getStatusBadgeColor(service.status)}`}
-                                      >
-                                        {service.status.charAt(0).toUpperCase() + service.status.slice(1)}
-                                      </Badge>
-                                    )}
-                                  </div>
+          {/* Services by Category */}
+          {Object.entries(servicesByCategory).map(([category, services]) => {
+            const categoryTitle = categoryTitles[category] || category;
+
+            return (
+              <div key={category} className="space-y-4">
+                <h4 className="text-md font-medium text-muted-foreground border-b pb-2">
+                  {categoryTitle} ({services.length})
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {services.map((service) => {
+                    try {
+                      const IconComponent = service.icon;
+
+                      return (
+                        <Card
+                          key={service.id}
+                          className="p-6 hover:shadow-lg transition-shadow duration-200 border-2"
+                        >
+                          <div className="space-y-4">
+                            {/* Header */}
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">
+                                  <IconComponent className="h-6 w-6 text-blue-600" />
+                                </div>
+                                <div>
+                                  <h5 className="font-semibold text-lg">
+                                    {service.name}
+                                  </h5>
+                                  {service.status && (
+                                    <Badge
+                                      variant="outline"
+                                      className={`mt-1 text-xs ${getStatusBadgeColor(service.status)}`}
+                                    >
+                                      {service.status.charAt(0).toUpperCase() +
+                                        service.status.slice(1)}
+                                    </Badge>
+                                  )}
                                 </div>
                               </div>
+                            </div>
 
-                              {/* Description */}
-                              <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
-                                {service.description}
-                              </p>
+                            {/* Description */}
+                            <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
+                              {service.description}
+                            </p>
 
-                              {/* Actions */}
-                              <div className="space-y-2">
-                                {/* Primary Action */}
-                                <Button 
-                                  className="w-full" 
-                                  onClick={() => safeOpenUrl(service.url, service.name)}
-                                  disabled={!validateUrl(service.url)}
-                                  aria-label={`Open ${service.name} in new tab`}
-                                >
-                                  <ExternalLink className="h-4 w-4 mr-2" aria-hidden="true" />
-                                  Open {service.name}
-                                </Button>
+                            {/* Actions */}
+                            <div className="space-y-2">
+                              {/* Primary Action */}
+                              <Button
+                                className="w-full"
+                                onClick={() =>
+                                  safeOpenUrl(service.url, service.name)
+                                }
+                                disabled={!validateUrl(service.url)}
+                                aria-label={`Open ${service.name} in new tab`}
+                              >
+                                <ExternalLink
+                                  className="h-4 w-4 mr-2"
+                                  aria-hidden="true"
+                                />
+                                Open {service.name}
+                              </Button>
 
-                                {/* Quick Actions */}
-                                {service.quickActions && service.quickActions.length > 0 && (
+                              {/* Quick Actions */}
+                              {service.quickActions &&
+                                service.quickActions.length > 0 && (
                                   <div className="flex flex-wrap gap-1">
-                                    {service.quickActions.map((action, index) => (
-                                      <Button
-                                        key={`${service.id}-${index}`}
-                                        variant="ghost"
-                                        size="sm"
-                                        className="text-xs h-7"
-                                        onClick={() => safeOpenUrl(action.url, `${service.name} ${action.label}`)}
-                                        disabled={!validateUrl(action.url)}
-                                        aria-label={`Open ${service.name} ${action.label} in new tab`}
-                                      >
-                                        {action.icon && <action.icon className="h-3 w-3 mr-1" aria-hidden="true" />}
-                                        {action.label}
-                                      </Button>
-                                    ))}
+                                    {service.quickActions.map(
+                                      (action, index) => (
+                                        <Button
+                                          key={`${service.id}-${index}`}
+                                          variant="ghost"
+                                          size="sm"
+                                          className="text-xs h-7"
+                                          onClick={() =>
+                                            safeOpenUrl(
+                                              action.url,
+                                              `${service.name} ${action.label}`,
+                                            )
+                                          }
+                                          disabled={!validateUrl(action.url)}
+                                          aria-label={`Open ${service.name} ${action.label} in new tab`}
+                                        >
+                                          {action.icon && (
+                                            <action.icon
+                                              className="h-3 w-3 mr-1"
+                                              aria-hidden="true"
+                                            />
+                                          )}
+                                          {action.label}
+                                        </Button>
+                                      ),
+                                    )}
                                   </div>
                                 )}
-                              </div>
                             </div>
-                          </Card>
-                        );
-                      } catch (error) {
-                        console.error(`Error rendering service ${service?.name}:`, error);
-                        return (
-                          <Card key={service?.id || `error-${category}`} className="p-6 bg-red-50 border-red-200">
-                            <Alert>
-                              <AlertTriangle className="h-4 w-4" />
-                              <AlertDescription>
-                                Error loading service configuration
-                              </AlertDescription>
-                            </Alert>
-                          </Card>
-                        );
-                      }
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Service Summary Stats */}
-            <Card className="p-6 border-2">
-              <h4 className="text-lg font-semibold mb-4">Service Overview</h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {externalServices.length}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Total Services</div>
-                </div>
-                <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
-                  <div className="text-2xl font-bold text-green-600">
-                    {operationalServices}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Operational</div>
-                </div>
-                <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
-                  <div className="text-2xl font-bold text-purple-600">
-                    {Object.keys(servicesByCategory).length}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Categories</div>
-                </div>
-                <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-200">
-                  <div className="text-2xl font-bold text-orange-600">
-                    {totalQuickActions}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Quick Actions</div>
+                          </div>
+                        </Card>
+                      );
+                    } catch (error) {
+                      console.error(
+                        `Error rendering service ${service?.name}:`,
+                        error,
+                      );
+                      return (
+                        <Card
+                          key={service?.id || `error-${category}`}
+                          className="p-6 bg-red-50 border-red-200"
+                        >
+                          <Alert>
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertDescription>
+                              Error loading service configuration
+                            </AlertDescription>
+                          </Alert>
+                        </Card>
+                      );
+                    }
+                  })}
                 </div>
               </div>
-            </Card>
-          </div>
-        );
+            );
+          })}
+
+          {/* Service Summary Stats */}
+          <Card className="p-6 border-2">
+            <h4 className="text-lg font-semibold mb-4">Service Overview</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="text-2xl font-bold text-blue-600">
+                  {externalServices.length}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Total Services
+                </div>
+              </div>
+              <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
+                <div className="text-2xl font-bold text-green-600">
+                  {operationalServices}
+                </div>
+                <div className="text-sm text-muted-foreground">Operational</div>
+              </div>
+              <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
+                <div className="text-2xl font-bold text-purple-600">
+                  {Object.keys(servicesByCategory).length}
+                </div>
+                <div className="text-sm text-muted-foreground">Categories</div>
+              </div>
+              <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-200">
+                <div className="text-2xl font-bold text-orange-600">
+                  {totalQuickActions}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Quick Actions
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      );
     } catch (error) {
-      console.error('Critical error in renderExternalServices:', error);
+      console.error("Critical error in renderExternalServices:", error);
       return (
         <div className="p-6">
           <Alert>
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              <strong>Error loading external services:</strong> {error instanceof Error ? error.message : 'Unknown error'}
+              <strong>Error loading external services:</strong>{" "}
+              {error instanceof Error ? error.message : "Unknown error"}
             </AlertDescription>
           </Alert>
         </div>
@@ -1798,18 +2202,24 @@ export function AdminDashboard() {
   }, [toast]); // Dependency on toast for memoization
 
   // Show loading state
-  if (metricsLoading || usersLoading || analyticsLoading || configLoading || systemControlLoading) {
+  if (
+    metricsLoading ||
+    usersLoading ||
+    analyticsLoading ||
+    configLoading ||
+    systemControlLoading
+  ) {
     return (
       <div className="p-6 max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-          <p className="text-muted-foreground">Monitor system performance and manage users</p>
+          <p className="text-muted-foreground">
+            Monitor system performance and manage users
+          </p>
         </div>
         <Alert>
           <Clock className="h-4 w-4 animate-spin" />
-          <AlertDescription>
-            Loading admin dashboard data...
-          </AlertDescription>
+          <AlertDescription>Loading admin dashboard data...</AlertDescription>
         </Alert>
       </div>
     );
@@ -1825,9 +2235,9 @@ export function AdminDashboard() {
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
               <strong>Admin Dashboard Error:</strong> {renderError}
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 className="ml-4"
                 onClick={() => {
                   setRenderError(null);
@@ -1842,7 +2252,9 @@ export function AdminDashboard() {
 
         <div className="mb-8">
           <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-          <p className="text-muted-foreground">Monitor system performance and manage users</p>
+          <p className="text-muted-foreground">
+            Monitor system performance and manage users
+          </p>
         </div>
 
         <Tabs value={currentTab} onValueChange={setCurrentTab}>
@@ -1866,221 +2278,294 @@ export function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="users" className="mt-6">
-            {safeRender(renderUserManagement, "User management tab failed to render")}
+            {safeRender(
+              renderUserManagement,
+              "User management tab failed to render",
+            )}
           </TabsContent>
 
           <TabsContent value="credits" className="mt-6">
-            {safeRender(() => <CreditManagement />, "Credit management tab failed to render")}
+            {safeRender(
+              () => (
+                <CreditManagement />
+              ),
+              "Credit management tab failed to render",
+            )}
           </TabsContent>
 
           <TabsContent value="services" className="mt-6">
-            {safeRender(() => renderExternalServices, "External services tab failed to render")}
+            {safeRender(
+              () => renderExternalServices,
+              "External services tab failed to render",
+            )}
           </TabsContent>
 
           <TabsContent value="configuration" className="mt-6">
-            {safeRender(renderConfiguration, "Configuration tab failed to render")}
+            {safeRender(
+              renderConfiguration,
+              "Configuration tab failed to render",
+            )}
           </TabsContent>
 
           <TabsContent value="system" className="mt-6">
-            {safeRender(() => (
-              <div className="space-y-6">
-                {/* Emergency Stop Controls */}
-                <Card className="border-red-500 bg-red-50">
-                  <div className="p-6">
-                    <div className="flex items-center gap-3 mb-4">
-                      <AlertTriangle className="h-6 w-6 text-red-600" />
-                      <h3 className="text-lg font-semibold text-red-700">Emergency Controls</h3>
-                    </div>
-                    
-                    <div className="space-y-4">
-                      {systemStatus?.leadGenerationPaused ? (
-                        <div className="space-y-3">
-                          <Alert variant="destructive">
-                            <AlertTriangle className="h-4 w-4" />
-                            <AlertDescription>
-                              <strong>LEAD GENERATION IS PAUSED</strong>
-                              <br />
-                              Reason: {systemStatus.orchestrationSettings?.pauseReason || "Administrative stop"}
-                              <br />
-                              Paused: {systemStatus.orchestrationSettings?.pausedAt ? 
-                                new Date(systemStatus.orchestrationSettings.pausedAt).toLocaleString() : "Unknown"}
-                            </AlertDescription>
-                          </Alert>
-                          
-                          <Button 
-                            onClick={async () => {
-                              try {
-                                await resumeAllLeadGeneration();
-                                toast({
-                                  title: "System Resumed",
-                                  description: "Lead generation has been resumed successfully.",
-                                });
-                              } catch (error) {
-                                toast({
-                                  title: "Resume Failed",
-                                  description: "Failed to resume lead generation. Please try again.",
-                                  variant: "destructive",
-                                });
-                              }
-                            }}
-                            className="bg-green-600 hover:bg-green-700"
-                            disabled={systemControlLoading}
-                          >
-                            <Play className="h-4 w-4 mr-2" />
-                            Resume Lead Generation
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <Alert>
-                            <CheckCircle className="h-4 w-4" />
-                            <AlertDescription>
-                              Lead generation system is <strong>ACTIVE</strong> and processing requests normally.
-                            </AlertDescription>
-                          </Alert>
-                          
-                          <Button 
-                            onClick={async () => {
-                              const confirmed = confirm(
-                                "⚠️ EMERGENCY STOP ⚠️\n\n" +
-                                "This will immediately halt ALL lead generation operations.\n" +
-                                "Active searches will be cancelled and users will be notified.\n\n" +
-                                "Are you sure you want to proceed?"
-                              );
-                              
-                              if (confirmed) {
+            {safeRender(
+              () => (
+                <div className="space-y-6">
+                  {/* Emergency Stop Controls */}
+                  <Card className="border-red-500 bg-red-50">
+                    <div className="p-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <AlertTriangle className="h-6 w-6 text-red-600" />
+                        <h3 className="text-lg font-semibold text-red-700">
+                          Emergency Controls
+                        </h3>
+                      </div>
+
+                      <div className="space-y-4">
+                        {systemStatus?.leadGenerationPaused ? (
+                          <div className="space-y-3">
+                            <Alert variant="destructive">
+                              <AlertTriangle className="h-4 w-4" />
+                              <AlertDescription>
+                                <strong>LEAD GENERATION IS PAUSED</strong>
+                                <br />
+                                Reason:{" "}
+                                {systemStatus.orchestrationSettings
+                                  ?.pauseReason || "Administrative stop"}
+                                <br />
+                                Paused:{" "}
+                                {systemStatus.orchestrationSettings?.pausedAt
+                                  ? new Date(
+                                      systemStatus.orchestrationSettings.pausedAt,
+                                    ).toLocaleString()
+                                  : "Unknown"}
+                              </AlertDescription>
+                            </Alert>
+
+                            <Button
+                              onClick={async () => {
                                 try {
-                                  const result = await pauseAllLeadGeneration({ 
-                                    reason: "Emergency stop initiated by administrator" 
-                                  });
+                                  await resumeAllLeadGeneration();
                                   toast({
-                                    title: "🚨 EMERGENCY STOP ACTIVATED",
-                                    description: `Lead generation halted. ${result?.cancelledSearches || 0} searches cancelled.`,
-                                    variant: "destructive",
-                                    duration: 10000,
+                                    title: "System Resumed",
+                                    description:
+                                      "Lead generation has been resumed successfully.",
                                   });
                                 } catch (error) {
                                   toast({
-                                    title: "Emergency Stop Failed",
-                                    description: "Failed to stop lead generation. Please try again.",
+                                    title: "Resume Failed",
+                                    description:
+                                      "Failed to resume lead generation. Please try again.",
                                     variant: "destructive",
                                   });
                                 }
-                              }
-                            }}
-                            variant="destructive"
-                            className="bg-red-600 hover:bg-red-700"
-                            disabled={systemControlLoading}
-                          >
-                            <Square className="h-4 w-4 mr-2" />
-                            🚨 EMERGENCY STOP - Halt All Operations
-                          </Button>
+                              }}
+                              className="bg-green-600 hover:bg-green-700"
+                              disabled={systemControlLoading}
+                            >
+                              <Play className="h-4 w-4 mr-2" />
+                              Resume Lead Generation
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <Alert>
+                              <CheckCircle className="h-4 w-4" />
+                              <AlertDescription>
+                                Lead generation system is{" "}
+                                <strong>ACTIVE</strong> and processing requests
+                                normally.
+                              </AlertDescription>
+                            </Alert>
+
+                            <Button
+                              onClick={async () => {
+                                const confirmed = confirm(
+                                  "⚠️ EMERGENCY STOP ⚠️\n\n" +
+                                    "This will immediately halt ALL lead generation operations.\n" +
+                                    "Active searches will be cancelled and users will be notified.\n\n" +
+                                    "Are you sure you want to proceed?",
+                                );
+
+                                if (confirmed) {
+                                  try {
+                                    const result = await pauseAllLeadGeneration(
+                                      {
+                                        reason:
+                                          "Emergency stop initiated by administrator",
+                                      },
+                                    );
+                                    toast({
+                                      title: "🚨 EMERGENCY STOP ACTIVATED",
+                                      description: `Lead generation halted. ${result?.cancelledSearches || 0} searches cancelled.`,
+                                      variant: "destructive",
+                                      duration: 10000,
+                                    });
+                                  } catch (error) {
+                                    toast({
+                                      title: "Emergency Stop Failed",
+                                      description:
+                                        "Failed to stop lead generation. Please try again.",
+                                      variant: "destructive",
+                                    });
+                                  }
+                                }
+                              }}
+                              variant="destructive"
+                              className="bg-red-600 hover:bg-red-700"
+                              disabled={systemControlLoading}
+                            >
+                              <Square className="h-4 w-4 mr-2" />
+                              🚨 EMERGENCY STOP - Halt All Operations
+                            </Button>
+                          </div>
+                        )}
+
+                        <div className="pt-4 border-t">
+                          <h4 className="font-medium mb-2">Quick Actions</h4>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                try {
+                                  await clearAllActiveSearches({
+                                    reason: "Admin maintenance",
+                                  });
+                                  toast({
+                                    title: "Active Searches Cleared",
+                                    description:
+                                      "All active searches have been cancelled.",
+                                  });
+                                } catch (error) {
+                                  toast({
+                                    title: "Clear Failed",
+                                    description:
+                                      "Failed to clear active searches.",
+                                    variant: "destructive",
+                                  });
+                                }
+                              }}
+                              disabled={systemControlLoading}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Clear Active Searches
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* System Status */}
+                  <Card className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">
+                      System Status
+                    </h3>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-600">
+                          {systemStatus?.processingQueue?.processing || 0}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          Processing
+                        </div>
+                      </div>
+
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-yellow-600">
+                          {systemStatus?.processingQueue?.queued || 0}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          Queued
+                        </div>
+                      </div>
+
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">
+                          {systemStatus?.systemLoad?.activeProcesses || 0}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          Active
+                        </div>
+                      </div>
+
+                      <div className="text-center">
+                        <Badge
+                          variant={
+                            systemStatus?.systemLoad?.status === "high"
+                              ? "destructive"
+                              : systemStatus?.systemLoad?.status === "medium"
+                                ? "default"
+                                : "secondary"
+                          }
+                        >
+                          {systemStatus?.systemLoad?.status || "Normal"} Load
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Recent Activity */}
+                    {systemActivity?.recentSearches &&
+                      systemActivity.recentSearches.length > 0 && (
+                        <div>
+                          <h4 className="font-medium mb-3">Recent Activity</h4>
+                          <div className="space-y-2 max-h-64 overflow-y-auto">
+                            {systemActivity.recentSearches
+                              .slice(0, 10)
+                              .map(
+                                (search: {
+                                  id: string;
+                                  name: string;
+                                  status: string;
+                                  createdAt: number;
+                                }) => (
+                                  <div
+                                    key={search.id}
+                                    className="flex items-center justify-between p-2 bg-muted/20 rounded"
+                                  >
+                                    <div className="flex-1">
+                                      <div className="text-sm font-medium">
+                                        {search.name}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        {new Date(
+                                          search.createdAt,
+                                        ).toLocaleString()}
+                                      </div>
+                                    </div>
+                                    <Badge
+                                      variant={
+                                        search.status === "completed"
+                                          ? "default"
+                                          : search.status === "failed"
+                                            ? "destructive"
+                                            : search.status === "cancelled"
+                                              ? "secondary"
+                                              : "outline"
+                                      }
+                                    >
+                                      {search.status}
+                                    </Badge>
+                                  </div>
+                                ),
+                              )}
+                          </div>
                         </div>
                       )}
-                      
-                      <div className="pt-4 border-t">
-                        <h4 className="font-medium mb-2">Quick Actions</h4>
-                        <div className="flex gap-2">
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={async () => {
-                              try {
-                                await clearAllActiveSearches({ reason: "Admin maintenance" });
-                                toast({
-                                  title: "Active Searches Cleared",
-                                  description: "All active searches have been cancelled.",
-                                });
-                              } catch (error) {
-                                toast({
-                                  title: "Clear Failed",
-                                  description: "Failed to clear active searches.",
-                                  variant: "destructive",
-                                });
-                              }
-                            }}
-                            disabled={systemControlLoading}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Clear Active Searches
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-
-                {/* System Status */}
-                <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-4">System Status</h3>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-600">
-                        {systemStatus?.processingQueue?.processing || 0}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Processing</div>
-                    </div>
-                    
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-yellow-600">
-                        {systemStatus?.processingQueue?.queued || 0}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Queued</div>
-                    </div>
-                    
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-green-600">
-                        {systemStatus?.systemLoad?.activeProcesses || 0}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Active</div>
-                    </div>
-                    
-                    <div className="text-center">
-                      <Badge variant={
-                        systemStatus?.systemLoad?.status === "high" ? "destructive" :
-                        systemStatus?.systemLoad?.status === "medium" ? "default" : "secondary"
-                      }>
-                        {systemStatus?.systemLoad?.status || "Normal"} Load
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {/* Recent Activity */}
-                  {systemActivity?.recentSearches && systemActivity.recentSearches.length > 0 && (
-                    <div>
-                      <h4 className="font-medium mb-3">Recent Activity</h4>
-                      <div className="space-y-2 max-h-64 overflow-y-auto">
-                        {systemActivity.recentSearches.slice(0, 10).map((search: { id: string; name: string; status: string; createdAt: number }) => (
-                          <div key={search.id} className="flex items-center justify-between p-2 bg-muted/20 rounded">
-                            <div className="flex-1">
-                              <div className="text-sm font-medium">{search.name}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {new Date(search.createdAt).toLocaleString()}
-                              </div>
-                            </div>
-                            <Badge variant={
-                              search.status === "completed" ? "default" :
-                              search.status === "failed" ? "destructive" :
-                              search.status === "cancelled" ? "secondary" : "outline"
-                            }>
-                              {search.status}
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </Card>
-              </div>
-            ), "System health tab failed to render")}
+                  </Card>
+                </div>
+              ),
+              "System health tab failed to render",
+            )}
           </TabsContent>
         </Tabs>
       </div>
     );
   } catch (error) {
     // Ultimate fallback for any unhandled render errors
-    console.error('Critical error in AdminDashboard render:', error);
+    console.error("Critical error in AdminDashboard render:", error);
     return (
       <div className="p-6 max-w-7xl mx-auto">
         <Alert>
@@ -2088,10 +2573,10 @@ export function AdminDashboard() {
           <AlertDescription>
             <strong>Critical Admin Dashboard Error:</strong>
             <br />
-            {error instanceof Error ? error.message : 'Unknown error occurred'}
+            {error instanceof Error ? error.message : "Unknown error occurred"}
             <br />
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="mt-4"
               onClick={() => window.location.reload()}
             >

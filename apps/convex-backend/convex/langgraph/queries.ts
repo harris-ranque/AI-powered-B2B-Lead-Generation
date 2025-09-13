@@ -4,7 +4,7 @@ import { requireAuth } from "../auth";
 
 // Get user LangGraph requests with pagination
 export const getUserRequests = query({
-  args: { 
+  args: {
     limit: v.optional(v.number()),
     offset: v.optional(v.number()),
   },
@@ -40,7 +40,7 @@ export const getRequestById = query({
       .query("langgraphRequests")
       .withIndex("by_request_id", (q) => q.eq("requestId", args.requestId))
       .unique();
-    
+
     if (!request || request.userId !== user._id) {
       throw new Error("Request not found or access denied");
     }
@@ -63,30 +63,35 @@ export const getRequestStats = query({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
 
-    const completedRequests = requests.filter(r => r.status === "completed");
-    const failedRequests = requests.filter(r => r.status === "failed");
-    const pendingRequests = requests.filter(r => 
-      r.status === "pending" || r.status === "processing"
+    const completedRequests = requests.filter((r) => r.status === "completed");
+    const failedRequests = requests.filter((r) => r.status === "failed");
+    const pendingRequests = requests.filter(
+      (r) => r.status === "pending" || r.status === "processing",
     );
 
     // Group by request type
-    const byType = requests.reduce((acc, request) => {
-      acc[request.type] = (acc[request.type] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    const byType = requests.reduce(
+      (acc, request) => {
+        acc[request.type] = (acc[request.type] || 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
 
     return {
       totalRequests: requests.length,
       completedRequests: completedRequests.length,
       failedRequests: failedRequests.length,
       pendingRequests: pendingRequests.length,
-      successRate: requests.length > 0 ? 
-        Math.round((completedRequests.length / requests.length) * 100) : 0,
+      successRate:
+        requests.length > 0
+          ? Math.round((completedRequests.length / requests.length) * 100)
+          : 0,
       byType,
       recentRequests: requests
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, 10)
-        .map(request => ({
+        .map((request) => ({
           _id: request._id,
           requestId: request.requestId,
           type: request.type,
@@ -110,11 +115,11 @@ export const getActiveRequests = query({
     return await ctx.db
       .query("langgraphRequests")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .filter((q) => 
+      .filter((q) =>
         q.or(
           q.eq(q.field("status"), "pending"),
-          q.eq(q.field("status"), "in_progress")
-        )
+          q.eq(q.field("status"), "in_progress"),
+        ),
       )
       .order("desc")
       .take(10);
@@ -157,7 +162,7 @@ export const getRequest = query({
       .query("langgraphRequests")
       .withIndex("by_request_id", (q) => q.eq("requestId", args.requestId))
       .unique();
-    
+
     if (!request || request.userId !== user._id) {
       throw new Error("Request not found or access denied");
     }

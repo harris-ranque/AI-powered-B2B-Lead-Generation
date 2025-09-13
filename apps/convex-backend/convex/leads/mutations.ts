@@ -66,32 +66,34 @@ export const updateLead = mutation({
   args: {
     leadId: v.id("leads"),
     updates: v.object({
-      status: v.optional(v.union(
-        v.literal("new"),
-        v.literal("qualified"), 
-        v.literal("contacted"),
-        v.literal("nurturing"),
-        v.literal("converted"),
-        v.literal("unqualified")
-      )),
+      status: v.optional(
+        v.union(
+          v.literal("new"),
+          v.literal("qualified"),
+          v.literal("contacted"),
+          v.literal("nurturing"),
+          v.literal("converted"),
+          v.literal("unqualified"),
+        ),
+      ),
       tags: v.optional(v.array(v.string())),
       notes: v.optional(v.string()),
     }),
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Verify user owns the lead
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.userId !== user._id) {
       throw new Error("Lead not found or access denied");
     }
-    
+
     await ctx.db.patch(args.leadId, {
       ...args.updates,
       updatedAt: Date.now(),
     });
-    
+
     return { success: true };
   },
 });
@@ -102,27 +104,27 @@ export const updateLeadStatus = mutation({
     leadId: v.id("leads"),
     status: v.union(
       v.literal("new"),
-      v.literal("qualified"), 
+      v.literal("qualified"),
       v.literal("contacted"),
       v.literal("nurturing"),
       v.literal("converted"),
-      v.literal("unqualified")
+      v.literal("unqualified"),
     ),
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Verify user owns the lead
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.userId !== user._id) {
       throw new Error("Lead not found or access denied");
     }
-    
+
     await ctx.db.patch(args.leadId, {
       status: args.status,
       updatedAt: Date.now(),
     });
-    
+
     return { success: true };
   },
 });
@@ -135,23 +137,25 @@ export const addLeadNotes = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Verify user owns the lead
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.userId !== user._id) {
       throw new Error("Lead not found or access denied");
     }
-    
+
     const currentNotes = lead.notes || "";
     const timestamp = new Date().toISOString();
     const newNote = `[${timestamp}] ${args.notes}`;
-    const updatedNotes = currentNotes ? `${currentNotes}\n\n${newNote}` : newNote;
-    
+    const updatedNotes = currentNotes
+      ? `${currentNotes}\n\n${newNote}`
+      : newNote;
+
     await ctx.db.patch(args.leadId, {
       notes: updatedNotes,
       updatedAt: Date.now(),
     });
-    
+
     return { success: true };
   },
 });
@@ -163,15 +167,15 @@ export const deleteLead = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Verify user owns the lead
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.userId !== user._id) {
       throw new Error("Lead not found or access denied");
     }
-    
+
     await ctx.db.delete(args.leadId);
-    
+
     return { success: true };
   },
 });

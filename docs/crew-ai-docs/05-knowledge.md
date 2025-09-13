@@ -10,11 +10,11 @@ Think of it as giving your agents a reference library they can consult while wor
 <Info>
   Key benefits of using Knowledge:
 
-  * Enhance agents with domain-specific information
-  * Support decisions with real-world data
-  * Maintain context across conversations
-  * Ground responses in factual information
-</Info>
+- Enhance agents with domain-specific information
+- Support decisions with real-world data
+- Maintain context across conversations
+- Ground responses in factual information
+  </Info>
 
 ## Quickstart Examples
 
@@ -248,7 +248,7 @@ Each knowledge level uses independent storage collections:
 # Agent knowledge storage
 agent_collection_name = agent.role  # e.g., "Technical Specialist"
 
-# Crew knowledge storage  
+# Crew knowledge storage
 crew_collection_name = "crew"
 
 # Both stored in same ChromaDB instance but different collections
@@ -314,7 +314,7 @@ specialist = Agent(
 )
 
 generalist = Agent(
-    role="General Assistant", 
+    role="General Assistant",
     goal="Provide general assistance",
     backstory="General helper"
     # No agent-specific knowledge
@@ -346,7 +346,7 @@ sales_agent = Agent(
 )
 
 tech_agent = Agent(
-    role="Technical Expert", 
+    role="Technical Expert",
     knowledge_sources=[tech_knowledge],
     embedder={"provider": "ollama", "config": {"model": "mxbai-embed-large"}}
 )
@@ -374,9 +374,9 @@ crew = Crew(
   Unlike retrieval from a vector database using a tool, agents preloaded with knowledge will not need a retrieval persona or task.
   Simply add the relevant knowledge sources your agent or crew needs to function.
 
-  Knowledge sources can be added at the agent or crew level.
-  Crew level knowledge sources will be used by **all agents** in the crew.
-  Agent level knowledge sources will be used by the **specific agent** that is preloaded with the knowledge.
+Knowledge sources can be added at the agent or crew level.
+Crew level knowledge sources will be used by **all agents** in the crew.
+Agent level knowledge sources will be used by the **specific agent** that is preloaded with the knowledge.
 </Tip>
 
 ## Knowledge Configuration
@@ -692,12 +692,12 @@ CrewAI emits events during the knowledge retrieval process that you can listen f
 
 #### Available Knowledge Events
 
-* **KnowledgeRetrievalStartedEvent**: Emitted when an agent starts retrieving knowledge from sources
-* **KnowledgeRetrievalCompletedEvent**: Emitted when knowledge retrieval is completed, including the query used and the retrieved content
-* **KnowledgeQueryStartedEvent**: Emitted when a query to knowledge sources begins
-* **KnowledgeQueryCompletedEvent**: Emitted when a query completes successfully
-* **KnowledgeQueryFailedEvent**: Emitted when a query to knowledge sources fails
-* **KnowledgeSearchQueryFailedEvent**: Emitted when a search query fails
+- **KnowledgeRetrievalStartedEvent**: Emitted when an agent starts retrieving knowledge from sources
+- **KnowledgeRetrievalCompletedEvent**: Emitted when knowledge retrieval is completed, including the query used and the retrieved content
+- **KnowledgeQueryStartedEvent**: Emitted when a query to knowledge sources begins
+- **KnowledgeQueryCompletedEvent**: Emitted when a query completes successfully
+- **KnowledgeQueryFailedEvent**: Emitted when a query to knowledge sources fails
+- **KnowledgeSearchQueryFailedEvent**: Emitted when a search query fails
 
 #### Example: Monitoring Knowledge Retrieval
 
@@ -713,7 +713,7 @@ class KnowledgeMonitorListener(BaseEventListener):
         @crewai_event_bus.on(KnowledgeRetrievalStartedEvent)
         def on_knowledge_retrieval_started(source, event):
             print(f"Agent '{event.agent.role}' started retrieving knowledge")
-            
+
         @crewai_event_bus.on(KnowledgeRetrievalCompletedEvent)
         def on_knowledge_retrieval_completed(source, event):
             print(f"Agent '{event.agent.role}' completed knowledge retrieval")
@@ -883,7 +883,7 @@ if hasattr(agent, 'knowledge') and agent.knowledge:
     test_query = ["test query"]
     results = agent.knowledge.query(test_query)
     print(f"Agent knowledge results: {len(results)} documents found")
-    
+
     # Test crew knowledge retrieval (if exists)
     if hasattr(crew, 'knowledge') and crew.knowledge:
         crew_results = crew.query_knowledge(test_query)
@@ -903,11 +903,11 @@ knowledge_path = os.path.join(db_storage_path(), "knowledge")
 if os.path.exists(knowledge_path):
     client = chromadb.PersistentClient(path=knowledge_path)
     collections = client.list_collections()
-    
+
     print("Knowledge Collections:")
     for collection in collections:
         print(f"  - {collection.name}: {collection.count()} documents")
-        
+
         # Sample a few documents to verify content
         if collection.count() > 0:
             sample = collection.peek(limit=2)
@@ -999,7 +999,7 @@ print("Knowledge path:", os.path.join(db_storage_path(), "knowledge"))
 # Reset only agent-specific knowledge
 crew.reset_memories(command_type='agent_knowledge')
 
-# Reset both crew and agent knowledge  
+# Reset both crew and agent knowledge
 crew.reset_memories(command_type='knowledge')
 
 # CLI commands

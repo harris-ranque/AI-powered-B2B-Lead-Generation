@@ -23,7 +23,7 @@ export const sendTenantEmail = internalMutation({
       `${tenant.name} <noreply@${tenant.domain}>`,
       recipient,
       subject,
-      htmlContent
+      htmlContent,
     );
   },
 });
@@ -33,7 +33,7 @@ export const sendTenantEmail = internalMutation({
 
 ```typescript
 // SendGrid - Standard integration
-import sgMail from '@sendgrid/mail';
+import sgMail from "@sendgrid/mail";
 
 export const sendEmail = action({
   handler: async (ctx, args) => {
@@ -53,24 +53,26 @@ export const sendEmail = action({
 
 ### Multi-tenant capabilities and domain management
 
-| Provider | Domain Limits | Tenant Isolation Method | White-labeling Support |
-|----------|--------------|------------------------|----------------------|
-| **Resend** | 1 (Free), 10 (Pro), 1,000 (Scale) | API keys + domains | Excellent - full DNS customization |
-| **SendGrid** | 3,000 per account/subuser | Subusers (15 max on Pro) | Strong - link branding included |
-| **Postmark** | Unlimited servers | Server-based isolation | Good - per-server domains |
-| **AWS SES** | 10,000 per region | Configuration sets | Excellent - cross-account support |
-| **Mailgun** | 1,000 on paid plans | Subaccounts (unlimited) | Excellent - complete isolation |
+| Provider     | Domain Limits                     | Tenant Isolation Method  | White-labeling Support             |
+| ------------ | --------------------------------- | ------------------------ | ---------------------------------- |
+| **Resend**   | 1 (Free), 10 (Pro), 1,000 (Scale) | API keys + domains       | Excellent - full DNS customization |
+| **SendGrid** | 3,000 per account/subuser         | Subusers (15 max on Pro) | Strong - link branding included    |
+| **Postmark** | Unlimited servers                 | Server-based isolation   | Good - per-server domains          |
+| **AWS SES**  | 10,000 per region                 | Configuration sets       | Excellent - cross-account support  |
+| **Mailgun**  | 1,000 on paid plans               | Subaccounts (unlimited)  | Excellent - complete isolation     |
 
 **Resend** excels with simple domain management:
+
 ```typescript
 // Programmatic domain setup for tenant
 await resend.domains.create({
-  name: 'tenant1.yoursaas.com',
-  region: 'us-east-1'
+  name: "tenant1.yoursaas.com",
+  region: "us-east-1",
 });
 ```
 
 **Mailgun's subaccounts** provide the strongest isolation:
+
 ```bash
 # Create isolated tenant environment
 curl -X POST https://api.mailgun.net/v4/accounts/subaccounts \
@@ -82,13 +84,13 @@ curl -X POST https://api.mailgun.net/v4/accounts/subaccounts \
 
 For a typical multi-tenant SaaS with **50 tenants sending 20,000 emails/month each** (1M total):
 
-| Provider | Base Cost | Multi-domain Cost | Dedicated IPs | Total Monthly |
-|----------|-----------|------------------|---------------|---------------|
-| **Resend** | $85 (Scale) | Included (1,000 domains) | Add-on pricing | **$85-135** |
-| **SendGrid** | $89.95 (Pro) | Included | 1 included | **$89.95** |
-| **Postmark** | $799 (1M emails) | Included | $50/IP | **$799-849** |
-| **AWS SES** | $100 (1M × $0.10/1k) | Free | $24.95/IP | **$100-250** |
-| **Mailgun** | $750 (Scale + overages) | Included | $59/IP | **$750-809** |
+| Provider     | Base Cost               | Multi-domain Cost        | Dedicated IPs  | Total Monthly |
+| ------------ | ----------------------- | ------------------------ | -------------- | ------------- |
+| **Resend**   | $85 (Scale)             | Included (1,000 domains) | Add-on pricing | **$85-135**   |
+| **SendGrid** | $89.95 (Pro)            | Included                 | 1 included     | **$89.95**    |
+| **Postmark** | $799 (1M emails)        | Included                 | $50/IP         | **$799-849**  |
+| **AWS SES**  | $100 (1M × $0.10/1k)    | Free                     | $24.95/IP      | **$100-250**  |
+| **Mailgun**  | $750 (Scale + overages) | Included                 | $59/IP         | **$750-809**  |
 
 **AWS SES** offers the lowest base cost but requires more infrastructure management. **Resend** provides the best value for Convex applications considering the built-in integration features.
 
@@ -111,36 +113,36 @@ For a typical multi-tenant SaaS with **50 tenants sending 20,000 emails/month ea
 ```typescript
 // convex/email/config.ts
 export const emailConfig = {
-  provider: 'resend', // or your chosen provider
-  multiTenantStrategy: 'domain-per-tenant',
-  isolation: 'configuration-sets',
+  provider: "resend", // or your chosen provider
+  multiTenantStrategy: "domain-per-tenant",
+  isolation: "configuration-sets",
 };
 
 // convex/email/tenant.ts
 export const setupTenantEmail = internalMutation({
-  args: { 
-    tenantId: v.string(), 
+  args: {
+    tenantId: v.string(),
     domainName: v.string(),
-    tier: v.union(v.literal('free'), v.literal('pro'), v.literal('enterprise'))
+    tier: v.union(v.literal("free"), v.literal("pro"), v.literal("enterprise")),
   },
   handler: async (ctx, args) => {
     // 1. Create domain for tenant
     const domain = await createTenantDomain(args.domainName);
-    
+
     // 2. Store configuration
     await ctx.db.insert("tenant_email_config", {
       tenantId: args.tenantId,
       domainId: domain.id,
       domainName: args.domainName,
       dnsRecords: domain.dnsRecords,
-      verificationStatus: 'pending',
+      verificationStatus: "pending",
       tier: args.tier,
-      dedicatedIp: args.tier === 'enterprise',
+      dedicatedIp: args.tier === "enterprise",
     });
-    
+
     // 3. Setup webhooks
     await configureWebhooks(args.tenantId, domain.id);
-    
+
     return domain;
   },
 });
@@ -156,25 +158,30 @@ export const sendTenantEmail = internalMutation({
   handler: async (ctx, args) => {
     const config = await ctx.db
       .query("tenant_email_config")
-      .withIndex("by_tenant", q => q.eq("tenantId", args.tenantId))
+      .withIndex("by_tenant", (q) => q.eq("tenantId", args.tenantId))
       .first();
-    
-    if (!config || config.verificationStatus !== 'verified') {
+
+    if (!config || config.verificationStatus !== "verified") {
       throw new Error("Domain not verified");
     }
-    
+
     // Apply tenant-specific configuration
     const emailOptions = {
       from: `${config.brandName} <noreply@${config.domainName}>`,
       configurationSet: `tenant-${args.tenantId}`,
       tags: [
-        { name: 'tenant', value: args.tenantId },
-        { name: 'tier', value: config.tier }
+        { name: "tenant", value: args.tenantId },
+        { name: "tier", value: config.tier },
       ],
     };
-    
+
     // Send with chosen provider
-    return await sendWithProvider(emailOptions, args.recipients, args.template, args.data);
+    return await sendWithProvider(
+      emailOptions,
+      args.recipients,
+      args.template,
+      args.data,
+    );
   },
 });
 ```
@@ -186,28 +193,31 @@ export const sendTenantEmail = internalMutation({
 export const verifyTenantDomain = internalAction({
   args: { tenantId: v.string() },
   handler: async (ctx, args) => {
-    const config = await ctx.runQuery(internal.email.getTenantConfig, { 
-      tenantId: args.tenantId 
+    const config = await ctx.runQuery(internal.email.getTenantConfig, {
+      tenantId: args.tenantId,
     });
-    
+
     // Check DNS records
-    const dnsValid = await checkDnsRecords(config.domainName, config.dnsRecords);
-    
+    const dnsValid = await checkDnsRecords(
+      config.domainName,
+      config.dnsRecords,
+    );
+
     if (dnsValid) {
       // Verify with provider
       const verified = await verifyWithProvider(config.domainId);
-      
+
       if (verified) {
         await ctx.runMutation(internal.email.updateVerificationStatus, {
           tenantId: args.tenantId,
-          status: 'verified'
+          status: "verified",
         });
-        
+
         // Enable sending
         await enableTenantSending(args.tenantId);
       }
     }
-    
+
     return { verified: dnsValid && verified };
   },
 });
@@ -226,15 +236,15 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, req) => {
     const tenantId = req.params.tenantId;
-    const signature = req.headers.get('x-webhook-signature');
-    
+    const signature = req.headers.get("x-webhook-signature");
+
     // Verify webhook authenticity
     if (!verifyWebhookSignature(signature, await req.text())) {
       return new Response("Unauthorized", { status: 401 });
     }
-    
+
     const events = await req.json();
-    
+
     for (const event of events) {
       await ctx.runMutation(internal.email.processEvent, {
         tenantId,
@@ -245,7 +255,7 @@ http.route({
         metadata: event.metadata,
       });
     }
-    
+
     return new Response("OK", { status: 200 });
   }),
 });
@@ -278,25 +288,24 @@ export const rateLimitedSend = internalMutation({
       pro: { hourly: 1000, daily: 10000 },
       enterprise: { hourly: 10000, daily: 100000 },
     };
-    
+
     const usage = await ctx.db
       .query("email_usage")
-      .withIndex("by_tenant_hour", q => 
-        q.eq("tenantId", args.tenantId)
-         .gte("hour", Date.now() - 3600000)
+      .withIndex("by_tenant_hour", (q) =>
+        q.eq("tenantId", args.tenantId).gte("hour", Date.now() - 3600000),
       )
       .collect();
-    
+
     const tier = await getTenantTier(ctx, args.tenantId);
     const limit = tenantLimits[tier];
-    
+
     if (usage.length >= limit.hourly) {
       throw new Error("Hourly email limit exceeded");
     }
-    
+
     // Proceed with sending
     await sendEmail(ctx, args);
-    
+
     // Track usage
     await ctx.db.insert("email_usage", {
       tenantId: args.tenantId,

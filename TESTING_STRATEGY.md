@@ -3,6 +3,7 @@
 ## Current Testing Infrastructure Analysis
 
 ### ✅ **Strong Areas**
+
 1. **Convex Backend Testing**
    - Well-structured test functions using `internalAction` and `internalMutation`
    - Comprehensive correlation logging tests (`test_correlation.ts`)
@@ -18,6 +19,7 @@
    - Multi-scenario testing (high/medium/low relevance)
 
 ### ⚠️ **Gaps Identified**
+
 1. **Frontend Testing**: No test files found in React app
 2. **E2E Testing**: No cross-service integration testing
 3. **Test Infrastructure**: Missing test frameworks (Jest/Vitest)
@@ -32,6 +34,7 @@
 ### **Tier 1: Foundation (High Priority)**
 
 #### 1.1 Frontend Testing Setup
+
 ```bash
 # Add to apps/web/package.json
 "devDependencies": {
@@ -51,6 +54,7 @@
 ```
 
 **Test Structure:**
+
 ```
 apps/web/
 ├── src/
@@ -80,6 +84,7 @@ apps/web/
 ```
 
 #### 1.2 Python Testing Standardization
+
 ```bash
 # Add to apps/langgraph-worker/requirements-test.txt
 pytest==7.4.0
@@ -94,6 +99,7 @@ python -m pytest tests/ -v --cov=app --cov-report=html
 ```
 
 **Standardized Structure:**
+
 ```
 apps/langgraph-worker/
 ├── tests/
@@ -113,7 +119,9 @@ apps/langgraph-worker/
 ```
 
 #### 1.3 Convex Testing Enhancement
+
 **Expand current testing with:**
+
 ```typescript
 // Enhanced test commands
 npx convex dev --once --run lib/test_correlation:testCorrelationLogging
@@ -122,7 +130,7 @@ npx convex dev --once --run realtime/test:testBroadcasting
 
 // New test areas to add:
 // - Credit system tests
-// - Rate limiting tests  
+// - Rate limiting tests
 // - Batch processing tests
 // - Error recovery tests
 // - Performance benchmarks
@@ -131,6 +139,7 @@ npx convex dev --once --run realtime/test:testBroadcasting
 ### **Tier 2: Integration & E2E (Medium Priority)**
 
 #### 2.1 Cross-Service Integration Testing
+
 ```bash
 # Add to root package.json
 "scripts": {
@@ -141,11 +150,12 @@ npx convex dev --once --run realtime/test:testBroadcasting
 ```
 
 **E2E Test Scenarios:**
+
 1. **Complete Lead Generation Flow**
    - User creates search → Google Maps discovery → FindyMail enrichment → LangGraph analysis → Results
 2. **Real-time Updates Testing**
    - Status broadcasting across all pipeline stages
-3. **Error Recovery Testing** 
+3. **Error Recovery Testing**
    - API failures, timeout handling, retry mechanisms
 4. **Performance Testing**
    - Load testing with multiple concurrent users
@@ -153,33 +163,34 @@ npx convex dev --once --run realtime/test:testBroadcasting
    - Response time validation
 
 #### 2.2 Playwright E2E Setup
+
 ```typescript
 // playwright.config.ts
 export default defineConfig({
-  testDir: './e2e',
+  testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  reporter: "html",
   use: {
-    baseURL: 'http://localhost:3000',
-    trace: 'on-first-retry',
+    baseURL: "http://localhost:3000",
+    trace: "on-first-retry",
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
-    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit", use: { ...devices["Desktop Safari"] } },
   ],
   webServer: [
     {
-      command: 'pnpm dev:web',
+      command: "pnpm dev:web",
       port: 3000,
     },
     {
-      command: 'pnpm dev:worker', 
+      command: "pnpm dev:worker",
       port: 8080,
-    }
+    },
   ],
 });
 ```
@@ -187,26 +198,28 @@ export default defineConfig({
 ### **Tier 3: Advanced Testing (Lower Priority)**
 
 #### 3.1 Performance & Load Testing
+
 ```python
 # Add locust for load testing
 from locust import HttpUser, task, between
 
 class GenniLoadTest(HttpUser):
     wait_time = between(1, 3)
-    
+
     @task(3)
     def test_lead_search(self):
         self.client.post("/generate-email", json={
             "lead": {...},
             "business_profile": {...}
         })
-    
-    @task(1) 
+
+    @task(1)
     def test_health_check(self):
         self.client.get("/health")
 ```
 
 #### 3.2 Security Testing
+
 ```bash
 # Security test tools
 npm install --save-dev @security/eslint-plugin
@@ -217,10 +230,11 @@ pip install bandit safety
 ```
 
 #### 3.3 Visual Regression Testing
+
 ```typescript
 // Add to Playwright tests
-await expect(page).toHaveScreenshot('dashboard.png');
-await expect(page.locator('.lead-card')).toHaveScreenshot('lead-card.png');
+await expect(page).toHaveScreenshot("dashboard.png");
+await expect(page.locator(".lead-card")).toHaveScreenshot("lead-card.png");
 ```
 
 ---
@@ -228,6 +242,7 @@ await expect(page.locator('.lead-card')).toHaveScreenshot('lead-card.png');
 ## Testing Commands Standardization
 
 ### **Root Level Commands**
+
 ```bash
 # Install all test dependencies
 pnpm install-test-deps
@@ -237,7 +252,7 @@ pnpm test
 
 # Run tests by service
 pnpm test:web           # Frontend tests
-pnpm test:worker        # LangGraph worker tests  
+pnpm test:worker        # LangGraph worker tests
 pnpm test:convex        # Convex backend tests
 
 # Run by test type
@@ -253,6 +268,7 @@ pnpm test:report       # Generate test reports
 ### **Service-Specific Commands**
 
 #### Frontend (apps/web)
+
 ```bash
 cd apps/web
 pnpm test                    # Run all frontend tests
@@ -263,16 +279,18 @@ pnpm test components/       # Test specific directory
 ```
 
 #### LangGraph Worker (apps/langgraph-worker)
+
 ```bash
 cd apps/langgraph-worker
 python -m pytest tests/                    # All tests
 python -m pytest tests/unit/              # Unit tests only
-python -m pytest tests/integration/       # Integration tests only  
+python -m pytest tests/integration/       # Integration tests only
 python -m pytest --cov=app --cov-report=html  # Coverage
 python -m pytest -v -s                    # Verbose output
 ```
 
 #### Convex Backend (apps/convex-backend)
+
 ```bash
 cd apps/convex-backend
 npx convex dev --once --run search/test_api:testGoogleMapsAPISimple
@@ -286,16 +304,19 @@ pnpm test:convex-all    # Run all Convex tests sequentially
 ## Test Quality Standards
 
 ### **Coverage Requirements**
+
 - **Unit Tests**: ≥80% line coverage
-- **Integration Tests**: ≥70% critical path coverage  
+- **Integration Tests**: ≥70% critical path coverage
 - **E2E Tests**: 100% critical user journeys
 
 ### **Performance Benchmarks**
+
 - **Frontend**: Page load <3s, interaction response <100ms
 - **API**: Response time <200ms for 95th percentile
 - **LangGraph**: Email generation <30s end-to-end
 
 ### **Quality Gates**
+
 - All tests must pass before deployment
 - Coverage thresholds must be met
 - No security vulnerabilities above medium severity
@@ -306,24 +327,28 @@ pnpm test:convex-all    # Run all Convex tests sequentially
 ## Implementation Roadmap
 
 ### **Phase 1: Foundation (Week 1-2)**
+
 1. Set up Vitest for React frontend
 2. Standardize Python testing with pytest
 3. Create basic unit tests for critical components
 4. Establish CI/CD pipeline integration
 
-### **Phase 2: Integration (Week 3-4)**  
+### **Phase 2: Integration (Week 3-4)**
+
 1. Implement cross-service integration tests
 2. Set up Playwright for E2E testing
 3. Create performance benchmarking
 4. Add automated test reporting
 
 ### **Phase 3: Advanced (Week 5-6)**
+
 1. Implement security testing
-2. Add visual regression testing  
+2. Add visual regression testing
 3. Set up load testing infrastructure
 4. Create comprehensive test documentation
 
 ### **Phase 4: Optimization (Week 7-8)**
+
 1. Optimize test execution speed
 2. Implement parallel test execution
 3. Add advanced monitoring and alerting
@@ -334,12 +359,14 @@ pnpm test:convex-all    # Run all Convex tests sequentially
 ## Monitoring & Maintenance
 
 ### **Test Health Monitoring**
+
 - Test execution time tracking
 - Flaky test detection and resolution
 - Coverage trend analysis
 - Performance regression alerts
 
 ### **Automated Maintenance**
+
 - Dependency updates for test frameworks
 - Test data refresh and cleanup
 - Report archival and cleanup

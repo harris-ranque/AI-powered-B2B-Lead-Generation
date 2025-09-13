@@ -9,6 +9,7 @@ The Genni platform includes a fully implemented Stripe integration for subscript
 ## What's Already Implemented
 
 ✅ **Complete Subscription System**:
+
 - Checkout session creation and management
 - Subscription lifecycle handling (create, update, cancel)
 - Automatic plan upgrades/downgrades
@@ -51,10 +52,12 @@ VITE_STRIPE_BUSINESS_PRICE_ID_YEARLY=price_...   # Business yearly plan
 Go to **Products** in your Stripe Dashboard and create these two products:
 
 #### Professional Plan Product
+
 - **Name**: "Genni Professional"
 - **Description**: "For growing businesses and sales teams"
 
-#### Business Plan Product  
+#### Business Plan Product
+
 - **Name**: "Genni Business"
 - **Description**: "For established teams scaling their outreach"
 
@@ -63,11 +66,13 @@ Go to **Products** in your Stripe Dashboard and create these two products:
 For each product, create both monthly and yearly pricing:
 
 #### Professional Plan Pricing
+
 - **Monthly**: $149.00 USD per month, recurring
 - **Yearly**: $119.00 USD per month, billed annually ($1,428/year)
 
 #### Business Plan Pricing
-- **Monthly**: $449.00 USD per month, recurring  
+
+- **Monthly**: $449.00 USD per month, recurring
 - **Yearly**: $359.00 USD per month, billed annually ($4,308/year)
 
 ### Step 3: Get Price IDs
@@ -92,6 +97,7 @@ After creating the prices, copy the Price IDs (they start with `price_`) and add
 ## Plan Features & Limits
 
 ### Professional Plan ($149/month, $119/month yearly)
+
 - 50 searches per month
 - Up to 500 leads per search
 - 25,000 lead enrichments per month
@@ -103,6 +109,7 @@ After creating the prices, copy the Price IDs (they start with `price_`) and add
 - Priority support
 
 ### Business Plan ($449/month, $359/month yearly)
+
 - 200 searches per month
 - Up to 2,000 leads per search
 - 100,000 lead enrichments per month
@@ -167,20 +174,24 @@ After creating the prices, copy the Price IDs (they start with `price_`) and add
 ### Common Issues
 
 **Webhook Not Receiving Events**:
+
 - Verify webhook URL is correct and accessible
 - Check webhook signature matches your `STRIPE_WEBHOOK_SECRET`
 - Review webhook logs in Stripe Dashboard
 
 **Price ID Not Found**:
+
 - Ensure Price IDs in environment variables match Stripe Dashboard
 - Verify you're using the correct test/live mode keys
 
 **Checkout Session Creation Fails**:
+
 - Check that `STRIPE_SECRET_KEY` is correctly set
 - Verify Price IDs exist and are active
 - Review Convex function logs for detailed errors
 
 **User Plan Not Updating**:
+
 - Check webhook events are being received
 - Review subscription event logs in database
 - Verify user has `stripeCustomerId` field populated
@@ -209,6 +220,7 @@ stripe trigger customer.subscription.created
 ### Stripe Dashboard Analytics
 
 Monitor these sections in your Stripe Dashboard:
+
 - **Overview**: Revenue, successful payments, failed payments
 - **Subscriptions**: Active subscriptions, churn analysis
 - **Customers**: Customer lifetime value, payment methods
@@ -219,12 +231,13 @@ Monitor these sections in your Stripe Dashboard:
 ### Regular Tasks
 
 - **Monthly**: Review failed payments and follow up with customers
-- **Quarterly**: Analyze plan usage and consider limit adjustments  
+- **Quarterly**: Analyze plan usage and consider limit adjustments
 - **Annually**: Review pricing strategy and plan features
 
 ### Customer Support Integration
 
 The system includes:
+
 - Automatic email notifications for payment events
 - Customer portal for self-service billing management
 - Admin dashboard for support team to view billing status

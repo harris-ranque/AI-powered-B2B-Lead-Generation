@@ -7,7 +7,13 @@ export const recordTransaction = internalMutation({
   args: {
     userId: v.id("users"),
     amount: v.number(),
-    operation: v.union(v.literal("usage"), v.literal("purchase"), v.literal("refund"), v.literal("bonus"), v.literal("rollback")),
+    operation: v.union(
+      v.literal("usage"),
+      v.literal("purchase"),
+      v.literal("refund"),
+      v.literal("bonus"),
+      v.literal("rollback"),
+    ),
     description: v.string(),
     relatedEntityType: v.optional(v.string()),
     relatedEntityId: v.optional(v.string()),
@@ -22,7 +28,11 @@ export const recordTransaction = internalMutation({
 
       // Calculate new balance first
       let newBalance = user.credits || 0;
-      if (args.operation === "purchase" || args.operation === "refund" || args.operation === "bonus") {
+      if (
+        args.operation === "purchase" ||
+        args.operation === "refund" ||
+        args.operation === "bonus"
+      ) {
         newBalance += args.amount;
       } else if (args.operation === "usage") {
         newBalance -= args.amount;
@@ -32,7 +42,9 @@ export const recordTransaction = internalMutation({
 
       // Ensure balance doesn't go negative
       if (newBalance < 0) {
-        console.warn(`Credit balance would go negative for user ${args.userId}: ${newBalance}`);
+        console.warn(
+          `Credit balance would go negative for user ${args.userId}: ${newBalance}`,
+        );
         newBalance = 0;
       }
 
@@ -43,10 +55,13 @@ export const recordTransaction = internalMutation({
         amount: args.amount,
         description: args.description,
         balanceAfter: newBalance,
-        relatedEntity: args.relatedEntityType && args.relatedEntityId ? {
-          type: args.relatedEntityType,
-          id: args.relatedEntityId,
-        } : undefined,
+        relatedEntity:
+          args.relatedEntityType && args.relatedEntityId
+            ? {
+                type: args.relatedEntityType,
+                id: args.relatedEntityId,
+              }
+            : undefined,
         createdAt: Date.now(),
       });
 
@@ -56,19 +71,24 @@ export const recordTransaction = internalMutation({
         updatedAt: Date.now(),
       });
 
-      console.log(`Credit transaction recorded: ${args.operation} ${args.amount} for user ${args.userId} (balance: ${newBalance})`);
-      return { 
-        success: true, 
+      console.log(
+        `Credit transaction recorded: ${args.operation} ${args.amount} for user ${args.userId} (balance: ${newBalance})`,
+      );
+      return {
+        success: true,
         transactionId,
         newBalance,
         operation: args.operation,
-        amount: args.amount
+        amount: args.amount,
       };
     } catch (error) {
-      console.error(`Error recording credit transaction for user ${args.userId}:`, error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : "Unknown error" 
+      console.error(
+        `Error recording credit transaction for user ${args.userId}:`,
+        error,
+      );
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   },
@@ -101,7 +121,7 @@ export const reserveCredits = internalMutation({
 
       // Create reservation record
       const expireMinutes = args.expireMinutes || 30; // Default 30 minutes
-      const expiresAt = Date.now() + (expireMinutes * 60 * 1000);
+      const expiresAt = Date.now() + expireMinutes * 60 * 1000;
 
       const reservationId = await ctx.db.insert("creditReservations", {
         userId: args.userId,
@@ -114,7 +134,9 @@ export const reserveCredits = internalMutation({
         expiresAt,
       });
 
-      console.log(`Credits reserved: ${args.amount} for user ${args.userId} (${args.operation})`);
+      console.log(
+        `Credits reserved: ${args.amount} for user ${args.userId} (${args.operation})`,
+      );
       return {
         success: true,
         reservationId,
@@ -171,7 +193,7 @@ export const commitReservation = internalMutation({
         transactionId: null as any,
         newBalance: 0,
         operation: "usage" as const,
-        amount: reservation.amount
+        amount: reservation.amount,
       };
 
       try {
@@ -194,10 +216,13 @@ export const commitReservation = internalMutation({
           amount: reservation.amount,
           description: args.description,
           balanceAfter: newBalance,
-          relatedEntity: args.relatedEntityType && args.relatedEntityId ? {
-            type: args.relatedEntityType,
-            id: args.relatedEntityId,
-          } : undefined,
+          relatedEntity:
+            args.relatedEntityType && args.relatedEntityId
+              ? {
+                  type: args.relatedEntityType,
+                  id: args.relatedEntityId,
+                }
+              : undefined,
           createdAt: Date.now(),
         });
 
@@ -209,16 +234,21 @@ export const commitReservation = internalMutation({
 
         transactionResult.transactionId = transactionId;
         transactionResult.newBalance = newBalance;
-        
-        console.log(`Credit transaction recorded during commit: usage ${reservation.amount} for user ${reservation.userId} (balance: ${newBalance})`);
+
+        console.log(
+          `Credit transaction recorded during commit: usage ${reservation.amount} for user ${reservation.userId} (balance: ${newBalance})`,
+        );
       } catch (error) {
         console.error(`Error recording transaction during commit:`, error);
         transactionResult.success = false;
-        transactionResult.error = error instanceof Error ? error.message : "Unknown error";
+        transactionResult.error =
+          error instanceof Error ? error.message : "Unknown error";
       }
 
       if (!transactionResult.success) {
-        throw new Error(transactionResult.error || "Failed to record transaction");
+        throw new Error(
+          transactionResult.error || "Failed to record transaction",
+        );
       }
 
       // Mark reservation as committed
@@ -227,14 +257,19 @@ export const commitReservation = internalMutation({
         completedAt: Date.now(),
       });
 
-      console.log(`Reservation committed: ${reservation.amount} credits for user ${reservation.userId}`);
+      console.log(
+        `Reservation committed: ${reservation.amount} credits for user ${reservation.userId}`,
+      );
       return {
         success: true,
         transactionId: transactionResult.transactionId,
         newBalance: transactionResult.newBalance,
       };
     } catch (error) {
-      console.error(`Error committing reservation ${args.reservationId}:`, error);
+      console.error(
+        `Error committing reservation ${args.reservationId}:`,
+        error,
+      );
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -260,20 +295,30 @@ export const refundCredits = internalMutation({
       }
 
       // Call the recordTransaction mutation
-      const result: { success: boolean; error?: string; transactionId?: string; newBalance?: number } = await ctx.runMutation(internal.credits.transactions.recordTransaction, {
-        userId: args.userId,
-        amount: args.amount,
-        operation: "refund",
-        description: `Refund: ${args.reason}`,
-        relatedEntityType: args.relatedEntityType,
-        relatedEntityId: args.relatedEntityId,
-      });
+      const result: {
+        success: boolean;
+        error?: string;
+        transactionId?: string;
+        newBalance?: number;
+      } = await ctx.runMutation(
+        internal.credits.transactions.recordTransaction,
+        {
+          userId: args.userId,
+          amount: args.amount,
+          operation: "refund",
+          description: `Refund: ${args.reason}`,
+          relatedEntityType: args.relatedEntityType,
+          relatedEntityId: args.relatedEntityId,
+        },
+      );
 
       if (!result.success) {
         throw new Error(result.error || "Failed to record refund transaction");
       }
 
-      console.log(`Credits refunded: ${args.amount} to user ${args.userId} (${args.reason})`);
+      console.log(
+        `Credits refunded: ${args.amount} to user ${args.userId} (${args.reason})`,
+      );
       return {
         success: true,
         transactionId: result.transactionId,

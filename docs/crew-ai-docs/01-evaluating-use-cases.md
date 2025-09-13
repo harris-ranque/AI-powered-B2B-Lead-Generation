@@ -20,21 +20,21 @@ This matrix helps visualize how different approaches align with varying requirem
 
 In the context of CrewAI applications, **complexity** refers to:
 
-* The number of distinct steps or operations required
-* The diversity of tasks that need to be performed
-* The interdependencies between different components
-* The need for conditional logic and branching
-* The sophistication of the overall workflow
+- The number of distinct steps or operations required
+- The diversity of tasks that need to be performed
+- The interdependencies between different components
+- The need for conditional logic and branching
+- The sophistication of the overall workflow
 
 ### What is Precision?
 
 **Precision** in this context refers to:
 
-* The accuracy required in the final output
-* The need for structured, predictable results
-* The importance of reproducibility
-* The level of control needed over each step
-* The tolerance for variation in outputs
+- The accuracy required in the final output
+- The need for structured, predictable results
+- The importance of reproducibility
+- The level of control needed over each step
+- The tolerance for variation in outputs
 
 ### The Four Quadrants
 
@@ -42,73 +42,73 @@ In the context of CrewAI applications, **complexity** refers to:
 
 **Characteristics:**
 
-* Simple, straightforward tasks
-* Tolerance for some variation in outputs
-* Limited number of steps
-* Creative or exploratory applications
+- Simple, straightforward tasks
+- Tolerance for some variation in outputs
+- Limited number of steps
+- Creative or exploratory applications
 
 **Recommended Approach:** Simple Crews with minimal agents
 
 **Example Use Cases:**
 
-* Basic content generation
-* Idea brainstorming
-* Simple summarization tasks
-* Creative writing assistance
+- Basic content generation
+- Idea brainstorming
+- Simple summarization tasks
+- Creative writing assistance
 
 #### 2. Low Complexity, High Precision
 
 **Characteristics:**
 
-* Simple workflows that require exact, structured outputs
-* Need for reproducible results
-* Limited steps but high accuracy requirements
-* Often involves data processing or transformation
+- Simple workflows that require exact, structured outputs
+- Need for reproducible results
+- Limited steps but high accuracy requirements
+- Often involves data processing or transformation
 
 **Recommended Approach:** Flows with direct LLM calls or simple Crews with structured outputs
 
 **Example Use Cases:**
 
-* Data extraction and transformation
-* Form filling and validation
-* Structured content generation (JSON, XML)
-* Simple classification tasks
+- Data extraction and transformation
+- Form filling and validation
+- Structured content generation (JSON, XML)
+- Simple classification tasks
 
 #### 3. High Complexity, Low Precision
 
 **Characteristics:**
 
-* Multi-stage processes with many steps
-* Creative or exploratory outputs
-* Complex interactions between components
-* Tolerance for variation in final results
+- Multi-stage processes with many steps
+- Creative or exploratory outputs
+- Complex interactions between components
+- Tolerance for variation in final results
 
 **Recommended Approach:** Complex Crews with multiple specialized agents
 
 **Example Use Cases:**
 
-* Research and analysis
-* Content creation pipelines
-* Exploratory data analysis
-* Creative problem-solving
+- Research and analysis
+- Content creation pipelines
+- Exploratory data analysis
+- Creative problem-solving
 
 #### 4. High Complexity, High Precision
 
 **Characteristics:**
 
-* Complex workflows requiring structured outputs
-* Multiple interdependent steps with strict accuracy requirements
-* Need for both sophisticated processing and precise results
-* Often mission-critical applications
+- Complex workflows requiring structured outputs
+- Multiple interdependent steps with strict accuracy requirements
+- Need for both sophisticated processing and precise results
+- Often mission-critical applications
 
 **Recommended Approach:** Flows orchestrating multiple Crews with validation steps
 
 **Example Use Cases:**
 
-* Enterprise decision support systems
-* Complex data processing pipelines
-* Multi-stage document processing
-* Regulated industry applications
+- Enterprise decision support systems
+- Complex data processing pipelines
+- Multi-stage document processing
+- Regulated industry applications
 
 ## Choosing Between Crews and Flows
 
@@ -425,24 +425,24 @@ To determine the right approach for your specific use case, follow this step-by-
 Rate your application's complexity on a scale of 1-10 by considering:
 
 1. **Number of steps**: How many distinct operations are required?
-   * 1-3 steps: Low complexity (1-3)
-   * 4-7 steps: Medium complexity (4-7)
-   * 8+ steps: High complexity (8-10)
+   - 1-3 steps: Low complexity (1-3)
+   - 4-7 steps: Medium complexity (4-7)
+   - 8+ steps: High complexity (8-10)
 
 2. **Interdependencies**: How interconnected are the different parts?
-   * Few dependencies: Low complexity (1-3)
-   * Some dependencies: Medium complexity (4-7)
-   * Many complex dependencies: High complexity (8-10)
+   - Few dependencies: Low complexity (1-3)
+   - Some dependencies: Medium complexity (4-7)
+   - Many complex dependencies: High complexity (8-10)
 
 3. **Conditional logic**: How much branching and decision-making is needed?
-   * Linear process: Low complexity (1-3)
-   * Some branching: Medium complexity (4-7)
-   * Complex decision trees: High complexity (8-10)
+   - Linear process: Low complexity (1-3)
+   - Some branching: Medium complexity (4-7)
+   - Complex decision trees: High complexity (8-10)
 
 4. **Domain knowledge**: How specialized is the knowledge required?
-   * General knowledge: Low complexity (1-3)
-   * Some specialized knowledge: Medium complexity (4-7)
-   * Deep expertise in multiple domains: High complexity (8-10)
+   - General knowledge: Low complexity (1-3)
+   - Some specialized knowledge: Medium complexity (4-7)
+   - Deep expertise in multiple domains: High complexity (8-10)
 
 Calculate your average score to determine overall complexity.
 
@@ -451,24 +451,24 @@ Calculate your average score to determine overall complexity.
 Rate your precision requirements on a scale of 1-10 by considering:
 
 1. **Output structure**: How structured must the output be?
-   * Free-form text: Low precision (1-3)
-   * Semi-structured: Medium precision (4-7)
-   * Strictly formatted (JSON, XML): High precision (8-10)
+   - Free-form text: Low precision (1-3)
+   - Semi-structured: Medium precision (4-7)
+   - Strictly formatted (JSON, XML): High precision (8-10)
 
 2. **Accuracy needs**: How important is factual accuracy?
-   * Creative content: Low precision (1-3)
-   * Informational content: Medium precision (4-7)
-   * Critical information: High precision (8-10)
+   - Creative content: Low precision (1-3)
+   - Informational content: Medium precision (4-7)
+   - Critical information: High precision (8-10)
 
 3. **Reproducibility**: How consistent must results be across runs?
-   * Variation acceptable: Low precision (1-3)
-   * Some consistency needed: Medium precision (4-7)
-   * Exact reproducibility required: High precision (8-10)
+   - Variation acceptable: Low precision (1-3)
+   - Some consistency needed: Medium precision (4-7)
+   - Exact reproducibility required: High precision (8-10)
 
 4. **Error tolerance**: What is the impact of errors?
-   * Low impact: Low precision (1-3)
-   * Moderate impact: Medium precision (4-7)
-   * High impact: High precision (8-10)
+   - Low impact: Low precision (1-3)
+   - Moderate impact: Medium precision (4-7)
+   - High impact: High precision (8-10)
 
 Calculate your average score to determine overall precision requirements.
 
@@ -476,10 +476,10 @@ Calculate your average score to determine overall precision requirements.
 
 Plot your complexity and precision scores on the matrix:
 
-* **Low Complexity (1-4), Low Precision (1-4)**: Simple Crews
-* **Low Complexity (1-4), High Precision (5-10)**: Flows with direct LLM calls
-* **High Complexity (5-10), Low Precision (1-4)**: Complex Crews
-* **High Complexity (5-10), High Precision (5-10)**: Flows orchestrating Crews
+- **Low Complexity (1-4), Low Precision (1-4)**: Simple Crews
+- **Low Complexity (1-4), High Precision (5-10)**: Flows with direct LLM calls
+- **High Complexity (5-10), Low Precision (1-4)**: Complex Crews
+- **High Complexity (5-10), High Precision (5-10)**: Flows orchestrating Crews
 
 ### Step 4: Consider Additional Factors
 
@@ -503,7 +503,7 @@ Remember that the best approach often evolves as your application matures. Start
 
 ## Next Steps
 
-* Learn more about [crafting effective agents](/en/guides/agents/crafting-effective-agents)
-* Explore [building your first crew](/en/guides/crews/first-crew)
-* Dive into [mastering flow state management](/en/guides/flows/mastering-flow-state)
-* Check out the [core concepts](/en/concepts/agents) for deeper understanding
+- Learn more about [crafting effective agents](/en/guides/agents/crafting-effective-agents)
+- Explore [building your first crew](/en/guides/crews/first-crew)
+- Dive into [mastering flow state management](/en/guides/flows/mastering-flow-state)
+- Check out the [core concepts](/en/concepts/agents) for deeper understanding

@@ -21,26 +21,32 @@ export const getSearchResults = internalQuery({
         analyzedCount: 0,
       };
     }
-    
+
     // Get all leads for this search
     const leads = await ctx.db
       .query("leads")
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
       .collect();
-    
-    const enrichedLeads = leads.filter(l => 
-      l.enrichmentStatus === "completed" || l.enrichmentStatus === "completed_fallback"
+
+    const enrichedLeads = leads.filter(
+      (l) =>
+        l.enrichmentStatus === "completed" ||
+        l.enrichmentStatus === "completed_fallback",
     );
-    
-    const analyzedLeads = leads.filter(l => l.aiAnalysis !== undefined);
-    
+
+    const analyzedLeads = leads.filter((l) => l.aiAnalysis !== undefined);
+
     return {
       totalFound: leads.length,
       enrichedCount: enrichedLeads.length,
       analyzedCount: analyzedLeads.length,
-      avgRelevanceScore: analyzedLeads.length > 0
-        ? analyzedLeads.reduce((sum, l) => sum + (l.aiAnalysis?.relevanceScore || 0), 0) / analyzedLeads.length
-        : 0,
+      avgRelevanceScore:
+        analyzedLeads.length > 0
+          ? analyzedLeads.reduce(
+              (sum, l) => sum + (l.aiAnalysis?.relevanceScore || 0),
+              0,
+            ) / analyzedLeads.length
+          : 0,
     };
   },
 });
@@ -54,9 +60,7 @@ export const getStuckSearches = internalQuery({
     return await ctx.db
       .query("searches")
       .withIndex("by_status", (q) => q.eq("status", "in_progress"))
-      .filter((q) => 
-        q.lt(q.field("lastOrchestrationAt"), args.stuckThreshold)
-      )
+      .filter((q) => q.lt(q.field("lastOrchestrationAt"), args.stuckThreshold))
       .take(10); // Process max 10 stuck searches at a time
   },
 });
@@ -71,7 +75,7 @@ export const updateSearchStatusInternal = internalMutation({
       v.literal("processing"),
       v.literal("completed"),
       v.literal("failed"),
-      v.literal("cancelled")
+      v.literal("cancelled"),
     ),
     error: v.optional(v.string()),
   },
@@ -80,25 +84,25 @@ export const updateSearchStatusInternal = internalMutation({
     if (!search) {
       throw new Error("Search not found");
     }
-    
+
     const updates: any = {
       status: args.status,
     };
-    
+
     if (args.error) {
       updates.error = args.error;
     }
-    
+
     if (args.status === "in_progress" && !search.startedAt) {
       updates.startedAt = Date.now();
     }
-    
+
     if (args.status === "completed" || args.status === "failed") {
       updates.completedAt = Date.now();
     }
-    
+
     await ctx.db.patch(args.searchId, updates);
-    
+
     return { success: true };
   },
 });
@@ -115,15 +119,17 @@ export const logCorrelation = internalMutation({
       v.literal("debug"),
       v.literal("info"),
       v.literal("warn"),
-      v.literal("error")
+      v.literal("error"),
     ),
     message: v.string(),
     data: v.optional(v.any()),
-    error: v.optional(v.object({
-      message: v.string(),
-      stack: v.optional(v.string()),
-      name: v.optional(v.string()),
-    })),
+    error: v.optional(
+      v.object({
+        message: v.string(),
+        stack: v.optional(v.string()),
+        name: v.optional(v.string()),
+      }),
+    ),
   },
   handler: async (ctx, args) => {
     await ctx.db.insert("correlationLogs", {

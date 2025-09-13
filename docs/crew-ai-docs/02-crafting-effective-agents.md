@@ -25,10 +25,10 @@ When building effective AI systems, remember this crucial principle: **80% of yo
 
 Why? Because even the most perfectly defined agent will fail with poorly designed tasks, but well-designed tasks can elevate even a simple agent. This means:
 
-* Spend most of your time writing clear task instructions
-* Define detailed inputs and expected outputs
-* Add examples and context to guide execution
-* Dedicate the remaining time to agent role, goal, and backstory
+- Spend most of your time writing clear task instructions
+- Define detailed inputs and expected outputs
+- Add examples and context to guide execution
+- Dedicate the remaining time to agent role, goal, and backstory
 
 This doesn't mean agent design isn't important - it absolutely is. But task design is where most execution failures occur, so prioritize accordingly.
 
@@ -42,9 +42,9 @@ The most powerful agents in CrewAI are built on a strong foundation of three key
 
 The role defines what the agent does and their area of expertise. When crafting roles:
 
-* **Be specific and specialized**: Instead of "Writer," use "Technical Documentation Specialist" or "Creative Storyteller"
-* **Align with real-world professions**: Base roles on recognizable professional archetypes
-* **Include domain expertise**: Specify the agent's field of knowledge (e.g., "Financial Analyst specializing in market trends")
+- **Be specific and specialized**: Instead of "Writer," use "Technical Documentation Specialist" or "Creative Storyteller"
+- **Align with real-world professions**: Base roles on recognizable professional archetypes
+- **Include domain expertise**: Specify the agent's field of knowledge (e.g., "Financial Analyst specializing in market trends")
 
 **Examples of effective roles:**
 
@@ -58,9 +58,9 @@ role: "Corporate Communications Director specializing in crisis management"
 
 The goal directs the agent's efforts and shapes their decision-making process. Effective goals should:
 
-* **Be clear and outcome-focused**: Define what the agent is trying to achieve
-* **Emphasize quality standards**: Include expectations about the quality of work
-* **Incorporate success criteria**: Help the agent understand what "good" looks like
+- **Be clear and outcome-focused**: Define what the agent is trying to achieve
+- **Emphasize quality standards**: Include expectations about the quality of work
+- **Incorporate success criteria**: Help the agent understand what "good" looks like
 
 **Examples of effective goals:**
 
@@ -74,9 +74,9 @@ goal: "Craft clear, empathetic crisis communications that address stakeholder co
 
 The backstory gives depth to the agent, influencing how they approach problems and interact with others. Good backstories:
 
-* **Establish expertise and experience**: Explain how the agent gained their skills
-* **Define working style and values**: Describe how the agent approaches their work
-* **Create a cohesive persona**: Ensure all elements of the backstory align with the role and goal
+- **Establish expertise and experience**: Explain how the agent gained their skills
+- **Define working style and values**: Describe how the agent approaches their work
+- **Create a cohesive persona**: Ensure all elements of the backstory align with the role and goal
 
 **Examples of effective backstories:**
 
@@ -106,27 +106,27 @@ role: "Technical Blog Writer specializing in explaining complex AI concepts to n
 
 **Specialist Benefits:**
 
-* Clearer understanding of expected output
-* More consistent performance
-* Better alignment with specific tasks
-* Improved ability to make domain-specific judgments
+- Clearer understanding of expected output
+- More consistent performance
+- Better alignment with specific tasks
+- Improved ability to make domain-specific judgments
 
 ### 3. Balancing Specialization and Versatility
 
 Effective agents strike the right balance between specialization (doing one thing extremely well) and versatility (being adaptable to various situations):
 
-* **Specialize in role, versatile in application**: Create agents with specialized skills that can be applied across multiple contexts
-* **Avoid overly narrow definitions**: Ensure agents can handle variations within their domain of expertise
-* **Consider the collaborative context**: Design agents whose specializations complement the other agents they'll work with
+- **Specialize in role, versatile in application**: Create agents with specialized skills that can be applied across multiple contexts
+- **Avoid overly narrow definitions**: Ensure agents can handle variations within their domain of expertise
+- **Consider the collaborative context**: Design agents whose specializations complement the other agents they'll work with
 
 ### 4. Setting Appropriate Expertise Levels
 
 The expertise level you assign to your agent shapes how they approach tasks:
 
-* **Novice agents**: Good for straightforward tasks, brainstorming, or initial drafts
-* **Intermediate agents**: Suitable for most standard tasks with reliable execution
-* **Expert agents**: Best for complex, specialized tasks requiring depth and nuance
-* **World-class agents**: Reserved for critical tasks where exceptional quality is needed
+- **Novice agents**: Good for straightforward tasks, brainstorming, or initial drafts
+- **Intermediate agents**: Suitable for most standard tasks with reliable execution
+- **Expert agents**: Best for complex, specialized tasks requiring depth and nuance
+- **World-class agents**: Reserved for critical tasks where exceptional quality is needed
 
 Choose the appropriate expertise level based on task complexity and quality requirements. For most collaborative crews, a mix of expertise levels often works best, with higher expertise assigned to core specialized functions.
 
@@ -182,19 +182,19 @@ A well-designed task has two key components that serve different purposes:
 
 The description should focus on what to do and how to do it, including:
 
-* Detailed instructions for execution
-* Context and background information
-* Scope and constraints
-* Process steps to follow
+- Detailed instructions for execution
+- Context and background information
+- Scope and constraints
+- Process steps to follow
 
 #### Expected Output: The Deliverable
 
 The expected output should define what the final result should look like:
 
-* Format specifications (markdown, JSON, etc.)
-* Structure requirements
-* Quality criteria
-* Examples of good outputs (when possible)
+- Format specifications (markdown, JSON, etc.)
+- Structure requirements
+- Quality criteria
+- Examples of good outputs (when possible)
 
 ### Task Design Best Practices
 
@@ -333,7 +333,6 @@ competitor_analysis_task:
   description: "Analyze strategies of the top 3 competitors based on the market research."
   expected_output: "A comparison table of competitor strategies."
   context: [market_research_task]
-
 # Continue with additional focused tasks...
 ```
 
@@ -401,9 +400,9 @@ agent:
 
 When creating agents that will work together in a crew, consider:
 
-* **Complementary skills**: Design agents with distinct but complementary abilities
-* **Handoff points**: Define clear interfaces for how work passes between agents
-* **Constructive tension**: Sometimes, creating agents with slightly different perspectives can lead to better outcomes through productive dialogue
+- **Complementary skills**: Design agents with distinct but complementary abilities
+- **Handoff points**: Define clear interfaces for how work passes between agents
+- **Constructive tension**: Sometimes, creating agents with slightly different perspectives can lead to better outcomes through productive dialogue
 
 For example, a content creation crew might include:
 
@@ -477,6 +476,6 @@ Remember that agent and task design is an iterative process. Start with these be
 
 ## Next Steps
 
-* Experiment with different agent configurations for your specific use case
-* Learn about [building your first crew](/en/guides/crews/first-crew) to see how agents work together
-* Explore [CrewAI Flows](/en/guides/flows/first-flow) for more advanced orchestration
+- Experiment with different agent configurations for your specific use case
+- Learn about [building your first crew](/en/guides/crews/first-crew) to see how agents work together
+- Explore [CrewAI Flows](/en/guides/flows/first-flow) for more advanced orchestration

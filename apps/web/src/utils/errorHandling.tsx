@@ -1,4 +1,4 @@
-import React, { ReactNode, useState, useCallback } from 'react';
+import React, { ReactNode, useState, useCallback } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, RefreshCw } from "lucide-react";
@@ -20,15 +20,15 @@ export interface ErrorState {
 export function safeRender<T extends unknown[]>(
   renderFunction: (...args: T) => JSX.Element,
   fallbackMessage: string,
-  onError?: (error: Error) => void
+  onError?: (error: Error) => void,
 ) {
   return (...args: T): JSX.Element => {
     try {
       return renderFunction(...args);
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
       console.error(`Render error: ${fallbackMessage}`, error);
-      
+
       if (onError) {
         onError(error instanceof Error ? error : new Error(errorMsg));
       }
@@ -51,9 +51,9 @@ export function safeRender<T extends unknown[]>(
 export const safeArray = {
   // Safe filter operation
   filter<T>(
-    array: T[] | undefined | null, 
+    array: T[] | undefined | null,
     predicate: (value: T, index: number, array: T[]) => boolean,
-    fallback: T[] = []
+    fallback: T[] = [],
   ): T[] {
     try {
       if (!array || !Array.isArray(array)) return fallback;
@@ -61,12 +61,12 @@ export const safeArray = {
         try {
           return predicate(item, index, arr);
         } catch (error) {
-          console.warn('Filter predicate error:', error, 'Item:', item);
+          console.warn("Filter predicate error:", error, "Item:", item);
           return false;
         }
       });
     } catch (error) {
-      console.error('Safe filter error:', error, 'Array:', array);
+      console.error("Safe filter error:", error, "Array:", array);
       return fallback;
     }
   },
@@ -75,7 +75,7 @@ export const safeArray = {
   map<T, R>(
     array: T[] | undefined | null,
     mapper: (value: T, index: number, array: T[]) => R,
-    fallback: R[] = []
+    fallback: R[] = [],
   ): R[] {
     try {
       if (!array || !Array.isArray(array)) return fallback;
@@ -83,12 +83,12 @@ export const safeArray = {
         try {
           return mapper(item, index, arr);
         } catch (error) {
-          console.warn('Map function error:', error, 'Item:', item);
+          console.warn("Map function error:", error, "Item:", item);
           throw error; // Re-throw to be caught by outer try-catch
         }
       });
     } catch (error) {
-      console.error('Safe map error:', error, 'Array:', array);
+      console.error("Safe map error:", error, "Array:", array);
       return fallback;
     }
   },
@@ -96,8 +96,13 @@ export const safeArray = {
   // Safe reduce operation
   reduce<T, R>(
     array: T[] | undefined | null,
-    reducer: (previousValue: R, currentValue: T, currentIndex: number, array: T[]) => R,
-    initialValue: R
+    reducer: (
+      previousValue: R,
+      currentValue: T,
+      currentIndex: number,
+      array: T[],
+    ) => R,
+    initialValue: R,
   ): R {
     try {
       if (!array || !Array.isArray(array)) return initialValue;
@@ -105,12 +110,12 @@ export const safeArray = {
         try {
           return reducer(prev, current, index, arr);
         } catch (error) {
-          console.warn('Reduce function error:', error, 'Item:', current);
+          console.warn("Reduce function error:", error, "Item:", current);
           return prev; // Return previous value on error
         }
       }, initialValue);
     } catch (error) {
-      console.error('Safe reduce error:', error, 'Array:', array);
+      console.error("Safe reduce error:", error, "Array:", array);
       return initialValue;
     }
   },
@@ -118,7 +123,7 @@ export const safeArray = {
   // Safe find operation
   find<T>(
     array: T[] | undefined | null,
-    predicate: (value: T, index: number, obj: T[]) => boolean
+    predicate: (value: T, index: number, obj: T[]) => boolean,
   ): T | undefined {
     try {
       if (!array || !Array.isArray(array)) return undefined;
@@ -126,12 +131,12 @@ export const safeArray = {
         try {
           return predicate(item, index, arr);
         } catch (error) {
-          console.warn('Find predicate error:', error, 'Item:', item);
+          console.warn("Find predicate error:", error, "Item:", item);
           return false;
         }
       });
     } catch (error) {
-      console.error('Safe find error:', error, 'Array:', array);
+      console.error("Safe find error:", error, "Array:", array);
       return undefined;
     }
   },
@@ -139,36 +144,36 @@ export const safeArray = {
   // Safe array length
   length(array: unknown[] | undefined | null): number {
     try {
-      return (array && Array.isArray(array)) ? array.length : 0;
+      return array && Array.isArray(array) ? array.length : 0;
     } catch (error) {
-      console.error('Safe length error:', error);
+      console.error("Safe length error:", error);
       return 0;
     }
-  }
+  },
 };
 
 // Safe object property access
 export function safeGet<T>(
   object: Record<string, unknown>,
   path: string | string[],
-  fallback?: T
+  fallback?: T,
 ): T | undefined {
   try {
-    if (!object || typeof object !== 'object') return fallback;
-    
-    const keys = Array.isArray(path) ? path : path.split('.');
+    if (!object || typeof object !== "object") return fallback;
+
+    const keys = Array.isArray(path) ? path : path.split(".");
     let result = object;
-    
+
     for (const key of keys) {
       if (result?.[key] === undefined || result?.[key] === null) {
         return fallback;
       }
       result = result[key];
     }
-    
+
     return result as T;
   } catch (error) {
-    console.error('Safe get error:', error, 'Path:', path);
+    console.error("Safe get error:", error, "Path:", path);
     return fallback;
   }
 }
@@ -184,13 +189,13 @@ export function useErrorBoundary() {
   const captureError = useCallback((error: Error, errorInfo?: string) => {
     const errorState: ErrorState = {
       hasError: true,
-      errorMessage: error.message || 'Unknown error occurred',
+      errorMessage: error.message || "Unknown error occurred",
       errorDetails: errorInfo || error.stack,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
-    
+
     setError(errorState);
-    console.error('Captured error:', error, errorInfo);
+    console.error("Captured error:", error, errorInfo);
   }, []);
 
   const refreshPage = useCallback(() => {
@@ -202,7 +207,7 @@ export function useErrorBoundary() {
     resetError,
     captureError,
     refreshPage,
-    hasError: error?.hasError || false
+    hasError: error?.hasError || false,
   };
 }
 
@@ -214,7 +219,12 @@ interface ErrorDisplayProps {
   className?: string;
 }
 
-export function ErrorDisplay({ error, onReset, onRefresh, className = "m-4" }: ErrorDisplayProps) {
+export function ErrorDisplay({
+  error,
+  onReset,
+  onRefresh,
+  className = "m-4",
+}: ErrorDisplayProps) {
   return (
     <Alert className={className}>
       <AlertTriangle className="h-4 w-4" />
@@ -226,7 +236,9 @@ export function ErrorDisplay({ error, onReset, onRefresh, className = "m-4" }: E
           {error.errorDetails && (
             <details className="text-xs text-muted-foreground">
               <summary>Error Details</summary>
-              <pre className="mt-1 whitespace-pre-wrap">{error.errorDetails}</pre>
+              <pre className="mt-1 whitespace-pre-wrap">
+                {error.errorDetails}
+              </pre>
             </details>
           )}
           <div className="flex gap-2 mt-3">
@@ -250,24 +262,26 @@ export function ErrorDisplay({ error, onReset, onRefresh, className = "m-4" }: E
 // Safe component wrapper HOC
 export function withErrorBoundary<P extends object>(
   Component: React.ComponentType<P>,
-  fallbackMessage?: string
+  fallbackMessage?: string,
 ) {
   return function SafeComponent(props: P) {
-    const { error, resetError, captureError, refreshPage, hasError } = useErrorBoundary();
+    const { error, resetError, captureError, refreshPage, hasError } =
+      useErrorBoundary();
 
     // Wrap component rendering in error boundary
     const renderSafeComponent = safeRender(
       () => <Component {...props} />,
-      fallbackMessage || `${Component.displayName || Component.name || 'Component'} failed to render`,
-      captureError
+      fallbackMessage ||
+        `${Component.displayName || Component.name || "Component"} failed to render`,
+      captureError,
     );
 
     if (hasError && error) {
       return (
-        <ErrorDisplay 
-          error={error} 
-          onReset={resetError} 
-          onRefresh={refreshPage} 
+        <ErrorDisplay
+          error={error}
+          onReset={resetError}
+          onRefresh={refreshPage}
         />
       );
     }
@@ -280,18 +294,18 @@ export function withErrorBoundary<P extends object>(
 export async function safeAsync<T>(
   asyncOperation: () => Promise<T>,
   fallbackValue?: T,
-  onError?: (error: Error) => void
+  onError?: (error: Error) => void,
 ): Promise<T | typeof fallbackValue> {
   try {
     return await asyncOperation();
   } catch (error) {
     const errorObj = error instanceof Error ? error : new Error(String(error));
-    console.error('Safe async error:', errorObj);
-    
+    console.error("Safe async error:", errorObj);
+
     if (onError) {
       onError(errorObj);
     }
-    
+
     return fallbackValue;
   }
 }
@@ -300,16 +314,16 @@ export async function safeAsync<T>(
 export function validateData<T>(
   data: unknown,
   validator: (data: unknown) => data is T,
-  fallback: T
+  fallback: T,
 ): T {
   try {
     if (validator(data)) {
       return data;
     }
-    console.warn('Data validation failed, using fallback:', data);
+    console.warn("Data validation failed, using fallback:", data);
     return fallback;
   } catch (error) {
-    console.error('Validation error:', error, 'Data:', data);
+    console.error("Validation error:", error, "Data:", data);
     return fallback;
   }
 }
@@ -318,7 +332,7 @@ export function validateData<T>(
 export function logError(
   context: string,
   error: Error,
-  additionalData?: Record<string, unknown>
+  additionalData?: Record<string, unknown>,
 ) {
   const errorData = {
     context,
@@ -327,13 +341,13 @@ export function logError(
     timestamp: new Date().toISOString(),
     userAgent: navigator.userAgent,
     url: window.location.href,
-    ...additionalData
+    ...additionalData,
   };
-  
+
   console.error(`[${context}] Error:`, errorData);
-  
+
   // In production, send to error tracking service
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === "production") {
     // Integration point for error tracking services like Sentry
     // window.errorTracker?.captureException(error, { extra: errorData });
   }

@@ -7,15 +7,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  CreditCard, 
-  User, 
-  Search, 
+import {
+  CreditCard,
+  User,
+  Search,
   Plus,
   CheckCircle,
   AlertCircle,
   DollarSign,
-  History
+  History,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "convex/react";
@@ -51,28 +51,31 @@ export function CreditManagement() {
   const [reason, setReason] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [useCurrentUser, setUseCurrentUser] = useState(false);
-  
+
   const { toast } = useToast();
   const { user: currentUser } = useUser();
-  
+
   // Admin functions
   const grantBonusCredits = useMutation(api.users.admin.grantBonusCredits);
-  
+
   // Queries for recent transactions and user lookup
-  const recentTransactions = useQuery(api.admin.queries.getRecentCreditTransactions, { limit: 10 });
-  
+  const recentTransactions = useQuery(
+    api.admin.queries.getRecentCreditTransactions,
+    { limit: 10 },
+  );
+
   // Query to get current user data (for admin granting credits to themselves)
   const currentUserData = useQuery(api.users.queries.getCurrentUserData);
-  
+
   // State for user lookup
   const [foundUser, setFoundUser] = useState<UserSearchResult | null>(null);
   const [searchError, setSearchError] = useState("");
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
-  
+
   // Query for user search (only executes when searchQuery is set)
   const searchResults = useQuery(
     api.users.admin.searchUsers,
-    searchQuery ? { query: searchQuery, limit: 1 } : "skip"
+    searchQuery ? { query: searchQuery, limit: 1 } : "skip",
   );
 
   const handleUserLookup = () => {
@@ -83,7 +86,7 @@ export function CreditManagement() {
 
     setIsLoading(true);
     setSearchError("");
-    
+
     if (useCurrentUser && currentUser?.emailAddresses?.[0]?.emailAddress) {
       // Use current admin user - need to get the actual database user ID
       if (!currentUserData) {
@@ -91,15 +94,19 @@ export function CreditManagement() {
         setIsLoading(false);
         return;
       }
-      
+
       setFoundUser({
         _id: currentUserData._id,
         email: currentUserData.email,
-        name: currentUserData.name || currentUser.fullName || currentUser.firstName || "Admin User",
+        name:
+          currentUserData.name ||
+          currentUser.fullName ||
+          currentUser.firstName ||
+          "Admin User",
         credits: currentUserData.credits,
         plan: currentUserData.plan as "free" | "pro" | "enterprise" | "admin",
         role: currentUserData.role,
-        isActive: currentUserData.isActive
+        isActive: currentUserData.isActive,
       });
       setIsLoading(false);
     } else if (targetEmail) {
@@ -128,16 +135,16 @@ export function CreditManagement() {
       toast({
         title: "Error",
         description: "Please find a user first",
-        variant: "destructive"
+        variant: "destructive",
       });
       return;
     }
 
     if (!creditAmount || parseInt(creditAmount) <= 0) {
       toast({
-        title: "Error", 
+        title: "Error",
         description: "Please enter a valid credit amount",
-        variant: "destructive"
+        variant: "destructive",
       });
       return;
     }
@@ -146,23 +153,23 @@ export function CreditManagement() {
       toast({
         title: "Error",
         description: "Please provide a reason for granting credits",
-        variant: "destructive"
+        variant: "destructive",
       });
       return;
     }
 
     try {
       setIsLoading(true);
-      
+
       await grantBonusCredits({
         userId: foundUser._id,
         amount: parseInt(creditAmount),
-        reason: reason.trim()
+        reason: reason.trim(),
       });
 
       toast({
         title: "Credits Granted Successfully",
-        description: `${creditAmount} credits have been added to ${foundUser.name || foundUser.email}'s account.`
+        description: `${creditAmount} credits have been added to ${foundUser.name || foundUser.email}'s account.`,
       });
 
       // Reset form
@@ -171,13 +178,15 @@ export function CreditManagement() {
       setFoundUser(null);
       setTargetEmail("");
       setUseCurrentUser(false);
-      
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "An error occurred while granting credits";
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "An error occurred while granting credits";
       toast({
         title: "Failed to Grant Credits",
         description: errorMessage,
-        variant: "destructive"
+        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
@@ -193,7 +202,7 @@ export function CreditManagement() {
             <User className="h-5 w-5" />
             Select User
           </h3>
-          
+
           <div className="space-y-4">
             {/* Toggle for current user vs email lookup */}
             <div className="flex items-center space-x-4">
@@ -243,7 +252,7 @@ export function CreditManagement() {
                     value={targetEmail}
                     onChange={(e) => setTargetEmail(e.target.value)}
                   />
-                  <Button 
+                  <Button
                     onClick={handleUserLookup}
                     disabled={isLoading || !targetEmail}
                     variant="outline"
@@ -260,7 +269,7 @@ export function CreditManagement() {
                 <p className="text-sm text-muted-foreground mb-2">
                   Grant credits to yourself (admin user)
                 </p>
-                <Button 
+                <Button
                   onClick={handleUserLookup}
                   disabled={isLoading}
                   variant="outline"
@@ -284,10 +293,17 @@ export function CreditManagement() {
                 <CheckCircle className="h-4 w-4" />
                 <AlertDescription>
                   <div className="space-y-1">
-                    <div><strong>User:</strong> {foundUser.name || "Unknown"}</div>
-                    <div><strong>Email:</strong> {foundUser.email}</div>
-                    <div><strong>Current Credits:</strong> {foundUser.credits}</div>
-                    <div><strong>Plan:</strong> 
+                    <div>
+                      <strong>User:</strong> {foundUser.name || "Unknown"}
+                    </div>
+                    <div>
+                      <strong>Email:</strong> {foundUser.email}
+                    </div>
+                    <div>
+                      <strong>Current Credits:</strong> {foundUser.credits}
+                    </div>
+                    <div>
+                      <strong>Plan:</strong>
                       <Badge variant="secondary" className="ml-2">
                         {foundUser.plan || "unknown"}
                       </Badge>
@@ -334,11 +350,12 @@ export function CreditManagement() {
                 rows={3}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Provide a clear reason for the credit grant (required for audit trail)
+                Provide a clear reason for the credit grant (required for audit
+                trail)
               </p>
             </div>
 
-            <Button 
+            <Button
               onClick={handleGrantCredits}
               disabled={isLoading || !foundUser || !creditAmount || !reason}
               className="w-full"
@@ -370,26 +387,41 @@ export function CreditManagement() {
       ) : (
         <div className="space-y-3">
           {recentTransactions.map((transaction: CreditTransaction) => (
-            <div 
+            <div
               key={transaction._id}
               className="flex items-center justify-between p-3 border rounded-lg"
             >
               <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-full ${
-                  transaction.type === 'bonus' ? 'bg-green-100' :
-                  transaction.type === 'purchase' ? 'bg-blue-100' :
-                  transaction.type === 'usage' ? 'bg-orange-100' :
-                  'bg-gray-100'
-                }`}>
-                  {transaction.type === 'bonus' && <Plus className="h-4 w-4 text-green-600" />}
-                  {transaction.type === 'purchase' && <DollarSign className="h-4 w-4 text-blue-600" />}
-                  {transaction.type === 'usage' && <CreditCard className="h-4 w-4 text-orange-600" />}
-                  {transaction.type === 'refund' && <CheckCircle className="h-4 w-4 text-gray-600" />}
+                <div
+                  className={`p-2 rounded-full ${
+                    transaction.type === "bonus"
+                      ? "bg-green-100"
+                      : transaction.type === "purchase"
+                        ? "bg-blue-100"
+                        : transaction.type === "usage"
+                          ? "bg-orange-100"
+                          : "bg-gray-100"
+                  }`}
+                >
+                  {transaction.type === "bonus" && (
+                    <Plus className="h-4 w-4 text-green-600" />
+                  )}
+                  {transaction.type === "purchase" && (
+                    <DollarSign className="h-4 w-4 text-blue-600" />
+                  )}
+                  {transaction.type === "usage" && (
+                    <CreditCard className="h-4 w-4 text-orange-600" />
+                  )}
+                  {transaction.type === "refund" && (
+                    <CheckCircle className="h-4 w-4 text-gray-600" />
+                  )}
                 </div>
                 <div>
                   <div className="font-medium">{transaction.description}</div>
                   <div className="text-sm text-muted-foreground">
-                    {transaction.userName || transaction.userEmail || "Unknown User"}
+                    {transaction.userName ||
+                      transaction.userEmail ||
+                      "Unknown User"}
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {new Date(transaction.createdAt).toLocaleString()}
@@ -397,10 +429,13 @@ export function CreditManagement() {
                 </div>
               </div>
               <div className="text-right">
-                <div className={`font-bold ${
-                  transaction.amount > 0 ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {transaction.amount > 0 ? '+' : ''}{transaction.amount} credits
+                <div
+                  className={`font-bold ${
+                    transaction.amount > 0 ? "text-green-600" : "text-red-600"
+                  }`}
+                >
+                  {transaction.amount > 0 ? "+" : ""}
+                  {transaction.amount} credits
                 </div>
                 <div className="text-sm text-muted-foreground">
                   Balance: {transaction.balanceAfter}

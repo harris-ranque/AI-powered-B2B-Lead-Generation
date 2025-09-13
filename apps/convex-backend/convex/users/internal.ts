@@ -15,10 +15,12 @@ export const deductCreditsInternal = internalMutation({
     userId: v.id("users"),
     amount: v.number(),
     description: v.string(),
-    relatedEntity: v.optional(v.object({
-      type: v.string(),
-      id: v.string(),
-    })),
+    relatedEntity: v.optional(
+      v.object({
+        type: v.string(),
+        id: v.string(),
+      }),
+    ),
   },
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.userId);

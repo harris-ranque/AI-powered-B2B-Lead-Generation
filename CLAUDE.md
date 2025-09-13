@@ -11,17 +11,21 @@ Genni is a sophisticated AI-powered lead generation platform built as a monorepo
 This is a monorepo system with the following structure:
 
 ### Frontend & AI Worker (`apps/`)
+
 - **Frontend** (`apps/web/`): React + TypeScript + Vite application using shadcn/ui components
 - **LangGraph Worker** (`apps/langgraph-worker/`): Python FastAPI service with LangGraph multi-agent system
 
 ### Convex Backend (`apps/convex-backend/`)
+
 - **Convex Backend**: Real-time database with complete business logic in the apps directory
 
 ### Shared Packages (`packages/`)
+
 - **Shared Types** (`packages/shared-types/`): Manual shared TypeScript types across all apps
 - **Convex Types** (`packages/convex-types/`): Auto-generated Convex API types (symlinked from backend)
 
 ### Repository Structure:
+
 ```
 apps/convex-backend/
 ├── convex/
@@ -129,6 +133,7 @@ apps/convex-backend/
 ## Development Commands
 
 ### Root Level Commands (Turbo-managed)
+
 ```bash
 # Start all development servers
 pnpm dev
@@ -167,6 +172,7 @@ pnpm format
 ```
 
 ### Frontend Development (`apps/web/`)
+
 ```bash
 cd apps/web
 
@@ -187,6 +193,7 @@ pnpm preview
 ```
 
 ### LangGraph Worker Development (`apps/langgraph-worker/`)
+
 ```bash
 cd apps/langgraph-worker
 
@@ -211,6 +218,7 @@ pnpm install-deps
 ```
 
 ### Convex Backend Development (`apps/convex-backend/`)
+
 ```bash
 cd apps/convex-backend
 
@@ -236,6 +244,7 @@ pnpm type-check
 ## Technology Stack
 
 ### Frontend
+
 - **Framework**: React 18 with TypeScript
 - **Build Tool**: Vite
 - **UI Components**: shadcn/ui (Radix UI primitives)
@@ -245,12 +254,14 @@ pnpm type-check
 - **Form Handling**: React Hook Form with Zod validation
 
 ### LangGraph Worker
+
 - **Framework**: FastAPI
 - **AI System**: LangGraph with OpenAI integration
 - **Dependencies**: LangGraph, LangChain, Pydantic
 - **Python Version**: 3.11+
 
 ### Infrastructure
+
 - **Package Manager**: pnpm with workspaces
 - **Monorepo**: Turborepo
 - **Deployment**: Railway (both frontend and worker)
@@ -259,6 +270,7 @@ pnpm type-check
 ## Key Components & Architecture
 
 ### Frontend Structure
+
 - **Entry Point**: `src/main.tsx` → `src/App.tsx` → `src/pages/Index.tsx` → `src/components/GenniApp.tsx`
 - **UI Components**: Extensive shadcn/ui component library in `src/components/ui/`
 - **Business Components**: Lead generation interface components in `src/components/`
@@ -278,6 +290,7 @@ pnpm type-check
   - `RoyaltyDashboard`: Developer royalty management
 
 ### LangGraph Multi-Agent System
+
 The Python worker implements an optimized 3-agent system for email personalization:
 
 1. **Business Intelligence Agent**: Comprehensive research and analysis consolidation
@@ -300,12 +313,14 @@ The Python worker implements an optimized 3-agent system for email personalizati
    - **Processing Time**: 5-8 seconds
 
 **Performance Improvements**:
+
 - **57% fewer LLM calls** (3 vs 7 agents)
 - **50% faster execution** (~25-30s vs 45-60s)
 - **Better personalization** with consolidated business context
 - **Simplified maintenance** and debugging
 
 ### Search Flow Excellence
+
 **Enterprise-Grade Lead Generation Pipeline with Real-time Orchestration**
 
 ```
@@ -316,6 +331,7 @@ Updates      Transaction       Broadcasting       Progress Tracking   Correlatio
 ```
 
 **Advanced Pipeline Features**:
+
 - **🔄 Real-time Status Broadcasting**: Live pipeline progress with priority messaging system
 - **⚡ Performance Monitoring**: <100ms correlation tracking with comprehensive performance metrics
 - **🛡️ Reliability Engineering**: 99.9% uptime with comprehensive error recovery and retry mechanisms
@@ -326,6 +342,7 @@ Updates      Transaction       Broadcasting       Progress Tracking   Correlatio
 - **📈 Real-time Analytics**: Operation metrics, performance trends, and automated alerting
 
 **Data Flow & Pipeline Orchestration**:
+
 1. **Search Creation**: User creates search in React frontend with real-time validation
 2. **Credit Reservation**: Atomic credit reservation with transaction-based management
 3. **Pipeline Orchestration**: State machine coordination with intelligent queue processing
@@ -336,6 +353,7 @@ Updates      Transaction       Broadcasting       Progress Tracking   Correlatio
 8. **Completion & Export**: Results stored in Convex with CSV export and user notifications
 
 **Technical Excellence**:
+
 - **Correlation ID System**: Complete operation genealogy for instant debugging
 - **Multi-tier Rate Limiting**: Plan-based limits with burst allowances and adaptive adjustments
 - **Batch Intelligence**: Dynamic sizing based on system load and user subscription tier
@@ -345,7 +363,9 @@ Updates      Transaction       Broadcasting       Progress Tracking   Correlatio
 ## Environment Configuration
 
 ### Frontend Environment Variables
+
 Create `apps/web/.env.local`:
+
 ```env
 VITE_CONVEX_URL=your_convex_url
 VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
@@ -354,7 +374,9 @@ VITE_POSTHOG_HOST=
 ```
 
 ### LangGraph Worker Environment Variables
+
 Create `apps/langgraph-worker/.env`:
+
 ```env
 API_KEY=your_secure_api_key
 OPENAI_API_KEY=sk-...
@@ -363,7 +385,9 @@ PORT=8080
 ```
 
 ### Convex Backend Environment Variables
+
 Create `convex/.env.local`:
+
 ```env
 # API Keys
 OPENAI_API_KEY=sk-...
@@ -393,6 +417,7 @@ APP_URL=http://localhost:3000
 ## Development Workflow
 
 ### Monorepo Development
+
 ```bash
 # Main Repository - All services in one repo
 cd genni-app
@@ -406,14 +431,15 @@ npx convex dev    # Runs Convex in development mode
 ```
 
 ### Railway Deployment Context
+
 **IMPORTANT**: Railway deploys each app from its respective directory, NOT from the repository root:
 
 - **Web App**: Deploys from `/apps/web/` directory
-  - Uses `apps/web/Dockerfile` 
+  - Uses `apps/web/Dockerfile`
   - Railway.toml in web directory references local files
   - Build context is the web app folder
 
-- **CrewAI Worker**: Deploys from `/apps/crewai-worker/` directory  
+- **CrewAI Worker**: Deploys from `/apps/crewai-worker/` directory
   - Uses `apps/crewai-worker/Dockerfile.minimal`
   - Railway.toml in worker directory references local files
   - Build context is the worker app folder
@@ -423,6 +449,7 @@ Each service has its own Railway configuration and deploys independently from it
 ### Deployment
 
 #### Railway CLI Commands
+
 ```bash
 # Authentication & Setup
 railway login           # Login to Railway account
@@ -475,7 +502,7 @@ railway restart        # Restart the service
 cd apps/web
 railway up --service genni-web
 
-cd apps/langgraph-worker  
+cd apps/langgraph-worker
 railway up --service genni-crewai-worker
 
 # Deploy Convex Backend
@@ -484,6 +511,7 @@ npx convex deploy
 ```
 
 #### Troubleshooting Railway Deployments
+
 ```bash
 # Check deployment status
 railway status
@@ -512,6 +540,7 @@ railway logs | grep -i "listening on"
 ```
 
 ### Service Access
+
 1. **Frontend**: Accessible at `http://localhost:3000`
 2. **API Worker**: Accessible at `http://localhost:8080`
 3. **Backend**: Convex backend deployed separately with real-time sync
@@ -545,21 +574,25 @@ railway logs | grep -i "listening on"
 ## System Architecture Principles
 
 ### Feature-Based Organization
+
 - Each major feature has its own directory
 - Contains all related mutations, queries, and actions
 - Makes it easy to find and modify code
 
 ### Separation of Concerns
+
 - Frontend components organized by feature
 - Backend functions organized by domain
 - Shared types in separate package
 
 ### Security Layers
+
 - `internal.ts` files for functions only callable by other backend functions
 - `admin.ts` files for admin-only functions
 - Middleware for route protection
 
 ### Scalability
+
 - Modular structure allows easy feature addition
 - Clear boundaries between features
 - Reusable components and utilities
@@ -567,6 +600,7 @@ railway logs | grep -i "listening on"
 ## Testing Commands
 
 ### Running Tests
+
 ```bash
 # Run all tests
 pnpm test
@@ -581,11 +615,13 @@ cd apps/web && pnpm test --coverage
 ## Build Process
 
 ### Frontend Build Process
+
 - Uses `convex-mock.cjs` to handle Convex imports during build
 - Supports both development and production builds
 - Vite handles bundling and optimization
 
 ### Worker Build Process
+
 - Python app requires no build step
 - Dependencies managed via `requirements.txt`
 - Production deployment uses Gunicorn WSGI server
@@ -604,13 +640,15 @@ cd apps/web && pnpm test --coverage
 Complete royalty system implementation with the following components:
 
 **Frontend Components** (`apps/web/src/components/royalty/`):
+
 - `DeveloperRoyaltyDashboard.tsx` - Main dashboard with earnings overview
-- `PaymentTable.tsx` - Sortable/filterable payment history 
+- `PaymentTable.tsx` - Sortable/filterable payment history
 - `PaymentConfigModal.tsx` - Payment method setup with Stripe Connect
 - `AdminRoyaltyView.tsx` - Admin interface for payment management
 - `InvoiceGenerator.tsx` - PDF-ready invoice generation
 
 **Key Features Delivered**:
+
 - Real-time earnings dashboard with lifetime/pending/monthly stats
 - Multiple payment methods (Stripe Connect, bank transfer, PayPal)
 - Payment history with status tracking and filtering
@@ -623,6 +661,7 @@ Complete royalty system implementation with the following components:
 ### Security Updates Applied
 
 **CrewAI Worker Dependencies**:
+
 - Updated gunicorn >=23.0.0 (CVE-2024-6827 HTTP Request Smuggling fix)
 - Updated uvicorn >=0.24.0 (CVE-2024-5829 denial of service fix)
 - Updated pydantic >=2.8.0 (multiple security vulnerabilities fixed)
@@ -635,8 +674,9 @@ Complete royalty system implementation with the following components:
 **Problem Resolved**: CrewAI version 0.28.8 never existed on PyPI, causing deployment failures.
 
 **Solution Applied**: Updated to modern standalone CrewAI framework:
+
 - CrewAI >=0.152.0 with compatible tool versions
-- Updated langchain ecosystem to 0.3.x series 
+- Updated langchain ecosystem to 0.3.x series
 - Resolved embedchain dependency conflicts
 - Fixed chromadb version compatibility issues
 
@@ -645,12 +685,14 @@ Complete royalty system implementation with the following components:
 ### Docker Deployment Fixes
 
 **Web App**: Fixed Railway deployment from `/apps/web` directory context:
+
 - Updated Dockerfile to work with Railway's build context
 - Resolved pnpm installation issues (bypassed corepack signature errors)
 - Added real pnpm-lock.yaml file to avoid symlink issues
 - Successfully tested Docker build and container deployment
 
 **CrewAI Worker**: Resolved dependency conflicts and validated deployment:
+
 - Fixed langchain version conflicts (updated to 0.3.x series)
 - Removed problematic embedchain dependency
 - Multi-stage Docker build producing 1.29GB production image
@@ -663,12 +705,14 @@ Complete royalty system implementation with the following components:
 **Complete Clerk integration** implemented with proper webhook handling and JWT verification:
 
 **Backend Authentication Components** (`convex/`):
+
 - `auth.ts` - Core authentication functions with Clerk JWT verification
 - `auth.config.ts` - Convex auth configuration for Clerk provider
 - `http.ts` - Enhanced webhook handler with Svix signature verification
 - `auth/index.ts` - Legacy compatibility and API key validation
 
 **Key Features Implemented**:
+
 - **JWT Verification**: Proper Clerk JWT token verification using `@clerk/backend`
 - **Webhook Security**: Complete Svix signature verification for webhook authenticity
 - **User Sync**: Automatic user creation/updates from Clerk webhooks (user.created, user.updated, user.deleted)
@@ -678,12 +722,14 @@ Complete royalty system implementation with the following components:
 - **API Key Support**: External API access with validation and usage tracking
 
 **Database Schema Integration**:
+
 - Users table with `clerkId` field and proper indexing
 - Credit transactions with balance tracking
 - API keys table for external service access
 - Full backward compatibility with existing data structure
 
 **Security Features**:
+
 - Proper webhook signature verification using Svix
 - JWT token validation with Clerk secret key
 - Environment variable validation and error handling
@@ -691,21 +737,25 @@ Complete royalty system implementation with the following components:
 - Rate limiting and usage tracking for API keys
 
 **Dependencies Added**:
+
 - `@clerk/backend` v1.0.0 for JWT verification
 - `svix` v1.71.0 for webhook signature verification
 
 **Environment Variables Required**:
+
 - `CLERK_SECRET_KEY` - For JWT verification
-- `CLERK_WEBHOOK_SECRET` - For webhook signature verification  
+- `CLERK_WEBHOOK_SECRET` - For webhook signature verification
 - `CLERK_JWT_ISSUER_DOMAIN` - JWT issuer domain configuration
 
-**Webhook Endpoint**: 
+**Webhook Endpoint**:
+
 - Path: `/webhooks/clerk`
 - Method: POST
 - Security: Svix signature verification
 - Events: user.created, user.updated, user.deleted, session.created, session.ended
 
-**Migration from Convex Auth**: 
+**Migration from Convex Auth**:
+
 - Maintains backward compatibility with existing auth interface
 - Legacy `auth` object exported for compatibility
 - Seamless transition from `@convex-dev/auth` to Clerk
@@ -723,7 +773,7 @@ Complete royalty system implementation with the following components:
 genni/
 ├── apps/
 │   ├── web/                    # React frontend
-│   ├── langgraph-worker/       # Python AI service  
+│   ├── langgraph-worker/       # Python AI service
 │   └── convex-backend/         # Convex backend (MOVED)
 │       ├── convex/             # Functions directory
 │       ├── package.json        # Isolated dependencies
@@ -737,11 +787,13 @@ genni/
 ### Key Improvements Delivered
 
 #### 1. **Resolved Convex CLI Issues**
+
 - ✅ **Bundling errors eliminated**: CLI bundling issues with Node.js modules resolved
 - ✅ **CLI functionality restored**: `npx convex dev` works without errors
 - ✅ **Clean workspace separation**: Prevents dependency conflicts between services
 
 #### 2. **Import System Modernization**
+
 - **Before**: `import { api } from "@/convex/_generated/api"`
 - **After**: `import { api } from "@genni/convex-types"`
 - ✅ **All import paths updated** across 17+ files
@@ -749,14 +801,16 @@ genni/
 - ✅ **Fixed malformed imports** (`@/@convex` issues resolved)
 
 #### 3. **Unified Package Management**
+
 - ✅ **Single pnpm workspace** managing all packages
-- ✅ **Eliminated npm/pnpm conflicts** 
+- ✅ **Eliminated npm/pnpm conflicts**
 - ✅ **Clean dependency resolution** across all services
 - ✅ **Workspace dependencies** properly configured
 
 #### 4. **Enhanced Development Workflow**
 
 **New Commands Available**:
+
 ```bash
 # Install everything
 pnpm install
@@ -766,7 +820,7 @@ pnpm dev
 
 # Individual services
 pnpm dev:web      # Frontend on port 3000
-pnpm dev:worker   # LangGraph worker on port 8080  
+pnpm dev:worker   # LangGraph worker on port 8080
 pnpm dev:convex   # Convex backend
 
 # Deployment
@@ -774,6 +828,7 @@ pnpm deploy:convex
 ```
 
 **Convex Development (Now Working)**:
+
 ```bash
 cd apps/convex-backend
 npx convex dev     # ✅ No more bundling errors!
@@ -782,6 +837,7 @@ pnpm type-check
 ```
 
 #### 5. **File Organization Cleanup**
+
 - ✅ **Removed duplicate `_generated` directories** (3 locations → 1)
 - ✅ **Eliminated conflicting `convex.json` files** in web app
 - ✅ **Clean root directory** - no service-specific files at root
@@ -799,15 +855,17 @@ pnpm type-check
 
 ### Migration Impact
 
-**Before**: 
+**Before**:
+
 - Convex CLI broken with Node.js bundling errors
 - Confused import paths and duplicate generated files
 - Mixed package managers causing conflicts
 - Cluttered root directory
 
 **After**:
+
 - ✅ Fully functional development environment
-- ✅ Clean, predictable import paths  
+- ✅ Clean, predictable import paths
 - ✅ Unified package management
 - ✅ Professional monorepo structure
 - ✅ Ready for production deployment
@@ -826,21 +884,25 @@ pnpm type-check
 ### Implementation Phases Completed
 
 #### **Phase 1-2: Foundation & Orchestration**
+
 - ✅ **LangGraph Migration**: Complete transition from CrewAI to LangGraph multi-agent system
 - ✅ **Pipeline Orchestrator**: State machine coordination with intelligent queue processing (`search/orchestrator.ts`)
 - ✅ **Internal Functions**: Complete pipeline component integration with error handling
 
 #### **Phase 3: Reliability & Credit Management**
+
 - ✅ **Real-time Triggers**: Event-driven queue processing with priority handling and immediate pipeline advancement
 - ✅ **Comprehensive Retry System**: Exponential backoff, intelligent failure recovery (`retries/internal.ts`)
 - ✅ **Atomic Credit System**: Two-phase commit credit operations with reservation/commit/rollback (`credits/transactions.ts`)
 
 #### **Phase 4: Scale & Performance**
+
 - ✅ **Multi-tier Rate Limiting**: Plan-based limits with burst allowances and adaptive adjustments (`rateLimit/`)
 - ✅ **Intelligent Batch Processing**: Dynamic batch sizing with priority queuing for large searches (`search/batchProcessor.ts`)
 - ✅ **Real-time Broadcasting**: Priority-based status updates with WebSocket/SSE preparation (`realtime/broadcaster.ts`)
 
 #### **Phase 5: Observability & Debugging**
+
 - ✅ **Correlation ID System**: Complete operation tracking across entire pipeline (`lib/correlation.ts`)
 - ✅ **Enhanced Logging**: Persistent correlation logs with performance metrics (`lib/logging.ts`)
 - ✅ **Operation Tracing**: Full parent/child operation trees with comprehensive analytics
@@ -848,6 +910,7 @@ pnpm type-check
 ### Enterprise Features Delivered
 
 #### **🏗️ Advanced Architecture**
+
 ```typescript
 // New Database Tables (8 tables added)
 - creditReservations: Two-phase commit credit management
@@ -861,6 +924,7 @@ pnpm type-check
 ```
 
 #### **⚡ Performance & Reliability**
+
 - **Sub-100ms Correlation Tracking**: Complete operation genealogy with performance metrics
 - **99.9% Uptime**: Comprehensive error recovery with exponential backoff retry
 - **Dynamic Batch Processing**: Intelligent sizing based on system load and user subscription tier
@@ -868,6 +932,7 @@ pnpm type-check
 - **Event-driven Pipeline**: Immediate advancement with intelligent triggers and queue processing
 
 #### **📊 Enterprise Observability**
+
 - **Complete Operation Tracing**: Parent/child correlation trees for instant debugging
 - **Performance Analytics**: P50/P95 metrics with automated alerting and trend analysis
 - **Real-time Monitoring**: System health checks, performance degradation detection
@@ -875,6 +940,7 @@ pnpm type-check
 - **Operation Metrics**: Success rates, error patterns, and performance optimization recommendations
 
 #### **🔄 Real-time Infrastructure**
+
 - **Priority Broadcasting**: 5-level priority system with immediate delivery for urgent messages
 - **WebSocket/SSE Ready**: Infrastructure prepared for real-time client connections
 - **User-specific Channels**: Targeted messaging with filtering, tagging, and acknowledgment support
@@ -882,6 +948,7 @@ pnpm type-check
 - **Analytics Dashboard**: Performance metrics, delivery analytics, and system insights
 
 #### **💳 Advanced Credit Management**
+
 ```typescript
 // Atomic Credit Operations
 reserveCredits() → verifyBalance() → executeOperation() → commitCredits() | rollbackCredits()
@@ -894,6 +961,7 @@ reserveCredits() → verifyBalance() → executeOperation() → commitCredits() 
 ```
 
 #### **🎯 Intelligent Processing**
+
 - **Multi-tier Rate Limiting**: Free/Pro/Enterprise plans with burst allowances
 - **Batch Intelligence**: Dynamic sizing based on system load and subscription tier
 - **Priority Queuing**: High-priority operations get immediate processing
@@ -903,19 +971,21 @@ reserveCredits() → verifyBalance() → executeOperation() → commitCredits() 
 ### System Capabilities Enhanced
 
 #### **🔍 Advanced Debugging**
+
 ```bash
 # Correlation Trace Example
-corr_a1b2c3d4e5f6 [search_create] → 
-  ├── corr_f6e5d4c3b2a1 [google_maps_discovery] → 
+corr_a1b2c3d4e5f6 [search_create] →
+  ├── corr_f6e5d4c3b2a1 [google_maps_discovery] →
   │   └── Duration: 1,250ms, Status: Success, Leads: 15
-  ├── corr_b2c3d4e5f6a1 [lead_enrichment] → 
+  ├── corr_b2c3d4e5f6a1 [lead_enrichment] →
   │   ├── Batch: 1/3, Duration: 800ms, Status: Success
   │   └── Email Match Rate: 87%
-  └── corr_c3d4e5f6a1b2 [ai_analysis] → 
+  └── corr_c3d4e5f6a1b2 [ai_analysis] →
       └── Duration: 2,100ms, Status: Success, Relevance: 0.85
 ```
 
 #### **📈 Performance Monitoring**
+
 - **Operation Metrics**: Average duration, success rates, error patterns
 - **System Health**: Resource utilization, queue depths, processing rates
 - **User Analytics**: Usage patterns, subscription tier performance
@@ -925,6 +995,7 @@ corr_a1b2c3d4e5f6 [search_create] →
 ### Operational Excellence
 
 #### **🚀 Automated Operations**
+
 - **15 Cron Jobs**: Automated cleanup, processing, and maintenance
 - **Self-healing Systems**: Automatic error recovery and retry mechanisms
 - **Health Monitoring**: Continuous system health checks with alerting
@@ -932,6 +1003,7 @@ corr_a1b2c3d4e5f6 [search_create] →
 - **Maintenance Automation**: Log cleanup, expired data removal, performance tuning
 
 #### **🔧 Developer Experience**
+
 - **Complete Test Suite**: Comprehensive testing for all major components
 - **Inline Documentation**: Detailed documentation and usage examples
 - **Error Context**: Enhanced error messages with correlation IDs and debugging context
@@ -941,6 +1013,7 @@ corr_a1b2c3d4e5f6 [search_create] →
 ### Business Impact
 
 #### **📊 Operational Benefits**
+
 - **Zero Data Loss**: Atomic transactions prevent credit inconsistencies and data corruption
 - **Predictable Performance**: Sub-100ms response times with comprehensive monitoring
 - **Scalable Architecture**: Handles thousands of concurrent users with intelligent batching
@@ -948,6 +1021,7 @@ corr_a1b2c3d4e5f6 [search_create] →
 - **Cost Optimization**: Precise credit tracking and intelligent resource management
 
 #### **🎯 User Experience**
+
 - **Real-time Feedback**: Instant progress updates throughout search pipeline
 - **Transparent Costs**: Clear credit usage with transaction-level accuracy
 - **Reliable Operations**: Self-healing systems with automatic error recovery

@@ -16,7 +16,7 @@ export function ProtectedRoute({
   requireAuth = true,
   requireFeature,
   requireAction,
-  redirectTo = "/signin"
+  redirectTo = "/signin",
 }: ProtectedRouteProps) {
   const { isSignedIn, isLoaded } = useAuth();
   const location = useLocation();
@@ -32,7 +32,12 @@ export function ProtectedRoute({
 
   // Check authentication
   if (requireAuth && !isSignedIn) {
-    return <Navigate to={`${redirectTo}?redirect=${encodeURIComponent(location.pathname)}`} replace />;
+    return (
+      <Navigate
+        to={`${redirectTo}?redirect=${encodeURIComponent(location.pathname)}`}
+        replace
+      />
+    );
   }
 
   // Check subscription requirements
@@ -53,14 +58,14 @@ export function ProtectedRoute({
 
 // Specific route protection components for common use cases
 export function DashboardRoute({ children }: { children: React.ReactNode }) {
-  return (
-    <ProtectedRoute requireAuth={true}>
-      {children}
-    </ProtectedRoute>
-  );
+  return <ProtectedRoute requireAuth={true}>{children}</ProtectedRoute>;
 }
 
-export function EmailGenerationRoute({ children }: { children: React.ReactNode }) {
+export function EmailGenerationRoute({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <ProtectedRoute requireAuth={true} requireFeature="email_generation">
       {children}
@@ -68,7 +73,11 @@ export function EmailGenerationRoute({ children }: { children: React.ReactNode }
   );
 }
 
-export function BulkOperationsRoute({ children }: { children: React.ReactNode }) {
+export function BulkOperationsRoute({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <ProtectedRoute requireAuth={true} requireFeature="bulk_operations">
       {children}
@@ -84,7 +93,11 @@ export function APIAccessRoute({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function AdvancedAnalyticsRoute({ children }: { children: React.ReactNode }) {
+export function AdvancedAnalyticsRoute({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <ProtectedRoute requireAuth={true} requireFeature="advanced_analytics">
       {children}

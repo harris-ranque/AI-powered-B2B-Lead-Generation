@@ -8,18 +8,18 @@ Fingerprints in CrewAI provide a way to uniquely identify and track components t
 
 These fingerprints can be used for:
 
-* Auditing and tracking component usage
-* Ensuring component identity integrity
-* Attaching metadata to components
-* Creating a traceable chain of operations
+- Auditing and tracking component usage
+- Ensuring component identity integrity
+- Attaching metadata to components
+- Creating a traceable chain of operations
 
 ## How Fingerprints Work
 
 A fingerprint is an instance of the `Fingerprint` class from the `crewai.security` module. Each fingerprint contains:
 
-* A UUID string: A unique identifier for the component that is automatically generated and cannot be manually set
-* A creation timestamp: When the fingerprint was generated, automatically set and cannot be manually modified
-* Metadata: A dictionary of additional information that can be customized
+- A UUID string: A unique identifier for the component that is automatically generated and cannot be manually set
+- A creation timestamp: When the fingerprint was generated, automatically set and cannot be manually modified
+- Metadata: A dictionary of additional information that can be customized
 
 Fingerprints are automatically generated and assigned when a component is created. Each component exposes its fingerprint through a read-only property.
 

@@ -8,7 +8,11 @@ interface MobileHeaderProps {
   onMenuClick?: () => void;
 }
 
-export function MobileHeader({ title, showMenu = true, onMenuClick }: MobileHeaderProps) {
+export function MobileHeader({
+  title,
+  showMenu = true,
+  onMenuClick,
+}: MobileHeaderProps) {
   return (
     <header className="flex items-center justify-between p-4 bg-card/50 backdrop-blur-sm border-b border-border">
       <div className="flex items-center gap-3">
@@ -19,7 +23,7 @@ export function MobileHeader({ title, showMenu = true, onMenuClick }: MobileHead
         )}
         <h1 className="text-lg font-semibold">{title}</h1>
       </div>
-      
+
       <ClerkUserButton />
     </header>
   );

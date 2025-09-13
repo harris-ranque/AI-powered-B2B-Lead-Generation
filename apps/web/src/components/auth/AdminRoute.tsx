@@ -1,7 +1,13 @@
 import { ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Shield, AlertCircle } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -36,9 +42,7 @@ export function AdminRoute({ children }: AdminRouteProps) {
           </CardHeader>
           <CardContent className="text-center">
             <Link to="/signin">
-              <Button className="w-full">
-                Sign In
-              </Button>
+              <Button className="w-full">Sign In</Button>
             </Link>
           </CardContent>
         </Card>
@@ -47,7 +51,7 @@ export function AdminRoute({ children }: AdminRouteProps) {
   }
 
   // Check if user has admin role
-  const isAdmin = user?.role === 'admin' || user?.isAdmin === true;
+  const isAdmin = user?.role === "admin" || user?.isAdmin === true;
 
   if (!isAdmin) {
     return (
@@ -59,7 +63,8 @@ export function AdminRoute({ children }: AdminRouteProps) {
             </div>
             <CardTitle>Access Denied</CardTitle>
             <CardDescription>
-              You don't have permission to access the admin dashboard. Please contact your system administrator if you believe this is an error.
+              You don't have permission to access the admin dashboard. Please
+              contact your system administrator if you believe this is an error.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

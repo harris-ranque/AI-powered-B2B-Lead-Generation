@@ -1,22 +1,22 @@
-import React from 'react';
+import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
-import { 
-  Building, 
-  Target, 
-  Briefcase, 
-  TrendingUp, 
-  Users, 
-  AlertTriangle, 
-  Code, 
+import {
+  Building,
+  Target,
+  Briefcase,
+  TrendingUp,
+  Users,
+  AlertTriangle,
+  Code,
   Trophy,
   Calendar,
   ExternalLink,
   CheckCircle,
-  Search
-} from 'lucide-react';
+  Search,
+} from "lucide-react";
 
 interface BusinessContext {
   company_overview: string;
@@ -48,23 +48,25 @@ interface BusinessContextDisplayProps {
   className?: string;
 }
 
-export function BusinessContextDisplay({ 
-  businessContext, 
-  companyName, 
+export function BusinessContextDisplay({
+  businessContext,
+  companyName,
   website,
-  className = "" 
+  className = "",
 }: BusinessContextDisplayProps) {
-  const confidenceColor = businessContext.confidence_score >= 0.8 
-    ? "text-green-600" 
-    : businessContext.confidence_score >= 0.6 
-    ? "text-yellow-600" 
-    : "text-red-600";
+  const confidenceColor =
+    businessContext.confidence_score >= 0.8
+      ? "text-green-600"
+      : businessContext.confidence_score >= 0.6
+        ? "text-yellow-600"
+        : "text-red-600";
 
-  const confidenceLabel = businessContext.confidence_score >= 0.8 
-    ? "High" 
-    : businessContext.confidence_score >= 0.6 
-    ? "Medium" 
-    : "Low";
+  const confidenceLabel =
+    businessContext.confidence_score >= 0.8
+      ? "High"
+      : businessContext.confidence_score >= 0.6
+        ? "Medium"
+        : "Low";
 
   return (
     <div className={`space-y-4 ${className}`}>
@@ -74,30 +76,37 @@ export function BusinessContextDisplay({
           <CardTitle className="flex items-center gap-2">
             <Building className="h-5 w-5" />
             Business Intelligence: {companyName}
-            <Badge 
-              variant="outline" 
-              className={`ml-auto ${confidenceColor}`}
-            >
+            <Badge variant="outline" className={`ml-auto ${confidenceColor}`}>
               <CheckCircle className="h-3 w-3 mr-1" />
-              {confidenceLabel} Confidence ({(businessContext.confidence_score * 100).toFixed(0)}%)
+              {confidenceLabel} Confidence (
+              {(businessContext.confidence_score * 100).toFixed(0)}%)
             </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <h4 className="font-semibold text-sm text-muted-foreground mb-2">Company Overview</h4>
-            <p className="text-sm leading-relaxed">{businessContext.company_overview}</p>
+            <h4 className="font-semibold text-sm text-muted-foreground mb-2">
+              Company Overview
+            </h4>
+            <p className="text-sm leading-relaxed">
+              {businessContext.company_overview}
+            </p>
           </div>
-          
+
           {website && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <ExternalLink className="h-3 w-3" />
-              <a href={website} target="_blank" rel="noopener noreferrer" className="hover:text-primary">
+              <a
+                href={website}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-primary"
+              >
                 {website}
               </a>
             </div>
           )}
-          
+
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <div className="flex items-center gap-2 mb-2">
@@ -106,7 +115,7 @@ export function BusinessContextDisplay({
               </div>
               <p className="text-sm">{businessContext.industry_focus}</p>
             </div>
-            
+
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -129,15 +138,17 @@ export function BusinessContextDisplay({
           </CardHeader>
           <CardContent>
             <p className="text-sm">{businessContext.business_model}</p>
-            
+
             <Separator className="my-3" />
-            
+
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <Users className="h-3 w-3 text-muted-foreground" />
                 <span className="font-semibold text-xs">Target Customers</span>
               </div>
-              <p className="text-xs text-muted-foreground">{businessContext.target_customers}</p>
+              <p className="text-xs text-muted-foreground">
+                {businessContext.target_customers}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -245,39 +256,56 @@ export function BusinessContextDisplay({
         <CardContent>
           <div className="grid md:grid-cols-3 gap-4 text-sm">
             <div>
-              <div className="font-semibold text-muted-foreground mb-1">Confidence Score</div>
+              <div className="font-semibold text-muted-foreground mb-1">
+                Confidence Score
+              </div>
               <div className="flex items-center gap-2">
-                <Progress value={businessContext.confidence_score * 100} className="h-2 flex-1" />
+                <Progress
+                  value={businessContext.confidence_score * 100}
+                  className="h-2 flex-1"
+                />
                 <span className={`text-sm ${confidenceColor}`}>
                   {(businessContext.confidence_score * 100).toFixed(0)}%
                 </span>
               </div>
             </div>
-            
+
             <div>
-              <div className="font-semibold text-muted-foreground mb-1">Data Sources</div>
-              <div className="text-xs">{businessContext.data_sources.length} sources analyzed</div>
+              <div className="font-semibold text-muted-foreground mb-1">
+                Data Sources
+              </div>
+              <div className="text-xs">
+                {businessContext.data_sources.length} sources analyzed
+              </div>
             </div>
-            
+
             {businessContext.research_metadata?.research_time && (
               <div>
-                <div className="font-semibold text-muted-foreground mb-1">Research Time</div>
+                <div className="font-semibold text-muted-foreground mb-1">
+                  Research Time
+                </div>
                 <div className="text-xs">
                   {businessContext.research_metadata.research_time.toFixed(1)}s
                 </div>
               </div>
             )}
           </div>
-          
+
           {businessContext.data_sources.length > 0 && (
             <div className="mt-3">
-              <div className="font-semibold text-muted-foreground mb-2 text-xs">Sources</div>
+              <div className="font-semibold text-muted-foreground mb-2 text-xs">
+                Sources
+              </div>
               <div className="flex flex-wrap gap-1">
-                {businessContext.data_sources.slice(0, 3).map((source, index) => (
-                  <Badge key={index} variant="outline" className="text-xs">
-                    {source.includes('http') ? new URL(source).hostname : source}
-                  </Badge>
-                ))}
+                {businessContext.data_sources
+                  .slice(0, 3)
+                  .map((source, index) => (
+                    <Badge key={index} variant="outline" className="text-xs">
+                      {source.includes("http")
+                        ? new URL(source).hostname
+                        : source}
+                    </Badge>
+                  ))}
                 {businessContext.data_sources.length > 3 && (
                   <Badge variant="outline" className="text-xs">
                     +{businessContext.data_sources.length - 3} more

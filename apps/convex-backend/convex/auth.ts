@@ -39,5 +39,5 @@ export const auth = {
   getUserId: async (ctx: any) => {
     const user = await getCurrentUser(ctx);
     return user?._id || null;
-  }
+  },
 };

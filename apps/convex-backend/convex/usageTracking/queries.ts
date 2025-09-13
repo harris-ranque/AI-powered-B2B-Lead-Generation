@@ -49,7 +49,7 @@ export const getCurrentUsage = query({
         },
         period: {
           start: Date.now(),
-          end: Date.now() + (30 * 24 * 60 * 60 * 1000),
+          end: Date.now() + 30 * 24 * 60 * 60 * 1000,
         },
         plan: user.plan,
       };
@@ -57,12 +57,31 @@ export const getCurrentUsage = query({
 
     // Calculate usage percentages
     const percentUsed = {
-      searches: limits.monthlySearches === -1 ? 0 : 
-        Math.min(100, Math.round((usage.searchesUsed / limits.monthlySearches) * 100)),
-      enrichments: limits.monthlyEnrichments === -1 ? 0 :
-        Math.min(100, Math.round((usage.leadsEnriched / limits.monthlyEnrichments) * 100)),
-      exports: limits.monthlyExports === -1 ? 0 :
-        Math.min(100, Math.round((usage.exportsCompleted / limits.monthlyExports) * 100)),
+      searches:
+        limits.monthlySearches === -1
+          ? 0
+          : Math.min(
+              100,
+              Math.round((usage.searchesUsed / limits.monthlySearches) * 100),
+            ),
+      enrichments:
+        limits.monthlyEnrichments === -1
+          ? 0
+          : Math.min(
+              100,
+              Math.round(
+                (usage.leadsEnriched / limits.monthlyEnrichments) * 100,
+              ),
+            ),
+      exports:
+        limits.monthlyExports === -1
+          ? 0
+          : Math.min(
+              100,
+              Math.round(
+                (usage.exportsCompleted / limits.monthlyExports) * 100,
+              ),
+            ),
     };
 
     return {
@@ -98,7 +117,7 @@ export const getUsageHistory = query({
       .order("desc")
       .take(args.limit || 12); // Default to 12 months
 
-    return usageRecords.map(record => ({
+    return usageRecords.map((record) => ({
       period: {
         start: record.billingPeriodStart,
         end: record.billingPeriodEnd,
@@ -125,7 +144,7 @@ export const canPerformOperation = query({
       v.literal("search"),
       v.literal("email_generation"),
       v.literal("export"),
-      v.literal("bulk_operation")
+      v.literal("bulk_operation"),
     ),
     count: v.optional(v.number()),
   },
@@ -169,7 +188,7 @@ export const canPerformOperation = query({
           return { allowed: true, remaining: -1 };
         }
         const remainingSearches = limits.monthlySearches - usage.searchesUsed;
-        return { 
+        return {
           allowed: remainingSearches >= requestCount,
           remaining: remainingSearches,
           used: usage.searchesUsed,
@@ -177,9 +196,11 @@ export const canPerformOperation = query({
         };
 
       case "email_generation":
-        return { 
+        return {
           allowed: limits.emailGeneration,
-          reason: limits.emailGeneration ? undefined : "Email generation not available on your plan",
+          reason: limits.emailGeneration
+            ? undefined
+            : "Email generation not available on your plan",
         };
 
       case "export":
@@ -187,7 +208,7 @@ export const canPerformOperation = query({
           return { allowed: true, remaining: -1 };
         }
         const remainingExports = limits.monthlyExports - usage.exportsCompleted;
-        return { 
+        return {
           allowed: remainingExports >= requestCount,
           remaining: remainingExports,
           used: usage.exportsCompleted,
@@ -195,9 +216,11 @@ export const canPerformOperation = query({
         };
 
       case "bulk_operation":
-        return { 
+        return {
           allowed: limits.bulkOperations,
-          reason: limits.bulkOperations ? undefined : "Bulk operations not available on your plan",
+          reason: limits.bulkOperations
+            ? undefined
+            : "Bulk operations not available on your plan",
         };
 
       default:
@@ -216,7 +239,7 @@ export const getUsageAnalytics = query({
   handler: async (ctx, args) => {
     // This would typically require admin permissions
     const user = await requireAuth(ctx);
-    
+
     // For now, just return current user's analytics
     if (args.userId && args.userId !== user._id) {
       throw new Error("Not authorized to view other users' analytics");
@@ -228,33 +251,40 @@ export const getUsageAnalytics = query({
       .filter((q) => q.eq(q.field("userId"), targetUserId));
 
     if (args.startDate !== undefined) {
-      query = query.filter((q) => q.gte(q.field("billingPeriodStart"), args.startDate!));
+      query = query.filter((q) =>
+        q.gte(q.field("billingPeriodStart"), args.startDate!),
+      );
     }
     if (args.endDate !== undefined) {
-      query = query.filter((q) => q.lte(q.field("billingPeriodEnd"), args.endDate!));
+      query = query.filter((q) =>
+        q.lte(q.field("billingPeriodEnd"), args.endDate!),
+      );
     }
 
     const usageRecords = await query.collect();
 
     // Aggregate analytics
-    const totals = usageRecords.reduce((acc, record) => ({
-      totalSearches: acc.totalSearches + record.searchesUsed,
-      totalLeadsEnriched: acc.totalLeadsEnriched + record.leadsEnriched,
-      totalEmailsGenerated: acc.totalEmailsGenerated + record.emailsGenerated,
-      totalExports: acc.totalExports + record.exportsCompleted,
-      totalApiCalls: acc.totalApiCalls + record.apiCallsMade,
-      totalCreditsUsed: acc.totalCreditsUsed + record.creditsUsed,
-    }), {
-      totalSearches: 0,
-      totalLeadsEnriched: 0,
-      totalEmailsGenerated: 0,
-      totalExports: 0,
-      totalApiCalls: 0,
-      totalCreditsUsed: 0,
-    });
+    const totals = usageRecords.reduce(
+      (acc, record) => ({
+        totalSearches: acc.totalSearches + record.searchesUsed,
+        totalLeadsEnriched: acc.totalLeadsEnriched + record.leadsEnriched,
+        totalEmailsGenerated: acc.totalEmailsGenerated + record.emailsGenerated,
+        totalExports: acc.totalExports + record.exportsCompleted,
+        totalApiCalls: acc.totalApiCalls + record.apiCallsMade,
+        totalCreditsUsed: acc.totalCreditsUsed + record.creditsUsed,
+      }),
+      {
+        totalSearches: 0,
+        totalLeadsEnriched: 0,
+        totalEmailsGenerated: 0,
+        totalExports: 0,
+        totalApiCalls: 0,
+        totalCreditsUsed: 0,
+      },
+    );
 
     // Monthly breakdown
-    const monthlyData = usageRecords.map(record => ({
+    const monthlyData = usageRecords.map((record) => ({
       month: new Date(record.billingPeriodStart).toISOString().slice(0, 7), // YYYY-MM
       searches: record.searchesUsed,
       leads: record.leadsEnriched,

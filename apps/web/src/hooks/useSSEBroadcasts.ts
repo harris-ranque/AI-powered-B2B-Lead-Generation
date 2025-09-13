@@ -3,7 +3,7 @@ import { useUser } from "./useUser";
 import type { Id } from "@genni/convex-types/dataModel";
 import { createLogger } from "@/utils/logger";
 
-const logger = createLogger('useSSEBroadcasts');
+const logger = createLogger("useSSEBroadcasts");
 
 export interface SSEBroadcastMessage {
   type: string;
@@ -20,7 +20,7 @@ export interface SSEBroadcastMessage {
     queuedAt?: number;
     [key: string]: unknown;
   };
-  priority?: 'low' | 'normal' | 'high' | 'urgent' | 'critical';
+  priority?: "low" | "normal" | "high" | "urgent" | "critical";
   timestamp: number;
   messageId?: string;
   error?: string;
@@ -41,12 +41,14 @@ export interface SSEConnectionStatus {
 export function useSSEBroadcasts() {
   const { user } = useUser();
   const [messages, setMessages] = useState<SSEBroadcastMessage[]>([]);
-  const [connectionStatus, setConnectionStatus] = useState<SSEConnectionStatus>({
-    connected: false,
-    reconnecting: false,
-    connectionAttempts: 0
-  });
-  
+  const [connectionStatus, setConnectionStatus] = useState<SSEConnectionStatus>(
+    {
+      connected: false,
+      reconnecting: false,
+      connectionAttempts: 0,
+    },
+  );
+
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const MAX_RECONNECT_ATTEMPTS = 5;
@@ -60,7 +62,7 @@ export function useSSEBroadcasts() {
 
     const convexUrl = import.meta.env.VITE_CONVEX_URL;
     if (!convexUrl) {
-      logger.error('VITE_CONVEX_URL not configured');
+      logger.error("VITE_CONVEX_URL not configured");
       return;
     }
 
@@ -70,83 +72,90 @@ export function useSSEBroadcasts() {
     try {
       const url = new URL(convexUrl);
       // For Convex cloud deployments, use the .convex.site domain for HTTP endpoints
-      if (url.hostname.endsWith('.convex.cloud')) {
-        baseUrl = convexUrl.replace('.convex.cloud', '.convex.site');
+      if (url.hostname.endsWith(".convex.cloud")) {
+        baseUrl = convexUrl.replace(".convex.cloud", ".convex.site");
       } else {
         // For local development or other environments, use as-is
         baseUrl = convexUrl;
       }
     } catch (e) {
-      logger.error('Invalid Convex URL', { convexUrl, error: e });
+      logger.error("Invalid Convex URL", { convexUrl, error: e });
       return;
     }
-    
+
     // Generate a more secure token using crypto API if available
     const generateToken = () => {
       const timestamp = Date.now();
-      const randomBytes = crypto.getRandomValues ? 
-        Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join('') :
-        Math.random().toString(36).substring(2);
+      const randomBytes = crypto.getRandomValues
+        ? Array.from(crypto.getRandomValues(new Uint8Array(16)))
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("")
+        : Math.random().toString(36).substring(2);
       return btoa(`${user._id}:${timestamp}:${randomBytes}`);
     };
-    
+
     const token = generateToken();
     const sseUrl = `${baseUrl}/api/events/${user._id}?token=${encodeURIComponent(token)}`;
 
-    logger.info('Connecting to SSE endpoint', { url: sseUrl });
+    logger.info("Connecting to SSE endpoint", { url: sseUrl });
 
     try {
       const eventSource = new EventSource(sseUrl);
       eventSourceRef.current = eventSource;
 
       eventSource.onopen = () => {
-        logger.info('SSE connection opened');
-        setConnectionStatus(prev => ({
+        logger.info("SSE connection opened");
+        setConnectionStatus((prev) => ({
           ...prev,
           connected: true,
           reconnecting: false,
           lastConnected: Date.now(),
-          error: undefined
+          error: undefined,
         }));
       };
 
       eventSource.onmessage = (event) => {
         try {
           const message: SSEBroadcastMessage = JSON.parse(event.data);
-          logger.debug('SSE message received', { type: message.type, messageId: message.messageId });
+          logger.debug("SSE message received", {
+            type: message.type,
+            messageId: message.messageId,
+          });
 
           // Handle different message types
-          if (message.type === 'heartbeat') {
+          if (message.type === "heartbeat") {
             // Just update connection status
-            setConnectionStatus(prev => ({
+            setConnectionStatus((prev) => ({
               ...prev,
-              lastConnected: Date.now()
+              lastConnected: Date.now(),
             }));
             return;
           }
 
-          if (message.type === 'connection') {
-            logger.info('SSE connection confirmed');
+          if (message.type === "connection") {
+            logger.info("SSE connection confirmed");
             return;
           }
 
           // Add message to list (keep last 50 messages)
-          setMessages(prev => {
+          setMessages((prev) => {
             const newMessages = [message, ...prev].slice(0, 50);
             return newMessages;
           });
-
         } catch (error) {
-          logger.error('Failed to parse SSE message', { error, data: event.data });
+          logger.error("Failed to parse SSE message", {
+            error,
+            data: event.data,
+          });
         }
       };
 
       eventSource.onerror = (error) => {
-        logger.error('SSE connection error', error);
-        setConnectionStatus(prev => ({
+        logger.error("SSE connection error", error);
+        setConnectionStatus((prev) => ({
           ...prev,
           connected: false,
-          error: 'Connection error'
+          error: "Connection error",
         }));
 
         // Close current connection
@@ -154,31 +163,33 @@ export function useSSEBroadcasts() {
         eventSourceRef.current = null;
 
         // Schedule reconnect if not too many attempts
-        setConnectionStatus(prev => {
+        setConnectionStatus((prev) => {
           const newAttempts = prev.connectionAttempts + 1;
           if (newAttempts < MAX_RECONNECT_ATTEMPTS) {
-            reconnectTimeoutRef.current = setTimeout(() => {
-              connect();
-            }, RECONNECT_DELAY * Math.pow(2, newAttempts));
+            reconnectTimeoutRef.current = setTimeout(
+              () => {
+                connect();
+              },
+              RECONNECT_DELAY * Math.pow(2, newAttempts),
+            );
             return {
               ...prev,
               reconnecting: true,
-              connectionAttempts: newAttempts
+              connectionAttempts: newAttempts,
             };
           }
           return {
             ...prev,
             reconnecting: false,
-            connectionAttempts: newAttempts
+            connectionAttempts: newAttempts,
           };
         });
       };
-
     } catch (error) {
-      logger.error('Failed to create SSE connection', error);
-      setConnectionStatus(prev => ({
+      logger.error("Failed to create SSE connection", error);
+      setConnectionStatus((prev) => ({
         ...prev,
-        error: 'Failed to initialize connection'
+        error: "Failed to initialize connection",
       }));
     }
   }, [user?._id]); // Removed connectionStatus.connectionAttempts to avoid circular dependency
@@ -198,10 +209,10 @@ export function useSSEBroadcasts() {
     setConnectionStatus({
       connected: false,
       reconnecting: false,
-      connectionAttempts: 0
+      connectionAttempts: 0,
     });
 
-    logger.info('SSE connection closed');
+    logger.info("SSE connection closed");
   }, []);
 
   // Auto-connect when user is available
@@ -220,32 +231,44 @@ export function useSSEBroadcasts() {
   // Manual reconnect function
   const reconnect = useCallback(() => {
     disconnect();
-    setConnectionStatus(prev => ({ ...prev, connectionAttempts: 0 }));
+    setConnectionStatus((prev) => ({ ...prev, connectionAttempts: 0 }));
     setTimeout(() => connect(), 1000);
   }, [connect, disconnect]);
 
   // Filter messages by type
-  const getMessagesByType = useCallback((type: string) => {
-    return messages.filter(msg => msg.type === type || msg.type === `queued_${type}`);
-  }, [messages]);
+  const getMessagesByType = useCallback(
+    (type: string) => {
+      return messages.filter(
+        (msg) => msg.type === type || msg.type === `queued_${type}`,
+      );
+    },
+    [messages],
+  );
 
   // Get pipeline messages for a specific search
-  const getPipelineMessages = useCallback((searchId?: Id<"searches">) => {
-    return messages.filter(msg => 
-      msg.type.includes('pipeline_update') && 
-      (!searchId || msg.data?.searchId === searchId)
-    );
-  }, [messages]);
+  const getPipelineMessages = useCallback(
+    (searchId?: Id<"searches">) => {
+      return messages.filter(
+        (msg) =>
+          msg.type.includes("pipeline_update") &&
+          (!searchId || msg.data?.searchId === searchId),
+      );
+    },
+    [messages],
+  );
 
   // Get latest message of a type
-  const getLatestMessage = useCallback((type: string) => {
-    const filtered = getMessagesByType(type);
-    return filtered.length > 0 ? filtered[0] : null;
-  }, [getMessagesByType]);
+  const getLatestMessage = useCallback(
+    (type: string) => {
+      const filtered = getMessagesByType(type);
+      return filtered.length > 0 ? filtered[0] : null;
+    },
+    [getMessagesByType],
+  );
 
   // Get urgent messages
-  const urgentMessages = messages.filter(msg => 
-    msg.priority === 'urgent' || msg.priority === 'critical'
+  const urgentMessages = messages.filter(
+    (msg) => msg.priority === "urgent" || msg.priority === "critical",
   );
 
   // Clear all messages
@@ -255,30 +278,32 @@ export function useSSEBroadcasts() {
 
   // Clear messages of a specific type
   const clearMessagesByType = useCallback((type: string) => {
-    setMessages(prev => prev.filter(msg => msg.type !== type && msg.type !== `queued_${type}`));
+    setMessages((prev) =>
+      prev.filter((msg) => msg.type !== type && msg.type !== `queued_${type}`),
+    );
   }, []);
 
   return {
     // Messages
     messages,
     urgentMessages,
-    
+
     // Connection
     connectionStatus,
     isConnected: connectionStatus.connected,
     isReconnecting: connectionStatus.reconnecting,
-    
+
     // Actions
     reconnect,
     disconnect,
     clearMessages,
     clearMessagesByType,
-    
+
     // Filtering
     getMessagesByType,
     getPipelineMessages,
     getLatestMessage,
-    
+
     // Compatibility with existing useStatusBroadcasts
     broadcasts: messages,
     isLoading: false,
@@ -291,14 +316,14 @@ export function useSSEBroadcasts() {
  */
 export function useSearchSSEUpdates(searchId?: Id<"searches">) {
   const { getPipelineMessages, connectionStatus } = useSSEBroadcasts();
-  
+
   const searchMessages = getPipelineMessages(searchId);
   const latestUpdate = searchMessages.length > 0 ? searchMessages[0] : null;
-  
+
   // Get current progress from latest message
   const currentProgress = latestUpdate?.data?.progress || 0;
-  const currentStage = latestUpdate?.data?.stage || 'pending';
-  
+  const currentStage = latestUpdate?.data?.stage || "pending";
+
   return {
     messages: searchMessages,
     latestUpdate,

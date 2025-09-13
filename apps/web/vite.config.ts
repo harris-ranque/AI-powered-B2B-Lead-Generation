@@ -9,18 +9,22 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 3000,
   },
-  plugins: [
-    react(),
-    mode === 'development' &&
-    componentTagger(),
-  ].filter(Boolean),
+  plugins: [react(), mode === "development" && componentTagger()].filter(
+    Boolean,
+  ),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "@/convex": path.resolve(__dirname, "../convex-backend/convex"),
       "@shared": path.resolve(__dirname, "../../packages/shared-types/src"),
-      "@genni/convex-types": path.resolve(__dirname, "../convex-backend/convex/_generated/api.js"),
-      "@genni/convex-types/dataModel": path.resolve(__dirname, "../convex-backend/convex/_generated/dataModel.d.ts"),
+      "@genni/convex-types": path.resolve(
+        __dirname,
+        "../convex-backend/convex/_generated/api.js",
+      ),
+      "@genni/convex-types/dataModel": path.resolve(
+        __dirname,
+        "../convex-backend/convex/_generated/dataModel.d.ts",
+      ),
     },
   },
 }));

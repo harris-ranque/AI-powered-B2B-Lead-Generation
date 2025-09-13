@@ -1,6 +1,6 @@
-import type { LeadSource, LeadSourceType } from '../types';
-import { GoogleMapsSource } from './GoogleMapsSource';
-import { UploadSource } from './UploadSource';
+import type { LeadSource, LeadSourceType } from "../types";
+import { GoogleMapsSource } from "./GoogleMapsSource";
+import { UploadSource } from "./UploadSource";
 
 class SourceRegistryClass {
   private sources: Map<LeadSourceType, LeadSource> = new Map();
@@ -29,8 +29,8 @@ class SourceRegistryClass {
 
   getSupportedFormats(): string[] {
     return this.getAllSources()
-      .filter(source => source.type !== 'google_maps')
-      .map(source => source.name);
+      .filter((source) => source.type !== "google_maps")
+      .map((source) => source.name);
   }
 }
 

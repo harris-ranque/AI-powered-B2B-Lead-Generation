@@ -5,7 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Lock, Crown, Zap, ArrowRight, AlertCircle } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useSubscriptionGuard, FeatureKey, PlanTier } from "@/hooks/useSubscriptionGuard";
+import {
+  useSubscriptionGuard,
+  FeatureKey,
+  PlanTier,
+} from "@/hooks/useSubscriptionGuard";
 
 interface SubscriptionGuardProps {
   children: React.ReactNode;
@@ -15,19 +19,19 @@ interface SubscriptionGuardProps {
   showUpgrade?: boolean;
 }
 
-export function SubscriptionGuard({ 
-  children, 
-  feature, 
-  action, 
-  fallback, 
-  showUpgrade = true 
+export function SubscriptionGuard({
+  children,
+  feature,
+  action,
+  fallback,
+  showUpgrade = true,
 }: SubscriptionGuardProps) {
-  const { 
-    hasFeature, 
-    canPerformAction, 
-    getUpgradeSuggestion, 
-    isLoading, 
-    currentPlan 
+  const {
+    hasFeature,
+    canPerformAction,
+    getUpgradeSuggestion,
+    isLoading,
+    currentPlan,
   } = useSubscriptionGuard();
 
   if (isLoading) {
@@ -41,7 +45,7 @@ export function SubscriptionGuard({
   // Check feature access
   if (feature && !hasFeature(feature)) {
     const suggestion = getUpgradeSuggestion(feature);
-    
+
     if (fallback) {
       return <>{fallback}</>;
     }
@@ -85,7 +89,7 @@ export function SubscriptionGuard({
   // Check action limits
   if (action) {
     const actionResult = canPerformAction(action);
-    
+
     if (!actionResult.allowed) {
       if (fallback) {
         return <>{fallback}</>;
@@ -135,21 +139,23 @@ export function SubscriptionGuard({
 }
 
 // Convenience component for showing upgrade prompts
-export function UpgradePrompt({ 
-  feature, 
-  title, 
-  description 
-}: { 
-  feature?: FeatureKey; 
-  title?: string; 
-  description?: string; 
+export function UpgradePrompt({
+  feature,
+  title,
+  description,
+}: {
+  feature?: FeatureKey;
+  title?: string;
+  description?: string;
 }) {
   const { getUpgradeSuggestion, currentPlan } = useSubscriptionGuard();
-  
-  const suggestion = feature ? getUpgradeSuggestion(feature) : {
-    suggestedPlan: "professional" as PlanTier,
-    reason: "Upgrade to unlock more features"
-  };
+
+  const suggestion = feature
+    ? getUpgradeSuggestion(feature)
+    : {
+        suggestedPlan: "professional" as PlanTier,
+        reason: "Upgrade to unlock more features",
+      };
 
   return (
     <Alert className="border-blue-200 bg-blue-50/50">
@@ -158,9 +164,7 @@ export function UpgradePrompt({
         <div className="flex items-center justify-between">
           <div>
             <strong>{title || "Upgrade Available"}</strong>
-            <p className="text-sm mt-1">
-              {description || suggestion.reason}
-            </p>
+            <p className="text-sm mt-1">{description || suggestion.reason}</p>
           </div>
           <Link to="/pricing">
             <Button size="sm" className="ml-4">
@@ -183,12 +187,22 @@ export function UsageWarnings() {
   return (
     <div className="space-y-2">
       {warnings.map((warning, index) => (
-        <Alert 
+        <Alert
           key={`${warning.type}-${index}`}
-          className={warning.severity === "danger" ? "border-red-200 bg-red-50/50" : "border-orange-200 bg-orange-50/50"}
+          className={
+            warning.severity === "danger"
+              ? "border-red-200 bg-red-50/50"
+              : "border-orange-200 bg-orange-50/50"
+          }
         >
-          <AlertCircle className={`h-4 w-4 ${warning.severity === "danger" ? "text-red-600" : "text-orange-600"}`} />
-          <AlertDescription className={warning.severity === "danger" ? "text-red-800" : "text-orange-800"}>
+          <AlertCircle
+            className={`h-4 w-4 ${warning.severity === "danger" ? "text-red-600" : "text-orange-600"}`}
+          />
+          <AlertDescription
+            className={
+              warning.severity === "danger" ? "text-red-800" : "text-orange-800"
+            }
+          >
             <div className="flex items-center justify-between">
               <span>{warning.message}</span>
               <Link to="/pricing">

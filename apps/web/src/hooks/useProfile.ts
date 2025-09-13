@@ -1,13 +1,17 @@
 import { useQuery, useMutation } from "convex/react";
-import { api } from "@genni/convex-types"
+import { api } from "@genni/convex-types";
 
 export function useProfile() {
   const profile = useQuery(api.profile.queries.getBusinessProfile);
-  const createOrUpdateProfile = useMutation(api.profile.mutations.createOrUpdateProfile);
-  const updateProfileSection = useMutation(api.profile.mutations.updateProfileSection);
+  const createOrUpdateProfile = useMutation(
+    api.profile.mutations.createOrUpdateProfile,
+  );
+  const updateProfileSection = useMutation(
+    api.profile.mutations.updateProfileSection,
+  );
   const deleteProfile = useMutation(api.profile.mutations.deleteProfile);
   const importProfile = useMutation(api.profile.mutations.importProfile);
-  
+
   return {
     profile,
     createOrUpdateProfile,

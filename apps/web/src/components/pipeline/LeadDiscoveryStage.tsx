@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,40 +8,50 @@ import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
-import { usePipeline } from '@/pipeline/context';
-import { SourceRegistry } from '@/pipeline/sources/SourceRegistry';
-import { FileUploadArea } from './FileUploadArea';
-import { useSearches, useGoogleMapsSearch } from '@/hooks/useSearches';
-import { 
-  Search, 
-  MapPin, 
-  Building, 
-  Users, 
+import { usePipeline } from "@/pipeline/context";
+import { SourceRegistry } from "@/pipeline/sources/SourceRegistry";
+import { FileUploadArea } from "./FileUploadArea";
+import { useSearches, useGoogleMapsSearch } from "@/hooks/useSearches";
+import {
+  Search,
+  MapPin,
+  Building,
+  Users,
   ArrowRight,
   Sparkles,
   CreditCard,
   AlertTriangle,
   Upload,
   FileText,
-  Mail
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useToast } from '@/hooks/use-toast';
+  Mail,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 interface LeadDiscoveryStageProps {
   userCredits: number;
-  userPlan: 'free' | 'pro' | 'enterprise';
+  userPlan: "free" | "pro" | "enterprise";
 }
 
-export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStageProps) {
-  const { state, setSearchId, setLeads, markStageComplete, progressToNextStage, setProcessing } = usePipeline();
+export function LeadDiscoveryStage({
+  userCredits,
+  userPlan,
+}: LeadDiscoveryStageProps) {
+  const {
+    state,
+    setSearchId,
+    setLeads,
+    markStageComplete,
+    progressToNextStage,
+    setProcessing,
+  } = usePipeline();
   const { createSearch } = useSearches();
   const { searchGoogleMaps } = useGoogleMapsSearch();
   const { toast } = useToast();
 
   // Google Maps form state
-  const [location, setLocation] = useState('');
-  const [industry, setIndustry] = useState('');
+  const [location, setLocation] = useState("");
+  const [industry, setIndustry] = useState("");
   const [leadsCount, setLeadsCount] = useState([50]);
   const [radius, setRadius] = useState([25]);
   const [employeeRange, setEmployeeRange] = useState([10, 1000]);
@@ -50,14 +60,16 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
 
   // Upload form state
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
+  const [columnMapping, setColumnMapping] = useState<Record<string, string>>(
+    {},
+  );
 
   const selectedSource = SourceRegistry.getSource(state.selectedSource!);
-  
+
   const validateAndEstimateCost = () => {
     if (!selectedSource) return { isValid: false, estimatedCost: 0 };
 
-    if (state.selectedSource === 'google_maps') {
+    if (state.selectedSource === "google_maps") {
       const params = {
         location,
         industry,
@@ -69,7 +81,7 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
         aiAnalysis,
       };
       return selectedSource.validate(params);
-    } else if (state.selectedSource === 'csv_upload') {
+    } else if (state.selectedSource === "csv_upload") {
       const params = {
         file: uploadFile,
         columns: columnMapping,
@@ -88,7 +100,7 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
     setProcessing(true);
 
     try {
-      if (state.selectedSource === 'google_maps') {
+      if (state.selectedSource === "google_maps") {
         // Create search using existing Convex integration with auto-start
         const searchResult = await createSearch({
           name: `${industry} in ${location}`,
@@ -100,36 +112,39 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
             filters: {
               minEmployees: employeeRange[0],
               maxEmployees: employeeRange[1],
-            }
+            },
           },
-          autoStart: true // This will trigger the orchestrator automatically
+          autoStart: true, // This will trigger the orchestrator automatically
         });
-        
+
         if (searchResult) {
           setSearchId(searchResult.searchId);
-          markStageComplete('lead_discovery');
-          
+          markStageComplete("lead_discovery");
+
           toast({
             title: "Search Started",
             description: `Discovering ${leadsCount[0]} leads in ${location}...`,
           });
-          
+
           // Auto-progress after a short delay for visual feedback
           setTimeout(() => {
             progressToNextStage();
           }, 1000);
         }
-      } else if (state.selectedSource === 'csv_upload' && uploadFile) {
+      } else if (state.selectedSource === "csv_upload" && uploadFile) {
         // Handle CSV upload
-        const leads = await selectedSource!.fetch({ file: uploadFile, columns: columnMapping });
+        const leads = await selectedSource!.fetch({
+          file: uploadFile,
+          columns: columnMapping,
+        });
         setLeads(leads);
-        markStageComplete('lead_discovery');
-        
+        markStageComplete("lead_discovery");
+
         toast({
           title: "Leads Imported",
           description: `Successfully imported ${leads.length} leads from CSV.`,
         });
-        
+
         setTimeout(() => {
           progressToNextStage();
         }, 1000);
@@ -149,9 +164,7 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
     return (
       <Alert>
         <AlertTriangle className="h-4 w-4" />
-        <AlertDescription>
-          Please select a data source first.
-        </AlertDescription>
+        <AlertDescription>Please select a data source first.</AlertDescription>
       </Alert>
     );
   }
@@ -164,9 +177,7 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
           <selectedSource.icon className="h-5 w-5" />
           {selectedSource.name} Discovery
         </h3>
-        <p className="text-muted-foreground">
-          {selectedSource.description}
-        </p>
+        <p className="text-muted-foreground">{selectedSource.description}</p>
       </div>
 
       {/* Credits Summary */}
@@ -176,24 +187,28 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
             "w-full max-w-2xl rounded-md border px-4 py-3 text-sm",
             (validation.estimatedCost || 0) > userCredits
               ? "border-destructive/40 bg-destructive/5 text-destructive"
-              : "border-border/50 bg-muted/30 text-muted-foreground"
+              : "border-border/50 bg-muted/30 text-muted-foreground",
           )}
           role="status"
           aria-live="polite"
         >
           <div className="flex items-center justify-between">
-            <div className="font-medium">
-              Credits
-            </div>
+            <div className="font-medium">Credits</div>
             <div className="flex items-center gap-3">
               <span>
-                Estimated: <span className="font-semibold">{validation.estimatedCost ?? 0}</span>
+                Estimated:{" "}
+                <span className="font-semibold">
+                  {validation.estimatedCost ?? 0}
+                </span>
               </span>
               <span>
                 Available: <span className="font-semibold">{userCredits}</span>
               </span>
               <span className="hidden sm:inline">
-                After search: <span className="font-semibold">{Math.max(userCredits - (validation.estimatedCost ?? 0), 0)}</span>
+                After search:{" "}
+                <span className="font-semibold">
+                  {Math.max(userCredits - (validation.estimatedCost ?? 0), 0)}
+                </span>
               </span>
             </div>
           </div>
@@ -206,7 +221,7 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
           <CardTitle className="text-lg">Configure Your Search</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {state.selectedSource === 'google_maps' && (
+          {state.selectedSource === "google_maps" && (
             <>
               {/* Location & Industry */}
               <div className="grid md:grid-cols-2 gap-4">
@@ -272,7 +287,9 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Employee Count: {employeeRange[0]} - {employeeRange[1]}</Label>
+                  <Label>
+                    Employee Count: {employeeRange[0]} - {employeeRange[1]}
+                  </Label>
                   <Slider
                     value={employeeRange}
                     onValueChange={setEmployeeRange}
@@ -325,8 +342,8 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
             </>
           )}
 
-          {state.selectedSource === 'csv_upload' && (
-            <FileUploadArea 
+          {state.selectedSource === "csv_upload" && (
+            <FileUploadArea
               onFileSelect={setUploadFile}
               onColumnMapping={setColumnMapping}
               selectedFile={uploadFile}
@@ -384,7 +401,11 @@ export function LeadDiscoveryStage({ userCredits, userPlan }: LeadDiscoveryStage
 
             <Button
               onClick={handleStartDiscovery}
-              disabled={!validation.isValid || state.isProcessing || (validation.estimatedCost || 0) > userCredits}
+              disabled={
+                !validation.isValid ||
+                state.isProcessing ||
+                (validation.estimatedCost || 0) > userCredits
+              }
               className="min-w-40"
               size="lg"
             >

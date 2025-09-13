@@ -11,65 +11,87 @@ export const enrichLead: any = internalAction({
   },
   handler: async (ctx, args) => {
     const correlationId: string = args.correlationId || `enrich_${Date.now()}`;
-    
+
     try {
       // Properly retrieve lead from database
-      const lead = await ctx.runQuery(internal["leads/queries"].getLeadInternal, {
-        leadId: args.leadId,
-      });
-      
+      const lead = await ctx.runQuery(
+        internal["leads/queries"].getLeadInternal,
+        {
+          leadId: args.leadId,
+        },
+      );
+
       if (!lead) {
         throw new Error(`Lead not found: ${args.leadId}`);
       }
-      
+
       console.log(`Enriching lead ${args.leadId} for search ${args.searchId}`);
-      
+
       // Update lead status to in_progress
-      await ctx.runMutation(internal["leads/mutations"].updateEnrichmentStatus, {
-        leadId: args.leadId,
-        status: "in_progress",
-      });
+      await ctx.runMutation(
+        internal["leads/mutations"].updateEnrichmentStatus,
+        {
+          leadId: args.leadId,
+          status: "in_progress",
+        },
+      );
 
       // Call FindyMail API for enrichment
       const findyMailApiKey = process.env.FINDYMAIL_API_KEY;
       if (!findyMailApiKey) {
-        console.warn("FindyMail API key not configured, using fallback enrichment");
-        
+        console.warn(
+          "FindyMail API key not configured, using fallback enrichment",
+        );
+
         // Use fallback enrichment
         const fallbackResult = await enrichWithFallback(ctx, lead);
-        
-        await ctx.runMutation(internal["leads/mutations"].updateLeadEnrichment, {
-          leadId: args.leadId,
-          enrichmentData: fallbackResult,
-          status: "completed_fallback",
-        });
-        
-        return { success: true, enriched: true, fallback: true, data: fallbackResult };
+
+        await ctx.runMutation(
+          internal["leads/mutations"].updateLeadEnrichment,
+          {
+            leadId: args.leadId,
+            enrichmentData: fallbackResult,
+            status: "completed_fallback",
+          },
+        );
+
+        return {
+          success: true,
+          enriched: true,
+          fallback: true,
+          data: fallbackResult,
+        };
       }
 
       // Check domain cache first
       if (lead.website) {
         const domain = extractDomain(lead.website);
-        const cachedData: any = await ctx.runQuery(internal["leads/queries"].getDomainCache, {
-          domain,
-          searchId: args.searchId,
-        });
-        
+        const cachedData: any = await ctx.runQuery(
+          internal["leads/queries"].getDomainCache,
+          {
+            domain,
+            searchId: args.searchId,
+          },
+        );
+
         if (cachedData) {
           console.log(`Using cached enrichment data for domain: ${domain}`);
-          
-          await ctx.runMutation(internal["leads/mutations"].updateLeadEnrichment, {
-            leadId: args.leadId,
-            enrichmentData: cachedData.enrichmentData,
-            status: "completed",
-          });
-          
-          return { 
-            success: true, 
-            enriched: true, 
+
+          await ctx.runMutation(
+            internal["leads/mutations"].updateLeadEnrichment,
+            {
+              leadId: args.leadId,
+              enrichmentData: cachedData.enrichmentData,
+              status: "completed",
+            },
+          );
+
+          return {
+            success: true,
+            enriched: true,
             cached: true,
             emailsFound: cachedData.enrichmentData.emails?.length || 0,
-            data: cachedData.enrichmentData 
+            data: cachedData.enrichmentData,
           };
         }
       }
@@ -82,18 +104,27 @@ export const enrichLead: any = internalAction({
       };
 
       // Make API call to FindyMail
-      const response = await fetch("https://api.findymail.com/v1/enrich/company", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${findyMailApiKey}`,
-          "Content-Type": "application/json",
+      const response = await fetch(
+        "https://api.findymail.com/v1/enrich/company",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${findyMailApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(enrichmentData),
         },
-        body: JSON.stringify(enrichmentData),
-      });
+      );
 
       if (!response.ok) {
-        console.error(`FindyMail API error: ${response.status} - ${response.statusText}`);
-        return { success: false, error: "FindyMail API error", enriched: false };
+        console.error(
+          `FindyMail API error: ${response.status} - ${response.statusText}`,
+        );
+        return {
+          success: false,
+          error: "FindyMail API error",
+          enriched: false,
+        };
       }
 
       const enrichmentResult: any = await response.json();
@@ -109,11 +140,11 @@ export const enrichLead: any = internalAction({
       if (enrichmentResult.emails && enrichmentResult.emails.length > 0) {
         updateData.enrichedEmails = enrichmentResult.emails;
       }
-      
+
       if (enrichmentResult.phone) {
         updateData.phone = enrichmentResult.phone;
       }
-      
+
       if (enrichmentResult.linkedin) {
         updateData.linkedin = enrichmentResult.linkedin;
       }
@@ -124,7 +155,7 @@ export const enrichLead: any = internalAction({
         enrichmentData: updateData,
         status: "completed",
       });
-      
+
       // Cache domain data if we have a website
       if (lead.website && enrichmentResult.emails?.length > 0) {
         const domain = extractDomain(lead.website);
@@ -140,45 +171,62 @@ export const enrichLead: any = internalAction({
       }
 
       console.log(`Successfully enriched lead ${args.leadId}`);
-      return { 
-        success: true, 
-        enriched: true, 
+      return {
+        success: true,
+        enriched: true,
         emailsFound: enrichmentResult.emails?.length || 0,
-        data: enrichmentResult 
+        data: enrichmentResult,
       };
-
     } catch (error) {
       console.error(`Error enriching lead ${args.leadId}:`, error);
-      
+
       // Update lead with error status
-      await ctx.runMutation(internal["leads/mutations"].updateEnrichmentStatus, {
-        leadId: args.leadId,
-        status: "failed",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-      
+      await ctx.runMutation(
+        internal["leads/mutations"].updateEnrichmentStatus,
+        {
+          leadId: args.leadId,
+          status: "failed",
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+      );
+
       // Try fallback enrichment
       try {
-        const lead = await ctx.runQuery(internal["leads/queries"].getLeadInternal, {
-          leadId: args.leadId,
-        });
-        
+        const lead = await ctx.runQuery(
+          internal["leads/queries"].getLeadInternal,
+          {
+            leadId: args.leadId,
+          },
+        );
+
         if (lead) {
           const fallbackResult = await enrichWithFallback(ctx, lead);
-          
-          await ctx.runMutation(internal["leads/mutations"].updateLeadEnrichment, {
-            leadId: args.leadId,
-            enrichmentData: fallbackResult,
-            status: "completed_fallback",
-          });
-          
-          return { success: true, enriched: true, fallback: true, data: fallbackResult };
+
+          await ctx.runMutation(
+            internal["leads/mutations"].updateLeadEnrichment,
+            {
+              leadId: args.leadId,
+              enrichmentData: fallbackResult,
+              status: "completed_fallback",
+            },
+          );
+
+          return {
+            success: true,
+            enriched: true,
+            fallback: true,
+            data: fallbackResult,
+          };
         }
       } catch (fallbackError) {
         console.error("Fallback enrichment also failed:", fallbackError);
       }
 
-      return { success: false, error: error instanceof Error ? error.message : "Unknown error", enriched: false };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+        enriched: false,
+      };
     }
   },
 });
@@ -193,33 +241,36 @@ export const batchEnrichLeads: any = internalAction({
   handler: async (ctx, args) => {
     const correlationId = args.correlationId || `batch_enrich_${Date.now()}`;
     const batchSize = args.batchSize || 5; // Process 5 leads at a time
-    
+
     try {
       // Get all leads for this search that need enrichment
-      const leads: any = await ctx.runQuery(internal["leads/queries"].getUnenrichedLeads, {
-        searchId: args.searchId,
-      });
-      
+      const leads: any = await ctx.runQuery(
+        internal["leads/queries"].getUnenrichedLeads,
+        {
+          searchId: args.searchId,
+        },
+      );
+
       console.log(`Starting batch enrichment for ${leads.length} leads`);
-      
+
       let enrichedCount = 0;
       let failedCount = 0;
-      
+
       // Process in batches
       for (let i = 0; i < leads.length; i += batchSize) {
         const batch = leads.slice(i, Math.min(i + batchSize, leads.length));
-        
+
         // Process batch in parallel
-        const batchPromises = batch.map((lead: any) => 
+        const batchPromises = batch.map((lead: any) =>
           ctx.runAction(internal["leads/enrichment"].enrichLead, {
             leadId: lead._id,
             searchId: args.searchId,
             correlationId: `${correlationId}_${lead._id}`,
-          })
+          }),
         );
-        
+
         const results = await Promise.allSettled(batchPromises);
-        
+
         // Count results
         results.forEach((result: any) => {
           if (result.status === "fulfilled" && result.value.enriched) {
@@ -228,7 +279,7 @@ export const batchEnrichLeads: any = internalAction({
             failedCount++;
           }
         });
-        
+
         // Update search progress
         await ctx.runMutation(api.search.mutations.updateSearchProgress, {
           searchId: args.searchId,
@@ -239,22 +290,23 @@ export const batchEnrichLeads: any = internalAction({
             total: leads.length,
           },
         });
-        
+
         // Small delay between batches to avoid rate limiting
         if (i + batchSize < leads.length) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       }
-      
-      console.log(`Batch enrichment completed: ${enrichedCount} enriched, ${failedCount} failed`);
-      
+
+      console.log(
+        `Batch enrichment completed: ${enrichedCount} enriched, ${failedCount} failed`,
+      );
+
       return {
         success: true,
         enrichedCount,
         failedCount,
         totalLeads: leads.length,
       };
-      
     } catch (error) {
       console.error("Batch enrichment error:", error);
       throw error;
@@ -262,13 +314,13 @@ export const batchEnrichLeads: any = internalAction({
   },
 });
 
-// Helper function to extract domain from URL  
+// Helper function to extract domain from URL
 function extractDomain(url: string): string {
   try {
-    const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
-    return urlObj.hostname?.replace('www.', '') || url;
+    const urlObj = new URL(url.startsWith("http") ? url : `https://${url}`);
+    return urlObj.hostname?.replace("www.", "") || url;
   } catch {
-    return url?.replace('www.', '').split('/')[0] || url;
+    return url?.replace("www.", "").split("/")[0] || url;
   }
 }
 
@@ -276,19 +328,19 @@ function extractDomain(url: string): string {
 async function enrichWithFallback(ctx: any, lead: any) {
   // Generate generic email patterns based on domain
   const emails = [];
-  
+
   if (lead.website) {
     const domain = extractDomain(lead.website);
-    
+
     // Common email patterns
     emails.push(
       { email: `info@${domain}`, type: "generic", confidence: 0.7 },
       { email: `contact@${domain}`, type: "generic", confidence: 0.7 },
       { email: `hello@${domain}`, type: "generic", confidence: 0.6 },
-      { email: `sales@${domain}`, type: "sales", confidence: 0.6 }
+      { email: `sales@${domain}`, type: "sales", confidence: 0.6 },
     );
   }
-  
+
   // Create fallback contact info
   const contactInfo = {
     emails,
@@ -297,7 +349,7 @@ async function enrichWithFallback(ctx: any, lead: any) {
     fallbackUsed: true,
     fallbackReason: "FindyMail API not available",
   };
-  
+
   return contactInfo;
 }
 
@@ -329,11 +381,11 @@ export const handleEnrichmentWebhook = internalMutation({
         if (result.data.emails && result.data.emails.length > 0) {
           updateData.enrichedEmails = result.data.emails;
         }
-        
+
         if (result.data.phone) {
           updateData.phone = result.data.phone;
         }
-        
+
         if (result.data.linkedin) {
           updateData.linkedin = result.data.linkedin;
         }
@@ -350,12 +402,16 @@ export const handleEnrichmentWebhook = internalMutation({
 
       await ctx.db.patch(args.leadId, updateData);
 
-      console.log(`Processed enrichment webhook for lead ${args.leadId}: ${result.success ? 'success' : 'failed'}`);
+      console.log(
+        `Processed enrichment webhook for lead ${args.leadId}: ${result.success ? "success" : "failed"}`,
+      );
       return { success: true, processed: true };
-
     } catch (error) {
-      console.error(`Error processing enrichment webhook for lead ${args.leadId}:`, error);
-      
+      console.error(
+        `Error processing enrichment webhook for lead ${args.leadId}:`,
+        error,
+      );
+
       // Mark enrichment as failed
       try {
         await ctx.db.patch(args.leadId, {
@@ -370,7 +426,10 @@ export const handleEnrichmentWebhook = internalMutation({
         console.error("Failed to update lead with webhook error:", updateError);
       }
 
-      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   },
 });

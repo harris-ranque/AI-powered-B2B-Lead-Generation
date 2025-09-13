@@ -52,9 +52,9 @@ except Exception as e:
 
 ### Key Points to Note
 
-* **Positive Integer Requirement:** Ensure that the number of iterations (`n_iterations`) is a positive integer. The code will raise a `ValueError` if this condition is not met.
-* **Filename Requirement:** Ensure that the filename ends with `.pkl`. The code will raise a `ValueError` if this condition is not met.
-* **Error Handling:** The code handles subprocess errors and unexpected exceptions, providing error messages to the user.
+- **Positive Integer Requirement:** Ensure that the number of iterations (`n_iterations`) is a positive integer. The code will raise a `ValueError` if this condition is not met.
+- **Filename Requirement:** Ensure that the filename ends with `.pkl`. The code will raise a `ValueError` if this condition is not met.
+- **Error Handling:** The code handles subprocess errors and unexpected exceptions, providing error messages to the user.
 
 It is important to note that the training process may take some time, depending on the complexity of your agents and will also require your feedback on each iteration.
 
@@ -117,6 +117,7 @@ Happy training with CrewAI! 🚀
     <Tip>
       More powerful models provide higher quality feedback with better reasoning, leading to more effective training iterations.
     </Tip>
+
   </Tab>
 
   <Tab title="Small Model Usage">
@@ -130,5 +131,6 @@ Happy training with CrewAI! 🚀
     <Warning>
       While CrewAI includes optimizations for small models, expect less reliable and less nuanced evaluation results that may require more human intervention during training.
     </Warning>
+
   </Tab>
 </Tabs>

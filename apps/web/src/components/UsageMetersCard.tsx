@@ -2,7 +2,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Search, Target, Download, AlertTriangle } from "lucide-react";
+import {
+  TrendingUp,
+  Search,
+  Target,
+  Download,
+  AlertTriangle,
+} from "lucide-react";
 import { useUsage } from "@/hooks/useUsage";
 import { Link } from "react-router-dom";
 
@@ -48,7 +54,9 @@ export function UsageMetersCard() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">No usage data available</p>
+          <p className="text-sm text-muted-foreground">
+            No usage data available
+          </p>
         </CardContent>
       </Card>
     );
@@ -88,18 +96,23 @@ export function UsageMetersCard() {
               <span className="text-sm font-medium">Searches</span>
             </div>
             <div className="text-right">
-              <span className={`text-sm font-medium ${getUsageColor(searchesPercentage)}`}>
-                {usage.searchesUsed} / {hasUnlimitedSearches ? "∞" : usage.limits.monthlySearches}
+              <span
+                className={`text-sm font-medium ${getUsageColor(searchesPercentage)}`}
+              >
+                {usage.searchesUsed} /{" "}
+                {hasUnlimitedSearches ? "∞" : usage.limits.monthlySearches}
               </span>
               {!hasUnlimitedSearches && (
-                <p className="text-xs text-muted-foreground">{searchesPercentage}% used</p>
+                <p className="text-xs text-muted-foreground">
+                  {searchesPercentage}% used
+                </p>
               )}
             </div>
           </div>
           {!hasUnlimitedSearches && (
             <div className="relative">
               <Progress value={searchesPercentage} className="h-2" />
-              <div 
+              <div
                 className={`absolute top-0 left-0 h-2 rounded-full transition-all ${getProgressColor(searchesPercentage)}`}
                 style={{ width: `${searchesPercentage}%` }}
               />
@@ -118,18 +131,25 @@ export function UsageMetersCard() {
               <span className="text-sm font-medium">Lead Enrichments</span>
             </div>
             <div className="text-right">
-              <span className={`text-sm font-medium ${getUsageColor(enrichmentsPercentage)}`}>
-                {usage.leadsEnriched.toLocaleString()} / {hasUnlimitedEnrichments ? "∞" : usage.limits.monthlyEnrichments.toLocaleString()}
+              <span
+                className={`text-sm font-medium ${getUsageColor(enrichmentsPercentage)}`}
+              >
+                {usage.leadsEnriched.toLocaleString()} /{" "}
+                {hasUnlimitedEnrichments
+                  ? "∞"
+                  : usage.limits.monthlyEnrichments.toLocaleString()}
               </span>
               {!hasUnlimitedEnrichments && (
-                <p className="text-xs text-muted-foreground">{enrichmentsPercentage}% used</p>
+                <p className="text-xs text-muted-foreground">
+                  {enrichmentsPercentage}% used
+                </p>
               )}
             </div>
           </div>
           {!hasUnlimitedEnrichments && (
             <div className="relative">
               <Progress value={enrichmentsPercentage} className="h-2" />
-              <div 
+              <div
                 className={`absolute top-0 left-0 h-2 rounded-full transition-all ${getProgressColor(enrichmentsPercentage)}`}
                 style={{ width: `${enrichmentsPercentage}%` }}
               />
@@ -148,18 +168,23 @@ export function UsageMetersCard() {
               <span className="text-sm font-medium">Exports</span>
             </div>
             <div className="text-right">
-              <span className={`text-sm font-medium ${getUsageColor(exportsPercentage)}`}>
-                {usage.exportsCompleted} / {hasUnlimitedExports ? "∞" : usage.limits.monthlyExports}
+              <span
+                className={`text-sm font-medium ${getUsageColor(exportsPercentage)}`}
+              >
+                {usage.exportsCompleted} /{" "}
+                {hasUnlimitedExports ? "∞" : usage.limits.monthlyExports}
               </span>
               {!hasUnlimitedExports && (
-                <p className="text-xs text-muted-foreground">{exportsPercentage}% used</p>
+                <p className="text-xs text-muted-foreground">
+                  {exportsPercentage}% used
+                </p>
               )}
             </div>
           </div>
           {!hasUnlimitedExports && (
             <div className="relative">
               <Progress value={exportsPercentage} className="h-2" />
-              <div 
+              <div
                 className={`absolute top-0 left-0 h-2 rounded-full transition-all ${getProgressColor(exportsPercentage)}`}
                 style={{ width: `${exportsPercentage}%` }}
               />
@@ -198,11 +223,18 @@ export function UsageMetersCard() {
           <div className="pt-4 border-t">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-orange-700">Need more capacity?</p>
-                <p className="text-xs text-muted-foreground">Upgrade to get higher limits</p>
+                <p className="text-sm font-medium text-orange-700">
+                  Need more capacity?
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Upgrade to get higher limits
+                </p>
               </div>
               <Link to="/pricing">
-                <Button size="sm" className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700">
+                <Button
+                  size="sm"
+                  className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                >
                   Upgrade Plan
                 </Button>
               </Link>

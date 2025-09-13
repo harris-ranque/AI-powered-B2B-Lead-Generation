@@ -4,12 +4,12 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Activity, 
-  TrendingUp, 
+import {
+  Activity,
+  TrendingUp,
   TrendingDown,
-  Zap, 
-  Clock, 
+  Zap,
+  Clock,
   CheckCircle,
   AlertTriangle,
   Server,
@@ -23,16 +23,16 @@ import {
   Settings,
   Download,
   Bell,
-  Shield
+  Shield,
 } from "lucide-react";
-import { 
-  usePerformanceMetrics, 
-  formatDuration, 
-  formatPercentage, 
+import {
+  usePerformanceMetrics,
+  formatDuration,
+  formatPercentage,
   formatUptime,
   getHealthColor,
   getAlertColor,
-  type SystemAlert 
+  type SystemAlert,
 } from "@/hooks/usePerformanceMetrics";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -47,43 +47,51 @@ interface PerformanceMonitoringDashboardProps {
  * Comprehensive performance monitoring dashboard
  * Real-time system metrics, alerts, and performance analysis
  */
-export function PerformanceMonitoringDashboard({ 
+export function PerformanceMonitoringDashboard({
   className,
   autoRefresh = true,
-  refreshInterval = 30000 // 30 seconds
+  refreshInterval = 30000, // 30 seconds
 }: PerformanceMonitoringDashboardProps) {
-  const { 
-    metrics, 
-    systemAlerts, 
-    generateTrends, 
-    isLoading, 
+  const {
+    metrics,
+    systemAlerts,
+    generateTrends,
+    isLoading,
     lastUpdated,
-    refreshMetrics 
+    refreshMetrics,
   } = usePerformanceMetrics();
-  
-  const [selectedTimeRange, setSelectedTimeRange] = useState<'1h' | '24h' | '7d'>('24h');
-  const [acknowledgedAlerts, setAcknowledgedAlerts] = useState<Set<string>>(new Set());
+
+  const [selectedTimeRange, setSelectedTimeRange] = useState<
+    "1h" | "24h" | "7d"
+  >("24h");
+  const [acknowledgedAlerts, setAcknowledgedAlerts] = useState<Set<string>>(
+    new Set(),
+  );
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Auto-refresh functionality
   useEffect(() => {
     if (!autoRefresh) return;
-    
+
     const interval = setInterval(() => {
-      setRefreshKey(prev => prev + 1);
+      setRefreshKey((prev) => prev + 1);
       refreshMetrics();
     }, refreshInterval);
-    
+
     return () => clearInterval(interval);
   }, [autoRefresh, refreshInterval, refreshMetrics]);
 
   const acknowledgeAlert = (alertId: string) => {
-    setAcknowledgedAlerts(prev => new Set([...prev, alertId]));
+    setAcknowledgedAlerts((prev) => new Set([...prev, alertId]));
   };
 
-  const visibleAlerts = (systemAlerts || []).filter(alert => !acknowledgedAlerts.has(alert.id));
-  const criticalAlerts = visibleAlerts.filter(alert => alert.severity === 'critical');
-  const highAlerts = visibleAlerts.filter(alert => alert.severity === 'high');
+  const visibleAlerts = (systemAlerts || []).filter(
+    (alert) => !acknowledgedAlerts.has(alert.id),
+  );
+  const criticalAlerts = visibleAlerts.filter(
+    (alert) => alert.severity === "critical",
+  );
+  const highAlerts = visibleAlerts.filter((alert) => alert.severity === "high");
 
   if (isLoading) {
     return (
@@ -114,7 +122,7 @@ export function PerformanceMonitoringDashboard({
             Real-time system metrics and performance analysis
           </p>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <div className="text-sm text-muted-foreground">
             Last updated: {new Date(lastUpdated).toLocaleTimeString()}
@@ -124,23 +132,31 @@ export function PerformanceMonitoringDashboard({
             size="sm"
             onClick={() => {
               refreshMetrics();
-              setRefreshKey(prev => prev + 1);
+              setRefreshKey((prev) => prev + 1);
             }}
           >
-            <RefreshCw className={cn("h-4 w-4 mr-1", autoRefresh && "animate-spin")} />
+            <RefreshCw
+              className={cn("h-4 w-4 mr-1", autoRefresh && "animate-spin")}
+            />
             Refresh
           </Button>
-          
+
           <Button
             variant="outline"
             size="sm"
             onClick={() => {
-              const data = { metrics, alerts: systemAlerts, timestamp: Date.now() };
-              const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+              const data = {
+                metrics,
+                alerts: systemAlerts,
+                timestamp: Date.now(),
+              };
+              const blob = new Blob([JSON.stringify(data, null, 2)], {
+                type: "application/json",
+              });
               const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
+              const a = document.createElement("a");
               a.href = url;
-              a.download = `performance-report-${new Date().toISOString().split('T')[0]}.json`;
+              a.download = `performance-report-${new Date().toISOString().split("T")[0]}.json`;
               a.click();
             }}
           >
@@ -157,11 +173,17 @@ export function PerformanceMonitoringDashboard({
           <AlertDescription>
             <div className="flex items-center justify-between">
               <span className="font-medium">
-                {criticalAlerts.length} critical alert{criticalAlerts.length > 1 ? 's' : ''} require immediate attention
+                {criticalAlerts.length} critical alert
+                {criticalAlerts.length > 1 ? "s" : ""} require immediate
+                attention
               </span>
               <div className="flex gap-2">
                 {criticalAlerts.slice(0, 2).map((alert) => (
-                  <Badge key={alert.id} variant="destructive" className="text-xs">
+                  <Badge
+                    key={alert.id}
+                    variant="destructive"
+                    className="text-xs"
+                  >
                     {alert.title}
                   </Badge>
                 ))}
@@ -176,15 +198,19 @@ export function PerformanceMonitoringDashboard({
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <div className={cn(
-                "p-2 rounded-full",
-                getHealthColor(metrics.systemMetrics.systemHealth)
-              )}>
+              <div
+                className={cn(
+                  "p-2 rounded-full",
+                  getHealthColor(metrics.systemMetrics.systemHealth),
+                )}
+              >
                 <Shield className="h-5 w-5" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">System Health</p>
-                <p className="font-semibold capitalize">{metrics.systemMetrics.systemHealth}</p>
+                <p className="font-semibold capitalize">
+                  {metrics.systemMetrics.systemHealth}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   {formatUptime(metrics.systemMetrics.uptime)} uptime
                 </p>
@@ -200,8 +226,12 @@ export function PerformanceMonitoringDashboard({
                 <Activity className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Active Operations</p>
-                <p className="font-semibold">{metrics.realTimeMetrics.activeSearches}</p>
+                <p className="text-sm text-muted-foreground">
+                  Active Operations
+                </p>
+                <p className="font-semibold">
+                  {metrics.realTimeMetrics.activeSearches}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   {metrics.realTimeMetrics.queuedOperations} queued
                 </p>
@@ -218,9 +248,12 @@ export function PerformanceMonitoringDashboard({
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Success Rate</p>
-                <p className="font-semibold">{formatPercentage(metrics.searchMetrics.successRate)}</p>
+                <p className="font-semibold">
+                  {formatPercentage(metrics.searchMetrics.successRate)}
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  {metrics.searchMetrics.completedSearches}/{metrics.searchMetrics.totalSearches} searches
+                  {metrics.searchMetrics.completedSearches}/
+                  {metrics.searchMetrics.totalSearches} searches
                 </p>
               </div>
             </div>
@@ -235,9 +268,12 @@ export function PerformanceMonitoringDashboard({
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Avg Response</p>
-                <p className="font-semibold">{formatDuration(metrics.systemMetrics.averageResponseTime)}</p>
+                <p className="font-semibold">
+                  {formatDuration(metrics.systemMetrics.averageResponseTime)}
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  {Math.round(metrics.systemMetrics.operationsPerMinute)}/min ops
+                  {Math.round(metrics.systemMetrics.operationsPerMinute)}/min
+                  ops
                 </p>
               </div>
             </div>
@@ -260,11 +296,12 @@ export function PerformanceMonitoringDashboard({
                 <span>CPU Usage</span>
                 <span>{Math.round(metrics.realTimeMetrics.systemLoad)}%</span>
               </div>
-              <Progress 
-                value={metrics.realTimeMetrics.systemLoad} 
+              <Progress
+                value={metrics.realTimeMetrics.systemLoad}
                 className={cn(
                   "h-2",
-                  metrics.realTimeMetrics.systemLoad > 80 && "progress-destructive"
+                  metrics.realTimeMetrics.systemLoad > 80 &&
+                    "progress-destructive",
                 )}
               />
             </div>
@@ -284,11 +321,12 @@ export function PerformanceMonitoringDashboard({
                 <span>RAM</span>
                 <span>{Math.round(metrics.realTimeMetrics.memoryUsage)}%</span>
               </div>
-              <Progress 
-                value={metrics.realTimeMetrics.memoryUsage} 
+              <Progress
+                value={metrics.realTimeMetrics.memoryUsage}
                 className={cn(
                   "h-2",
-                  metrics.realTimeMetrics.memoryUsage > 80 && "progress-destructive"
+                  metrics.realTimeMetrics.memoryUsage > 80 &&
+                    "progress-destructive",
                 )}
               />
             </div>
@@ -306,13 +344,16 @@ export function PerformanceMonitoringDashboard({
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span>Errors</span>
-                <span>{formatPercentage(metrics.realTimeMetrics.errorRate)}</span>
+                <span>
+                  {formatPercentage(metrics.realTimeMetrics.errorRate)}
+                </span>
               </div>
-              <Progress 
-                value={metrics.realTimeMetrics.errorRate} 
+              <Progress
+                value={metrics.realTimeMetrics.errorRate}
                 className={cn(
                   "h-2",
-                  metrics.realTimeMetrics.errorRate > 5 && "progress-destructive"
+                  metrics.realTimeMetrics.errorRate > 5 &&
+                    "progress-destructive",
                 )}
               />
             </div>
@@ -339,7 +380,10 @@ export function PerformanceMonitoringDashboard({
             <Bell className="h-4 w-4" />
             Alerts
             {visibleAlerts.length > 0 && (
-              <Badge variant="destructive" className="ml-1 text-xs h-5 w-5 p-0 rounded-full">
+              <Badge
+                variant="destructive"
+                className="ml-1 text-xs h-5 w-5 p-0 rounded-full"
+              >
                 {visibleAlerts.length}
               </Badge>
             )}
@@ -363,19 +407,29 @@ export function PerformanceMonitoringDashboard({
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-sm">Total Searches:</span>
-                  <span className="font-medium">{metrics.searchMetrics.totalSearches}</span>
+                  <span className="font-medium">
+                    {metrics.searchMetrics.totalSearches}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm">Success Rate:</span>
-                  <span className="font-medium">{formatPercentage(metrics.searchMetrics.successRate)}</span>
+                  <span className="font-medium">
+                    {formatPercentage(metrics.searchMetrics.successRate)}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm">Avg Completion:</span>
-                  <span className="font-medium">{formatDuration(metrics.searchMetrics.averageCompletionTime)}</span>
+                  <span className="font-medium">
+                    {formatDuration(
+                      metrics.searchMetrics.averageCompletionTime,
+                    )}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm">Total Leads:</span>
-                  <span className="font-medium">{metrics.searchMetrics.totalLeadsGenerated.toLocaleString()}</span>
+                  <span className="font-medium">
+                    {metrics.searchMetrics.totalLeadsGenerated.toLocaleString()}
+                  </span>
                 </div>
               </CardContent>
             </Card>
@@ -391,21 +445,36 @@ export function PerformanceMonitoringDashboard({
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-sm">Health:</span>
-                  <Badge variant={metrics.systemMetrics.systemHealth === 'healthy' ? 'default' : 'destructive'}>
+                  <Badge
+                    variant={
+                      metrics.systemMetrics.systemHealth === "healthy"
+                        ? "default"
+                        : "destructive"
+                    }
+                  >
                     {metrics.systemMetrics.systemHealth}
                   </Badge>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm">Uptime:</span>
-                  <span className="font-medium">{formatUptime(metrics.systemMetrics.uptime)}</span>
+                  <span className="font-medium">
+                    {formatUptime(metrics.systemMetrics.uptime)}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm">Operations/min:</span>
-                  <span className="font-medium">{Math.round(metrics.systemMetrics.operationsPerMinute)}</span>
+                  <span className="font-medium">
+                    {Math.round(metrics.systemMetrics.operationsPerMinute)}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm">Error Count:</span>
-                  <span className={cn("font-medium", metrics.systemMetrics.errorCount > 5 && "text-red-600")}>
+                  <span
+                    className={cn(
+                      "font-medium",
+                      metrics.systemMetrics.errorCount > 5 && "text-red-600",
+                    )}
+                  >
                     {metrics.systemMetrics.errorCount}
                   </span>
                 </div>
@@ -423,19 +492,27 @@ export function PerformanceMonitoringDashboard({
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-sm">Active Searches:</span>
-                  <span className="font-medium">{metrics.realTimeMetrics.activeSearches}</span>
+                  <span className="font-medium">
+                    {metrics.realTimeMetrics.activeSearches}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm">Queue Size:</span>
-                  <span className="font-medium">{metrics.realTimeMetrics.queuedOperations}</span>
+                  <span className="font-medium">
+                    {metrics.realTimeMetrics.queuedOperations}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm">System Load:</span>
-                  <span className="font-medium">{Math.round(metrics.realTimeMetrics.systemLoad)}%</span>
+                  <span className="font-medium">
+                    {Math.round(metrics.realTimeMetrics.systemLoad)}%
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm">Memory Usage:</span>
-                  <span className="font-medium">{Math.round(metrics.realTimeMetrics.memoryUsage)}%</span>
+                  <span className="font-medium">
+                    {Math.round(metrics.realTimeMetrics.memoryUsage)}%
+                  </span>
                 </div>
               </CardContent>
             </Card>
@@ -444,43 +521,54 @@ export function PerformanceMonitoringDashboard({
 
         <TabsContent value="pipeline" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {Object.entries(metrics.pipelineMetrics).map(([stage, stageMetrics]) => (
-              <Card key={stage}>
-                <CardHeader>
-                  <CardTitle className="text-sm capitalize flex items-center gap-2">
-                    <Activity className="h-4 w-4" />
-                    {stage.replace('Stage', ' Stage')}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-sm">Avg Time:</span>
-                    <span className="font-medium">{formatDuration(stageMetrics.averageTime)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm">Success Rate:</span>
-                    <span className="font-medium">{formatPercentage(stageMetrics.successRate)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm">Throughput:</span>
-                    <span className="font-medium">{stageMetrics.throughput} ops</span>
-                  </div>
-                  <div className="mt-3">
-                    <div className="flex justify-between text-xs mb-1">
-                      <span>Performance</span>
-                      <span>{formatPercentage(stageMetrics.successRate)}</span>
+            {Object.entries(metrics.pipelineMetrics).map(
+              ([stage, stageMetrics]) => (
+                <Card key={stage}>
+                  <CardHeader>
+                    <CardTitle className="text-sm capitalize flex items-center gap-2">
+                      <Activity className="h-4 w-4" />
+                      {stage.replace("Stage", " Stage")}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-sm">Avg Time:</span>
+                      <span className="font-medium">
+                        {formatDuration(stageMetrics.averageTime)}
+                      </span>
                     </div>
-                    <Progress 
-                      value={stageMetrics.successRate} 
-                      className={cn(
-                        "h-2",
-                        stageMetrics.successRate < 80 && "progress-destructive"
-                      )}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                    <div className="flex justify-between">
+                      <span className="text-sm">Success Rate:</span>
+                      <span className="font-medium">
+                        {formatPercentage(stageMetrics.successRate)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm">Throughput:</span>
+                      <span className="font-medium">
+                        {stageMetrics.throughput} ops
+                      </span>
+                    </div>
+                    <div className="mt-3">
+                      <div className="flex justify-between text-xs mb-1">
+                        <span>Performance</span>
+                        <span>
+                          {formatPercentage(stageMetrics.successRate)}
+                        </span>
+                      </div>
+                      <Progress
+                        value={stageMetrics.successRate}
+                        className={cn(
+                          "h-2",
+                          stageMetrics.successRate < 80 &&
+                            "progress-destructive",
+                        )}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              ),
+            )}
           </div>
         </TabsContent>
 
@@ -492,7 +580,9 @@ export function PerformanceMonitoringDashboard({
                   <CreditCard className="h-5 w-5 text-blue-600" />
                   <div>
                     <p className="text-sm text-muted-foreground">Total Used</p>
-                    <p className="font-semibold">{metrics.creditMetrics.totalCreditsUsed.toLocaleString()}</p>
+                    <p className="font-semibold">
+                      {metrics.creditMetrics.totalCreditsUsed.toLocaleString()}
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -503,8 +593,12 @@ export function PerformanceMonitoringDashboard({
                 <div className="flex items-center gap-2">
                   <Activity className="h-5 w-5 text-green-600" />
                   <div>
-                    <p className="text-sm text-muted-foreground">Avg Cost/Search</p>
-                    <p className="font-semibold">{Math.round(metrics.creditMetrics.averageCostPerSearch)}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Avg Cost/Search
+                    </p>
+                    <p className="font-semibold">
+                      {Math.round(metrics.creditMetrics.averageCostPerSearch)}
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -516,7 +610,9 @@ export function PerformanceMonitoringDashboard({
                   <Clock className="h-5 w-5 text-yellow-600" />
                   <div>
                     <p className="text-sm text-muted-foreground">Used Today</p>
-                    <p className="font-semibold">{metrics.creditMetrics.creditsUsedToday}</p>
+                    <p className="font-semibold">
+                      {metrics.creditMetrics.creditsUsedToday}
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -528,7 +624,10 @@ export function PerformanceMonitoringDashboard({
                   <TrendingUp className="h-5 w-5 text-purple-600" />
                   <div>
                     <p className="text-sm text-muted-foreground">Efficiency</p>
-                    <p className="font-semibold">{metrics.creditMetrics.creditEfficiency.toFixed(1)} leads/credit</p>
+                    <p className="font-semibold">
+                      {metrics.creditMetrics.creditEfficiency.toFixed(1)}{" "}
+                      leads/credit
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -543,10 +642,17 @@ export function PerformanceMonitoringDashboard({
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-sm">Estimated Daily Cost:</span>
-                  <span className="font-medium">{Math.round(metrics.creditMetrics.estimatedDailyCost)} credits</span>
+                  <span className="font-medium">
+                    {Math.round(metrics.creditMetrics.estimatedDailyCost)}{" "}
+                    credits
+                  </span>
                 </div>
-                <Progress 
-                  value={(metrics.creditMetrics.creditsUsedToday / metrics.creditMetrics.estimatedDailyCost) * 100} 
+                <Progress
+                  value={
+                    (metrics.creditMetrics.creditsUsedToday /
+                      metrics.creditMetrics.estimatedDailyCost) *
+                    100
+                  }
                   className="h-2"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -615,14 +721,18 @@ export function PerformanceMonitoringDashboard({
         <TabsContent value="trends" className="space-y-4">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-sm font-medium">Time Range:</span>
-            {(['1h', '24h', '7d'] as const).map((range) => (
+            {(["1h", "24h", "7d"] as const).map((range) => (
               <Button
                 key={range}
                 size="sm"
-                variant={selectedTimeRange === range ? 'default' : 'outline'}
+                variant={selectedTimeRange === range ? "default" : "outline"}
                 onClick={() => setSelectedTimeRange(range)}
               >
-                {range === '1h' ? '1 Hour' : range === '24h' ? '24 Hours' : '7 Days'}
+                {range === "1h"
+                  ? "1 Hour"
+                  : range === "24h"
+                    ? "24 Hours"
+                    : "7 Days"}
               </Button>
             ))}
           </div>

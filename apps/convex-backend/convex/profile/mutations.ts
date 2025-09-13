@@ -3,7 +3,13 @@ import { v } from "convex/values";
 import { getCurrentUser } from "../auth";
 import { businessProfileValidator } from "../lib/validators";
 import { ERROR_CODES, BUSINESS_RULES } from "../lib/constants";
-import { createError, sanitizeString, validateEmail, validateUrl, normalizeUrl } from "../lib/helpers";
+import {
+  createError,
+  sanitizeString,
+  validateEmail,
+  validateUrl,
+  normalizeUrl,
+} from "../lib/helpers";
 
 // Create or update business profile
 export const createOrUpdateProfile = mutation({
@@ -12,7 +18,11 @@ export const createOrUpdateProfile = mutation({
     const user = await getCurrentUser(ctx);
 
     if (!user) {
-      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+      throw createError(
+        "Authentication required",
+        ERROR_CODES.UNAUTHORIZED,
+        401,
+      );
     }
 
     // Validate and sanitize input data
@@ -20,46 +30,96 @@ export const createOrUpdateProfile = mutation({
       companyName: sanitizeString(args.companyName),
       industry: sanitizeString(args.industry),
       valueProposition: sanitizeString(args.valueProposition),
-      services: args.services.slice(0, BUSINESS_RULES.PROFILE.MAX_SERVICES).map(s => sanitizeString(s)),
-      targetMarkets: args.targetMarkets.slice(0, BUSINESS_RULES.PROFILE.MAX_TARGET_MARKETS).map(m => sanitizeString(m)),
-      keyDifferentiators: args.keyDifferentiators.slice(0, BUSINESS_RULES.PROFILE.MAX_DIFFERENTIATORS).map(d => sanitizeString(d)),
-      caseStudies: args.caseStudies?.slice(0, BUSINESS_RULES.PROFILE.MAX_CASE_STUDIES).map(cs => ({
-        title: sanitizeString(cs.title),
-        client: sanitizeString(cs.client),
-        results: sanitizeString(cs.results),
-        metrics: cs.metrics,
-      })) || [],
+      services: args.services
+        .slice(0, BUSINESS_RULES.PROFILE.MAX_SERVICES)
+        .map((s) => sanitizeString(s)),
+      targetMarkets: args.targetMarkets
+        .slice(0, BUSINESS_RULES.PROFILE.MAX_TARGET_MARKETS)
+        .map((m) => sanitizeString(m)),
+      keyDifferentiators: args.keyDifferentiators
+        .slice(0, BUSINESS_RULES.PROFILE.MAX_DIFFERENTIATORS)
+        .map((d) => sanitizeString(d)),
+      caseStudies:
+        args.caseStudies
+          ?.slice(0, BUSINESS_RULES.PROFILE.MAX_CASE_STUDIES)
+          .map((cs) => ({
+            title: sanitizeString(cs.title),
+            client: sanitizeString(cs.client),
+            results: sanitizeString(cs.results),
+            metrics: cs.metrics,
+          })) || [],
       contactInfo: {
-        email: args.contactInfo.email ? (validateEmail(args.contactInfo.email) ? args.contactInfo.email : "") : (user.email || ""),
-        phone: args.contactInfo.phone ? sanitizeString(args.contactInfo.phone) : "",
-        website: args.contactInfo.website ? (validateUrl(args.contactInfo.website) ? normalizeUrl(args.contactInfo.website) : "") : "",
-        linkedin: args.contactInfo.linkedin ? (validateUrl(args.contactInfo.linkedin) ? normalizeUrl(args.contactInfo.linkedin) : "") : "",
+        email: args.contactInfo.email
+          ? validateEmail(args.contactInfo.email)
+            ? args.contactInfo.email
+            : ""
+          : user.email || "",
+        phone: args.contactInfo.phone
+          ? sanitizeString(args.contactInfo.phone)
+          : "",
+        website: args.contactInfo.website
+          ? validateUrl(args.contactInfo.website)
+            ? normalizeUrl(args.contactInfo.website)
+            : ""
+          : "",
+        linkedin: args.contactInfo.linkedin
+          ? validateUrl(args.contactInfo.linkedin)
+            ? normalizeUrl(args.contactInfo.linkedin)
+            : ""
+          : "",
       },
     };
 
     // Additional validation
     if (!sanitizedData.companyName) {
-      throw createError("Company name is required", ERROR_CODES.VALIDATION_ERROR, 400);
+      throw createError(
+        "Company name is required",
+        ERROR_CODES.VALIDATION_ERROR,
+        400,
+      );
     }
 
     if (!sanitizedData.industry) {
-      throw createError("Industry is required", ERROR_CODES.VALIDATION_ERROR, 400);
+      throw createError(
+        "Industry is required",
+        ERROR_CODES.VALIDATION_ERROR,
+        400,
+      );
     }
 
-    if (!sanitizedData.valueProposition || sanitizedData.valueProposition.length < 50) {
-      throw createError("Value proposition must be at least 50 characters", ERROR_CODES.VALIDATION_ERROR, 400);
+    if (
+      !sanitizedData.valueProposition ||
+      sanitizedData.valueProposition.length < 50
+    ) {
+      throw createError(
+        "Value proposition must be at least 50 characters",
+        ERROR_CODES.VALIDATION_ERROR,
+        400,
+      );
     }
 
     if (sanitizedData.services.length === 0) {
-      throw createError("At least one service is required", ERROR_CODES.VALIDATION_ERROR, 400);
+      throw createError(
+        "At least one service is required",
+        ERROR_CODES.VALIDATION_ERROR,
+        400,
+      );
     }
 
     if (sanitizedData.targetMarkets.length === 0) {
-      throw createError("At least one target market is required", ERROR_CODES.VALIDATION_ERROR, 400);
+      throw createError(
+        "At least one target market is required",
+        ERROR_CODES.VALIDATION_ERROR,
+        400,
+      );
     }
 
     if (sanitizedData.keyDifferentiators.length === 0) {
-      throw createError("At least one key differentiator is required", ERROR_CODES.VALIDATION_ERROR, 400);
+      throw createError(
+        "At least one key differentiator is required",
+        ERROR_CODES.VALIDATION_ERROR,
+        400,
+      );
     }
 
     // Check if profile already exists
@@ -98,7 +158,8 @@ export const createOrUpdateProfile = mutation({
           userId: user._id,
           type: "system_alert",
           title: "Profile Completed! 🎉",
-          message: "Your business profile is now complete. You can start generating highly personalized leads and emails.",
+          message:
+            "Your business profile is now complete. You can start generating highly personalized leads and emails.",
           data: { profileCompleted: true },
           read: false,
           sent: false,
@@ -106,8 +167,8 @@ export const createOrUpdateProfile = mutation({
         });
       }
 
-      return { 
-        success: true, 
+      return {
+        success: true,
         profileId: existingProfile._id,
         isComplete,
         message: "Profile updated successfully",
@@ -124,10 +185,10 @@ export const createOrUpdateProfile = mutation({
         userId: user._id,
         type: "system_alert",
         title: isComplete ? "Profile Created! 🎉" : "Profile Saved",
-        message: isComplete 
+        message: isComplete
           ? "Your business profile has been created and is complete. You're ready to start generating leads!"
           : "Your business profile has been saved. Complete the remaining fields to unlock full personalization.",
-        data: { 
+        data: {
           profileCreated: true,
           isComplete,
         },
@@ -136,8 +197,8 @@ export const createOrUpdateProfile = mutation({
         createdAt: Date.now(),
       });
 
-      return { 
-        success: true, 
+      return {
+        success: true,
         profileId,
         isComplete,
         message: "Profile created successfully",
@@ -155,7 +216,7 @@ export const updateProfileSection = mutation({
       v.literal("targeting"),
       v.literal("differentiators"),
       v.literal("case_studies"),
-      v.literal("contact_info")
+      v.literal("contact_info"),
     ),
     data: v.any(),
   },
@@ -163,7 +224,11 @@ export const updateProfileSection = mutation({
     const user = await getCurrentUser(ctx);
 
     if (!user) {
-      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+      throw createError(
+        "Authentication required",
+        ERROR_CODES.UNAUTHORIZED,
+        401,
+      );
     }
 
     const profile = await ctx.db
@@ -172,16 +237,26 @@ export const updateProfileSection = mutation({
       .unique();
 
     if (!profile) {
-      throw createError("Profile not found", ERROR_CODES.RESOURCE_NOT_FOUND, 404);
+      throw createError(
+        "Profile not found",
+        ERROR_CODES.RESOURCE_NOT_FOUND,
+        404,
+      );
     }
 
     let updateData: any = { updatedAt: Date.now() };
 
     switch (args.section) {
       case "basic_info":
-        updateData.companyName = sanitizeString(args.data.companyName || profile.companyName);
-        updateData.industry = sanitizeString(args.data.industry || profile.industry);
-        updateData.valueProposition = sanitizeString(args.data.valueProposition || profile.valueProposition);
+        updateData.companyName = sanitizeString(
+          args.data.companyName || profile.companyName,
+        );
+        updateData.industry = sanitizeString(
+          args.data.industry || profile.industry,
+        );
+        updateData.valueProposition = sanitizeString(
+          args.data.valueProposition || profile.valueProposition,
+        );
         break;
 
       case "services":
@@ -219,10 +294,21 @@ export const updateProfileSection = mutation({
 
       case "contact_info":
         updateData.contactInfo = {
-          email: args.data.email && validateEmail(args.data.email) ? args.data.email : profile.contactInfo?.email || "",
-          phone: args.data.phone ? sanitizeString(args.data.phone) : profile.contactInfo?.phone || "",
-          website: args.data.website && validateUrl(args.data.website) ? normalizeUrl(args.data.website) : profile.contactInfo?.website || "",
-          linkedin: args.data.linkedin && validateUrl(args.data.linkedin) ? normalizeUrl(args.data.linkedin) : profile.contactInfo?.linkedin || "",
+          email:
+            args.data.email && validateEmail(args.data.email)
+              ? args.data.email
+              : profile.contactInfo?.email || "",
+          phone: args.data.phone
+            ? sanitizeString(args.data.phone)
+            : profile.contactInfo?.phone || "",
+          website:
+            args.data.website && validateUrl(args.data.website)
+              ? normalizeUrl(args.data.website)
+              : profile.contactInfo?.website || "",
+          linkedin:
+            args.data.linkedin && validateUrl(args.data.linkedin)
+              ? normalizeUrl(args.data.linkedin)
+              : profile.contactInfo?.linkedin || "",
         };
         break;
 
@@ -238,7 +324,8 @@ export const updateProfileSection = mutation({
     if (updatedProfile) {
       // Get user for email fallback
       const currentUser = await getCurrentUser(ctx);
-      const userEmail = updatedProfile.contactInfo?.email || currentUser?.email || "";
+      const userEmail =
+        updatedProfile.contactInfo?.email || currentUser?.email || "";
       const isComplete = !!(
         updatedProfile.companyName &&
         updatedProfile.industry &&
@@ -257,7 +344,8 @@ export const updateProfileSection = mutation({
             userId: user._id,
             type: "system_alert",
             title: "Profile Completed! 🎉",
-            message: "Your business profile is now complete. You can start generating highly personalized leads and emails.",
+            message:
+              "Your business profile is now complete. You can start generating highly personalized leads and emails.",
             data: { profileCompleted: true },
             read: false,
             sent: false,
@@ -267,7 +355,7 @@ export const updateProfileSection = mutation({
       }
     }
 
-    return { 
+    return {
       success: true,
       message: `${args.section} updated successfully`,
     };
@@ -281,7 +369,11 @@ export const deleteProfile = mutation({
     const user = await getCurrentUser(ctx);
 
     if (!user) {
-      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+      throw createError(
+        "Authentication required",
+        ERROR_CODES.UNAUTHORIZED,
+        401,
+      );
     }
 
     const profile = await ctx.db
@@ -290,7 +382,11 @@ export const deleteProfile = mutation({
       .unique();
 
     if (!profile) {
-      throw createError("Profile not found", ERROR_CODES.RESOURCE_NOT_FOUND, 404);
+      throw createError(
+        "Profile not found",
+        ERROR_CODES.RESOURCE_NOT_FOUND,
+        404,
+      );
     }
 
     // Delete the profile
@@ -301,7 +397,8 @@ export const deleteProfile = mutation({
       userId: user._id,
       type: "system_alert",
       title: "Profile Deleted",
-      message: "Your business profile has been deleted. You can create a new one anytime.",
+      message:
+        "Your business profile has been deleted. You can create a new one anytime.",
       data: { profileDeleted: true },
       read: false,
       sent: false,
@@ -315,14 +412,22 @@ export const deleteProfile = mutation({
 // Import profile from external source
 export const importProfile = mutation({
   args: {
-    source: v.union(v.literal("linkedin"), v.literal("website"), v.literal("manual")),
+    source: v.union(
+      v.literal("linkedin"),
+      v.literal("website"),
+      v.literal("manual"),
+    ),
     data: v.any(),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
 
     if (!user) {
-      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+      throw createError(
+        "Authentication required",
+        ERROR_CODES.UNAUTHORIZED,
+        401,
+      );
     }
 
     // Process different import sources
@@ -335,9 +440,15 @@ export const importProfile = mutation({
           companyName: sanitizeString(args.data.companyName || ""),
           industry: sanitizeString(args.data.industry || ""),
           valueProposition: sanitizeString(args.data.description || ""),
-          services: (args.data.services || []).map((s: string) => sanitizeString(s)),
-          targetMarkets: (args.data.targetMarkets || []).map((m: string) => sanitizeString(m)),
-          keyDifferentiators: (args.data.specialties || []).map((d: string) => sanitizeString(d)),
+          services: (args.data.services || []).map((s: string) =>
+            sanitizeString(s),
+          ),
+          targetMarkets: (args.data.targetMarkets || []).map((m: string) =>
+            sanitizeString(m),
+          ),
+          keyDifferentiators: (args.data.specialties || []).map((d: string) =>
+            sanitizeString(d),
+          ),
           contactInfo: {
             email: "",
             phone: "",
@@ -352,8 +463,12 @@ export const importProfile = mutation({
         profileData = {
           companyName: sanitizeString(args.data.companyName || ""),
           industry: sanitizeString(args.data.industry || ""),
-          valueProposition: sanitizeString(args.data.description || args.data.tagline || ""),
-          services: (args.data.services || []).map((s: string) => sanitizeString(s)),
+          valueProposition: sanitizeString(
+            args.data.description || args.data.tagline || "",
+          ),
+          services: (args.data.services || []).map((s: string) =>
+            sanitizeString(s),
+          ),
           targetMarkets: [],
           keyDifferentiators: [],
           contactInfo: {
@@ -371,7 +486,11 @@ export const importProfile = mutation({
         break;
 
       default:
-        throw createError("Invalid import source", ERROR_CODES.VALIDATION_ERROR, 400);
+        throw createError(
+          "Invalid import source",
+          ERROR_CODES.VALIDATION_ERROR,
+          400,
+        );
     }
 
     // Check if profile already exists
@@ -387,23 +506,51 @@ export const importProfile = mutation({
       const mergedData = {
         companyName: profileData.companyName || existingProfile.companyName,
         industry: profileData.industry || existingProfile.industry,
-        valueProposition: profileData.valueProposition || existingProfile.valueProposition,
-        services: Array.from(new Set([...(existingProfile.services || []), ...(profileData.services || [])])),
-        targetMarkets: Array.from(new Set([...(existingProfile.targetMarkets || []), ...(profileData.targetMarkets || [])])),
-        keyDifferentiators: Array.from(new Set([...(existingProfile.keyDifferentiators || []), ...(profileData.keyDifferentiators || [])])),
+        valueProposition:
+          profileData.valueProposition || existingProfile.valueProposition,
+        services: Array.from(
+          new Set([
+            ...(existingProfile.services || []),
+            ...(profileData.services || []),
+          ]),
+        ),
+        targetMarkets: Array.from(
+          new Set([
+            ...(existingProfile.targetMarkets || []),
+            ...(profileData.targetMarkets || []),
+          ]),
+        ),
+        keyDifferentiators: Array.from(
+          new Set([
+            ...(existingProfile.keyDifferentiators || []),
+            ...(profileData.keyDifferentiators || []),
+          ]),
+        ),
         contactInfo: {
-          email: profileData.contactInfo?.email || existingProfile.contactInfo?.email || "",
-          phone: profileData.contactInfo?.phone || existingProfile.contactInfo?.phone || "",
-          website: profileData.contactInfo?.website || existingProfile.contactInfo?.website || "",
-          linkedin: profileData.contactInfo?.linkedin || existingProfile.contactInfo?.linkedin || "",
+          email:
+            profileData.contactInfo?.email ||
+            existingProfile.contactInfo?.email ||
+            "",
+          phone:
+            profileData.contactInfo?.phone ||
+            existingProfile.contactInfo?.phone ||
+            "",
+          website:
+            profileData.contactInfo?.website ||
+            existingProfile.contactInfo?.website ||
+            "",
+          linkedin:
+            profileData.contactInfo?.linkedin ||
+            existingProfile.contactInfo?.linkedin ||
+            "",
         },
         updatedAt: now,
       };
 
       await ctx.db.patch(existingProfile._id, mergedData);
 
-      return { 
-        success: true, 
+      return {
+        success: true,
         profileId: existingProfile._id,
         message: "Profile updated with imported data",
       };
@@ -434,7 +581,7 @@ export const importProfile = mutation({
         type: "system_alert",
         title: "Profile Imported",
         message: `Your business profile has been imported from ${args.source}. Review and complete any missing information.`,
-        data: { 
+        data: {
           imported: true,
           source: args.source,
           isComplete,
@@ -444,8 +591,8 @@ export const importProfile = mutation({
         createdAt: now,
       });
 
-      return { 
-        success: true, 
+      return {
+        success: true,
         profileId,
         message: "Profile created from imported data",
       };

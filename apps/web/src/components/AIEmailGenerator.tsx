@@ -4,31 +4,40 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
-import { 
-  Bot, 
-  Send, 
-  Copy, 
-  Download, 
-  CheckCircle, 
-  Clock, 
+import {
+  Bot,
+  Send,
+  Copy,
+  Download,
+  CheckCircle,
+  Clock,
   AlertCircle,
   Sparkles,
   Target,
   MessageSquare,
-  TrendingUp
+  TrendingUp,
 } from "lucide-react";
-import { 
-  type Lead, 
+import {
+  type Lead,
   type EmailGenerationResult,
-  type EmailGenerationResponse 
+  type EmailGenerationResponse,
 } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
-import { useEmailGeneration, useLangGraphRequest as useCrewAIRequest } from "@/hooks/useLangGraph";
+import {
+  useEmailGeneration,
+  useLangGraphRequest as useCrewAIRequest,
+} from "@/hooks/useLangGraph";
 import { useProfile } from "@/hooks/useProfile";
 import type { Id } from "@genni/convex-types/dataModel";
 
@@ -37,22 +46,28 @@ interface AIEmailGeneratorProps {
   onEmailGenerated?: (result: EmailGenerationResult) => void;
 }
 
-export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGeneratorProps) {
+export function AIEmailGenerator({
+  selectedLead,
+  onEmailGenerated,
+}: AIEmailGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationResult, setGenerationResult] = useState<EmailGenerationResult | null>(null);
+  const [generationResult, setGenerationResult] =
+    useState<EmailGenerationResult | null>(null);
   const [currentTab, setCurrentTab] = useState("compose");
-  const [currentRequestId, setCurrentRequestId] = useState<string | undefined>(undefined);
+  const [currentRequestId, setCurrentRequestId] = useState<string | undefined>(
+    undefined,
+  );
   const [emailRequirements, setEmailRequirements] = useState({
-    tone: 'professional' as const,
-    length: 'medium' as const,
-    call_to_action: 'Schedule a 15-minute discovery call',
+    tone: "professional" as const,
+    length: "medium" as const,
+    call_to_action: "Schedule a 15-minute discovery call",
     include_case_study: true,
-    personalization_level: 'high' as const,
-    follow_up_sequence: false
+    personalization_level: "high" as const,
+    follow_up_sequence: false,
   });
-  
+
   const { toast } = useToast();
-  
+
   // Real Convex hooks
   const { generateEmail } = useEmailGeneration();
   const { profile } = useProfile();
@@ -60,45 +75,51 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
 
   // Watch for request completion
   useEffect(() => {
-    if (request && request.status === 'completed' && isGenerating) {
+    if (request && request.status === "completed" && isGenerating) {
       setIsGenerating(false);
-      
+
       // Convert CrewAI result to the expected format
       if (request.result) {
         const result: EmailGenerationResult = {
           request_id: request._id,
           lead_analysis: {
-            company_analysis: request.result.lead_analysis || 'Analysis completed',
-            industry_insights: request.result.industry_insights || 'Industry analysis completed',
-            qualification_factors: request.result.qualification_factors || []
+            company_analysis:
+              request.result.lead_analysis || "Analysis completed",
+            industry_insights:
+              request.result.industry_insights || "Industry analysis completed",
+            qualification_factors: request.result.qualification_factors || [],
           },
           relevance_score: request.result.relevance_score || 0.85,
           pain_points_identified: request.result.pain_points || [],
           value_matches: request.result.value_matches || [],
           primary_email: {
-            subject: request.result.subject || 'Partnership Opportunity',
-            body: request.result.email_body || request.result.body || 'Email content generated',
+            subject: request.result.subject || "Partnership Opportunity",
+            body:
+              request.result.email_body ||
+              request.result.body ||
+              "Email content generated",
             personalization_notes: request.result.personalization_notes || [],
-            estimated_effectiveness: request.result.effectiveness_score || 0.85
+            estimated_effectiveness: request.result.effectiveness_score || 0.85,
           },
           agent_results: request.result.agent_results || [],
           processing_time: request.result.processing_time || 0,
-          recommendations: request.result.recommendations || []
+          recommendations: request.result.recommendations || [],
         };
-        
+
         setGenerationResult(result);
         onEmailGenerated?.(result);
-        
+
         toast({
           title: "Email Generated Successfully!",
           description: `High-quality personalized email created with ${Math.round((result.relevance_score || 0.85) * 100)}% relevance score.`,
         });
       }
-    } else if (request && request.status === 'failed' && isGenerating) {
+    } else if (request && request.status === "failed" && isGenerating) {
       setIsGenerating(false);
       toast({
         title: "Generation Failed",
-        description: request.error || "Failed to generate email. Please try again.",
+        description:
+          request.error || "Failed to generate email. Please try again.",
         variant: "destructive",
       });
     }
@@ -111,7 +132,8 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
     if (!profile) {
       toast({
         title: "Profile Required",
-        description: "Please complete your business profile before generating emails.",
+        description:
+          "Please complete your business profile before generating emails.",
         variant: "destructive",
       });
       return;
@@ -128,11 +150,11 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
 
     setIsGenerating(true);
     setCurrentTab("result");
-    
+
     try {
       // Convert targetLead to the ID format needed by Convex
       const leadId = targetLead.id as Id<"leads">;
-      
+
       const result = await generateEmail({
         leadId,
         requirements: {
@@ -144,7 +166,7 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
           followUpSequence: emailRequirements.follow_up_sequence,
         },
       });
-      
+
       if (result.requestId) {
         setCurrentRequestId(result.requestId);
         toast({
@@ -152,9 +174,8 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
           description: `Request ${result.requestId} is being processed by our 5-agent system.`,
         });
       }
-      
     } catch (error) {
-      console.error('Email generation failed:', error);
+      console.error("Email generation failed:", error);
       toast({
         title: "Generation Failed",
         description: "Failed to generate email. Please try again.",
@@ -163,7 +184,6 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
       setIsGenerating(false);
     }
   };
-
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -179,11 +199,20 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
       <Card className="p-6 bg-gradient-to-r from-primary/5 to-purple-500/5 border-primary/20">
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">Target Lead</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              Target Lead
+            </h3>
             <div className="space-y-1 text-sm">
-              <div><span className="font-medium">{targetLead.company_name}</span> • {targetLead.industry}</div>
-              <div>{targetLead.contact_name} • {targetLead.title}</div>
-              <div className="text-muted-foreground">{targetLead.location} • {targetLead.company_size}</div>
+              <div>
+                <span className="font-medium">{targetLead.company_name}</span> •{" "}
+                {targetLead.industry}
+              </div>
+              <div>
+                {targetLead.contact_name} • {targetLead.title}
+              </div>
+              <div className="text-muted-foreground">
+                {targetLead.location} • {targetLead.company_size}
+              </div>
             </div>
           </div>
           <Badge variant="secondary" className="bg-primary/10 text-primary">
@@ -210,14 +239,19 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
 
         <TabsContent value="compose" className="space-y-6">
           <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Email Generation Settings</h3>
-            
+            <h3 className="text-lg font-semibold mb-4">
+              Email Generation Settings
+            </h3>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-medium mb-2 block">Tone</label>
-                <Select value={emailRequirements.tone} onValueChange={(value: string) => 
-                  setEmailRequirements(prev => ({ ...prev, tone: value }))
-                }>
+                <Select
+                  value={emailRequirements.tone}
+                  onValueChange={(value: string) =>
+                    setEmailRequirements((prev) => ({ ...prev, tone: value }))
+                  }
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -231,25 +265,38 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
 
               <div>
                 <label className="text-sm font-medium mb-2 block">Length</label>
-                <Select value={emailRequirements.length} onValueChange={(value: string) => 
-                  setEmailRequirements(prev => ({ ...prev, length: value }))
-                }>
+                <Select
+                  value={emailRequirements.length}
+                  onValueChange={(value: string) =>
+                    setEmailRequirements((prev) => ({ ...prev, length: value }))
+                  }
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="short">Short (100-150 words)</SelectItem>
-                    <SelectItem value="medium">Medium (150-250 words)</SelectItem>
+                    <SelectItem value="medium">
+                      Medium (150-250 words)
+                    </SelectItem>
                     <SelectItem value="long">Long (250+ words)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <label className="text-sm font-medium mb-2 block">Personalization Level</label>
-                <Select value={emailRequirements.personalizationLevel} onValueChange={(value: string) => 
-                  setEmailRequirements(prev => ({ ...prev, personalizationLevel: value }))
-                }>
+                <label className="text-sm font-medium mb-2 block">
+                  Personalization Level
+                </label>
+                <Select
+                  value={emailRequirements.personalizationLevel}
+                  onValueChange={(value: string) =>
+                    setEmailRequirements((prev) => ({
+                      ...prev,
+                      personalizationLevel: value,
+                    }))
+                  }
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -266,10 +313,12 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
                   type="checkbox"
                   id="case-study"
                   checked={emailRequirements.include_case_study}
-                  onChange={(e) => setEmailRequirements(prev => ({ 
-                    ...prev, 
-                    include_case_study: e.target.checked 
-                  }))}
+                  onChange={(e) =>
+                    setEmailRequirements((prev) => ({
+                      ...prev,
+                      include_case_study: e.target.checked,
+                    }))
+                  }
                   className="h-4 w-4 rounded border-border"
                 />
                 <label htmlFor="case-study" className="text-sm font-medium">
@@ -279,18 +328,22 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
             </div>
 
             <div className="mt-4">
-              <label className="text-sm font-medium mb-2 block">Call to Action</label>
+              <label className="text-sm font-medium mb-2 block">
+                Call to Action
+              </label>
               <Input
                 value={emailRequirements.call_to_action}
-                onChange={(e) => setEmailRequirements(prev => ({ 
-                  ...prev, 
-                  call_to_action: e.target.value 
-                }))}
+                onChange={(e) =>
+                  setEmailRequirements((prev) => ({
+                    ...prev,
+                    call_to_action: e.target.value,
+                  }))
+                }
                 placeholder="What action do you want them to take?"
               />
             </div>
 
-            <Button 
+            <Button
               className="w-full mt-6 bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90"
               onClick={handleGenerateEmail}
               disabled={isGenerating}
@@ -317,21 +370,31 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
                 <div className="flex justify-center">
                   <Bot className="h-12 w-12 text-primary animate-pulse" />
                 </div>
-                <h3 className="text-lg font-semibold">AI Agents Processing...</h3>
+                <h3 className="text-lg font-semibold">
+                  AI Agents Processing...
+                </h3>
                 {request ? (
                   <>
                     <p className="text-muted-foreground">
-                      Status: {request.status} {request.currentStage && `• Current: ${request.currentStage}`}
+                      Status: {request.status}{" "}
+                      {request.currentStage &&
+                        `• Current: ${request.currentStage}`}
                     </p>
-                    <Progress value={request.progress || 0} className="w-full" />
+                    <Progress
+                      value={request.progress || 0}
+                      className="w-full"
+                    />
                     {request.statusMessage && (
-                      <p className="text-sm text-muted-foreground">{request.statusMessage}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {request.statusMessage}
+                      </p>
                     )}
                   </>
                 ) : (
                   <>
                     <p className="text-muted-foreground">
-                      Our 5-agent system is analyzing your lead and crafting the perfect personalized email.
+                      Our 5-agent system is analyzing your lead and crafting the
+                      perfect personalized email.
                     </p>
                     <Progress value={15} className="w-full" />
                   </>
@@ -347,7 +410,9 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => copyToClipboard(generationResult.primary_email.body)}
+                      onClick={() =>
+                        copyToClipboard(generationResult.primary_email.body)
+                      }
                     >
                       <Copy className="h-4 w-4 mr-2" />
                       Copy
@@ -361,14 +426,18 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
 
                 <div className="space-y-4">
                   <div>
-                    <label className="text-sm font-medium text-muted-foreground">Subject Line</label>
+                    <label className="text-sm font-medium text-muted-foreground">
+                      Subject Line
+                    </label>
                     <div className="mt-1 p-3 bg-muted/50 rounded-md font-medium">
                       {generationResult.primary_email.subject}
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-sm font-medium text-muted-foreground">Email Body</label>
+                    <label className="text-sm font-medium text-muted-foreground">
+                      Email Body
+                    </label>
                     <div className="mt-1 p-4 bg-muted/50 rounded-md whitespace-pre-line text-sm">
                       {generationResult.primary_email.body}
                     </div>
@@ -377,24 +446,42 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
                   <div className="flex items-center gap-4 text-sm">
                     <div className="flex items-center gap-2">
                       <Target className="h-4 w-4 text-green-500" />
-                      <span>Relevance: {(generationResult.relevance_score * 100).toFixed(0)}%</span>
+                      <span>
+                        Relevance:{" "}
+                        {(generationResult.relevance_score * 100).toFixed(0)}%
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-blue-500" />
-                      <span>Effectiveness: {(generationResult.primary_email.estimated_effectiveness * 100).toFixed(0)}%</span>
+                      <span>
+                        Effectiveness:{" "}
+                        {(
+                          generationResult.primary_email
+                            .estimated_effectiveness * 100
+                        ).toFixed(0)}
+                        %
+                      </span>
                     </div>
                   </div>
                 </div>
               </Card>
 
               <Card className="p-4">
-                <h4 className="text-sm font-semibold mb-3">Personalization Elements</h4>
+                <h4 className="text-sm font-semibold mb-3">
+                  Personalization Elements
+                </h4>
                 <div className="flex flex-wrap gap-2">
-                  {generationResult.primary_email.personalization_notes.map((note, index) => (
-                    <Badge key={index} variant="secondary" className="text-xs">
-                      {note}
-                    </Badge>
-                  ))}
+                  {generationResult.primary_email.personalization_notes.map(
+                    (note, index) => (
+                      <Badge
+                        key={index}
+                        variant="secondary"
+                        className="text-xs"
+                      >
+                        {note}
+                      </Badge>
+                    ),
+                  )}
                 </div>
               </Card>
             </div>
@@ -412,17 +499,22 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
           {generationResult ? (
             <div className="space-y-4">
               <Card className="p-6">
-                <h3 className="text-lg font-semibold mb-4">AI Agent Analysis</h3>
+                <h3 className="text-lg font-semibold mb-4">
+                  AI Agent Analysis
+                </h3>
                 <div className="space-y-4">
                   {generationResult.agent_results.map((agent, index) => (
                     <div key={index} className="border rounded-lg p-4">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="font-medium">{agent.agent_name}</h4>
                         <Badge variant="outline">
-                          {(agent.confidence_score * 100).toFixed(0)}% confidence
+                          {(agent.confidence_score * 100).toFixed(0)}%
+                          confidence
                         </Badge>
                       </div>
-                      <p className="text-sm text-muted-foreground mb-2">{agent.role}</p>
+                      <p className="text-sm text-muted-foreground mb-2">
+                        {agent.role}
+                      </p>
                       <p className="text-sm">{agent.output}</p>
                     </div>
                   ))}
@@ -430,7 +522,9 @@ export function AIEmailGenerator({ selectedLead, onEmailGenerated }: AIEmailGene
               </Card>
 
               <Card className="p-6">
-                <h3 className="text-lg font-semibold mb-4">Strategic Recommendations</h3>
+                <h3 className="text-lg font-semibold mb-4">
+                  Strategic Recommendations
+                </h3>
                 <ul className="space-y-2">
                   {generationResult.recommendations.map((rec, index) => (
                     <li key={index} className="flex items-start gap-2 text-sm">

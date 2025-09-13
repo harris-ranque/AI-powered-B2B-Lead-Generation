@@ -7,7 +7,7 @@ export const getUserApiKeys = query({
   args: {},
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Only starter tier users can view their API keys
     if (user.plan !== "starter") {
       return [];
@@ -19,7 +19,7 @@ export const getUserApiKeys = query({
       .collect();
 
     // Return keys without the actual encrypted key for security
-    return apiKeys.map(key => ({
+    return apiKeys.map((key) => ({
       _id: key._id,
       service: key.service,
       keyName: key.keyName,
@@ -40,7 +40,7 @@ export const getApiKeyStatus = query({
   args: {},
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Only starter tier users need API key status
     if (user.plan !== "starter") {
       return {
@@ -58,9 +58,11 @@ export const getApiKeyStatus = query({
       .collect();
 
     const allServices = ["openai", "google_maps", "findymail", "apify"];
-    const configuredServices = apiKeys.filter(key => key.isValid).map(key => key.service);
-    const missingServices = allServices.filter(service => 
-      !configuredServices.includes(service as any)
+    const configuredServices = apiKeys
+      .filter((key) => key.isValid)
+      .map((key) => key.service);
+    const missingServices = allServices.filter(
+      (service) => !configuredServices.includes(service as any),
     );
     const totalUsage = apiKeys.reduce((sum, key) => sum + key.usageCount, 0);
 
@@ -69,7 +71,7 @@ export const getApiKeyStatus = query({
       configuredServices,
       missingServices,
       totalUsage,
-      validKeys: apiKeys.filter(key => key.isValid).length,
+      validKeys: apiKeys.filter((key) => key.isValid).length,
       totalKeys: apiKeys.length,
     };
   },
@@ -82,12 +84,12 @@ export const hasApiKeyForService = query({
       v.literal("openai"),
       v.literal("google_maps"),
       v.literal("findymail"),
-      v.literal("apify")
+      v.literal("apify"),
     ),
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Non-starter users don't need API keys
     if (user.plan !== "starter") {
       return { hasKey: true, managed: true };
@@ -101,8 +103,8 @@ export const hasApiKeyForService = query({
       .filter((q) => q.eq(q.field("isValid"), true))
       .unique();
 
-    return { 
-      hasKey: !!apiKey, 
+    return {
+      hasKey: !!apiKey,
       managed: false,
       lastValidated: apiKey?.lastValidated,
       usageCount: apiKey?.usageCount || 0,

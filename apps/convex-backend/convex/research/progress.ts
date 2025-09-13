@@ -4,9 +4,9 @@ import { internal } from "../_generated/api";
 
 /**
  * Research Progress Tracking for Tiered Business Context Research
- * 
+ *
  * Tracks progress updates from the three-tier research system:
- * - Tier 1: Tavily (fast basic research)  
+ * - Tier 1: Tavily (fast basic research)
  * - Tier 2: Exa (competitor and industry analysis)
  * - Tier 3: Perplexity (comprehensive reports)
  */
@@ -17,18 +17,18 @@ export const updateResearchProgress = internalMutation({
     searchId: v.id("searches"),
     stage: v.union(
       v.literal("research_started"),
-      v.literal("tier1_tavily"), 
+      v.literal("tier1_tavily"),
       v.literal("tier2_exa"),
       v.literal("tier3_perplexity"),
       v.literal("research_completed"),
       v.literal("research_failed"),
-      v.literal("research_error")
+      v.literal("research_error"),
     ),
     tier: v.union(
       v.literal("tavily"),
-      v.literal("exa"), 
+      v.literal("exa"),
       v.literal("perplexity"),
-      v.literal("error")
+      v.literal("error"),
     ),
     confidence: v.optional(v.number()),
     dataPoints: v.optional(v.number()),
@@ -36,13 +36,15 @@ export const updateResearchProgress = internalMutation({
     message: v.string(),
     escalationReason: v.optional(v.string()),
     error: v.optional(v.string()),
-    metadata: v.optional(v.any())
+    metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     // Get the search to verify it exists and get user ID
     const search = await ctx.db.get(args.searchId);
     if (!search) {
-      console.warn(`Research progress update for non-existent search: ${args.searchId}`);
+      console.warn(
+        `Research progress update for non-existent search: ${args.searchId}`,
+      );
       return;
     }
 
@@ -57,22 +59,26 @@ export const updateResearchProgress = internalMutation({
     });
 
     // Broadcast real-time progress update to user
-    await ctx.scheduler.runAfter(0, internal.realtime.broadcaster.broadcastPipelineUpdate, {
-      userId: search.userId,
-      searchId: args.searchId,
-      stage: args.stage,
-      progress: calculateProgressPercentage(args.stage, args.tier),
-      message: args.message,
-      data: {
-        tier: args.tier,
-        confidence: args.confidence,
-        dataPoints: args.dataPoints,
-        sourcesAnalyzed: args.sourcesAnalyzed,
-        escalationReason: args.escalationReason,
-        ...args.metadata,
+    await ctx.scheduler.runAfter(
+      0,
+      internal.realtime.broadcaster.broadcastPipelineUpdate,
+      {
+        userId: search.userId,
+        searchId: args.searchId,
+        stage: args.stage,
+        progress: calculateProgressPercentage(args.stage, args.tier),
+        message: args.message,
+        data: {
+          tier: args.tier,
+          confidence: args.confidence,
+          dataPoints: args.dataPoints,
+          sourcesAnalyzed: args.sourcesAnalyzed,
+          escalationReason: args.escalationReason,
+          ...args.metadata,
+        },
+        error: args.error,
       },
-      error: args.error,
-    });
+    );
 
     // Log research metrics for analytics
     await ctx.db.insert("researchMetrics", {
@@ -90,21 +96,21 @@ export const updateResearchProgress = internalMutation({
     });
 
     return { success: true };
-  }
+  },
 });
 
 // Calculate progress percentage based on research stage
 function calculateProgressPercentage(stage: string, tier: string): number {
   const stageProgress = {
-    "research_started": 5,
-    "tier1_tavily": 25,
-    "tier2_exa": 60, 
-    "tier3_perplexity": 85,
-    "research_completed": 100,
-    "research_failed": 0,
-    "research_error": 0
+    research_started: 5,
+    tier1_tavily: 25,
+    tier2_exa: 60,
+    tier3_perplexity: 85,
+    research_completed: 100,
+    research_failed: 0,
+    research_error: 0,
   };
-  
+
   return stageProgress[stage as keyof typeof stageProgress] || 0;
 }
 
@@ -122,7 +128,7 @@ export const completeResearch = mutation({
       competitors: v.optional(v.array(v.any())),
       industryInsights: v.optional(v.string()),
       comprehensiveReport: v.optional(v.string()),
-    })
+    }),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -140,7 +146,10 @@ export const completeResearch = mutation({
     await ctx.db.patch(args.searchId, {
       researchResults: args.researchResults,
       researchStage: "research_completed",
-      researchTier: args.researchResults.tier as "tavily" | "exa" | "perplexity",
+      researchTier: args.researchResults.tier as
+        | "tavily"
+        | "exa"
+        | "perplexity",
       researchConfidence: args.researchResults.confidence,
       researchDataPoints: args.researchResults.dataPoints,
       researchSourcesAnalyzed: args.researchResults.sourcesAnalyzed,
@@ -148,31 +157,37 @@ export const completeResearch = mutation({
     });
 
     // Broadcast completion
-    await ctx.scheduler.runAfter(0, internal.research.progress.updateResearchProgress, {
-      searchId: args.searchId,
-      stage: "research_completed",
-      tier: args.researchResults.tier as any,
-      confidence: args.researchResults.confidence,
-      dataPoints: args.researchResults.dataPoints,
-      sourcesAnalyzed: args.researchResults.sourcesAnalyzed,
-      message: `Research completed using ${args.researchResults.tier} tier`,
-      escalationReason: args.researchResults.escalationReason,
-      metadata: {
-        researchTime: args.researchResults.researchTime,
-        hasCompetitors: (args.researchResults.competitors?.length || 0) > 0,
-        hasIndustryInsights: Boolean(args.researchResults.industryInsights),
-        hasComprehensiveReport: Boolean(args.researchResults.comprehensiveReport),
-      }
-    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.research.progress.updateResearchProgress,
+      {
+        searchId: args.searchId,
+        stage: "research_completed",
+        tier: args.researchResults.tier as any,
+        confidence: args.researchResults.confidence,
+        dataPoints: args.researchResults.dataPoints,
+        sourcesAnalyzed: args.researchResults.sourcesAnalyzed,
+        message: `Research completed using ${args.researchResults.tier} tier`,
+        escalationReason: args.researchResults.escalationReason,
+        metadata: {
+          researchTime: args.researchResults.researchTime,
+          hasCompetitors: (args.researchResults.competitors?.length || 0) > 0,
+          hasIndustryInsights: Boolean(args.researchResults.industryInsights),
+          hasComprehensiveReport: Boolean(
+            args.researchResults.comprehensiveReport,
+          ),
+        },
+      },
+    );
 
     return { success: true, searchId: args.searchId };
-  }
+  },
 });
 
 // Get research progress for a search
 export const getResearchProgress = mutation({
   args: {
-    searchId: v.id("searches")
+    searchId: v.id("searches"),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -190,7 +205,7 @@ export const getResearchProgress = mutation({
     const recentMetrics = await ctx.db
       .query("researchMetrics")
       .withIndex("by_search_timestamp")
-      .filter(q => q.eq(q.field("searchId"), args.searchId))
+      .filter((q) => q.eq(q.field("searchId"), args.searchId))
       .order("desc")
       .take(10);
 
@@ -204,7 +219,7 @@ export const getResearchProgress = mutation({
       escalationReason: search.researchEscalationReason,
       completedAt: search.researchCompletedAt,
       results: search.researchResults,
-      recentActivity: recentMetrics.map(metric => ({
+      recentActivity: recentMetrics.map((metric) => ({
         stage: metric.stage,
         tier: metric.tier,
         confidence: metric.confidence,
@@ -212,17 +227,15 @@ export const getResearchProgress = mutation({
         message: `${metric.stage} - ${metric.tier} (confidence: ${metric.confidence}%)`,
       })),
     };
-  }
+  },
 });
 
 // Get aggregated research analytics (admin only)
 export const getResearchAnalytics = mutation({
   args: {
-    timeframe: v.optional(v.union(
-      v.literal("24h"),
-      v.literal("7d"), 
-      v.literal("30d")
-    )),
+    timeframe: v.optional(
+      v.union(v.literal("24h"), v.literal("7d"), v.literal("30d")),
+    ),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -240,23 +253,33 @@ export const getResearchAnalytics = mutation({
     const metrics = await ctx.db
       .query("researchMetrics")
       .withIndex("by_timestamp")
-      .filter(q => q.gte(q.field("timestamp"), cutoffTime))
+      .filter((q) => q.gte(q.field("timestamp"), cutoffTime))
       .collect();
 
     // Calculate analytics
-    const tierUsage = metrics.reduce((acc, metric) => {
-      acc[metric.tier] = (acc[metric.tier] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    const tierUsage = metrics.reduce(
+      (acc, metric) => {
+        acc[metric.tier] = (acc[metric.tier] || 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
 
-    const averageConfidence = metrics.reduce((sum, metric) => sum + metric.confidence, 0) / Math.max(metrics.length, 1);
-    
-    const escalationRate = metrics.filter(m => m.escalationReason).length / Math.max(metrics.length, 1);
+    const averageConfidence =
+      metrics.reduce((sum, metric) => sum + metric.confidence, 0) /
+      Math.max(metrics.length, 1);
 
-    const stageDistribution = metrics.reduce((acc, metric) => {
-      acc[metric.stage] = (acc[metric.stage] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    const escalationRate =
+      metrics.filter((m) => m.escalationReason).length /
+      Math.max(metrics.length, 1);
+
+    const stageDistribution = metrics.reduce(
+      (acc, metric) => {
+        acc[metric.stage] = (acc[metric.stage] || 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
 
     return {
       timeframe,
@@ -265,16 +288,24 @@ export const getResearchAnalytics = mutation({
       averageConfidence: Math.round(averageConfidence * 100) / 100,
       escalationRate: Math.round(escalationRate * 100),
       stageDistribution,
-      successRate: Math.round((metrics.filter(m => m.stage === "research_completed").length / Math.max(metrics.length, 1)) * 100),
+      successRate: Math.round(
+        (metrics.filter((m) => m.stage === "research_completed").length /
+          Math.max(metrics.length, 1)) *
+          100,
+      ),
     };
-  }
+  },
 });
 
 function getTimeframeDuration(timeframe: string): number {
   switch (timeframe) {
-    case "24h": return 24 * 60 * 60 * 1000;
-    case "7d": return 7 * 24 * 60 * 60 * 1000;
-    case "30d": return 30 * 24 * 60 * 60 * 1000;
-    default: return 7 * 24 * 60 * 60 * 1000;
+    case "24h":
+      return 24 * 60 * 60 * 1000;
+    case "7d":
+      return 7 * 24 * 60 * 60 * 1000;
+    case "30d":
+      return 30 * 24 * 60 * 60 * 1000;
+    default:
+      return 7 * 24 * 60 * 60 * 1000;
   }
 }

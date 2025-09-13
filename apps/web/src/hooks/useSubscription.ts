@@ -6,9 +6,12 @@ export function useSubscription() {
   const { isSignedIn } = useAuth();
 
   const { data: subscription, isLoading } = useQuery({
-    queryKey: ['subscription-status'],
+    queryKey: ["subscription-status"],
     queryFn: async () => {
-      const result = await convex.mutation("billing/mutations:getSubscriptionStatus", {});
+      const result = await convex.mutation(
+        "billing/mutations:getSubscriptionStatus",
+        {},
+      );
       return result;
     },
     enabled: !!isSignedIn,
@@ -19,23 +22,41 @@ export function useSubscription() {
     starter: "Starter",
     professional: "Professional",
     business: "Business",
-    enterprise: "Enterprise"
+    enterprise: "Enterprise",
   };
 
-  const planName = subscription?.plan ? planDisplayNames[subscription.plan as keyof typeof planDisplayNames] : "Loading...";
+  const planName = subscription?.plan
+    ? planDisplayNames[subscription.plan as keyof typeof planDisplayNames]
+    : "Loading...";
 
   const getStatusBadge = (status: string, isTrialing: boolean) => {
     if (isTrialing) {
-      return { text: "Trial", variant: "default" as const, className: "bg-blue-500" };
+      return {
+        text: "Trial",
+        variant: "default" as const,
+        className: "bg-blue-500",
+      };
     }
-    
+
     switch (status) {
       case "active":
-        return { text: "Active", variant: "default" as const, className: "bg-green-500" };
+        return {
+          text: "Active",
+          variant: "default" as const,
+          className: "bg-green-500",
+        };
       case "past_due":
-        return { text: "Past Due", variant: "destructive" as const, className: "" };
+        return {
+          text: "Past Due",
+          variant: "destructive" as const,
+          className: "",
+        };
       case "cancelled":
-        return { text: "Cancelled", variant: "secondary" as const, className: "" };
+        return {
+          text: "Cancelled",
+          variant: "secondary" as const,
+          className: "",
+        };
       default:
         return { text: status, variant: "outline" as const, className: "" };
     }
@@ -48,9 +69,9 @@ export function useSubscription() {
     getStatusBadge,
     hasActiveSubscription: subscription?.hasActiveSubscription || false,
     isTrialing: subscription?.isTrialing || false,
-    isStarter: subscription?.plan === 'starter',
-    isProfessional: subscription?.plan === 'professional',
-    isBusiness: subscription?.plan === 'business',
-    isEnterprise: subscription?.plan === 'enterprise',
+    isStarter: subscription?.plan === "starter",
+    isProfessional: subscription?.plan === "professional",
+    isBusiness: subscription?.plan === "business",
+    isEnterprise: subscription?.plan === "enterprise",
   };
 }

@@ -4,7 +4,13 @@
   "pipeline": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**", "*.pyc", "__pycache__/**"]
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "dist/**",
+        "*.pyc",
+        "__pycache__/**"
+      ]
     },
     "start": {
       "cache": false,

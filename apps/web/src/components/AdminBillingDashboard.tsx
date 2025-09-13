@@ -1,21 +1,25 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { 
-  DollarSign, 
-  Users, 
-  TrendingUp, 
-  CreditCard, 
+import {
+  DollarSign,
+  Users,
+  TrendingUp,
+  CreditCard,
   AlertCircle,
   Download,
-  RefreshCw
+  RefreshCw,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { convex } from "@/lib/convex";
 
 export function AdminBillingDashboard() {
-  const { data: billingMetrics, isLoading: metricsLoading, refetch: refetchMetrics } = useQuery({
-    queryKey: ['admin-billing-metrics'],
+  const {
+    data: billingMetrics,
+    isLoading: metricsLoading,
+    refetch: refetchMetrics,
+  } = useQuery({
+    queryKey: ["admin-billing-metrics"],
     queryFn: async () => {
       const result = await convex.query("admin/billing:getBillingMetrics", {});
       return result;
@@ -24,16 +28,19 @@ export function AdminBillingDashboard() {
   });
 
   const { data: revenueAnalytics, isLoading: revenueLoading } = useQuery({
-    queryKey: ['admin-revenue-analytics'],
+    queryKey: ["admin-revenue-analytics"],
     queryFn: async () => {
-      const result = await convex.query("admin/billing:getRevenueAnalytics", {});
+      const result = await convex.query(
+        "admin/billing:getRevenueAnalytics",
+        {},
+      );
       return result;
     },
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: costAnalytics, isLoading: costLoading } = useQuery({
-    queryKey: ['admin-cost-analytics'],
+    queryKey: ["admin-cost-analytics"],
     queryFn: async () => {
       const result = await convex.query("admin/billing:getCostAnalytics", {});
       return result;
@@ -53,9 +60,9 @@ export function AdminBillingDashboard() {
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
     }).format(amount);
   };
 
@@ -79,22 +86,31 @@ export function AdminBillingDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Monthly Recurring Revenue</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Monthly Recurring Revenue
+            </CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {billingMetrics ? formatCurrency(billingMetrics.revenue.totalMRR) : '...' }
+              {billingMetrics
+                ? formatCurrency(billingMetrics.revenue.totalMRR)
+                : "..."}
             </div>
             <p className="text-xs text-muted-foreground">
-              {revenueAnalytics ? formatCurrency(revenueAnalytics.currentARR) : '...'} ARR
+              {revenueAnalytics
+                ? formatCurrency(revenueAnalytics.currentARR)
+                : "..."}{" "}
+              ARR
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Subscriptions</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Active Subscriptions
+            </CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -102,7 +118,9 @@ export function AdminBillingDashboard() {
               {billingMetrics?.subscriptions.total || 0}
             </div>
             <p className="text-xs text-muted-foreground">
-              {billingMetrics ? `${billingMetrics.growth.newSubscriptions7d} new this week` : 'Loading...'}
+              {billingMetrics
+                ? `${billingMetrics.growth.newSubscriptions7d} new this week`
+                : "Loading..."}
             </p>
           </CardContent>
         </Card>
@@ -117,14 +135,18 @@ export function AdminBillingDashboard() {
               {billingMetrics?.subscriptions.churnRate || 0}%
             </div>
             <p className="text-xs text-muted-foreground">
-              {billingMetrics ? `${billingMetrics.subscriptions.cancelations} total canceled` : 'Loading...'}
+              {billingMetrics
+                ? `${billingMetrics.subscriptions.cancelations} total canceled`
+                : "Loading..."}
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Credit Utilization</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Credit Utilization
+            </CardTitle>
             <CreditCard className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -132,7 +154,9 @@ export function AdminBillingDashboard() {
               {costAnalytics?.creditUtilization || 0}%
             </div>
             <p className="text-xs text-muted-foreground">
-              {costAnalytics ? `${formatCurrency(costAnalytics.totalCosts)} total costs` : 'Loading...'}
+              {costAnalytics
+                ? `${formatCurrency(costAnalytics.totalCosts)} total costs`
+                : "Loading..."}
             </p>
           </CardContent>
         </Card>
@@ -146,24 +170,32 @@ export function AdminBillingDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {billingMetrics && Object.entries(billingMetrics.subscriptions.planCounts).map(([plan, count]) => {
-                const planMRR = revenueAnalytics?.mrrByPlan.find(p => p.plan === plan)?.mrr || 0;
-                return (
-                  <div key={plan} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="capitalize">
-                        {plan}
-                      </Badge>
-                      <span className="text-sm text-muted-foreground">
-                        {count} subscribers
-                      </span>
-                    </div>
-                    <span className="font-medium">
-                      {formatCurrency(planMRR)}/mo
-                    </span>
-                  </div>
-                );
-              })}
+              {billingMetrics &&
+                Object.entries(billingMetrics.subscriptions.planCounts).map(
+                  ([plan, count]) => {
+                    const planMRR =
+                      revenueAnalytics?.mrrByPlan.find((p) => p.plan === plan)
+                        ?.mrr || 0;
+                    return (
+                      <div
+                        key={plan}
+                        className="flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="capitalize">
+                            {plan}
+                          </Badge>
+                          <span className="text-sm text-muted-foreground">
+                            {count} subscribers
+                          </span>
+                        </div>
+                        <span className="font-medium">
+                          {formatCurrency(planMRR)}/mo
+                        </span>
+                      </div>
+                    );
+                  },
+                )}
             </div>
           </CardContent>
         </Card>
@@ -175,7 +207,10 @@ export function AdminBillingDashboard() {
           <CardContent>
             <div className="space-y-4">
               {costAnalytics?.usageByPlan.map((planData) => (
-                <div key={planData.plan} className="flex items-center justify-between">
+                <div
+                  key={planData.plan}
+                  className="flex items-center justify-between"
+                >
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="capitalize">
                       {planData.plan}
@@ -185,7 +220,9 @@ export function AdminBillingDashboard() {
                     </span>
                   </div>
                   <div className="text-right">
-                    <div className="font-medium">{formatCurrency(planData.usage)}</div>
+                    <div className="font-medium">
+                      {formatCurrency(planData.usage)}
+                    </div>
                     <div className="text-xs text-muted-foreground">
                       {formatCurrency(planData.avgUsagePerUser)} avg/user
                     </div>
@@ -208,9 +245,14 @@ export function AdminBillingDashboard() {
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {revenueAnalytics?.monthlyRevenue.slice(-6).map((month) => (
-              <div key={month.month} className="text-center p-3 bg-muted/50 rounded-lg">
+              <div
+                key={month.month}
+                className="text-center p-3 bg-muted/50 rounded-lg"
+              >
                 <div className="text-sm text-muted-foreground mb-1">
-                  {new Date(month.month + '-01').toLocaleDateString('en-US', { month: 'short' })}
+                  {new Date(month.month + "-01").toLocaleDateString("en-US", {
+                    month: "short",
+                  })}
                 </div>
                 <div className="font-semibold">
                   {formatCurrency(month.revenue)}
@@ -251,19 +293,25 @@ export function AdminBillingDashboard() {
             </div>
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Total Credits Issued</span>
+                <span className="text-sm text-muted-foreground">
+                  Total Credits Issued
+                </span>
                 <span className="font-medium">
                   {formatCurrency(costAnalytics?.totalCreditsIssued || 0)}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Total Credits Used</span>
+                <span className="text-sm text-muted-foreground">
+                  Total Credits Used
+                </span>
                 <span className="font-medium">
                   {formatCurrency(costAnalytics?.totalCreditsUsed || 0)}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Recent Costs (30d)</span>
+                <span className="text-sm text-muted-foreground">
+                  Recent Costs (30d)
+                </span>
                 <span className="font-medium">
                   {formatCurrency(costAnalytics?.recentCosts || 0)}
                 </span>

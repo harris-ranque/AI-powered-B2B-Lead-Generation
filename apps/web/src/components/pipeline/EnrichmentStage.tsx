@@ -1,45 +1,59 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { usePipeline } from '@/pipeline/context';
-import { useLeads } from '@/hooks/useLeads';
-import { 
-  Mail, 
-  CheckCircle, 
-  Clock, 
+import { usePipeline } from "@/pipeline/context";
+import { useLeads } from "@/hooks/useLeads";
+import {
+  Mail,
+  CheckCircle,
+  Clock,
   ArrowRight,
   Users,
   Building,
   Phone,
   Globe,
   Sparkles,
-  AlertTriangle
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
+  AlertTriangle,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export function EnrichmentStage() {
-  const { state, markStageComplete, progressToNextStage, setEnrichedLeads } = usePipeline();
+  const { state, markStageComplete, progressToNextStage, setEnrichedLeads } =
+    usePipeline();
   const { leads: searchLeads, isLoading } = useLeads(state.searchId!);
-  
+
   // Use leads from context (for uploads) or from search
   const leads = useMemo(() => {
-    return state.leads.length > 0 ? state.leads : (searchLeads || []);
+    return state.leads.length > 0 ? state.leads : searchLeads || [];
   }, [state.leads, searchLeads]);
-  
+
   // Fix: check contactInfo.emails instead of lead.email
-  const enrichedCount = leads.filter(lead => lead.contactInfo?.emails && lead.contactInfo.emails.length > 0).length;
-  const enrichmentProgress = leads.length > 0 ? (enrichedCount / leads.length) * 100 : 0;
-  
+  const enrichedCount = leads.filter(
+    (lead) => lead.contactInfo?.emails && lead.contactInfo.emails.length > 0,
+  ).length;
+  const enrichmentProgress =
+    leads.length > 0 ? (enrichedCount / leads.length) * 100 : 0;
+
   // Auto-advance when enrichment is complete
   useEffect(() => {
-    if (leads.length > 0 && enrichmentProgress === 100 && !state.completedStages.includes('enrichment')) {
+    if (
+      leads.length > 0 &&
+      enrichmentProgress === 100 &&
+      !state.completedStages.includes("enrichment")
+    ) {
       setEnrichedLeads(leads);
-      markStageComplete('enrichment');
+      markStageComplete("enrichment");
     }
-  }, [leads, enrichmentProgress, state.completedStages, setEnrichedLeads, markStageComplete]);
+  }, [
+    leads,
+    enrichmentProgress,
+    state.completedStages,
+    setEnrichedLeads,
+    markStageComplete,
+  ]);
 
   const handleContinue = () => {
     progressToNextStage();
@@ -89,17 +103,19 @@ export function EnrichmentStage() {
                   {enrichedCount} of {leads.length} leads enriched
                 </p>
               </div>
-              
-              <Badge variant={enrichmentProgress === 100 ? "default" : "secondary"}>
+
+              <Badge
+                variant={enrichmentProgress === 100 ? "default" : "secondary"}
+              >
                 {enrichmentProgress.toFixed(0)}% Complete
               </Badge>
             </div>
-            
-            <Progress 
-              value={enrichmentProgress} 
+
+            <Progress
+              value={enrichmentProgress}
               className="h-3 progress-pulse"
             />
-            
+
             {enrichmentProgress === 100 && (
               <div className="flex items-center justify-center gap-2 text-green-600">
                 <CheckCircle className="h-5 w-5" />
@@ -132,7 +148,7 @@ export function EnrichmentStage() {
           <CardContent className="p-4 text-center">
             <Phone className="h-6 w-6 mx-auto mb-2 text-blue-500" />
             <div className="text-2xl font-bold">
-              {leads.filter(lead => lead.phone).length}
+              {leads.filter((lead) => lead.phone).length}
             </div>
             <div className="text-sm text-muted-foreground">Phone Numbers</div>
           </CardContent>
@@ -142,7 +158,7 @@ export function EnrichmentStage() {
           <CardContent className="p-4 text-center">
             <Globe className="h-6 w-6 mx-auto mb-2 text-purple-500" />
             <div className="text-2xl font-bold">
-              {leads.filter(lead => lead.website).length}
+              {leads.filter((lead) => lead.website).length}
             </div>
             <div className="text-sm text-muted-foreground">Websites</div>
           </CardContent>
@@ -156,37 +172,48 @@ export function EnrichmentStage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {leads.filter(lead => lead.contactInfo?.emails && lead.contactInfo.emails.length > 0).slice(0, 5).map((lead, index) => (
-              <div 
-                key={lead.id} 
-                className="flex items-center gap-4 p-3 rounded-lg bg-muted/10 transition-all duration-300 hover:bg-muted/20"
-              >
-                <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
+            {leads
+              .filter(
+                (lead) =>
+                  lead.contactInfo?.emails &&
+                  lead.contactInfo.emails.length > 0,
+              )
+              .slice(0, 5)
+              .map((lead, index) => (
+                <div
+                  key={lead.id}
+                  className="flex items-center gap-4 p-3 rounded-lg bg-muted/10 transition-all duration-300 hover:bg-muted/20"
+                >
+                  <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">
+                      {lead.company_name}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {lead.contactInfo?.emails?.[0]?.email || "Email found"}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-1">
+                    {lead.phone && (
+                      <Badge variant="outline" className="text-xs">
+                        <Phone className="h-3 w-3 mr-1" />
+                        Phone
+                      </Badge>
+                    )}
+                    {lead.website && (
+                      <Badge variant="outline" className="text-xs">
+                        <Globe className="h-3 w-3 mr-1" />
+                        Website
+                      </Badge>
+                    )}
+                  </div>
                 </div>
-                
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{lead.company_name}</div>
-                  <div className="text-sm text-muted-foreground">{lead.contactInfo?.emails?.[0]?.email || 'Email found'}</div>
-                </div>
-                
-                <div className="flex gap-1">
-                  {lead.phone && (
-                    <Badge variant="outline" className="text-xs">
-                      <Phone className="h-3 w-3 mr-1" />
-                      Phone
-                    </Badge>
-                  )}
-                  {lead.website && (
-                    <Badge variant="outline" className="text-xs">
-                      <Globe className="h-3 w-3 mr-1" />
-                      Website
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            ))}
-            
+              ))}
+
             {enrichedCount === 0 && (
               <div className="text-center py-8 text-muted-foreground">
                 <Clock className="h-8 w-8 mx-auto mb-3 animate-pulse text-primary" />
@@ -201,11 +228,7 @@ export function EnrichmentStage() {
       {/* Continue Button */}
       {enrichmentProgress === 100 && (
         <div className="text-center">
-          <Button
-            onClick={handleContinue}
-            size="lg"
-            className="min-w-48"
-          >
+          <Button onClick={handleContinue} size="lg" className="min-w-48">
             <Sparkles className="h-4 w-4 mr-2" />
             Continue to AI Analysis
             <ArrowRight className="h-4 w-4 ml-2" />

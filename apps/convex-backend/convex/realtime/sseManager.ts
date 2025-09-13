@@ -1,10 +1,10 @@
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from "uuid";
 
 export interface BroadcastMessage {
   type: string;
   message: string;
   data?: any;
-  priority?: 'low' | 'normal' | 'high' | 'urgent' | 'critical';
+  priority?: "low" | "normal" | "high" | "urgent" | "critical";
   timestamp: number;
   messageId?: string;
 }
@@ -30,13 +30,16 @@ export class SSEConnectionManager {
   /**
    * Add a new SSE connection for a user
    */
-  addConnection(userId: string, controller: ReadableStreamDefaultController): string {
+  addConnection(
+    userId: string,
+    controller: ReadableStreamDefaultController,
+  ): string {
     const connectionId = uuidv4();
     const connection: UserConnection = {
       connectionId,
       controller,
       connectedAt: Date.now(),
-      lastActivity: Date.now()
+      lastActivity: Date.now(),
     };
 
     // Initialize user connections array if needed
@@ -47,7 +50,9 @@ export class SSEConnectionManager {
     // Add connection
     this.connections.get(userId)!.push(connection);
 
-    console.log(`SSE: User ${userId} connected (${connectionId}). Active connections: ${this.connections.get(userId)!.length}`);
+    console.log(
+      `SSE: User ${userId} connected (${connectionId}). Active connections: ${this.connections.get(userId)!.length}`,
+    );
 
     // Send any queued messages to the newly connected user
     this.replayQueuedMessages(userId, controller);
@@ -64,19 +69,23 @@ export class SSEConnectionManager {
 
     if (connectionId) {
       // Remove specific connection
-      const index = userConnections.findIndex(conn => conn.connectionId === connectionId);
+      const index = userConnections.findIndex(
+        (conn) => conn.connectionId === connectionId,
+      );
       if (index !== -1) {
         userConnections.splice(index, 1);
-        console.log(`SSE: Connection ${connectionId} removed for user ${userId}`);
+        console.log(
+          `SSE: Connection ${connectionId} removed for user ${userId}`,
+        );
       }
-      
+
       // Clean up empty user entry
       if (userConnections.length === 0) {
         this.connections.delete(userId);
       }
     } else {
       // Remove all connections for user
-      userConnections.forEach(conn => {
+      userConnections.forEach((conn) => {
         try {
           conn.controller.close();
         } catch (error) {
@@ -93,7 +102,7 @@ export class SSEConnectionManager {
    */
   broadcast(userId: string, message: BroadcastMessage): boolean {
     const userConnections = this.connections.get(userId);
-    
+
     if (!userConnections || userConnections.length === 0) {
       // User is offline - queue the message
       this.queueMessage(userId, message);
@@ -111,17 +120,22 @@ export class SSEConnectionManager {
         connection.lastActivity = Date.now();
         successfulSends++;
       } catch (error) {
-        console.error(`SSE: Failed to send to connection ${connection.connectionId}:`, error);
+        console.error(
+          `SSE: Failed to send to connection ${connection.connectionId}:`,
+          error,
+        );
         connectionsToRemove.push(connection.connectionId);
       }
     }
 
     // Remove failed connections
-    connectionsToRemove.forEach(connectionId => {
+    connectionsToRemove.forEach((connectionId) => {
       this.removeConnection(userId, connectionId);
     });
 
-    console.log(`SSE: Broadcasted to user ${userId} - ${successfulSends}/${userConnections.length} successful`);
+    console.log(
+      `SSE: Broadcasted to user ${userId} - ${successfulSends}/${userConnections.length} successful`,
+    );
     return successfulSends > 0;
   }
 
@@ -129,7 +143,7 @@ export class SSEConnectionManager {
    * Broadcast to multiple users
    */
   broadcastToUsers(userIds: string[], message: BroadcastMessage): void {
-    userIds.forEach(userId => this.broadcast(userId, message));
+    userIds.forEach((userId) => this.broadcast(userId, message));
   }
 
   /**
@@ -144,11 +158,11 @@ export class SSEConnectionManager {
     const queuedMessage: QueuedMessage = {
       ...message,
       messageId: message.messageId || uuidv4(),
-      queuedAt: Date.now()
+      queuedAt: Date.now(),
     };
 
     // Add to queue (prioritize urgent messages)
-    if (message.priority === 'critical' || message.priority === 'urgent') {
+    if (message.priority === "critical" || message.priority === "urgent") {
       queue.unshift(queuedMessage);
     } else {
       queue.push(queuedMessage);
@@ -157,20 +171,29 @@ export class SSEConnectionManager {
     // Trim queue if too large
     if (queue.length > this.MAX_QUEUE_SIZE) {
       const removed = queue.splice(0, queue.length - this.MAX_QUEUE_SIZE);
-      console.log(`SSE: Trimmed ${removed.length} old messages from queue for user ${userId}`);
+      console.log(
+        `SSE: Trimmed ${removed.length} old messages from queue for user ${userId}`,
+      );
     }
 
-    console.log(`SSE: Queued message for offline user ${userId}. Queue size: ${queue.length}`);
+    console.log(
+      `SSE: Queued message for offline user ${userId}. Queue size: ${queue.length}`,
+    );
   }
 
   /**
    * Replay queued messages when user reconnects
    */
-  private replayQueuedMessages(userId: string, controller: ReadableStreamDefaultController): void {
+  private replayQueuedMessages(
+    userId: string,
+    controller: ReadableStreamDefaultController,
+  ): void {
     const queue = this.messageQueues.get(userId);
     if (!queue || queue.length === 0) return;
 
-    console.log(`SSE: Replaying ${queue.length} queued messages for user ${userId}`);
+    console.log(
+      `SSE: Replaying ${queue.length} queued messages for user ${userId}`,
+    );
 
     // Send queued messages
     for (const message of queue) {
@@ -181,12 +204,15 @@ export class SSEConnectionManager {
           data: {
             ...message.data,
             wasQueued: true,
-            queuedAt: message.queuedAt
-          }
+            queuedAt: message.queuedAt,
+          },
         });
         controller.enqueue(new TextEncoder().encode(messageText));
       } catch (error) {
-        console.error(`SSE: Failed to replay message ${message.messageId}:`, error);
+        console.error(
+          `SSE: Failed to replay message ${message.messageId}:`,
+          error,
+        );
         break; // Stop replaying if connection fails
       }
     }
@@ -201,7 +227,7 @@ export class SSEConnectionManager {
   private formatSSEMessage(message: BroadcastMessage): string {
     const data = JSON.stringify({
       ...message,
-      messageId: message.messageId || uuidv4()
+      messageId: message.messageId || uuidv4(),
     });
 
     return `data: ${data}\n\n`;
@@ -216,10 +242,10 @@ export class SSEConnectionManager {
 
     for (const [userId, queue] of this.messageQueues.entries()) {
       const originalLength = queue.length;
-      
+
       // Remove expired messages
-      const filtered = queue.filter(msg => 
-        (now - msg.queuedAt) < this.QUEUE_TTL
+      const filtered = queue.filter(
+        (msg) => now - msg.queuedAt < this.QUEUE_TTL,
       );
 
       this.messageQueues.set(userId, filtered);
@@ -260,7 +286,7 @@ export class SSEConnectionManager {
       activeConnections,
       connectedUsers: this.connections.size,
       queuedMessages,
-      usersWithQueues: this.messageQueues.size
+      usersWithQueues: this.messageQueues.size,
     };
   }
 
@@ -269,7 +295,7 @@ export class SSEConnectionManager {
    */
   isUserConnected(userId: string): boolean {
     const connections = this.connections.get(userId);
-    return connections && connections.length > 0 || false;
+    return (connections && connections.length > 0) || false;
   }
 
   /**

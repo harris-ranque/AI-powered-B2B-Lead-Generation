@@ -26,7 +26,7 @@ export const broadcastPipelineUpdate = internalMutation({
   },
   handler: async (ctx, args) => {
     const manager = getSSEManager();
-    
+
     // Send real-time SSE message to user
     const broadcastMessage = {
       type: "pipeline_update",
@@ -37,19 +37,18 @@ export const broadcastPipelineUpdate = internalMutation({
         progress: args.progress,
         ...args.data,
       },
-      priority: args.error ? "critical" as const : "normal" as const,
+      priority: args.error ? ("critical" as const) : ("normal" as const),
       timestamp: Date.now(),
       error: args.error,
     };
 
     // Send via SSE (will queue if user offline)
     const sent = manager.broadcast(args.userId, broadcastMessage);
-    
+
     // Only store critical messages in database for audit/persistence
-    const shouldStore = args.error || 
-                       args.stage === "completed" || 
-                       args.stage === "failed";
-    
+    const shouldStore =
+      args.error || args.stage === "completed" || args.stage === "failed";
+
     if (shouldStore) {
       // Store only critical updates in database for audit trail
       await ctx.db.insert("statusBroadcasts", {
@@ -76,9 +75,11 @@ export const broadcastPipelineUpdate = internalMutation({
         expiresAt: Date.now() + 60 * 60 * 1000, // Expire in 1 hour
       });
     }
-    
+
     // Log for development/debugging
-    console.log(`SSE Broadcasting: ${args.stage} - ${args.progress}% (${sent ? 'delivered' : 'queued'})`);
+    console.log(
+      `SSE Broadcasting: ${args.stage} - ${args.progress}% (${sent ? "delivered" : "queued"})`,
+    );
   },
 });
 
@@ -90,13 +91,15 @@ export const broadcast = internalMutation({
     title: v.string(),
     message: v.string(),
     data: v.optional(v.any()),
-    priority: v.optional(v.union(
-      v.literal("low"),
-      v.literal("normal"),
-      v.literal("high"),
-      v.literal("urgent"),
-      v.literal("critical")
-    )),
+    priority: v.optional(
+      v.union(
+        v.literal("low"),
+        v.literal("normal"),
+        v.literal("high"),
+        v.literal("urgent"),
+        v.literal("critical"),
+      ),
+    ),
     category: v.optional(v.string()),
     entityType: v.optional(v.string()),
     entityId: v.optional(v.string()),
@@ -105,7 +108,7 @@ export const broadcast = internalMutation({
   },
   handler: async (ctx, args) => {
     const manager = getSSEManager();
-    
+
     // Send real-time SSE message to user
     const broadcastMessage = {
       type: args.type,
@@ -117,18 +120,24 @@ export const broadcast = internalMutation({
         entityId: args.entityId,
         ...args.data,
       },
-      priority: (args.priority || "normal") as "low" | "normal" | "high" | "urgent" | "critical",
+      priority: (args.priority || "normal") as
+        | "low"
+        | "normal"
+        | "high"
+        | "urgent"
+        | "critical",
       timestamp: Date.now(),
     };
 
     // Send via SSE (will queue if user offline)
     const sent = manager.broadcast(args.userId, broadcastMessage);
-    
+
     // Store in database only if it requires acknowledgment or is critical
-    const shouldStore = args.requiresAck || 
-                       args.priority === "critical" || 
-                       args.priority === "urgent";
-    
+    const shouldStore =
+      args.requiresAck ||
+      args.priority === "critical" ||
+      args.priority === "urgent";
+
     if (shouldStore) {
       await ctx.db.insert("statusBroadcasts", {
         userId: args.userId,
@@ -149,8 +158,10 @@ export const broadcast = internalMutation({
         expiresAt: Date.now() + (args.expiresIn || 3600000), // Default 1 hour
       });
     }
-    
-    console.log(`SSE Broadcasting: ${args.type} - ${args.title} (${sent ? 'delivered' : 'queued'})`);
+
+    console.log(
+      `SSE Broadcasting: ${args.type} - ${args.title} (${sent ? "delivered" : "queued"})`,
+    );
   },
 });
 
@@ -191,13 +202,13 @@ export const cleanupExpired = internalMutation({
       .withIndex("by_expires")
       .filter((q) => q.lt(q.field("expiresAt"), now))
       .take(100);
-    
+
     for (const broadcast of expired) {
       await ctx.db.patch(broadcast._id, {
         status: "expired",
       });
     }
-    
+
     return { cleaned: expired.length };
   },
 });

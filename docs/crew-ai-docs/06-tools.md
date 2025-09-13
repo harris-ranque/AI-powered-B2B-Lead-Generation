@@ -16,22 +16,22 @@ enabling everything from simple searches to complex interactions and effective t
 <Note type="info" title="Enterprise Enhancement: Tools Repository">
   CrewAI Enterprise provides a comprehensive Tools Repository with pre-built integrations for common business systems and APIs. Deploy agents with enterprise tools in minutes instead of days.
 
-  The Enterprise Tools Repository includes:
+The Enterprise Tools Repository includes:
 
-  * Pre-built connectors for popular enterprise systems
-  * Custom tool creation interface
-  * Version control and sharing capabilities
-  * Security and compliance features
-</Note>
+- Pre-built connectors for popular enterprise systems
+- Custom tool creation interface
+- Version control and sharing capabilities
+- Security and compliance features
+  </Note>
 
 ## Key Characteristics of Tools
 
-* **Utility**: Crafted for tasks such as web searching, data analysis, content generation, and agent collaboration.
-* **Integration**: Boosts agent capabilities by seamlessly integrating tools into their workflow.
-* **Customizability**: Provides the flexibility to develop custom tools or utilize existing ones, catering to the specific needs of agents.
-* **Error Handling**: Incorporates robust error handling mechanisms to ensure smooth operation.
-* **Caching Mechanism**: Features intelligent caching to optimize performance and reduce redundant operations.
-* **Asynchronous Support**: Handles both synchronous and asynchronous tools, enabling non-blocking operations.
+- **Utility**: Crafted for tasks such as web searching, data analysis, content generation, and agent collaboration.
+- **Integration**: Boosts agent capabilities by seamlessly integrating tools into their workflow.
+- **Customizability**: Provides the flexibility to develop custom tools or utilize existing ones, catering to the specific needs of agents.
+- **Error Handling**: Incorporates robust error handling mechanisms to ensure smooth operation.
+- **Caching Mechanism**: Features intelligent caching to optimize performance and reduce redundant operations.
+- **Asynchronous Support**: Handles both synchronous and asynchronous tools, enabling non-blocking operations.
 
 ## Using CrewAI Tools
 
@@ -109,8 +109,8 @@ crew.kickoff()
 
 ## Available CrewAI Tools
 
-* **Error Handling**: All tools are built with error handling capabilities, allowing agents to gracefully manage exceptions and continue their tasks.
-* **Caching Mechanism**: All tools support caching, enabling agents to efficiently reuse previously obtained results, reducing the load on external resources and speeding up the execution time. You can also define finer control over the caching mechanism using the `cache_function` attribute on the tool.
+- **Error Handling**: All tools are built with error handling capabilities, allowing agents to gracefully manage exceptions and continue their tasks.
+- **Caching Mechanism**: All tools support caching, enabling agents to efficiently reuse previously obtained results, reducing the load on external resources and speeding up the execution time. You can also define finer control over the caching mechanism using the `cache_function` attribute on the tool.
 
 Here is a list of the available tools and their descriptions:
 
@@ -206,7 +206,7 @@ from crewai.tools import BaseTool
 class AsyncCustomTool(BaseTool):
     name: str = "async_custom_tool"
     description: str = "An asynchronous custom tool"
-    
+
     async def _run(self, query: str = "") -> str:
         """Asynchronously run the tool"""
         # Your async implementation here
@@ -284,6 +284,7 @@ writer1 = Agent(
 Read, write, and search through various file formats including PDF, DOCX, JSON, CSV, and more. Perfect for document processing workflows.
 
 **Available Tools:**
+
 - **FileReadTool**: Read content from any file type
 - **FileWriteTool**: Write content to files
 - **PDFSearchTool**: Search and extract text from PDF documents
@@ -301,6 +302,7 @@ Read, write, and search through various file formats including PDF, DOCX, JSON, 
 Extract data from websites, automate browser interactions, and scrape content at scale.
 
 **Available Tools:**
+
 - **ScrapeWebsiteTool**: General-purpose web scraping
 - **ScrapeElementFromWebsiteTool**: Target specific elements
 - **FirecrawlCrawlWebsiteTool**: Crawl entire websites systematically
@@ -313,6 +315,7 @@ Extract data from websites, automate browser interactions, and scrape content at
 Perform web searches, find code repositories, research YouTube content, and discover information across the internet.
 
 **Available Tools:**
+
 - **SerperDevTool**: Google search API integration
 - **EXASearchTool**: AI-powered search
 - **GithubSearchTool**: Search GitHub repositories
@@ -326,6 +329,7 @@ Perform web searches, find code repositories, research YouTube content, and disc
 Connect to SQL databases, vector stores, and data warehouses.
 
 **Available Tools:**
+
 - **PGSearchTool**: PostgreSQL database queries
 - **MySQLTool**: MySQL database operations
 - **SnowflakeSearchTool**: Access Snowflake data warehouse
@@ -337,6 +341,7 @@ Connect to SQL databases, vector stores, and data warehouses.
 Generate images, process vision tasks, integrate with LangChain, build RAG systems, and leverage code interpreters.
 
 **Available Tools:**
+
 - **DallETool**: Generate AI images using DALL-E
 - **VisionTool**: Process and analyze images
 - **CodeInterpreterTool**: Execute Python code
@@ -348,6 +353,7 @@ Generate images, process vision tasks, integrate with LangChain, build RAG syste
 Automate workflows with various integration platforms.
 
 **Available Tools:**
+
 - **ApifyActorsTool**: Web scraping and automation with Apify
 - **ComposioTool**: Integration platform capabilities
 
@@ -393,6 +399,7 @@ with MCPServerAdapter(server_params) as mcp_tools:
 </Warning>
 
 Key security practices:
+
 - Only connect to trusted MCP servers
 - Validate Origin headers for SSE connections
 - Use HTTPS for remote connections

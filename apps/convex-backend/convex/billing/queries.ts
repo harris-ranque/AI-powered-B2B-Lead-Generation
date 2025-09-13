@@ -39,7 +39,7 @@ export const getUserBilling = query({
 
 // Get credit transactions with pagination
 export const getCreditTransactions = query({
-  args: { 
+  args: {
     limit: v.optional(v.number()),
     offset: v.optional(v.number()),
   },
@@ -64,8 +64,10 @@ export const getCreditTransactions = query({
 
 // Get usage statistics
 export const getUsageStats = query({
-  args: { 
-    period: v.optional(v.union(v.literal("7d"), v.literal("30d"), v.literal("90d"))),
+  args: {
+    period: v.optional(
+      v.union(v.literal("7d"), v.literal("30d"), v.literal("90d")),
+    ),
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
@@ -75,18 +77,18 @@ export const getUsageStats = query({
 
     const period = args.period || "30d";
     const now = Date.now();
-    
+
     // Calculate time range
     let startTime = now;
     switch (period) {
       case "7d":
-        startTime = now - (7 * 24 * 60 * 60 * 1000);
+        startTime = now - 7 * 24 * 60 * 60 * 1000;
         break;
       case "30d":
-        startTime = now - (30 * 24 * 60 * 60 * 1000);
+        startTime = now - 30 * 24 * 60 * 60 * 1000;
         break;
       case "90d":
-        startTime = now - (90 * 24 * 60 * 60 * 1000);
+        startTime = now - 90 * 24 * 60 * 60 * 1000;
         break;
     }
 
@@ -106,18 +108,21 @@ export const getUsageStats = query({
 
     // Calculate statistics
     const creditsSpent = transactions
-      .filter(tx => tx.type === "usage")
+      .filter((tx) => tx.type === "usage")
       .reduce((sum, tx) => sum + tx.amount, 0);
 
     const creditsPurchased = transactions
-      .filter(tx => tx.type === "purchase")
+      .filter((tx) => tx.type === "purchase")
       .reduce((sum, tx) => sum + tx.amount, 0);
 
-    const leadsGenerated = searches.reduce((sum, search) => 
-      sum + (search.results?.totalFound || 0), 0
+    const leadsGenerated = searches.reduce(
+      (sum, search) => sum + (search.results?.totalFound || 0),
+      0,
     );
 
-    const completedSearches = searches.filter(s => s.status === "completed").length;
+    const completedSearches = searches.filter(
+      (s) => s.status === "completed",
+    ).length;
 
     return {
       period,
@@ -127,18 +132,24 @@ export const getUsageStats = query({
       searchesCompleted: completedSearches,
       totalSearches: searches.length,
       leadsGenerated,
-      avgCreditsPerSearch: completedSearches > 0 ? 
-        Math.round(creditsSpent / completedSearches) : 0,
-      avgLeadsPerSearch: completedSearches > 0 ? 
-        Math.round(leadsGenerated / completedSearches) : 0,
+      avgCreditsPerSearch:
+        completedSearches > 0
+          ? Math.round(creditsSpent / completedSearches)
+          : 0,
+      avgLeadsPerSearch:
+        completedSearches > 0
+          ? Math.round(leadsGenerated / completedSearches)
+          : 0,
     };
   },
 });
 
 // Get spending breakdown by category
 export const getSpendingBreakdown = query({
-  args: { 
-    period: v.optional(v.union(v.literal("7d"), v.literal("30d"), v.literal("90d"))),
+  args: {
+    period: v.optional(
+      v.union(v.literal("7d"), v.literal("30d"), v.literal("90d")),
+    ),
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
@@ -148,17 +159,17 @@ export const getSpendingBreakdown = query({
 
     const period = args.period || "30d";
     const now = Date.now();
-    
+
     let startTime = now;
     switch (period) {
       case "7d":
-        startTime = now - (7 * 24 * 60 * 60 * 1000);
+        startTime = now - 7 * 24 * 60 * 60 * 1000;
         break;
       case "30d":
-        startTime = now - (30 * 24 * 60 * 60 * 1000);
+        startTime = now - 30 * 24 * 60 * 60 * 1000;
         break;
       case "90d":
-        startTime = now - (90 * 24 * 60 * 60 * 1000);
+        startTime = now - 90 * 24 * 60 * 60 * 1000;
         break;
     }
 
@@ -170,11 +181,14 @@ export const getSpendingBreakdown = query({
       .collect();
 
     // Group by related entity type
-    const breakdown = transactions.reduce((acc, tx) => {
-      const category = tx.relatedEntity?.type || "other";
-      acc[category] = (acc[category] || 0) + tx.amount;
-      return acc;
-    }, {} as Record<string, number>);
+    const breakdown = transactions.reduce(
+      (acc, tx) => {
+        const category = tx.relatedEntity?.type || "other";
+        acc[category] = (acc[category] || 0) + tx.amount;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
 
     return {
       period,
@@ -195,7 +209,7 @@ export const getCreditUsage = query({
 
     // Get recent usage transactions
     const now = Date.now();
-    const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
 
     const recentTransactions = await ctx.db
       .query("creditTransactions")
@@ -203,7 +217,9 @@ export const getCreditUsage = query({
       .filter((q) => q.gte(q.field("createdAt"), thirtyDaysAgo))
       .collect();
 
-    const usageTransactions = recentTransactions.filter(tx => tx.type === "usage");
+    const usageTransactions = recentTransactions.filter(
+      (tx) => tx.type === "usage",
+    );
     const totalUsed = usageTransactions.reduce((sum, tx) => sum + tx.amount, 0);
 
     return {

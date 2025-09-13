@@ -1,16 +1,16 @@
-import { 
-  CorrelationContext, 
-  LogContext, 
+import {
+  CorrelationContext,
+  LogContext,
   logWithCorrelation,
   createCorrelationContext,
   createChildContext,
-  OPERATION_TYPES
+  OPERATION_TYPES,
 } from "./correlation";
 import { logWithCorrelationConsole } from "./logging";
 
 /**
  * Simplified Logger Utility for Convex Backend
- * 
+ *
  * Provides easy-to-use logging functions with correlation tracking
  * for Convex's built-in log aggregator and future Sentry integration.
  */
@@ -24,7 +24,7 @@ export interface LoggerContext {
 }
 
 export interface StructuredLogEntry {
-  level: LogContext['level'];
+  level: LogContext["level"];
   message: string;
   correlationId?: string;
   operationType?: string;
@@ -69,68 +69,90 @@ export class Logger {
    * Create a logger for an operation
    */
   static forOperation(
-    operationType: string, 
-    userId: string, 
+    operationType: string,
+    userId: string,
     options?: {
       searchId?: string;
       leadId?: string;
       batchId?: string;
       metadata?: Record<string, any>;
-    }
+    },
   ): Logger {
-    const correlation = createCorrelationContext(operationType, userId, options);
+    const correlation = createCorrelationContext(
+      operationType,
+      userId,
+      options,
+    );
     return new Logger(correlation);
   }
 
   /**
    * Create child logger for nested operations
    */
-  createChild(operationType: string, options?: {
-    searchId?: string;
-    leadId?: string;
-    batchId?: string;
-    metadata?: Record<string, any>;
-  }): Logger {
+  createChild(
+    operationType: string,
+    options?: {
+      searchId?: string;
+      leadId?: string;
+      batchId?: string;
+      metadata?: Record<string, any>;
+    },
+  ): Logger {
     if (!this.correlation) {
       throw new Error("Cannot create child logger without parent correlation");
     }
-    const childCorrelation = createChildContext(this.correlation, operationType, options);
+    const childCorrelation = createChildContext(
+      this.correlation,
+      operationType,
+      options,
+    );
     return new Logger(childCorrelation);
   }
 
   /**
    * Log debug message
    */
-  debug(message: string, data?: any, performance?: LogContext['performance']) {
-    this.log('debug', message, data, undefined, performance);
+  debug(message: string, data?: any, performance?: LogContext["performance"]) {
+    this.log("debug", message, data, undefined, performance);
   }
 
   /**
    * Log info message
    */
-  info(message: string, data?: any, performance?: LogContext['performance']) {
-    this.log('info', message, data, undefined, performance);
+  info(message: string, data?: any, performance?: LogContext["performance"]) {
+    this.log("info", message, data, undefined, performance);
   }
 
   /**
    * Log warning message
    */
-  warn(message: string, data?: any, error?: Error, performance?: LogContext['performance']) {
-    this.log('warn', message, data, error, performance);
+  warn(
+    message: string,
+    data?: any,
+    error?: Error,
+    performance?: LogContext["performance"],
+  ) {
+    this.log("warn", message, data, error, performance);
   }
 
   /**
    * Log error message
    */
-  error(message: string, data?: any, error?: Error, performance?: LogContext['performance']) {
-    this.log('error', message, data, error, performance);
+  error(
+    message: string,
+    data?: any,
+    error?: Error,
+    performance?: LogContext["performance"],
+  ) {
+    this.log("error", message, data, error, performance);
   }
 
   /**
    * Log operation start
    */
   start(message?: string, data?: any) {
-    const msg = message || `Starting ${this.correlation?.operationType || 'operation'}`;
+    const msg =
+      message || `Starting ${this.correlation?.operationType || "operation"}`;
     this.info(msg, data);
     return { startTime: Date.now() };
   }
@@ -140,11 +162,12 @@ export class Logger {
    */
   complete(startTime: { startTime: number }, message?: string, data?: any) {
     const duration = Date.now() - startTime.startTime;
-    const msg = message || `Completed ${this.correlation?.operationType || 'operation'}`;
-    this.info(msg, data, { 
-      startTime: startTime.startTime, 
-      endTime: Date.now(), 
-      duration 
+    const msg =
+      message || `Completed ${this.correlation?.operationType || "operation"}`;
+    this.info(msg, data, {
+      startTime: startTime.startTime,
+      endTime: Date.now(),
+      duration,
     });
     return { duration };
   }
@@ -152,13 +175,19 @@ export class Logger {
   /**
    * Log operation failure
    */
-  failure(startTime: { startTime: number }, error: Error, message?: string, data?: any) {
+  failure(
+    startTime: { startTime: number },
+    error: Error,
+    message?: string,
+    data?: any,
+  ) {
     const duration = Date.now() - startTime.startTime;
-    const msg = message || `Failed ${this.correlation?.operationType || 'operation'}`;
-    this.error(msg, data, error, { 
-      startTime: startTime.startTime, 
-      endTime: Date.now(), 
-      duration 
+    const msg =
+      message || `Failed ${this.correlation?.operationType || "operation"}`;
+    this.error(msg, data, error, {
+      startTime: startTime.startTime,
+      endTime: Date.now(),
+      duration,
     });
     return { duration, error };
   }
@@ -167,15 +196,22 @@ export class Logger {
    * Internal log method
    */
   private log(
-    level: LogContext['level'],
+    level: LogContext["level"],
     message: string,
     data?: any,
     error?: Error,
-    performance?: LogContext['performance']
+    performance?: LogContext["performance"],
   ) {
     if (this.correlation) {
       // Use correlation logging
-      logWithCorrelationConsole(level, this.correlation, message, data, error, performance);
+      logWithCorrelationConsole(
+        level,
+        this.correlation,
+        message,
+        data,
+        error,
+        performance,
+      );
     } else {
       // Fallback to simple structured console logging
       this.simpleLog(level, message, data, error, performance);
@@ -186,43 +222,45 @@ export class Logger {
    * Simple structured logging without correlation
    */
   private simpleLog(
-    level: LogContext['level'],
+    level: LogContext["level"],
     message: string,
     data?: any,
     error?: Error,
-    performance?: LogContext['performance']
+    performance?: LogContext["performance"],
   ) {
     const logEntry: StructuredLogEntry = {
       level,
       message,
       timestamp: new Date().toISOString(),
       data,
-      error: error ? {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      } : undefined,
-      performance
+      error: error
+        ? {
+            message: error.message,
+            stack: error.stack,
+            name: error.name,
+          }
+        : undefined,
+      performance,
     };
 
     // Remove undefined fields
-    Object.keys(logEntry).forEach(key => {
+    Object.keys(logEntry).forEach((key) => {
       if (logEntry[key as keyof StructuredLogEntry] === undefined) {
         delete logEntry[key as keyof StructuredLogEntry];
       }
     });
 
     switch (level) {
-      case 'debug':
+      case "debug":
         console.debug(message, logEntry);
         break;
-      case 'info':
+      case "info":
         console.info(message, logEntry);
         break;
-      case 'warn':
+      case "warn":
         console.warn(message, logEntry);
         break;
-      case 'error':
+      case "error":
         console.error(message, logEntry);
         break;
     }
@@ -251,47 +289,60 @@ export const log = {
     const logger = new Logger();
     logger.debug(message, data);
   },
-  
+
   info: (message: string, data?: any) => {
     const logger = new Logger();
     logger.info(message, data);
   },
-  
+
   warn: (message: string, data?: any, error?: Error) => {
     const logger = new Logger();
     logger.warn(message, data, error);
   },
-  
+
   error: (message: string, data?: any, error?: Error) => {
     const logger = new Logger();
     logger.error(message, data, error);
-  }
+  },
 };
 
 /**
  * Create logger for specific operation types
  */
 export const createOperationLogger = {
-  search: (userId: string, searchId?: string) => 
+  search: (userId: string, searchId?: string) =>
     Logger.forOperation(OPERATION_TYPES.SEARCH_CREATE, userId, { searchId }),
-    
+
   discovery: (userId: string, searchId?: string) =>
-    Logger.forOperation(OPERATION_TYPES.GOOGLE_MAPS_DISCOVERY, userId, { searchId }),
-    
+    Logger.forOperation(OPERATION_TYPES.GOOGLE_MAPS_DISCOVERY, userId, {
+      searchId,
+    }),
+
   enrichment: (userId: string, leadId: string, searchId?: string) =>
-    Logger.forOperation(OPERATION_TYPES.LEAD_ENRICHMENT, userId, { leadId, searchId }),
-    
+    Logger.forOperation(OPERATION_TYPES.LEAD_ENRICHMENT, userId, {
+      leadId,
+      searchId,
+    }),
+
   analysis: (userId: string, leadId: string, searchId?: string) =>
-    Logger.forOperation(OPERATION_TYPES.AI_ANALYSIS, userId, { leadId, searchId }),
-    
-  webhook: (userId: string, operationType: string = 'webhook_handler') =>
+    Logger.forOperation(OPERATION_TYPES.AI_ANALYSIS, userId, {
+      leadId,
+      searchId,
+    }),
+
+  webhook: (userId: string, operationType: string = "webhook_handler") =>
     Logger.forOperation(operationType, userId),
 
-  credits: (userId: string, operationType: string = OPERATION_TYPES.CREDIT_RESERVATION) =>
-    Logger.forOperation(operationType, userId),
+  credits: (
+    userId: string,
+    operationType: string = OPERATION_TYPES.CREDIT_RESERVATION,
+  ) => Logger.forOperation(operationType, userId),
 
   batch: (userId: string, batchId: string, searchId?: string) =>
-    Logger.forOperation(OPERATION_TYPES.BATCH_PROCESSING, userId, { batchId, searchId })
+    Logger.forOperation(OPERATION_TYPES.BATCH_PROCESSING, userId, {
+      batchId,
+      searchId,
+    }),
 };
 
 /**
@@ -304,10 +355,10 @@ export const perf = {
   time: async <T>(
     logger: Logger,
     operation: string,
-    fn: () => Promise<T> | T
+    fn: () => Promise<T> | T,
   ): Promise<T> => {
     const start = logger.start(`Starting ${operation}`);
-    
+
     try {
       const result = await fn();
       logger.complete(start, `Completed ${operation}`);
@@ -322,12 +373,12 @@ export const perf = {
    * Simple performance timer
    */
   start: () => ({ startTime: Date.now() }),
-  
+
   end: (start: { startTime: number }) => ({
     duration: Date.now() - start.startTime,
     startTime: start.startTime,
-    endTime: Date.now()
-  })
+    endTime: Date.now(),
+  }),
 };
 
 /**
@@ -341,9 +392,9 @@ export function logError(
     userId?: string;
     data?: any;
     correlation?: CorrelationContext;
-  }
+  },
 ) {
-  const logger = context?.correlation 
+  const logger = context?.correlation
     ? Logger.withCorrelation(context.correlation)
     : new Logger();
 
@@ -351,7 +402,7 @@ export function logError(
   const data = {
     operationType: context?.operationType,
     userId: context?.userId,
-    ...context?.data
+    ...context?.data,
   };
 
   logger.error(message, data, error);
@@ -370,45 +421,65 @@ export function logApiCall(
     status?: number;
     duration?: number;
     error?: Error;
-  }
+  },
 ) {
   const logger = options?.logger || new Logger();
-  
+
   if (options?.error) {
-    logger.error(`API ${method} ${url} failed`, {
-      status: options.status,
-      requestData: options.requestData,
-      responseData: options.responseData
-    }, options.error, options.duration ? {
-      // Construct a full performance object from duration
-      startTime: Date.now() - options.duration,
-      endTime: Date.now(),
-      duration: options.duration
-    } : undefined);
+    logger.error(
+      `API ${method} ${url} failed`,
+      {
+        status: options.status,
+        requestData: options.requestData,
+        responseData: options.responseData,
+      },
+      options.error,
+      options.duration
+        ? {
+            // Construct a full performance object from duration
+            startTime: Date.now() - options.duration,
+            endTime: Date.now(),
+            duration: options.duration,
+          }
+        : undefined,
+    );
   } else {
-    const level = (options?.status && options.status >= 400) ? 'warn' : 'info';
-    const message = `API ${method} ${url} ${options?.status || 'completed'}`;
-    
-    if (level === 'warn') {
-      logger.warn(message, {
-        status: options?.status,
-        requestData: options?.requestData,
-        responseData: options?.responseData
-      }, undefined, options?.duration ? {
-        startTime: Date.now() - options.duration,
-        endTime: Date.now(),
-        duration: options.duration
-      } : undefined);
+    const level = options?.status && options.status >= 400 ? "warn" : "info";
+    const message = `API ${method} ${url} ${options?.status || "completed"}`;
+
+    if (level === "warn") {
+      logger.warn(
+        message,
+        {
+          status: options?.status,
+          requestData: options?.requestData,
+          responseData: options?.responseData,
+        },
+        undefined,
+        options?.duration
+          ? {
+              startTime: Date.now() - options.duration,
+              endTime: Date.now(),
+              duration: options.duration,
+            }
+          : undefined,
+      );
     } else {
-      logger.info(message, {
-        status: options?.status,
-        requestData: options?.requestData,
-        responseData: options?.responseData
-      }, options?.duration ? {
-        startTime: Date.now() - options.duration,
-        endTime: Date.now(),
-        duration: options.duration
-      } : undefined);
+      logger.info(
+        message,
+        {
+          status: options?.status,
+          requestData: options?.requestData,
+          responseData: options?.responseData,
+        },
+        options?.duration
+          ? {
+              startTime: Date.now() - options.duration,
+              endTime: Date.now(),
+              duration: options.duration,
+            }
+          : undefined,
+      );
     }
   }
 }

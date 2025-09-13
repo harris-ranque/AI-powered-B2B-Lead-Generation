@@ -27,11 +27,11 @@ export const getUnenrichedLeads = internalQuery({
     return await ctx.db
       .query("leads")
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
-      .filter((q) => 
+      .filter((q) =>
         q.or(
           q.eq(q.field("enrichmentStatus"), "pending"),
-          q.eq(q.field("enrichmentStatus"), "failed")
-        )
+          q.eq(q.field("enrichmentStatus"), "failed"),
+        ),
       )
       .collect();
   },
@@ -46,7 +46,7 @@ export const updateEnrichmentStatus = internalMutation({
       v.literal("in_progress"),
       v.literal("completed"),
       v.literal("completed_fallback"),
-      v.literal("failed")
+      v.literal("failed"),
     ),
     error: v.optional(v.string()),
   },
@@ -67,7 +67,7 @@ export const updateLeadEnrichment = internalMutation({
     status: v.union(
       v.literal("completed"),
       v.literal("completed_fallback"),
-      v.literal("failed")
+      v.literal("failed"),
     ),
   },
   handler: async (ctx, args) => {
@@ -84,19 +84,20 @@ export const updateLeadEnrichment = internalMutation({
         contacts: args.enrichmentData.contacts || [],
         socialProfiles: args.enrichmentData.socialProfiles || {},
       };
-      
+
       if (args.status === "completed_fallback") {
         contactInfo.fallbackUsed = true;
-        contactInfo.fallbackReason = args.enrichmentData.fallbackReason || "FindyMail unavailable";
+        contactInfo.fallbackReason =
+          args.enrichmentData.fallbackReason || "FindyMail unavailable";
       }
-      
+
       updateData.contactInfo = contactInfo;
-      
+
       // Update top-level fields if available
       if (args.enrichmentData.phone) {
         updateData.phone = args.enrichmentData.phone;
       }
-      
+
       if (args.enrichmentData.linkedin) {
         if (!contactInfo.socialProfiles) {
           contactInfo.socialProfiles = {};
@@ -168,16 +169,16 @@ export const getDomainCache = internalQuery({
   handler: async (ctx, args) => {
     const cached = await ctx.db
       .query("findymailDomainCache")
-      .withIndex("by_domain_search", (q) => 
-        q.eq("domain", args.domain).eq("searchId", args.searchId)
+      .withIndex("by_domain_search", (q) =>
+        q.eq("domain", args.domain).eq("searchId", args.searchId),
       )
       .first();
-    
+
     // Check if cache is still valid
     if (cached && cached.expiresAt > Date.now()) {
       return cached;
     }
-    
+
     return null;
   },
 });
@@ -188,35 +189,41 @@ export const cacheDomainData = internalMutation({
     domain: v.string(),
     searchId: v.id("searches"),
     enrichmentData: v.object({
-      emails: v.array(v.object({
-        email: v.string(),
-        type: v.string(),
-        confidence: v.number(),
-      })),
-      contacts: v.array(v.object({
-        name: v.string(),
-        title: v.optional(v.string()),
-        email: v.optional(v.string()),
-        linkedin: v.optional(v.string()),
-        confidence: v.number(),
-        domain: v.optional(v.string()),
-      })),
-      socialProfiles: v.optional(v.object({
-        linkedin: v.optional(v.string()),
-        twitter: v.optional(v.string()),
-        facebook: v.optional(v.string()),
-      })),
+      emails: v.array(
+        v.object({
+          email: v.string(),
+          type: v.string(),
+          confidence: v.number(),
+        }),
+      ),
+      contacts: v.array(
+        v.object({
+          name: v.string(),
+          title: v.optional(v.string()),
+          email: v.optional(v.string()),
+          linkedin: v.optional(v.string()),
+          confidence: v.number(),
+          domain: v.optional(v.string()),
+        }),
+      ),
+      socialProfiles: v.optional(
+        v.object({
+          linkedin: v.optional(v.string()),
+          twitter: v.optional(v.string()),
+          facebook: v.optional(v.string()),
+        }),
+      ),
     }),
   },
   handler: async (ctx, args) => {
     // Check if cache already exists
     const existing = await ctx.db
       .query("findymailDomainCache")
-      .withIndex("by_domain_search", (q) => 
-        q.eq("domain", args.domain).eq("searchId", args.searchId)
+      .withIndex("by_domain_search", (q) =>
+        q.eq("domain", args.domain).eq("searchId", args.searchId),
       )
       .first();
-    
+
     if (existing) {
       // Update existing cache
       await ctx.db.patch(existing._id, {
@@ -252,12 +259,14 @@ export const updateLeadAnalysis = internalMutation({
       fitAssessment: v.optional(v.string()),
       recommendedApproach: v.optional(v.string()),
     }),
-    emailContent: v.optional(v.object({
-      subject: v.string(),
-      body: v.string(),
-      personalizationNotes: v.array(v.string()),
-      estimatedEffectiveness: v.number(),
-    })),
+    emailContent: v.optional(
+      v.object({
+        subject: v.string(),
+        body: v.string(),
+        personalizationNotes: v.array(v.string()),
+        estimatedEffectiveness: v.number(),
+      }),
+    ),
   },
   handler: async (ctx, args) => {
     const updateData: any = {
@@ -274,7 +283,7 @@ export const updateLeadAnalysis = internalMutation({
     if (currentLead) {
       updateData.analysisAttempts = (currentLead.analysisAttempts || 0) + 1;
       updateData.lastAnalysisAttempt = Date.now();
-      
+
       // Clear any previous analysis errors if this was successful
       if (args.aiAnalysis.relevanceScore > 0) {
         updateData.analysisError = undefined;
@@ -299,13 +308,17 @@ export const createEmailSequence = internalMutation({
       personalizationNotes: v.array(v.string()),
       estimatedEffectiveness: v.number(),
     }),
-    agentResults: v.optional(v.array(v.object({
-      agentName: v.string(),
-      role: v.string(),
-      output: v.string(),
-      confidenceScore: v.number(),
-      executionTime: v.number(),
-    }))),
+    agentResults: v.optional(
+      v.array(
+        v.object({
+          agentName: v.string(),
+          role: v.string(),
+          output: v.string(),
+          confidenceScore: v.number(),
+          executionTime: v.number(),
+        }),
+      ),
+    ),
     processingTime: v.optional(v.number()),
     recommendations: v.optional(v.array(v.string())),
   },
@@ -338,12 +351,24 @@ export const getEnrichedLeads = internalQuery({
     return await ctx.db
       .query("leads")
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
-      .filter((q) => 
+      .filter((q) =>
         q.or(
           q.eq(q.field("enrichmentStatus"), "completed"),
-          q.eq(q.field("enrichmentStatus"), "completed_fallback")
-        )
+          q.eq(q.field("enrichmentStatus"), "completed_fallback"),
+        ),
       )
+      .collect();
+  },
+});
+
+// Internal query to get all leads for a user (for exports)
+export const getUserLeadsInternal = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("leads")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
       .collect();
   },
 });

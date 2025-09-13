@@ -16,10 +16,12 @@ export const createSearch = mutation({
       excludeTerms: v.optional(v.array(v.string())),
       minRating: v.optional(v.number()),
       maxResults: v.number(),
-      filters: v.optional(v.object({
-        minEmployees: v.optional(v.number()),
-        maxEmployees: v.optional(v.number()),
-      })),
+      filters: v.optional(
+        v.object({
+          minEmployees: v.optional(v.number()),
+          maxEmployees: v.optional(v.number()),
+        }),
+      ),
     }),
     autoStart: v.optional(v.boolean()),
   },
@@ -36,7 +38,9 @@ export const createSearch = mutation({
       1,
       async (middleware) => {
         // Validate search parameters against plan limits
-        const validation = middleware.validateSearchParameters(args.parameters.maxResults);
+        const validation = middleware.validateSearchParameters(
+          args.parameters.maxResults,
+        );
         if (!validation.valid) {
           throw new Error(validation.reason || "Invalid search parameters");
         }
@@ -48,7 +52,7 @@ export const createSearch = mutation({
         };
 
         const user = await requireAuth(ctx);
-        
+
         const searchId = await ctx.db.insert("searches", {
           userId: user._id,
           name: args.name,
@@ -70,7 +74,7 @@ export const createSearch = mutation({
         });
 
         return { searchId };
-      }
+      },
     );
   },
 });
@@ -87,10 +91,12 @@ export const createSearchCompleted = mutation({
       excludeTerms: v.optional(v.array(v.string())),
       minRating: v.optional(v.number()),
       maxResults: v.number(),
-      filters: v.optional(v.object({
-        minEmployees: v.optional(v.number()),
-        maxEmployees: v.optional(v.number()),
-      })),
+      filters: v.optional(
+        v.object({
+          minEmployees: v.optional(v.number()),
+          maxEmployees: v.optional(v.number()),
+        }),
+      ),
     }),
     autoStart: v.optional(v.boolean()),
   },
@@ -107,7 +113,9 @@ export const createSearchCompleted = mutation({
       1,
       async (middleware) => {
         // Validate search parameters against plan limits
-        const validation = middleware.validateSearchParameters(args.parameters.maxResults);
+        const validation = middleware.validateSearchParameters(
+          args.parameters.maxResults,
+        );
         if (!validation.valid) {
           throw new Error(validation.reason || "Invalid search parameters");
         }
@@ -119,7 +127,7 @@ export const createSearchCompleted = mutation({
         };
 
         const user = await requireAuth(ctx);
-        
+
         return await ctx.db.insert("searches", {
           userId: user._id,
           name: args.name,
@@ -139,15 +147,16 @@ export const createSearchCompleted = mutation({
           creditsUsed: 0,
           createdAt: Date.now(),
         });
-      }
+      },
     );
-    
+
     // If autoStart is true, schedule the orchestration
     if (args.autoStart) {
       // Check if lead generation is enabled
       const systemConfig = await ctx.db.query("systemConfiguration").unique();
-      const isEnabled = systemConfig?.orchestrationSettings?.leadGenerationEnabled ?? true;
-      
+      const isEnabled =
+        systemConfig?.orchestrationSettings?.leadGenerationEnabled ?? true;
+
       if (!isEnabled) {
         // Mark search as failed due to system pause
         await ctx.db.patch(searchId, {
@@ -157,14 +166,14 @@ export const createSearchCompleted = mutation({
         });
         throw new Error("Lead generation is currently paused by administrator");
       }
-      
+
       // Schedule the Google Maps search action
       await ctx.scheduler.runAfter(0, api.search.actions.searchGoogleMaps, {
         searchId,
-        forceRestart: false
+        forceRestart: false,
       });
     }
-    
+
     return { searchId };
   },
 });
@@ -179,37 +188,37 @@ export const updateSearchStatus = mutation({
       v.literal("processing"),
       v.literal("completed"),
       v.literal("failed"),
-      v.literal("cancelled")
+      v.literal("cancelled"),
     ),
     error: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Verify user owns the search
     const search = await ctx.db.get(args.searchId);
     if (!search || search.userId !== user._id) {
       throw new Error("Search not found or access denied");
     }
-    
+
     const updates: any = {
       status: args.status,
     };
-    
+
     if (args.error) {
       updates.error = args.error;
     }
-    
+
     if (args.status === "in_progress" && !search.startedAt) {
       updates.startedAt = Date.now();
     }
-    
+
     if (args.status === "completed" || args.status === "failed") {
       updates.completedAt = Date.now();
     }
-    
+
     await ctx.db.patch(args.searchId, updates);
-    
+
     return { success: true };
   },
 });
@@ -227,18 +236,18 @@ export const updateSearchProgress = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Verify user owns the search
     const search = await ctx.db.get(args.searchId);
     if (!search || search.userId !== user._id) {
       throw new Error("Search not found or access denied");
     }
-    
+
     await ctx.db.patch(args.searchId, {
       progress: args.progress,
       lastOrchestrationAt: Date.now(),
     });
-    
+
     return { success: true };
   },
 });
@@ -250,23 +259,23 @@ export const cancelSearch = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Verify user owns the search
     const search = await ctx.db.get(args.searchId);
     if (!search || search.userId !== user._id) {
       throw new Error("Search not found or access denied");
     }
-    
+
     // Only allow cancelling if not completed
     if (search.status === "completed") {
       throw new Error("Cannot cancel completed search");
     }
-    
+
     await ctx.db.patch(args.searchId, {
       status: "cancelled",
       completedAt: Date.now(),
     });
-    
+
     return { success: true };
   },
 });
@@ -278,27 +287,27 @@ export const deleteSearch = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Verify user owns the search
     const search = await ctx.db.get(args.searchId);
     if (!search || search.userId !== user._id) {
       throw new Error("Search not found or access denied");
     }
-    
+
     // Get all leads associated with this search
     const leads = await ctx.db
       .query("leads")
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
       .collect();
-    
+
     // Delete all associated leads first
     for (const lead of leads) {
       await ctx.db.delete(lead._id);
     }
-    
+
     // Delete the search
     await ctx.db.delete(args.searchId);
-    
+
     return { success: true, deletedLeads: leads.length };
   },
 });
@@ -311,15 +320,15 @@ export const duplicateSearch = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    
+
     // Verify user owns the search
     const originalSearch = await ctx.db.get(args.searchId);
     if (!originalSearch || originalSearch.userId !== user._id) {
       throw new Error("Search not found or access denied");
     }
-    
+
     const newName = args.newName || `${originalSearch.name} (Copy)`;
-    
+
     const duplicateId = await ctx.db.insert("searches", {
       userId: user._id,
       name: newName,
@@ -339,7 +348,7 @@ export const duplicateSearch = mutation({
       creditsUsed: 0,
       createdAt: Date.now(),
     });
-    
+
     return { searchId: duplicateId, success: true };
   },
 });

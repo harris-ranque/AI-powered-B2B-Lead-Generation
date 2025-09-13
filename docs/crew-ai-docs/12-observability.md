@@ -8,11 +8,11 @@ Observability is crucial for understanding how your CrewAI agents perform, ident
 
 ## Why Observability Matters
 
-* **Performance Monitoring**: Track agent execution times, token usage, and resource consumption
-* **Quality Assurance**: Evaluate output quality and consistency across different scenarios
-* **Debugging**: Identify and resolve issues in agent behavior and task execution
-* **Cost Management**: Monitor LLM API usage and associated costs
-* **Continuous Improvement**: Gather insights to optimize agent performance over time
+- **Performance Monitoring**: Track agent execution times, token usage, and resource consumption
+- **Quality Assurance**: Evaluate output quality and consistency across different scenarios
+- **Debugging**: Identify and resolve issues in agent behavior and task execution
+- **Cost Management**: Monitor LLM API usage and associated costs
+- **Continuous Improvement**: Gather insights to optimize agent performance over time
 
 ## Available Observability Tools
 
@@ -68,24 +68,24 @@ Observability is crucial for understanding how your CrewAI agents perform, ident
 
 ### Performance Metrics
 
-* **Execution Time**: How long agents take to complete tasks
-* **Token Usage**: Input/output tokens consumed by LLM calls
-* **API Latency**: Response times from external services
-* **Success Rate**: Percentage of successfully completed tasks
+- **Execution Time**: How long agents take to complete tasks
+- **Token Usage**: Input/output tokens consumed by LLM calls
+- **API Latency**: Response times from external services
+- **Success Rate**: Percentage of successfully completed tasks
 
 ### Quality Metrics
 
-* **Output Accuracy**: Correctness of agent responses
-* **Consistency**: Reliability across similar inputs
-* **Relevance**: How well outputs match expected results
-* **Safety**: Compliance with content policies and guidelines
+- **Output Accuracy**: Correctness of agent responses
+- **Consistency**: Reliability across similar inputs
+- **Relevance**: How well outputs match expected results
+- **Safety**: Compliance with content policies and guidelines
 
 ### Cost Metrics
 
-* **API Costs**: Expenses from LLM provider usage
-* **Resource Utilization**: Compute and memory consumption
-* **Cost per Task**: Economic efficiency of agent operations
-* **Budget Tracking**: Monitoring against spending limits
+- **API Costs**: Expenses from LLM provider usage
+- **Resource Utilization**: Compute and memory consumption
+- **Cost per Task**: Economic efficiency of agent operations
+- **Budget Tracking**: Monitoring against spending limits
 
 ## Getting Started
 
@@ -100,24 +100,24 @@ Observability is crucial for understanding how your CrewAI agents perform, ident
 
 ### Development Phase
 
-* Use detailed tracing to understand agent behavior
-* Implement evaluation metrics early in development
-* Monitor resource usage during testing
-* Set up automated quality checks
+- Use detailed tracing to understand agent behavior
+- Implement evaluation metrics early in development
+- Monitor resource usage during testing
+- Set up automated quality checks
 
 ### Production Phase
 
-* Implement comprehensive monitoring and alerting
-* Track performance trends over time
-* Monitor for anomalies and degradation
-* Maintain cost visibility and control
+- Implement comprehensive monitoring and alerting
+- Track performance trends over time
+- Monitor for anomalies and degradation
+- Maintain cost visibility and control
 
 ### Continuous Improvement
 
-* Regular performance reviews and optimization
-* A/B testing of different agent configurations
-* Feedback loops for quality improvement
-* Documentation of lessons learned
+- Regular performance reviews and optimization
+- A/B testing of different agent configurations
+- Feedback loops for quality improvement
+- Documentation of lessons learned
 
 ## AgentOps Integration
 
@@ -137,16 +137,16 @@ Additionally, AgentOps provides session drilldowns for viewing Crew agent intera
 
 ### Features
 
-* **LLM Cost Management and Tracking**: Track spend with foundation model providers.
-* **Replay Analytics**: Watch step-by-step agent execution graphs.
-* **Recursive Thought Detection**: Identify when agents fall into infinite loops.
-* **Custom Reporting**: Create custom analytics on agent performance.
-* **Analytics Dashboard**: Monitor high-level statistics about agents in development and production.
-* **Public Model Testing**: Test your agents against benchmarks and leaderboards.
-* **Custom Tests**: Run your agents against domain-specific tests.
-* **Time Travel Debugging**: Restart your sessions from checkpoints.
-* **Compliance and Security**: Create audit logs and detect potential threats such as profanity and PII leaks.
-* **Prompt Injection Detection**: Identify potential code injection and secret leaks.
+- **LLM Cost Management and Tracking**: Track spend with foundation model providers.
+- **Replay Analytics**: Watch step-by-step agent execution graphs.
+- **Recursive Thought Detection**: Identify when agents fall into infinite loops.
+- **Custom Reporting**: Create custom analytics on agent performance.
+- **Analytics Dashboard**: Monitor high-level statistics about agents in development and production.
+- **Public Model Testing**: Test your agents against benchmarks and leaderboards.
+- **Custom Tests**: Run your agents against domain-specific tests.
+- **Time Travel Debugging**: Restart your sessions from checkpoints.
+- **Compliance and Security**: Create audit logs and detect potential threats such as profanity and PII leaks.
+- **Prompt Injection Detection**: Identify potential code injection and secret leaks.
 
 ### Using AgentOps
 
@@ -161,6 +161,7 @@ Additionally, AgentOps provides session drilldowns for viewing Crew agent intera
     ```bash
     AGENTOPS_API_KEY=<YOUR_AGENTOPS_API_KEY>
     ```
+
   </Step>
 
   <Step title="Install AgentOps">
@@ -175,6 +176,7 @@ Additionally, AgentOps provides session drilldowns for viewing Crew agent intera
     ```bash
     pip install agentops
     ```
+
   </Step>
 
   <Step title="Initialize AgentOps">
@@ -186,6 +188,7 @@ Additionally, AgentOps provides session drilldowns for viewing Crew agent intera
     ```
 
     This will initiate an AgentOps session as well as automatically track Crew agents. For further info on how to outfit more complex agentic systems, check out the [AgentOps documentation](https://docs.agentops.ai) or join the [Discord](https://discord.gg/j4f3KbeH).
+
   </Step>
 </Steps>
 
@@ -196,6 +199,7 @@ Arize Phoenix integration for CrewAI with OpenTelemetry and OpenInference provid
 ### Get Started
 
 1. **Install Dependencies**:
+
    ```bash
    pip install openinference-instrumentation-crewai crewai crewai-tools arize-phoenix-otel
    ```
@@ -204,9 +208,10 @@ Arize Phoenix integration for CrewAI with OpenTelemetry and OpenInference provid
    Configure Phoenix Cloud API keys and OpenTelemetry to send traces to Phoenix.
 
 3. **Initialize OpenTelemetry with Phoenix**:
+
    ```python
    from phoenix.otel import register
-   
+
    tracer_provider = register(
        project_name="crewai-tracing-demo",
        auto_instrument=True,
@@ -224,6 +229,7 @@ Arize Phoenix integration for CrewAI with OpenTelemetry and OpenInference provid
 ### Setup Steps
 
 1. **Deploy OpenLIT**:
+
    ```bash
    git clone https://github.com/openlit/openlit.git
    cd openlit
@@ -231,14 +237,16 @@ Arize Phoenix integration for CrewAI with OpenTelemetry and OpenInference provid
    ```
 
 2. **Install OpenLIT SDK**:
+
    ```bash
    pip install openlit
    ```
 
 3. **Initialize OpenLIT in Your Application**:
+
    ```python
    import openlit
-   
+
    openlit.init()
    ```
 
@@ -251,14 +259,16 @@ Langfuse is an open-source LLM engineering platform that provides tracing and mo
 ### Integration Steps
 
 1. **Install Dependencies**:
+
    ```bash
    pip install langfuse openlit crewai crewai_tools
    ```
 
 2. **Set Up Environment Variables**:
+
    ```python
    import os
-   
+
    os.environ["LANGFUSE_PUBLIC_KEY"] = "pk-lf-..."
    os.environ["LANGFUSE_SECRET_KEY"] = "sk-lf-..."
    os.environ["LANGFUSE_HOST"] = "https://cloud.langfuse.com"

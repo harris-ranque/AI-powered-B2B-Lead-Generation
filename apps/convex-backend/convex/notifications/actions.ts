@@ -11,10 +11,13 @@ export const sendSearchCompletedEmail = action({
   handler: async (ctx, args) => {
     try {
       // Get search and user info
-      const search = await ctx.runQuery(internal.search.internal.getSearchInternal, {
-        searchId: args.searchId,
-      });
-      
+      const search = await ctx.runQuery(
+        internal.search.internal.getSearchInternal,
+        {
+          searchId: args.searchId,
+        },
+      );
+
       if (!search) {
         throw new Error("Search not found");
       }
@@ -24,19 +27,24 @@ export const sendSearchCompletedEmail = action({
       });
 
       // Create notification record
-      await ctx.runMutation(internal.notifications.internal.createNotification, {
-        userId: search.userId,
-        type: "search_completed",
-        title: "Search Completed",
-        message: `Your search "${search.name}" has completed with ${args.results.totalFound} leads found, ${args.results.enrichedCount} enriched, and ${args.results.analyzedCount} analyzed.`,
-        data: {
-          searchId: args.searchId,
-          searchName: search.name,
-          results: args.results,
+      await ctx.runMutation(
+        internal.notifications.internal.createNotification,
+        {
+          userId: search.userId,
+          type: "search_completed",
+          title: "Search Completed",
+          message: `Your search "${search.name}" has completed with ${args.results.totalFound} leads found, ${args.results.enrichedCount} enriched, and ${args.results.analyzedCount} analyzed.`,
+          data: {
+            searchId: args.searchId,
+            searchName: search.name,
+            results: args.results,
+          },
         },
-      });
+      );
 
-      console.log(`Search completion notification created for user ${search.userId}, search ${args.searchId}`);
+      console.log(
+        `Search completion notification created for user ${search.userId}, search ${args.searchId}`,
+      );
 
       return { success: true };
     } catch (error) {
