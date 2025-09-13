@@ -11,8 +11,6 @@ interface EnvVars {
   VITE_SENTRY_DSN?: string;
   VITE_CLERK_PUBLISHABLE_KEY?: string;
   VITE_GOOGLE_MAPS_API_KEY?: string;
-  VITE_LANGGRAPH_URL?: string;
-  VITE_LANGGRAPH_API_KEY?: string;
 }
 
 interface ValidationResult {
@@ -32,8 +30,6 @@ const OPTIONAL_VARS = [
   "VITE_SENTRY_DSN",
   "VITE_CLERK_PUBLISHABLE_KEY",
   "VITE_GOOGLE_MAPS_API_KEY",
-  "VITE_LANGGRAPH_URL",
-  "VITE_LANGGRAPH_API_KEY",
 ] as const;
 
 export function validateEnvironment(): ValidationResult {
