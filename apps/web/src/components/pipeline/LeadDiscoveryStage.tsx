@@ -343,12 +343,14 @@ export function LeadDiscoveryStage({
           )}
 
           {state.selectedSource === "csv_upload" && (
-            <FileUploadArea
-              onFileSelect={setUploadFile}
-              onColumnMapping={setColumnMapping}
-              selectedFile={uploadFile}
-              columnMapping={columnMapping}
-            />
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                CSV Upload is temporarily disabled while we roll out improved
+                authentication for file-based imports. Please use Google Maps
+                discovery for now.
+              </AlertDescription>
+            </Alert>
           )}
         </CardContent>
       </Card>
@@ -404,7 +406,8 @@ export function LeadDiscoveryStage({
               disabled={
                 !validation.isValid ||
                 state.isProcessing ||
-                (validation.estimatedCost || 0) > userCredits
+                (validation.estimatedCost || 0) > userCredits ||
+                state.selectedSource === "csv_upload"
               }
               className="min-w-40"
               size="lg"

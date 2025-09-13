@@ -57,6 +57,7 @@ export function SourceSelector() {
           const IconComponent = source.type === "google_maps" ? MapPin : Upload;
           const isSelected = state.selectedSource === source.type;
           const isHovered = hoveredSource === source.type;
+          const isDisabled = source.type === "csv_upload"; // temporarily disabled
 
           return (
             <Card
@@ -65,11 +66,15 @@ export function SourceSelector() {
                 "glass-card cursor-pointer transition-all duration-300 hover-lift",
                 "border-2 relative overflow-hidden",
                 isSelected && "border-primary glow-neon-lime",
-                isHovered && !isSelected && "border-primary/50",
+                isHovered && !isSelected && !isDisabled && "border-primary/50",
+                isDisabled && "opacity-50 blur-[1px] cursor-not-allowed",
               )}
               onMouseEnter={() => setHoveredSource(source.type)}
               onMouseLeave={() => setHoveredSource(null)}
-              onClick={() => !isSelected && handleSourceSelect(source.type)}
+              onClick={() => {
+                if (isDisabled) return;
+                if (!isSelected) handleSourceSelect(source.type);
+              }}
             >
               {/* Selection indicator */}
               {isSelected && (
@@ -108,9 +113,16 @@ export function SourceSelector() {
                   </div>
 
                   <div>
-                    <CardTitle className="text-lg">{source.name}</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-lg">{source.name}</CardTitle>
+                      {isDisabled && (
+                        <Badge variant="secondary" className="text-[10px]">Disabled</Badge>
+                      )}
+                    </div>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {source.description}
+                      {isDisabled
+                        ? "CSV upload is temporarily unavailable."
+                        : source.description}
                     </p>
                   </div>
                 </div>
@@ -149,8 +161,8 @@ export function SourceSelector() {
                     <Alert>
                       <Info className="h-4 w-4" />
                       <AlertDescription className="text-xs">
-                        Import your existing lead lists. Supports CSV files up
-                        to 10MB with flexible column mapping.
+                        CSV Upload is currently disabled while we complete
+                        security and auth improvements.
                       </AlertDescription>
                     </Alert>
                   )}
@@ -159,10 +171,11 @@ export function SourceSelector() {
                   {!isSelected && (
                     <Button
                       className="w-full mt-4"
-                      variant={isHovered ? "default" : "outline"}
-                      onClick={() => handleSourceSelect(source.type)}
+                      variant={isHovered && !isDisabled ? "default" : "outline"}
+                      onClick={() => !isDisabled && handleSourceSelect(source.type)}
+                      disabled={isDisabled}
                     >
-                      Select {source.name}
+                      {isDisabled ? "Disabled" : `Select ${source.name}`}
                       <ArrowRight className="h-4 w-4 ml-2" />
                     </Button>
                   )}
