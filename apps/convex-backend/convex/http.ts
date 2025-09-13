@@ -24,6 +24,42 @@ const MAX_CONNECTIONS_PER_USER = 3;
 const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
 const MAX_ATTEMPTS_PER_WINDOW = 10;
 
+// Utilities for signed SSE tokens (Option A)
+function base64urlEncodeString(str: string): string {
+  return Buffer.from(str, "utf8").toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+function base64urlEncodeBytes(bytes: ArrayBuffer | Uint8Array): string {
+  const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  return Buffer.from(buf).toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+async function hmacSha256(secret: string, data: string): Promise<string> {
+  const crypto = (globalThis as any).crypto;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
+  return base64urlEncodeBytes(sig);
+}
+
+function randomNonce(len = 16): string {
+  try {
+    const arr = new Uint8Array(len);
+    const crypto = (globalThis as any).crypto;
+    crypto.getRandomValues(arr);
+    return Array.from(arr)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  } catch {
+    return Math.random().toString(36).slice(2);
+  }
+}
+
 // Server-Sent Events endpoint for real-time broadcasts
 http.route({
   pathPrefix: "/api/events/",
@@ -79,7 +115,7 @@ http.route({
       });
     }
 
-    // Enhanced authentication with basic token validation
+    // Enhanced authentication: prefer server-signed v2 token (HMAC)
     const authToken = url.searchParams.get("token");
 
     if (!authToken) {
@@ -89,36 +125,98 @@ http.route({
       });
     }
 
-    // Basic token validation - decode and verify structure
-    try {
-      const tokenData = Buffer.from(authToken, "base64")
-        .toString("utf8")
-        .split(":");
-      if (tokenData.length !== 3 || tokenData[0] !== userId) {
-        return new Response(
-          "Invalid authentication token: user mismatch or bad format",
-          {
+    const secret = process.env.SSE_TOKEN_SECRET;
+    const nowMs = Date.now();
+    let authed = false;
+    if (authToken.startsWith("v2.")) {
+      // Format: v2.<base64url(payload)>.<base64url(sig)>
+      const parts = authToken.split(".");
+      if (parts.length === 3) {
+        const [, payloadB64, sigB64] = parts;
+        if (!payloadB64 || !sigB64) {
+          return new Response("Invalid token format", {
             status: 401,
             headers: corsHeaders,
-          },
-        );
+          });
+        }
+        try {
+          const payloadJson = Buffer.from(payloadB64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+          const payload = JSON.parse(payloadJson) as {
+            uid: string;
+            iat: number;
+            exp: number;
+            aud?: string;
+            n?: string;
+            iss?: string;
+            ver?: number;
+            ori?: string;
+          };
+          if (!secret) {
+            return new Response("Server misconfigured: missing SSE_TOKEN_SECRET", {
+              status: 500,
+              headers: corsHeaders,
+            });
+          }
+          // Verify signature over payload (base64url body)
+          const expectedSig = await hmacSha256(secret, payloadB64);
+          if (expectedSig !== sigB64) {
+            return new Response("Invalid token signature", {
+              status: 401,
+              headers: corsHeaders,
+            });
+          }
+          if (payload.aud !== "sse") {
+            return new Response("Invalid token audience", {
+              status: 401,
+              headers: corsHeaders,
+            });
+          }
+          if (payload.uid !== userId) {
+            return new Response("Token user mismatch", {
+              status: 401,
+              headers: corsHeaders,
+            });
+          }
+          if (nowMs / 1000 > payload.exp) {
+            return new Response("Authentication token expired", {
+              status: 401,
+              headers: corsHeaders,
+            });
+          }
+          authed = true;
+        } catch (e) {
+          return new Response("Invalid authentication token format", {
+            status: 401,
+            headers: corsHeaders,
+          });
+        }
       }
+    }
 
-      const tokenTimestamp = parseInt(tokenData[1]!);
-      const tokenAge = Date.now() - tokenTimestamp;
-
-      // Token expires after 1 hour
-      if (tokenAge > 60 * 60 * 1000) {
-        return new Response("Authentication token expired", {
+    if (!authed) {
+      // Backward-compatible fallback: basic base64 user:timestamp:random (max age 1h)
+      try {
+        const tokenData = Buffer.from(authToken, "base64").toString("utf8").split(":");
+        if (tokenData.length !== 3 || tokenData[0] !== userId) {
+          return new Response("Invalid authentication token: user mismatch or bad format", {
+            status: 401,
+            headers: corsHeaders,
+          });
+        }
+        const tokenTimestamp = parseInt(tokenData[1]!);
+        const tokenAge = Date.now() - tokenTimestamp;
+        if (tokenAge > 60 * 60 * 1000) {
+          return new Response("Authentication token expired", {
+            status: 401,
+            headers: corsHeaders,
+          });
+        }
+      } catch (error) {
+        return new Response("Invalid authentication token format", {
           status: 401,
           headers: corsHeaders,
         });
       }
-    } catch (error) {
-      return new Response("Invalid authentication token format", {
-        status: 401,
-        headers: corsHeaders,
-      });
     }
 
     // Verify user exists and is active
@@ -226,6 +324,96 @@ http.route({
     });
 
     return new Response(stream, { headers });
+  }),
+});
+
+// Issue short-lived signed SSE token using Clerk auth
+http.route({
+  path: "/api/sse/issue-token",
+  method: "OPTIONS",
+  handler: httpAction(async (ctx, request) => {
+    const requestOrigin = request.headers.get("origin") || undefined;
+    const allowedOrigin = requestOrigin || process.env.APP_URL || "*";
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": allowedOrigin,
+        Vary: "Origin",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+      },
+    });
+  }),
+});
+
+http.route({
+  path: "/api/sse/issue-token",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const requestOrigin = request.headers.get("origin") || undefined;
+    const allowedOrigin = requestOrigin || process.env.APP_URL || "*";
+    const headersBase = {
+      "Access-Control-Allow-Origin": allowedOrigin,
+      Vary: "Origin",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Content-Type": "application/json",
+    } as Record<string, string>;
+
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: headersBase,
+      });
+    }
+
+    // Resolve user by Clerk ID using runQuery (actions can't access db directly)
+    const user = await ctx.runQuery(internal.users.internal.getUserByClerkIdInternal, {
+      clerkId: identity.subject,
+    });
+
+    if (!user) {
+      return new Response(JSON.stringify({ error: "User not found" }), {
+        status: 401,
+        headers: headersBase,
+      });
+    }
+    if (!user.isActive) {
+      return new Response(JSON.stringify({ error: "User inactive" }), {
+        status: 401,
+        headers: headersBase,
+      });
+    }
+
+    const secret = process.env.SSE_TOKEN_SECRET;
+    if (!secret) {
+      return new Response(
+        JSON.stringify({ error: "Server misconfigured: missing SSE_TOKEN_SECRET" }),
+        { status: 500, headers: headersBase },
+      );
+    }
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const payload = {
+      uid: String(user._id),
+      iat: nowSec,
+      exp: nowSec + 10 * 60, // 10 minutes
+      aud: "sse",
+      n: randomNonce(),
+      iss: "convex",
+      ver: 2,
+      // Optionally include origin for additional checks
+      ori: requestOrigin || undefined,
+    } as const;
+
+    const payloadB64 = base64urlEncodeString(JSON.stringify(payload));
+    const sig = await hmacSha256(secret, payloadB64);
+    const token = `v2.${payloadB64}.${sig}`;
+
+    return new Response(JSON.stringify({ token }), {
+      headers: headersBase,
+    });
   }),
 });
 

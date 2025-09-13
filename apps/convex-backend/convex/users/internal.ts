@@ -9,6 +9,17 @@ export const getUserInternal = internalQuery({
   },
 });
 
+// Internal query to get user by Clerk ID without auth check
+export const getUserByClerkIdInternal = internalQuery({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .unique();
+  },
+});
+
 // Internal mutation to deduct credits by userId (for scheduled/system actions)
 export const deductCreditsInternal = internalMutation({
   args: {

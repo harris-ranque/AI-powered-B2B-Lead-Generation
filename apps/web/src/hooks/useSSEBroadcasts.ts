@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useAuth } from "@clerk/clerk-react";
 import { useUser } from "./useUser";
 import type { Id } from "@genni/convex-types/dataModel";
 import { createLogger } from "@/utils/logger";
@@ -40,6 +41,7 @@ export interface SSEConnectionStatus {
  */
 export function useSSEBroadcasts() {
   const { user } = useUser();
+  const { getToken, isLoaded: clerkLoaded, isSignedIn } = useAuth();
   const [messages, setMessages] = useState<SSEBroadcastMessage[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<SSEConnectionStatus>(
     {
@@ -55,7 +57,7 @@ export function useSSEBroadcasts() {
   const RECONNECT_DELAY = 2000;
 
   // Connect to SSE endpoint
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (!user?._id || eventSourceRef.current) {
       return;
     }
@@ -83,18 +85,50 @@ export function useSSEBroadcasts() {
       return;
     }
 
-    // Generate a more secure token using crypto API if available
-    const generateToken = () => {
-      const timestamp = Date.now();
-      const randomBytes = crypto.getRandomValues
-        ? Array.from(crypto.getRandomValues(new Uint8Array(16)))
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("")
-        : Math.random().toString(36).substring(2);
-      return btoa(`${user._id}:${timestamp}:${randomBytes}`);
-    };
+    // Obtain a server-signed short-lived token (Option A)
+    // Use Clerk to authenticate the request to Convex HTTP endpoint
+    const token = await (async () => {
+      try {
+        if (!clerkLoaded || !isSignedIn) {
+          logger.warn("Clerk not ready or not signed in; cannot issue SSE token");
+          return null;
+        }
+        const jwt = await getToken();
+        if (!jwt) {
+          logger.error("Failed to get Clerk JWT for SSE token issuance");
+          return null;
+        }
+        const resp = await fetch(`${baseUrl}/api/sse/issue-token`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${jwt}`,
+          },
+        });
+        if (!resp.ok) {
+          const text = await resp.text();
+          logger.error("SSE token issuance failed", { status: resp.status, text });
+          return null;
+        }
+        const json = (await resp.json()) as { token?: string };
+        if (!json.token) {
+          logger.error("SSE token missing in response");
+          return null;
+        }
+        return json.token;
+      } catch (e) {
+        logger.error("Error issuing SSE token", { error: e });
+        return null;
+      }
+    })();
 
-    const token = generateToken();
+    if (!token) {
+      setConnectionStatus((prev) => ({
+        ...prev,
+        connected: false,
+        error: "Failed to obtain SSE token",
+      }));
+      return;
+    }
     const sseUrl = `${baseUrl}/api/events/${user._id}?token=${encodeURIComponent(token)}`;
 
     logger.info("Connecting to SSE endpoint", { url: sseUrl });
@@ -192,7 +226,7 @@ export function useSSEBroadcasts() {
         error: "Failed to initialize connection",
       }));
     }
-  }, [user?._id]); // Removed connectionStatus.connectionAttempts to avoid circular dependency
+  }, [user?._id, clerkLoaded, getToken, isSignedIn]); // Removed connectionStatus.connectionAttempts to avoid circular dependency
 
   // Disconnect from SSE
   const disconnect = useCallback(() => {
@@ -217,8 +251,9 @@ export function useSSEBroadcasts() {
 
   // Auto-connect when user is available
   useEffect(() => {
-    if (user?._id) {
-      connect();
+    if (user?._id && clerkLoaded && isSignedIn) {
+      // fire and forget
+      void connect();
     } else {
       disconnect();
     }
@@ -226,7 +261,7 @@ export function useSSEBroadcasts() {
     return () => {
       disconnect();
     };
-  }, [user?._id, connect, disconnect]);
+  }, [user?._id, clerkLoaded, isSignedIn, connect, disconnect]);
 
   // Manual reconnect function
   const reconnect = useCallback(() => {

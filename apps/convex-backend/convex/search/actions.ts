@@ -15,7 +15,11 @@ export const searchGoogleMaps = action({
       api.admin.queries.getSystemConfiguration,
       {},
     );
-    if (!systemConfig?.orchestrationSettings?.leadGenerationEnabled) {
+    // Treat missing orchestration settings as enabled by default.
+    // Only block when explicitly paused (leadGenerationEnabled === false).
+    const leadGenEnabled =
+      systemConfig?.orchestrationSettings?.leadGenerationEnabled;
+    if (leadGenEnabled === false) {
       throw new Error(
         "Lead generation is currently paused. Please contact administrator.",
       );
