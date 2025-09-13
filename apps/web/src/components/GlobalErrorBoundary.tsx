@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
+import * as Sentry from "@sentry/react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, RefreshCw, Bug } from "lucide-react";
@@ -61,12 +62,16 @@ export class GlobalErrorBoundary extends Component<Props, State> {
       this.props.onError(error, errorInfo);
     }
 
-    // In production, send to error tracking service
+    // Send error to Sentry in production
     if (process.env.NODE_ENV === "production") {
-      // Integration point for error tracking services like Sentry
-      // window.errorTracker?.captureException(error, {
-      //   extra: { errorInfo, errorBoundaryId: this.state.errorBoundaryId }
-      // });
+      Sentry.captureException(error, {
+        extra: {
+          errorBoundaryId: this.state.errorBoundaryId,
+          componentStack: errorInfo?.componentStack,
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+        },
+      });
     }
   }
 

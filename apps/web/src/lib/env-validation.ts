@@ -1,4 +1,5 @@
 // Environment validation utility for runtime checks
+import { logger } from "@/utils/logger";
 
 interface EnvVars {
   VITE_CONVEX_URL?: string;
@@ -7,6 +8,11 @@ interface EnvVars {
   VITE_POSTHOG_HOST?: string;
   VITE_CREWAI_URL?: string;
   VITE_CREWAI_API_KEY?: string;
+  VITE_SENTRY_DSN?: string;
+  VITE_CLERK_PUBLISHABLE_KEY?: string;
+  VITE_GOOGLE_MAPS_API_KEY?: string;
+  VITE_LANGGRAPH_URL?: string;
+  VITE_LANGGRAPH_API_KEY?: string;
 }
 
 interface ValidationResult {
@@ -23,6 +29,11 @@ const OPTIONAL_VARS = [
   "VITE_POSTHOG_HOST",
   "VITE_CREWAI_URL",
   "VITE_CREWAI_API_KEY",
+  "VITE_SENTRY_DSN",
+  "VITE_CLERK_PUBLISHABLE_KEY",
+  "VITE_GOOGLE_MAPS_API_KEY",
+  "VITE_LANGGRAPH_URL",
+  "VITE_LANGGRAPH_API_KEY",
 ] as const;
 
 export function validateEnvironment(): ValidationResult {
@@ -89,8 +100,9 @@ export function getEnvironmentInfo() {
 
 // Development helper to log environment status
 export function logEnvironmentStatus() {
+  const info = getEnvironmentInfo();
+
   if (import.meta.env.DEV) {
-    const info = getEnvironmentInfo();
     console.group("🔧 Environment Status");
     console.log("Mode:", info.mode);
     console.log("Convex Configured:", info.convexConfigured);
@@ -110,5 +122,30 @@ export function logEnvironmentStatus() {
     }
 
     console.groupEnd();
+  } else {
+    // Production/Staging logging via app logger
+    if (!info.validation.isValid) {
+      logger.error("Missing required environment variables in production", {
+        missing: info.validation.missing,
+        errors: info.validation.errors,
+      });
+    }
+
+    // Warn for any optional variables that are missing entirely in prod
+    const env = import.meta.env as EnvVars;
+    const missingOptional = (OPTIONAL_VARS as readonly string[]).filter(
+      (varName) => !env[varName as keyof EnvVars],
+    );
+
+    if (missingOptional.length > 0) {
+      logger.warn("Optional environment variables are missing in production", {
+        missingOptional,
+      });
+    }
+
+    // Specific note for Sentry to make it obvious when disabled
+    if (!env.VITE_SENTRY_DSN) {
+      logger.warn("Sentry DSN not set; Sentry is disabled");
+    }
   }
 }
