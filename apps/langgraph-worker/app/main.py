@@ -155,11 +155,11 @@ async def generate_email(
         
         if result["status"] == "completed":
             # Send success webhook with quality metrics
-            result_dict = result["result"]
+            result_obj = result["result"]
             await webhook_client.send_result(
                 request_id=request.request_id,
                 status="completed",
-                result=result_dict,
+                result=result_obj,
                 quality_score=result.get("quality_score", 0),
                 approved=result.get("approved", False)
             )

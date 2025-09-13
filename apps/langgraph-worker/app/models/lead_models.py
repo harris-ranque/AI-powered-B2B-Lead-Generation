@@ -2,6 +2,7 @@
 Pydantic models for Genni CrewAI Worker
 """
 from pydantic import BaseModel, Field
+from pydantic import ConfigDict
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from enum import Enum
@@ -16,24 +17,26 @@ class LeadStatus(str, Enum):
     UNQUALIFIED = "unqualified"
 
 class ContactInfo(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
     """Contact information model"""
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    linkedin: Optional[str] = None
-    website: Optional[str] = None
+    email: Optional[str] = Field(default=None, alias="email")
+    phone: Optional[str] = Field(default=None, alias="phone")
+    linkedin: Optional[str] = Field(default=None, alias="linkedinUrl")
+    website: Optional[str] = Field(default=None, alias="website")
 
 class Lead(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
     """Lead data model"""
-    id: str = Field(..., description="Unique lead identifier")
-    company_name: str = Field(..., description="Company name")
-    contact_name: Optional[str] = Field(None, description="Primary contact name")
+    id: Optional[str] = Field(default=None, description="Unique lead identifier")
+    company_name: str = Field(..., alias="company", description="Company name")
+    contact_name: Optional[str] = Field(None, alias="name", description="Primary contact name")
     title: Optional[str] = Field(None, description="Contact title/position")
     industry: Optional[str] = Field(None, description="Industry classification")
     company_size: Optional[str] = Field(None, description="Company size (employees)")
     location: Optional[str] = Field(None, description="Company location")
     description: Optional[str] = Field(None, description="Company description")
-    website: Optional[str] = Field(None, description="Company website")
-    contact_info: Optional[ContactInfo] = Field(None, description="Contact details")
+    website: Optional[str] = Field(None, alias="websiteUrl", description="Company website")
+    contact_info: Optional[ContactInfo] = Field(None, alias="contactInfo", description="Contact details")
     status: LeadStatus = Field(LeadStatus.NEW, description="Lead status")
     
     # Business intelligence fields
@@ -47,31 +50,34 @@ class Lead(BaseModel):
     source: Optional[str] = Field(None, description="Lead source")
 
 class BusinessProfile(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
     """Business profile for personalization context"""
-    company_name: str = Field(..., description="Our company name")
+    company_name: str = Field(..., alias="companyName", description="Our company name")
     industry: str = Field(..., description="Our industry")
-    value_proposition: str = Field(..., description="Our core value proposition")
+    value_proposition: str = Field(..., alias="valueProposition", description="Our core value proposition")
     services: List[str] = Field(..., description="Our services/products")
-    target_markets: List[str] = Field(..., description="Our target markets")
-    key_differentiators: List[str] = Field(..., description="What makes us unique")
+    target_markets: List[str] = Field(..., alias="targetMarkets", description="Our target markets")
+    key_differentiators: List[str] = Field(..., alias="keyDifferentiators", description="What makes us unique")
     case_studies: List[Dict[str, Any]] = Field(default_factory=list, description="Success stories")
     contact_info: Dict[str, str] = Field(..., description="Our contact information")
 
 class EmailRequirements(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
     """Email generation requirements"""
     tone: str = Field("professional", description="Email tone (professional, casual, friendly)")
     length: str = Field("medium", description="Email length (short, medium, long)")
-    call_to_action: str = Field(..., description="Desired call to action")
-    include_case_study: bool = Field(False, description="Include relevant case study")
+    call_to_action: str = Field("Schedule a call", alias="callToAction", description="Desired call to action")
+    include_case_study: bool = Field(False, alias="includeCaseStudy", description="Include relevant case study")
     personalization_level: str = Field("high", description="Personalization depth")
-    follow_up_sequence: bool = Field(False, description="Generate follow-up sequence")
+    follow_up_sequence: bool = Field(True, alias="followUpSequence", description="Generate follow-up sequence")
 
 class EmailGenerationRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
     """Request model for email generation"""
-    request_id: str = Field(..., description="Unique request identifier")
+    request_id: str = Field(..., alias="requestId", description="Unique request identifier")
     lead: Lead = Field(..., description="Lead information")
-    business_profile: BusinessProfile = Field(..., description="Our business context")
-    requirements: EmailRequirements = Field(..., description="Email requirements")
+    business_profile: BusinessProfile = Field(..., alias="businessProfile", description="Our business context")
+    requirements: EmailRequirements = Field(default_factory=EmailRequirements, description="Email requirements")
 
 class AgentResult(BaseModel):
     """Individual agent result"""

@@ -346,6 +346,10 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
                 "research_metadata": research_result.raw_data,
                 "analysis_time": total_time
             },
+            # Populate legacy/top-level compatibility fields used by downstream components
+            "relevance_score": intelligence.relevance_score,
+            "pain_points": intelligence.pain_points,
+            "value_matches": intelligence.value_matches,
             "agent_results": [*state.get("agent_results", []), agent_result],
             "processing_times": {
                 **state.get("processing_times", {}),

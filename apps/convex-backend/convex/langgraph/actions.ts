@@ -84,11 +84,36 @@ export const generateEmail = action({
         },
         body: JSON.stringify({
           requestId,
-          callbackUrl: `${process.env.CONVEX_URL}/langgraph/webhooks`,
-          lead: request.inputData.lead,
-          businessProfile: request.inputData.businessProfile,
-          emailType: request.inputData.emailType,
-          customInstructions: request.inputData.customInstructions,
+          // Worker expects snake_case model but accepts aliases; build a rich payload
+          lead: {
+            id: args.leadId,
+            company: lead.businessName,
+            title: "",
+            industry: lead.category ?? "",
+            websiteUrl: lead.website ?? "",
+            contactInfo: {
+              email: lead.contactInfo?.emails?.[0]?.email ?? "",
+              linkedinUrl: lead.contactInfo?.socialProfiles?.linkedin ?? "",
+              website: lead.website ?? "",
+            },
+          },
+          businessProfile: {
+            companyName: profile.companyName,
+            industry: profile.industry,
+            valueProposition: profile.valueProposition,
+            services: profile.services,
+            targetMarkets: profile.targetMarkets,
+            keyDifferentiators: profile.keyDifferentiators,
+          },
+          // Map request options to requirements with sensible defaults
+          requirements: {
+            tone: "professional",
+            length: "medium",
+            callToAction: "Schedule a 15-minute demo call",
+            includeCaseStudy: true,
+            personalization_level: "high",
+            followUpSequence: (args.emailType ?? "initial") !== "final",
+          },
         }),
       });
 
@@ -199,12 +224,18 @@ export const analyzeLead = action({
           "Authorization": `Bearer ${apiKey}`,
           "X-Request-ID": requestId,
         },
+        // Worker expects the Lead object as the request body for /analyze-lead
         body: JSON.stringify({
-          requestId,
-          callbackUrl: `${process.env.CONVEX_URL}/langgraph/webhooks`,
-          lead: request.inputData.lead,
-          businessProfile: request.inputData.businessProfile,
-          analysisType: request.inputData.analysisType,
+          id: args.leadId,
+          company: lead.businessName,
+          title: "",
+          industry: lead.category ?? "",
+          websiteUrl: lead.website ?? "",
+          contactInfo: {
+            email: lead.contactInfo?.emails?.[0]?.email ?? "",
+            linkedinUrl: lead.contactInfo?.socialProfiles?.linkedin ?? "",
+            website: lead.website ?? "",
+          },
         }),
       });
 

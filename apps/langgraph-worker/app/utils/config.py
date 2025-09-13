@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     """Application settings"""
     
     # API Configuration
-    api_key: str = os.getenv("API_KEY", "default-secure-key-change-in-production")
+    # Prefer LANGGRAPH_API_KEY to align with Convex backend, fall back to API_KEY
+    api_key: str = os.getenv("LANGGRAPH_API_KEY") or os.getenv("API_KEY", "default-secure-key-change-in-production")
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     
     # Research API Configuration

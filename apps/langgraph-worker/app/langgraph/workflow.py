@@ -12,6 +12,7 @@ from .state import EmailGenerationState
 from .nodes.business_intelligence_agent import business_intelligence_agent_node
 from .nodes.email_generation_agent import email_generation_agent_node
 from .nodes.quality_assurance_agent import quality_assurance_agent_node
+from .nodes.aggregator import aggregator_node
 
 logger = setup_logger(__name__)
 
@@ -49,13 +50,15 @@ def create_email_generation_workflow(
     workflow.add_node("business_intelligence", business_intelligence_agent_node)
     workflow.add_node("email_generation", email_generation_agent_node)
     workflow.add_node("quality_assurance", quality_assurance_agent_node)
+    workflow.add_node("aggregator", aggregator_node)
     
     # Define the streamlined linear workflow
     # Direct linear flow: Start → BI → Email → QA → End
     workflow.add_edge(START, "business_intelligence")
     workflow.add_edge("business_intelligence", "email_generation")
     workflow.add_edge("email_generation", "quality_assurance")
-    workflow.add_edge("quality_assurance", END)
+    workflow.add_edge("quality_assurance", "aggregator")
+    workflow.add_edge("aggregator", END)
     
     # Compile the workflow
     if checkpointer:
@@ -282,12 +285,24 @@ async def execute_with_streaming(
             
             if "final_result" in event:
                 final_result = event["final_result"]
+                qa = event.get("quality_assessment", {})
+                # Normalize Pydantic model to dict if needed
+                try:
+                    final_result_payload = final_result.model_dump()  # type: ignore[attr-defined]
+                except Exception:
+                    try:
+                        final_result_payload = final_result.dict()  # type: ignore[attr-defined]
+                    except Exception:
+                        final_result_payload = final_result
+
                 yield {
                     "type": "complete",
-                    "result": final_result,
-                    "quality_score": final_result.get("quality_score", 0),
-                    "approved": final_result.get("email_approved", False),
-                    "total_time": final_result.get("processing_summary", {}).get("total_processing_time", 0),
+                    "result": final_result_payload,
+                    "quality_score": qa.get("overall_quality_score", 0),
+                    "approved": qa.get("approval_status") == "Approved",
+                    "total_time": event.get("processing_times", {}).get("business_intelligence", 0)
+                                 + event.get("processing_times", {}).get("email_generation", 0)
+                                 + event.get("processing_times", {}).get("quality_assurance", 0),
                     "timestamp": datetime.utcnow().isoformat()
                 }
                 

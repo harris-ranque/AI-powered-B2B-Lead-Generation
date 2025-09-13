@@ -35,18 +35,35 @@ class WebhookClient:
             logger.warning("No webhook URL configured, skipping notification")
             return False
             
+        # Prepare result payload robustly (handle dict or Pydantic model)
+        result_payload = None
+        if result is not None:
+            try:
+                # Pydantic v2 models
+                result_payload = result.model_dump()  # type: ignore[attr-defined]
+            except Exception:
+                # If it's already a dict or not a pydantic model
+                if isinstance(result, dict):  # type: ignore[arg-type]
+                    result_payload = result  # type: ignore[assignment]
+                else:
+                    try:
+                        # Pydantic v1 compatibility
+                        result_payload = result.dict()  # type: ignore[attr-defined]
+                    except Exception:
+                        result_payload = None
+
         payload = {
             "request_id": request_id,
             "status": status,
             "timestamp": datetime.utcnow().isoformat(),
-            "result": result.model_dump() if result else None,
+            "result": result_payload,
             "error": error,
             "quality_score": quality_score,
             "approved": approved
         }
         
         # Prepare headers
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", "User-Agent": "langgraph-worker/2.0"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         
@@ -135,7 +152,7 @@ class WebhookClient:
         }
         
         # Prepare headers
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", "User-Agent": "langgraph-worker/2.0"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         
@@ -193,7 +210,7 @@ class WebhookClient:
                 async with session.post(
                     f"{self.webhook_url}/status",
                     json=payload,
-                    headers={"Content-Type": "application/json"}
+                    headers={"Content-Type": "application/json", "User-Agent": "langgraph-worker/2.0"}
                 ) as response:
                     return response.status == 200
                     
