@@ -57,7 +57,7 @@ export function LeadEternityDashboard() {
 
   // Real backend integration
   const { user, isAuthenticated } = useAuth();
-  const { profile, isComplete: hasCompletedOnboarding } = useProfile();
+  const { profile, isComplete: hasCompletedOnboarding, isLoading: isProfileLoading } = useProfile();
   const { balance } = useCredits();
   const userCredits = balance?.credits || 0;
   const { purchaseCredits, usage } = useBilling();
@@ -146,7 +146,14 @@ export function LeadEternityDashboard() {
     }
   };
 
-  // Show onboarding if not completed
+  // Avoid flashing onboarding while loading profile
+  if (isProfileLoading) {
+    return (
+      <div className="min-h-screen bg-background" />
+    );
+  }
+
+  // Show onboarding if not completed (after loading)
   if (!hasCompletedOnboarding) {
     return (
       <div className="min-h-screen bg-background">
@@ -360,6 +367,7 @@ export function LeadEternityDashboard() {
                     });
                   }}
                   initialData={profile}
+                  variant="editor"
                 />
               </div>
             )}

@@ -9,6 +9,12 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   CheckCircle,
   ArrowRight,
   ArrowLeft,
@@ -40,12 +46,14 @@ interface BusinessProfileWizardProps {
   onComplete: (profile: BusinessProfile) => void;
   onSkip?: () => void;
   initialData?: Partial<BusinessProfile>;
+  variant?: "wizard" | "editor";
 }
 
 export function BusinessProfileWizard({
   onComplete,
   onSkip,
   initialData,
+  variant = "wizard",
 }: BusinessProfileWizardProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
@@ -590,6 +598,93 @@ export function BusinessProfileWizard({
     );
   };
 
+  // Editor mode: show all sections at once with a single save
+  if (variant === "editor") {
+    const isEditorValid = () => {
+      return (
+        !!profile.companyName &&
+        !!profile.industry &&
+        !!profile.valueProposition
+      );
+    };
+
+    return (
+      <div className="max-w-3xl mx-auto p-6">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold">Business Profile</h1>
+          <p className="text-muted-foreground">
+            Edit any section below and save your changes.
+          </p>
+        </div>
+
+        <Card className="p-4">
+          <Accordion type="multiple" defaultValue={["company","market","value","ideal"]} className="w-full">
+            <AccordionItem value="company">
+              <AccordionTrigger>
+                <div className="text-left">
+                  <div className="font-semibold">Company Information</div>
+                  <div className="text-xs text-muted-foreground">Name, industry, tone of voice</div>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="pt-4">{renderStep1()}</div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <Separator className="my-2" />
+
+            <AccordionItem value="market">
+              <AccordionTrigger>
+                <div className="text-left">
+                  <div className="font-semibold">Target Market & Offerings</div>
+                  <div className="text-xs text-muted-foreground">Industries served and services offered</div>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="pt-4">{renderStep2()}</div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <Separator className="my-2" />
+
+            <AccordionItem value="value">
+              <AccordionTrigger>
+                <div className="text-left">
+                  <div className="font-semibold">Value Proposition</div>
+                  <div className="text-xs text-muted-foreground">Differentiators and pain points you solve</div>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="pt-4">{renderStep3()}</div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <Separator className="my-2" />
+
+            <AccordionItem value="ideal">
+              <AccordionTrigger>
+                <div className="text-left">
+                  <div className="font-semibold">Ideal Customer & Challenges</div>
+                  <div className="text-xs text-muted-foreground">Ideal customer profile and current challenges</div>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="pt-4">{renderStep4()}</div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
+          <div className="flex items-center justify-end pt-6">
+            <Button onClick={handleComplete} disabled={!isEditorValid() || isSaving}>
+              {isSaving ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // Default wizard mode
   return (
     <div className="max-w-2xl mx-auto p-6">
       <div className="mb-8">
