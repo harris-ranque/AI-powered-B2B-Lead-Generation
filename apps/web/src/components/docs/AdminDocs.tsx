@@ -23,8 +23,9 @@ export const AdminDocs: React.FC = () => {
     let cancelled = false;
     fetch("/docs/manifest.json")
       .then(async (res) => {
-        if (!res.ok) throw new Error("Failed to load docs manifest");
-        const data = (await res.json()) as Manifest;
+        if (!res.ok) throw new Error(`Manifest not found (${res.status})`);
+        const text = await res.text();
+        const data = JSON.parse(text) as Manifest;
         if (!cancelled) setManifest(data);
       })
       .catch((e) => !cancelled && setError(e.message || "Failed to load docs"));
@@ -49,7 +50,18 @@ export const AdminDocs: React.FC = () => {
   }, [manifest, params, navigate]);
 
   if (error) {
-    return <div className="p-6 text-sm text-red-600">{error}</div>;
+    return (
+      <div className="p-6">
+        <div className="mb-4 text-sm text-red-600">{error}</div>
+        <div className="text-sm text-muted-foreground space-y-2">
+          <p>Documentation manifest is missing. To enable docs in development:</p>
+          <ul className="list-disc ml-5">
+            <li>Run <code>node scripts/sync-docs.mjs</code> or start web using <code>pnpm dev:web</code>.</li>
+            <li>For production builds, the sync runs automatically on <code>pnpm build</code>.</li>
+          </ul>
+        </div>
+      </div>
+    );
   }
 
   if (!manifest) {
@@ -104,4 +116,3 @@ export const AdminDocs: React.FC = () => {
 };
 
 export default AdminDocs;
-
