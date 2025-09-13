@@ -519,6 +519,29 @@ export function AdminDashboard() {
   // Companies data not wired yet; avoid mocked data
   const companies: Company[] = [];
 
+  // Router helpers and tab sync handlers must be declared before any early return
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Sync tab from URL (?tab=services) or hash (#services)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const fromSearch = params.get("tab");
+    const fromHash = location.hash ? location.hash.replace(/^#/, "") : null;
+    const candidate = (fromSearch || fromHash) as string | null;
+    const allowed = [
+      "overview",
+      "users",
+      "credits",
+      "services",
+      "configuration",
+      "system",
+    ];
+    if (candidate && allowed.includes(candidate) && candidate !== currentTab) {
+      setCurrentTab(candidate);
+    }
+  }, [location.search, location.hash, currentTab]);
+
   // Use real data or fallback to defaults with bulletproof error handling
   const adminMetrics: AdminMetrics = (() => {
     try {
@@ -2258,27 +2281,6 @@ export function AdminDashboard() {
   }
 
   // Bulletproof render with comprehensive error handling
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  // Sync tab from URL (?tab=services) or hash (#services)
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const fromSearch = params.get("tab");
-    const fromHash = location.hash ? location.hash.replace(/^#/, "") : null;
-    const candidate = (fromSearch || fromHash) as string | null;
-    const allowed = [
-      "overview",
-      "users",
-      "credits",
-      "services",
-      "configuration",
-      "system",
-    ];
-    if (candidate && allowed.includes(candidate) && candidate !== currentTab) {
-      setCurrentTab(candidate);
-    }
-  }, [location.search, location.hash]);
   try {
     return (
       <div className="p-6 max-w-7xl mx-auto">
