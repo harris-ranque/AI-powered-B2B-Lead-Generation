@@ -2,21 +2,42 @@
 Genni LangGraph Worker Service
 FastAPI application with LangGraph multi-agent AI system for email personalization
 """
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
 import os
 import logging
 from datetime import datetime
 import asyncio
 import json
+from typing import List, Dict, Any, Optional
+
+# Initialize Sentry SDK before other imports
+import sentry_sdk
+from .utils.config import get_settings
+
+# Get settings first to configure Sentry
+settings = get_settings()
+
+# Initialize Sentry if DSN is configured
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        # Add data like request headers and IP for users
+        send_default_pii=True,
+        # Enable sending logs to Sentry
+        enable_logs=settings.sentry_enable_logs,
+        environment=settings.environment,
+        # FastAPI integration will be enabled automatically
+    )
+    logging.getLogger(__name__).info(f"Sentry initialized for environment: {settings.environment}")
+
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from .models.lead_models import Lead, EmailGenerationRequest, EmailGenerationResponse
 from .langgraph.state import EmailGenerationState
 from .langgraph.workflow import create_email_generation_workflow, execute_email_generation, execute_with_streaming
-from .utils.config import get_settings
 from .utils.webhook import WebhookClient
 from .utils.performance import single_replica_optimizer
 from .utils.logger import setup_logger, log_request_details, log_response_details, log_error_details
@@ -44,7 +65,6 @@ app.add_middleware(
 
 # Security
 security = HTTPBearer()
-settings = get_settings()
 
 def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security)) -> bool:
     """Verify API key for authentication"""
@@ -67,12 +87,28 @@ async def startup_event():
     logger.info(f"OpenAI API Key configured: {'Yes' if settings.openai_api_key else 'No'}")
     logger.info(f"Convex URL: {settings.convex_url}")
     logger.info(f"Webhook URL: {settings.webhook_url} {'(auto-calculated)' if settings.convex_url and not os.getenv('WEBHOOK_URL') else '(explicit)'}")
+    logger.info(f"Sentry monitoring: {'Enabled' if settings.sentry_dsn else 'Disabled'}")
+    if settings.sentry_dsn:
+        logger.info(f"Sentry traces sample rate: {settings.sentry_traces_sample_rate}")
+        logger.info(f"Sentry logs enabled: {settings.sentry_enable_logs}")
     logger.debug(f"API Key configured: {'Yes' if settings.api_key else 'No'}")
     
     # Start the background processor
     asyncio.create_task(single_replica_optimizer.background_processor())
     logger.info("Background processor started successfully")
     logger.info("LangGraph workflow system initialized")
+    
+    # Send startup event to Sentry
+    if settings.sentry_dsn:
+        sentry_sdk.set_context("startup", {
+            "environment": settings.environment,
+            "service": "langgraph-worker",
+            "version": "2.0.0",
+            "convex_configured": bool(settings.convex_url),
+            "openai_configured": bool(settings.openai_api_key)
+        })
+        sentry_sdk.logger.info("LangGraph Worker service started successfully")
+    
     logger.info("=" * 60)
 
 @app.get("/")
@@ -115,6 +151,27 @@ async def health_check():
     logger.info(f"Health check: Memory={health_response['performance']['memory_percent']}%, Queue={health_response['performance']['queue_size']}, Active={health_response['performance']['active_tasks']}")
     return health_response
 
+@app.get("/sentry-debug")
+async def trigger_sentry_error():
+    """Sentry debug endpoint to test error tracking"""
+    logger.info("Sentry debug endpoint triggered - intentional error for testing")
+    
+    # Send some logs to Sentry first
+    sentry_sdk.logger.info('Sentry test - info log message')
+    sentry_sdk.logger.warning('Sentry test - warning message')
+    
+    # Add some context for debugging
+    sentry_sdk.set_context("debug_test", {
+        "endpoint": "/sentry-debug",
+        "timestamp": datetime.utcnow().isoformat(),
+        "service": "langgraph-worker",
+        "version": "2.0.0"
+    })
+    
+    # Trigger an intentional error
+    division_by_zero = 1 / 0
+    return {"message": "This should not be reached"}
+
 @app.post("/generate-email", response_model=EmailGenerationResponse)
 async def generate_email(
     request: EmailGenerationRequest,
@@ -134,6 +191,14 @@ async def generate_email(
     start_time = datetime.utcnow()
     
     try:
+        # Add Sentry context for this request
+        sentry_sdk.set_context("email_generation", {
+            "request_id": request.request_id,
+            "lead_company": request.lead.company_name,
+            "lead_id": request.lead.id,
+            "business_profile": request.business_profile.company_name if request.business_profile else "Unknown"
+        })
+        
         logger.info(f"[LangGraph] Processing email generation for lead: {request.lead.company_name}")
         log_request_details(logger, request.dict(), "/generate-email")
         
@@ -154,6 +219,16 @@ async def generate_email(
         )
         
         if result["status"] == "completed":
+            # Add success metrics to Sentry
+            duration = (datetime.utcnow() - start_time).total_seconds()
+            sentry_sdk.set_context("success_metrics", {
+                "processing_time": duration,
+                "quality_score": result.get("quality_score", 0),
+                "approved": result.get("approved", False),
+                "agents_used": 3,
+                "workflow_engine": "LangGraph"
+            })
+            
             # Send success webhook with quality metrics
             result_obj = result["result"]
             await webhook_client.send_result(
@@ -197,10 +272,23 @@ async def generate_email(
         return response
         
     except Exception as e:
+        duration = (datetime.utcnow() - start_time).total_seconds()
+        
+        # Add additional context to Sentry for this error
+        sentry_sdk.set_context("error_details", {
+            "duration_seconds": duration,
+            "system_memory_percent": single_replica_optimizer.get_status()["memory"]["percent"],
+            "error_type": type(e).__name__,
+            "error_message": str(e)
+        })
+        
+        # Capture the exception in Sentry
+        sentry_sdk.capture_exception(e)
+        
         log_error_details(logger, e, {
             "request_id": request.request_id,
             "lead_company": request.lead.company_name,
-            "duration": (datetime.utcnow() - start_time).total_seconds()
+            "duration": duration
         })
         raise HTTPException(status_code=500, detail=f"Email generation failed: {str(e)}")
 
@@ -211,6 +299,14 @@ async def analyze_lead(
 ):
     """Quick lead analysis using relevance analyzer node only"""
     start_time = datetime.utcnow()
+    
+    # Add Sentry context for this analysis request
+    sentry_sdk.set_context("lead_analysis", {
+        "lead_id": lead.id,
+        "lead_company": lead.company_name,
+        "endpoint": "/analyze-lead"
+    })
+    
     logger.info(f"[LangGraph] Analyzing lead: {lead.company_name}")
     log_request_details(logger, lead.dict(), "/analyze-lead")
     
@@ -288,6 +384,16 @@ async def analyze_lead(
         
     except Exception as e:
         duration = (datetime.utcnow() - start_time).total_seconds()
+        
+        # Add additional context to Sentry for this error
+        sentry_sdk.set_context("analysis_error", {
+            "duration_seconds": duration,
+            "error_type": type(e).__name__,
+            "error_message": str(e)
+        })
+        
+        # Capture the exception in Sentry
+        sentry_sdk.capture_exception(e)
         
         # Send error webhook
         await webhook_client.send_analysis_result(

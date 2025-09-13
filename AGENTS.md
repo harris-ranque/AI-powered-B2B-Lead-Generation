@@ -31,6 +31,7 @@
   - 2-space indent, semver imports, PascalCase components (`MyComponent.tsx`), camelCase functions/vars.
 - Packages: export types from `packages/shared-types/src/*.ts`; avoid default exports.
 - Python: PEP 8; modules in `snake_case.py`; avoid global state in FastAPI/LangGraph.
+- Sentry Integration: Follow Sentry rules for error tracking, tracing, and logging (see `apps/web/rules.md`).
 
 ## Testing Guidelines
 

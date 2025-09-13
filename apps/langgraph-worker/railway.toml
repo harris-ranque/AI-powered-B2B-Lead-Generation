@@ -13,3 +13,8 @@ numReplicas = 1
 PYTHONUNBUFFERED = "1"
 PYTHONDONTWRITEBYTECODE = "1"
 PORT = "8080"
+
+# Sentry configuration for error tracking and performance monitoring
+SENTRY_DSN = "https://c148fbf35cc49aa4d9cda79f2b2b97e8@o4510006869360640.ingest.us.sentry.io/4510013918150656"
+SENTRY_TRACES_SAMPLE_RATE = "0.1"
+SENTRY_ENABLE_LOGS = "true"

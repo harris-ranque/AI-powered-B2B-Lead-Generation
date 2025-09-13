@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     temperature: float = float(os.getenv("TEMPERATURE_OPTIONAL", "0.7"))
     max_tokens: int = int(os.getenv("MAX_TOKENS_OPTIONAL", "2000"))
     
+    # Sentry Configuration
+    sentry_dsn: Optional[str] = os.getenv("SENTRY_DSN", None)
+    sentry_traces_sample_rate: float = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1"))
+    sentry_enable_logs: bool = os.getenv("SENTRY_ENABLE_LOGS", "true").lower() == "true"
+    
     # Research Configuration
     default_research_tier: str = os.getenv("DEFAULT_RESEARCH_TIER", "tavily")
     confidence_threshold_tier2: int = int(os.getenv("CONFIDENCE_THRESHOLD_TIER2", "60"))

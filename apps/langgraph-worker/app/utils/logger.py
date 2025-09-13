@@ -126,10 +126,15 @@ def log_response_details(logger: logging.Logger, response_data: Any, duration: O
 
 def log_error_details(logger: logging.Logger, error: Exception, context: Optional[dict] = None):
     """Log detailed error information."""
+    # Log error message (will be automatically sent to Sentry if configured)
     logger.error(f"Error: {type(error).__name__}: {str(error)}")
     
     environment = os.getenv('ENVIRONMENT', 'production').lower()
     is_development = environment in ('development', 'dev', 'local')
+    
+    if context:
+        # Always log context info for production debugging
+        logger.info(f"Error context: {context}")
     
     if is_development and context:
         logger.debug("=== ERROR CONTEXT ===")

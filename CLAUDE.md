@@ -552,6 +552,7 @@ railway logs | grep -i "listening on"
 - **Styling**: Tailwind CSS with custom design system tokens
 - **Components**: shadcn/ui patterns with consistent prop interfaces
 - **Python**: FastAPI patterns with Pydantic models
+- **Sentry Integration**: Follow Sentry rules for error tracking, tracing, and logging (see `apps/web/rules.md`)
 
 ## Testing & Quality
 

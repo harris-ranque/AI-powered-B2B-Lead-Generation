@@ -36,7 +36,8 @@ RUN pip install --no-cache-dir \
     "langgraph>=0.2.0,<1.0.0" \
     "langgraph-checkpoint>=2.0.0,<3.0.0" \
     "instructor>=1.10.0,<2.0.0" \
-    "beautifulsoup4>=4.12.0,<5.0.0"
+    "beautifulsoup4>=4.12.0,<5.0.0" \
+    "sentry-sdk[fastapi]>=2.20.0,<3.0.0"
 
 # Copy application code
 COPY . .
@@ -51,6 +52,11 @@ USER langgraph
 
 # Set default PORT environment variable
 ENV PORT=8080
+
+# Set Sentry environment variables with defaults (can be overridden at runtime)
+ENV SENTRY_DSN=""
+ENV SENTRY_TRACES_SAMPLE_RATE="0.1"
+ENV SENTRY_ENABLE_LOGS="true"
 
 # Health check with default port fallback
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
