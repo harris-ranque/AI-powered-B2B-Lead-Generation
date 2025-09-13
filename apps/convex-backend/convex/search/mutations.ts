@@ -1,5 +1,5 @@
 import { mutation } from "../_generated/server";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 import { withSubscriptionCheck } from "../middleware/subscriptionMiddleware";
@@ -275,6 +275,24 @@ export const cancelSearch = mutation({
       status: "cancelled",
       completedAt: Date.now(),
     });
+
+    // Broadcast cancellation update
+    try {
+      await ctx.runMutation(
+        internal.realtime.broadcaster.broadcastPipelineUpdate,
+        {
+          userId: user._id,
+          searchId: args.searchId,
+          stage: "cancelled",
+          progress: 0,
+          message: "Search cancelled by user",
+          data: {},
+        } as any,
+      );
+    } catch (e) {
+      // Non-fatal if broadcast fails
+      console.warn("Broadcast cancellation failed", e);
+    }
 
     return { success: true };
   },

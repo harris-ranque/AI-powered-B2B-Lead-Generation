@@ -65,6 +65,26 @@ import {
   useAdminSystemControl,
 } from "@/hooks/useAdmin";
 import { CreditManagement } from "./admin/CreditManagement";
+import type { Id } from "@genni/convex-types/dataModel";
+
+// User type based on Convex schema
+interface User {
+  _id: Id<"users">;
+  clerkId: string;
+  email: string;
+  name?: string;
+  avatar?: string;
+  plan: "free" | "pro" | "starter" | "professional" | "business" | "enterprise";
+  credits: number;
+  role: "user" | "admin";
+  isActive: boolean;
+  processingPaused?: boolean;
+  pauseReason?: string;
+  pausedAt?: number;
+  pausedBy?: Id<"users">;
+  createdAt?: number;
+  updatedAt?: number;
+}
 
 interface AdminMetrics {
   totalUsers: number;
@@ -471,6 +491,8 @@ export function AdminDashboard() {
     users,
     updateUserStatus,
     updateUserPlan,
+    pauseUserProcessing,
+    resumeUserProcessing,
     isLoading: usersLoading,
   } = useAdminUsers();
   const {
@@ -493,7 +515,7 @@ export function AdminDashboard() {
     isLoading: systemControlLoading,
   } = useAdminSystemControl();
 
-  // Companies data from backend (placeholder for future implementation)
+  // Companies data not wired yet; avoid mocked data
   const companies: Company[] = [];
 
   // Use real data or fallback to defaults with bulletproof error handling
@@ -770,12 +792,12 @@ export function AdminDashboard() {
     try {
       if (action === "ban" || action === "activate") {
         await updateUserStatus({
-          userId,
-          status: action === "ban" ? "banned" : "active",
+          userId: userId as Id<"users">,
+          isActive: action !== "ban",
         });
         toast({
           title: "User Updated",
-          description: `User has been ${action === "ban" ? "banned" : "activated"}.`,
+          description: `User has been ${action === "ban" ? "suspended" : "activated"}.`,
         });
       }
     } catch (error) {
@@ -933,6 +955,10 @@ export function AdminDashboard() {
         variant: "secondary" as const,
         color: "bg-gray-100 text-gray-800",
       },
+      paused: {
+        variant: "outline" as const,
+        color: "bg-yellow-100 text-yellow-800",
+      },
       banned: {
         variant: "destructive" as const,
         color: "bg-red-100 text-red-800",
@@ -1013,7 +1039,7 @@ export function AdminDashboard() {
   const filteredUsers = (() => {
     try {
       if (!users || !Array.isArray(users)) return [];
-      return users.filter((user) => {
+      return users.filter((user: User) => {
         try {
           const name = user?.name?.toLowerCase() || "";
           const email = user?.email?.toLowerCase() || "";
@@ -1276,37 +1302,28 @@ export function AdminDashboard() {
       {/* Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Daily Statistics</h3>
+          <h3 className="text-lg font-semibold mb-4">Recent Statistics</h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Search className="h-4 w-4 text-blue-500" />
-                <span className="text-sm">Searches Today</span>
+                <span className="text-sm">Searches (7d)</span>
               </div>
-              <span className="font-bold">{adminMetrics.searchesDaily}</span>
+              <span className="font-bold">{metrics?.searches?.new7d ?? 0}</span>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-green-500" />
-                <span className="text-sm">New Signups</span>
+                <span className="text-sm">New Users (7d)</span>
               </div>
-              <span className="font-bold">23</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-purple-500" />
-                <span className="text-sm">Emails Generated</span>
-              </div>
-              <span className="font-bold">89</span>
+              <span className="font-bold">{metrics?.users?.new7d ?? 0}</span>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-orange-500" />
-                <span className="text-sm">Revenue Today</span>
+                <span className="text-sm">Credits Spent (7d)</span>
               </div>
-              <span className="font-bold">
-                ${adminMetrics.monthlyRevenue.toLocaleString()}
-              </span>
+              <span className="font-bold">{metrics?.credits?.spent7d ?? 0}</span>
             </div>
           </div>
         </Card>
@@ -1374,58 +1391,72 @@ export function AdminDashboard() {
                 <TableHead>Plan</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Credits</TableHead>
-                <TableHead>Total Spent</TableHead>
-                <TableHead>Last Login</TableHead>
+                <TableHead>Joined</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredUsers.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{user.name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {user.email}
+              {filteredUsers.map((user: User) => {
+                const status = !user.isActive
+                  ? "inactive"
+                  : user.processingPaused
+                    ? "paused"
+                    : "active";
+                return (
+                  <TableRow key={String(user._id)}>
+                    <TableCell>
+                      <div>
+                        <div className="font-medium">{user.name || "—"}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {user.email}
+                        </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>{getPlanBadge(user.plan)}</TableCell>
-                  <TableCell>{getStatusBadge(user.status)}</TableCell>
-                  <TableCell>{user.creditsRemaining}</TableCell>
-                  <TableCell>${user.totalSpent}</TableCell>
-                  <TableCell>
-                    {new Date(user.lastLogin).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleUserAction(user.id, "View")}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleUserAction(user.id, "Edit")}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      {user.status !== "banned" && (
+                    </TableCell>
+                    <TableCell>{getPlanBadge(user.plan)}</TableCell>
+                    <TableCell>{getStatusBadge(status)}</TableCell>
+                    <TableCell>{user.credits ?? 0}</TableCell>
+                    <TableCell>
+                      {user.createdAt
+                        ? new Date(user.createdAt).toLocaleDateString()
+                        : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleUserAction(user.id, "Ban")}
+                          onClick={() =>
+                            status === "paused"
+                              ? resumeUserProcessing({ userId: user._id })
+                              : pauseUserProcessing({ userId: user._id })
+                          }
+                          title={status === "paused" ? "Resume processing" : "Pause processing"}
                         >
-                          <Ban className="h-4 w-4" />
+                          {status === "paused" ? (
+                            <Play className="h-4 w-4" />
+                          ) : (
+                            <Pause className="h-4 w-4" />
+                          )}
                         </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            handleUserAction(user._id as string, user.isActive ? "ban" : "activate")
+                          }
+                          title={user.isActive ? "Suspend user" : "Activate user"}
+                        >
+                          {user.isActive ? (
+                            <Ban className="h-4 w-4" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>

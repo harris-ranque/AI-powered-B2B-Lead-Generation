@@ -85,6 +85,7 @@ export const handleUserCreated = internalMutation({
       plan: "starter" as const,
       role: "user" as const,
       isActive: true,
+      processingPaused: false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };

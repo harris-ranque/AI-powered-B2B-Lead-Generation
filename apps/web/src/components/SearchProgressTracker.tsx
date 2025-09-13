@@ -4,6 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   CheckCircle,
   Clock,
   AlertCircle,
@@ -28,6 +39,7 @@ import {
   formatBroadcastTime,
 } from "@/hooks/useStatusBroadcasts";
 import { useSearch } from "@/hooks/useSearches";
+import { useSearches } from "@/hooks/useSearches";
 import type { Id } from "@genni/convex-types/dataModel";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -50,6 +62,7 @@ export function SearchProgressTracker({
   className,
 }: SearchProgressTrackerProps) {
   const { search } = useSearch(searchId);
+  const { cancelSearch } = useSearches();
   const {
     broadcasts,
     latestStatus,
@@ -59,6 +72,8 @@ export function SearchProgressTracker({
   } = useSearchBroadcasts(searchId);
 
   const [showAllBroadcasts, setShowAllBroadcasts] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   if (!search) {
     return (
@@ -301,17 +316,55 @@ export function SearchProgressTracker({
               </Badge>
             )}
           </CardTitle>
-          <Badge
-            variant={
-              search.status === "completed"
-                ? "default"
-                : search.status === "failed"
-                  ? "destructive"
-                  : "secondary"
-            }
-          >
-            {search.status.replace("_", " ").toUpperCase()}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge
+              variant={
+                search.status === "completed"
+                  ? "default"
+                  : search.status === "failed"
+                    ? "destructive"
+                    : "secondary"
+              }
+            >
+              {search.status.replace("_", " ").toUpperCase()}
+            </Badge>
+            {(search.status === "pending" ||
+              search.status === "in_progress" ||
+              search.status === "processing") && (
+              <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" disabled={isCancelling}>
+                    <X className="h-4 w-4 mr-1" />
+                    {isCancelling ? "Cancelling..." : "Cancel"}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Cancel this search?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      You can stop the search at any time. Discovery may spend 1 credit if already started. No additional credits are charged after cancellation.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Keep Running</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={async () => {
+                        try {
+                          setIsCancelling(true);
+                          await cancelSearch({ searchId });
+                        } finally {
+                          setIsCancelling(false);
+                          setConfirmOpen(false);
+                        }
+                      }}
+                    >
+                      Confirm Cancel
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+          </div>
         </div>
       </CardHeader>
 

@@ -238,6 +238,23 @@ export const enrichLeads: any = action({
         throw new Error("User not found");
       }
 
+      // Early exit if search cancelled or user paused
+      if (search.status === "cancelled" || user.processingPaused) {
+        await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
+          searchId: args.searchId,
+          status: "cancelled",
+          error: user.processingPaused ? (user.pauseReason || "User processing paused by admin") : undefined,
+        });
+        await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+          userId: search.userId,
+          searchId: args.searchId,
+          stage: "cancelled",
+          progress: 0,
+          message: user.processingPaused ? (user.pauseReason || "User processing paused by admin") : "Search cancelled",
+        } as any);
+        return { success: false, message: "Cancelled" } as any;
+      }
+
       // Get leads that need enrichment
       const leads: any = await ctx.runQuery(
         internal.leads.internal.getUnenrichedLeads,
@@ -291,6 +308,28 @@ export const enrichLeads: any = action({
       let enrichedCount = 0;
 
       for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        // Re-check cancellation/paused before each batch
+        const latest = await ctx.runQuery(internal.search.internal.getSearchInternal, {
+          searchId: args.searchId,
+        });
+        const latestUser = await ctx.runQuery(internal.users.internal.getUserInternal, {
+          userId: search.userId,
+        });
+        if (!latest || latest.status === "cancelled" || latestUser?.processingPaused) {
+          await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
+            searchId: args.searchId,
+            status: "cancelled",
+            error: latestUser?.processingPaused ? (latestUser.pauseReason || "User processing paused by admin") : undefined,
+          });
+          await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+            userId: search.userId,
+            searchId: args.searchId,
+            stage: "cancelled",
+            progress: 0,
+            message: latestUser?.processingPaused ? (latestUser.pauseReason || "User processing paused by admin") : "Search cancelled",
+          } as any);
+          return { success: false, message: "Cancelled" } as any;
+        }
         const batch = batches[batchIndex];
         if (!batch) continue;
 
@@ -430,10 +469,17 @@ export const enrichLeads: any = action({
         `Enrichment completed for search ${args.searchId}: ${enrichedCount}/${leads.length} leads enriched`,
       );
 
-      // Trigger AI analysis stage
-      await ctx.scheduler.runAfter(0, "leads/actions:analyzeLeads" as any, {
-        searchId: args.searchId,
-      });
+      // Trigger AI analysis stage (if not cancelled)
+      {
+        const latest = await ctx.runQuery(internal.search.internal.getSearchInternal, {
+          searchId: args.searchId,
+        });
+        if (latest && latest.status !== "cancelled") {
+          await ctx.scheduler.runAfter(0, "leads/actions:analyzeLeads" as any, {
+            searchId: args.searchId,
+          });
+        }
+      }
 
       return {
         success: true,
@@ -475,6 +521,32 @@ export const analyzeLeads: any = action({
 
       if (!search) {
         throw new Error("Search not found");
+      }
+
+      // Fetch user for pause checks
+      const user = await ctx.runQuery(internal.users.internal.getUserInternal, {
+        userId: search.userId,
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      // Early exit if cancelled or paused
+      if (search.status === "cancelled" || user.processingPaused) {
+        await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
+          searchId: args.searchId,
+          status: "cancelled",
+          error: user.processingPaused ? (user.pauseReason || "User processing paused by admin") : undefined,
+        });
+        await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+          userId: search.userId,
+          searchId: args.searchId,
+          stage: "cancelled",
+          progress: 0,
+          message: user.processingPaused ? (user.pauseReason || "User processing paused by admin") : "Search cancelled",
+        } as any);
+        return { success: false, message: "Cancelled" } as any;
       }
 
       // Get all leads for this search (enriched and unenriched)
@@ -537,6 +609,31 @@ export const analyzeLeads: any = action({
         console.log(
           `Processing analysis batch ${batchIndex + 1}/${leadBatches.length} with ${batch.length} leads`,
         );
+
+        // Check for cancellation/paused before each batch
+        {
+          const latest = await ctx.runQuery(internal.search.internal.getSearchInternal, {
+            searchId: args.searchId,
+          });
+          const latestUser = await ctx.runQuery(internal.users.internal.getUserInternal, {
+            userId: search.userId,
+          });
+          if (!latest || latest.status === "cancelled" || latestUser?.processingPaused) {
+            await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
+              searchId: args.searchId,
+              status: "cancelled",
+              error: latestUser?.processingPaused ? (latestUser.pauseReason || "User processing paused by admin") : undefined,
+            });
+            await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+              userId: search.userId,
+              searchId: args.searchId,
+              stage: "cancelled",
+              progress: 0,
+              message: latestUser?.processingPaused ? (latestUser.pauseReason || "User processing paused by admin") : "Search cancelled",
+            } as any);
+            return { success: false, message: "Cancelled" } as any;
+          }
+        }
 
         // Process batch concurrently with Promise.allSettled for error resilience
         const batchPromises = batch.map((lead) =>

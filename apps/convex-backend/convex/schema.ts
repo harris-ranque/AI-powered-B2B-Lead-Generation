@@ -20,6 +20,11 @@ export default defineSchema({
     credits: v.number(),
     role: v.union(v.literal("user"), v.literal("admin")),
     isActive: v.boolean(),
+    // Per-user processing pause (admin-controlled)
+    processingPaused: v.optional(v.boolean()),
+    pauseReason: v.optional(v.string()),
+    pausedAt: v.optional(v.number()),
+    pausedBy: v.optional(v.id("users")),
     // Stripe integration fields
     stripeCustomerId: v.optional(v.string()),
     stripeSubscriptionId: v.optional(v.string()),

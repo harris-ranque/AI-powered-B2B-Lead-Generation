@@ -30,6 +30,39 @@ export const searchGoogleMaps = action({
       throw new Error("Search not found or access denied");
     }
 
+    // If already cancelled, do nothing
+    if (search.status === "cancelled") {
+      return {
+        success: false,
+        message: "Search already cancelled",
+      } as any;
+    }
+
+    // Check per-user processing pause
+    const user = await ctx.runQuery(internal.users.internal.getUserInternal, {
+      userId: search.userId,
+    });
+    if (user?.processingPaused) {
+      // Mark search as cancelled due to pause
+      await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
+        searchId: args.searchId,
+        status: "cancelled",
+        error: user.pauseReason || "User processing paused by admin",
+      });
+      // Broadcast cancellation
+      await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+        userId: search.userId,
+        searchId: args.searchId,
+        stage: "cancelled",
+        progress: 0,
+        message: user.pauseReason || "User processing paused by admin",
+      } as any);
+      return {
+        success: false,
+        message: "User processing paused – search cancelled",
+      } as any;
+    }
+
     // Check if search is already in progress (unless force restart)
     if (!args.forceRestart && search.status === "in_progress") {
       throw new Error("Search is already in progress");
@@ -51,6 +84,19 @@ export const searchGoogleMaps = action({
       console.log(
         `Search ${args.searchId} started for user ${search.userId}: Starting lead discovery...`,
       );
+
+      // Re-check cancellation before external calls
+      {
+        const latest = await ctx.runQuery(internal.search.internal.getSearchInternal, {
+          searchId: args.searchId,
+        });
+        if (!latest || latest.status === "cancelled") {
+          return {
+            success: false,
+            message: "Search cancelled",
+          } as any;
+        }
+      }
 
       // Get Google Maps API key
       const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
@@ -129,6 +175,19 @@ export const searchGoogleMaps = action({
         );
       }
 
+      // Re-check cancellation before processing results
+      {
+        const latest = await ctx.runQuery(internal.search.internal.getSearchInternal, {
+          searchId: args.searchId,
+        });
+        if (!latest || latest.status === "cancelled") {
+          return {
+            success: false,
+            message: "Search cancelled",
+          } as any;
+        }
+      }
+
       const places = data.results || [];
       const totalFound = Math.min(places.length, params.maxResults);
 
@@ -154,6 +213,18 @@ export const searchGoogleMaps = action({
       // Create lead records for discovered places with Place Details enrichment
       const leadIds: string[] = [];
       for (let i = 0; i < totalFound; i++) {
+        // Early exit if cancelled mid-loop
+        const current = await ctx.runQuery(internal.search.internal.getSearchInternal, {
+          searchId: args.searchId,
+        });
+        if (!current || current.status === "cancelled") {
+          return {
+            success: false,
+            message: "Search cancelled",
+            totalFound: i,
+            leadIds,
+          } as any;
+        }
         const place = places[i];
 
         // Get detailed place information including website and phone
@@ -273,10 +344,17 @@ export const searchGoogleMaps = action({
         };
       }
 
-      // Trigger enrichment stage for discovered leads
-      await ctx.scheduler.runAfter(0, "leads/actions:enrichLeads" as any, {
-        searchId: args.searchId,
-      });
+      // Trigger enrichment stage for discovered leads (if not cancelled)
+      {
+        const latest = await ctx.runQuery(internal.search.internal.getSearchInternal, {
+          searchId: args.searchId,
+        });
+        if (latest && latest.status !== "cancelled") {
+          await ctx.scheduler.runAfter(0, "leads/actions:enrichLeads" as any, {
+            searchId: args.searchId,
+          });
+        }
+      }
 
       return {
         success: true,

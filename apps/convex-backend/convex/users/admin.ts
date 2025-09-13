@@ -576,3 +576,93 @@ export const getUserByIdInternal = internalQuery({
     return user;
   },
 });
+
+// Pause a user's processing (admin only)
+export const pauseUserProcessing = mutation({
+  args: {
+    userId: v.id("users"),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await getCurrentUser(ctx);
+    if (!currentUser || !isAdmin(currentUser)) {
+      throw createError("Admin access required", ERROR_CODES.FORBIDDEN, 403);
+    }
+
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw createError("User not found", ERROR_CODES.USER_NOT_FOUND, 404);
+
+    await ctx.db.patch(args.userId, {
+      processingPaused: true,
+      pauseReason: args.reason || "Paused by admin",
+      pausedAt: Date.now(),
+      pausedBy: currentUser._id,
+      updatedAt: Date.now(),
+    });
+
+    // Optionally cancel in-progress searches for this user
+    const activeSearches = await ctx.db
+      .query("searches")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("status"), "pending"),
+          q.eq(q.field("status"), "in_progress"),
+          q.eq(q.field("status"), "processing"),
+        ),
+      )
+      .collect();
+
+    for (const s of activeSearches) {
+      await ctx.db.patch(s._id, {
+        status: "cancelled",
+        error: args.reason || "User processing paused by admin",
+        completedAt: Date.now(),
+      });
+    }
+
+    await ctx.db.insert("systemLogs", {
+      type: "user_control",
+      action: "pause_processing",
+      userId: currentUser._id,
+      data: { targetUserId: args.userId, reason: args.reason },
+      timestamp: Date.now(),
+    });
+
+    return { success: true, cancelledSearches: activeSearches.length };
+  },
+});
+
+// Resume a user's processing (admin only)
+export const resumeUserProcessing = mutation({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await getCurrentUser(ctx);
+    if (!currentUser || !isAdmin(currentUser)) {
+      throw createError("Admin access required", ERROR_CODES.FORBIDDEN, 403);
+    }
+
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw createError("User not found", ERROR_CODES.USER_NOT_FOUND, 404);
+
+    await ctx.db.patch(args.userId, {
+      processingPaused: false,
+      pauseReason: undefined,
+      pausedAt: undefined,
+      pausedBy: undefined,
+      updatedAt: Date.now(),
+    });
+
+    await ctx.db.insert("systemLogs", {
+      type: "user_control",
+      action: "resume_processing",
+      userId: currentUser._id,
+      data: { targetUserId: args.userId },
+      timestamp: Date.now(),
+    });
+
+    return { success: true };
+  },
+});

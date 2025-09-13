@@ -14,19 +14,29 @@ export function useAdminDashboard() {
 }
 
 export function useAdminUsers() {
-  const users = useQuery(api.admin.queries.getAllUsers);
+  const usersResp = useQuery(api.admin.queries.getAllUsers);
   const updateUserStatus = useMutation(api.admin.mutations.updateUserStatus);
   const updateUserPlan = useMutation(api.admin.mutations.updateUserPlan);
   const addUserCredits = useMutation(api.admin.mutations.addUserCredits);
   const exportUsers = useMutation(api.admin.mutations.exportUsers);
+  const pauseUserProcessing = useMutation(
+    api.users.admin.pauseUserProcessing,
+  );
+  const resumeUserProcessing = useMutation(
+    api.users.admin.resumeUserProcessing,
+  );
 
   return {
-    users,
+    users: usersResp?.users ?? [],
+    totalUsers: usersResp?.total ?? 0,
+    hasMore: usersResp?.hasMore ?? false,
     updateUserStatus,
     updateUserPlan,
     addUserCredits,
     exportUsers,
-    isLoading: users === undefined,
+    pauseUserProcessing,
+    resumeUserProcessing,
+    isLoading: usersResp === undefined,
   };
 }
 
