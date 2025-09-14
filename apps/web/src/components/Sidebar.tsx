@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Search,
   Users,
@@ -19,6 +20,10 @@ interface SidebarProps {
 
 export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(true);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isAdminRoute = location.pathname.startsWith("/admin");
 
   const mainNavItems = [
     {
@@ -144,7 +149,7 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
             ⚡
           </div>
           <span className="text-xl font-bold">Genni</span>
-        </div>
+      </div>
 
         {/* Main Navigation */}
         <nav className="space-y-6">
@@ -157,6 +162,91 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
                 <NavItem key={item.id} item={item} />
               ))}
             </div>
+          </div>
+
+          {/* Admin Section */}
+          <div>
+            <button
+              className={`w-full flex items-center justify-between px-2 py-2 rounded-md text-xs font-semibold uppercase tracking-wider transition-smooth ${
+                isAdminRoute ? "text-primary" : "text-muted-foreground"
+              }`}
+              onClick={() => setAdminOpen((v) => !v)}
+              aria-expanded={adminOpen}
+            >
+              <span>Admin</span>
+              <span className={`transition-transform ${adminOpen ? "rotate-90" : "rotate-0"}`}>›</span>
+            </button>
+            {adminOpen && (
+              <div className="mt-2 space-y-1">
+                <button
+                  onClick={() => {
+                    navigate("/admin");
+                    setIsOpen(false);
+                  }}
+                  className={`w-full text-left block rounded-lg px-3 py-2 text-sm hover:bg-muted/10 ${
+                    isAdminRoute && location.pathname === "/admin" ? "bg-primary/10 text-primary" : ""
+                  }`}
+                >
+                  Admin Dashboard
+                </button>
+                <button
+                  onClick={() => {
+                    navigate("/admin?tab=users");
+                    setIsOpen(false);
+                  }}
+                  className="w-full text-left block rounded-lg px-3 py-2 text-sm hover:bg-muted/10"
+                >
+                  Users
+                </button>
+                <button
+                  onClick={() => {
+                    navigate("/admin?tab=credits");
+                    setIsOpen(false);
+                  }}
+                  className="w-full text-left block rounded-lg px-3 py-2 text-sm hover:bg-muted/10"
+                >
+                  Credits
+                </button>
+                <button
+                  onClick={() => {
+                    navigate("/admin?tab=services");
+                    setIsOpen(false);
+                  }}
+                  className="w-full text-left block rounded-lg px-3 py-2 text-sm hover:bg-muted/10"
+                >
+                  Services
+                </button>
+                <button
+                  onClick={() => {
+                    navigate("/admin?tab=configuration");
+                    setIsOpen(false);
+                  }}
+                  className="w-full text-left block rounded-lg px-3 py-2 text-sm hover:bg-muted/10"
+                >
+                  Configuration
+                </button>
+                <button
+                  onClick={() => {
+                    navigate("/admin?tab=system");
+                    setIsOpen(false);
+                  }}
+                  className="w-full text-left block rounded-lg px-3 py-2 text-sm hover:bg-muted/10"
+                >
+                  System
+                </button>
+                <button
+                  onClick={() => {
+                    navigate("/admin/docs");
+                    setIsOpen(false);
+                  }}
+                  className={`w-full text-left block rounded-lg px-3 py-2 text-sm hover:bg-muted/10 ${
+                    location.pathname.startsWith("/admin/docs") ? "bg-primary/10 text-primary" : ""
+                  }`}
+                >
+                  Documentation
+                </button>
+              </div>
+            )}
           </div>
 
           <div>
