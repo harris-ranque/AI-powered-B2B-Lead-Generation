@@ -5,8 +5,10 @@ export function useBilling() {
   const billing = useQuery(api.billing.queries.getUserBilling);
   const usage = useQuery(api.billing.queries.getUsageStats);
   const transactions = useQuery(api.billing.queries.getCreditTransactions);
-  const creditPacks = useQuery(api.billing.queries.getCreditPacks);
-  const planCatalog = useQuery(api.billing.queries.getPlanCatalog);
+  // Note: Public catalog data (credit packs, plan catalog) is provided via
+  // the cached `/api/public/config` endpoint and `useRuntimeConfig`.
+  // We intentionally avoid subscribing to those Convex queries here to
+  // prevent redundant live queries that spam the Convex logs.
 
   const updatePlan = useMutation(api.billing.mutations.updateSubscription);
   const purchaseCredits = useAction(api.billing.mutations.purchaseCredits);
@@ -18,8 +20,6 @@ export function useBilling() {
     billing,
     usage,
     transactions,
-    creditPacks,
-    planCatalog,
     updatePlan,
     purchaseCredits,
     createCheckoutSession,

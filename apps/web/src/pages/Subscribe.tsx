@@ -23,7 +23,6 @@ import {
   getStripePriceId,
   type PlanType,
 } from "@/lib/pricing-config";
-import { useBilling } from "@/hooks/useBilling";
 import { useRuntimeConfig } from "@/lib/runtime-config";
 
 interface PlanConfig {
@@ -94,7 +93,6 @@ export default function Subscribe() {
   const { isSignedIn, userId } = useAuth();
   const [isAnnual, setIsAnnual] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { planCatalog } = useBilling();
   const { config: runtimeConfig } = useRuntimeConfig();
 
   // Redirect if not signed in
@@ -151,9 +149,9 @@ export default function Subscribe() {
 
     setIsLoading(true);
     // Prefer admin-configured Stripe Price IDs when available
-    const catalogEntry =
-      (runtimeConfig?.planCatalog || []).find((p) => p.planId === plan.id) ||
-      (planCatalog || []).find((p) => p.planId === plan.id);
+    const catalogEntry = (runtimeConfig?.planCatalog || []).find(
+      (p) => p.planId === plan.id,
+    );
     const priceIdFromCatalog = isAnnual
       ? catalogEntry?.stripePriceIdYearly
       : catalogEntry?.stripePriceIdMonthly;
@@ -178,9 +176,9 @@ export default function Subscribe() {
     );
   }
 
-  const catalogEntry =
-    (runtimeConfig?.planCatalog || []).find((p) => p.planId === plan?.id) ||
-    (planCatalog || []).find((p) => p.planId === plan?.id);
+  const catalogEntry = (runtimeConfig?.planCatalog || []).find(
+    (p) => p.planId === plan?.id,
+  );
   const currentPrice = catalogEntry
     ? isAnnual
       ? catalogEntry.yearlyPrice
