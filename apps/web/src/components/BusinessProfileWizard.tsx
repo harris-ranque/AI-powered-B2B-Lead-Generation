@@ -205,13 +205,15 @@ export function BusinessProfileWizard({
     }
   };
 
-  const renderStep1 = () => (
+  const renderStep1 = (opts?: { header?: boolean }) => (
     <div className="space-y-6">
-      <div className="text-center mb-8">
-        <Building2 className="h-12 w-12 text-primary mx-auto mb-4" />
-        <h2 className="text-2xl font-bold">Company Information</h2>
-        <p className="text-muted-foreground">Tell us about your business</p>
-      </div>
+      {(opts?.header ?? true) && (
+        <div className="text-center mb-8">
+          <Building2 className="h-12 w-12 text-primary mx-auto mb-4" />
+          <h2 className="text-2xl font-bold">Company Information</h2>
+          <p className="text-muted-foreground">Tell us about your business</p>
+        </div>
+      )}
 
       <div className="space-y-4">
         <div>
@@ -268,16 +270,18 @@ export function BusinessProfileWizard({
     </div>
   );
 
-  const renderStep2 = () => {
+  const renderStep2 = (opts?: { header?: boolean }) => {
     return (
       <div className="space-y-6">
-        <div className="text-center mb-8">
-          <Target className="h-12 w-12 text-primary mx-auto mb-4" />
-          <h2 className="text-2xl font-bold">Target Market & Offerings</h2>
-          <p className="text-muted-foreground">
-            Define who you serve and what you offer
-          </p>
-        </div>
+        {(opts?.header ?? true) && (
+          <div className="text-center mb-8">
+            <Target className="h-12 w-12 text-primary mx-auto mb-4" />
+            <h2 className="text-2xl font-bold">Target Market & Offerings</h2>
+            <p className="text-muted-foreground">
+              Define who you serve and what you offer
+            </p>
+          </div>
+        )}
 
         <div className="space-y-6">
           <div>
@@ -500,16 +504,18 @@ export function BusinessProfileWizard({
     );
   };
 
-  const renderStep4 = () => {
+  const renderStep4 = (opts?: { header?: boolean }) => {
     return (
       <div className="space-y-6">
-        <div className="text-center mb-8">
-          <MessageSquare className="h-12 w-12 text-primary mx-auto mb-4" />
-          <h2 className="text-2xl font-bold">Ideal Customer & Challenges</h2>
-          <p className="text-muted-foreground">
-            Help us understand your perfect client
-          </p>
-        </div>
+        {(opts?.header ?? true) && (
+          <div className="text-center mb-8">
+            <MessageSquare className="h-12 w-12 text-primary mx-auto mb-4" />
+            <h2 className="text-2xl font-bold">Ideal Customer & Challenges</h2>
+            <p className="text-muted-foreground">
+              Help us understand your perfect client
+            </p>
+          </div>
+        )}
 
         <div className="space-y-6">
           <div>
@@ -621,13 +627,16 @@ export function BusinessProfileWizard({
           <Accordion type="multiple" defaultValue={["company","market","value","ideal"]} className="w-full">
             <AccordionItem value="company">
               <AccordionTrigger>
-                <div className="text-left">
-                  <div className="font-semibold">Company Information</div>
-                  <div className="text-xs text-muted-foreground">Name, industry, tone of voice</div>
+                <div className="text-left flex items-center gap-3">
+                  <Building2 className="h-4 w-4 text-primary" />
+                  <div>
+                    <div className="font-semibold">Company Information</div>
+                    <div className="text-xs text-muted-foreground">Name, industry, tone of voice</div>
+                  </div>
                 </div>
               </AccordionTrigger>
               <AccordionContent>
-                <div className="pt-4">{renderStep1()}</div>
+                <div className="pt-4">{renderStep1({ header: false })}</div>
               </AccordionContent>
             </AccordionItem>
 
@@ -635,13 +644,16 @@ export function BusinessProfileWizard({
 
             <AccordionItem value="market">
               <AccordionTrigger>
-                <div className="text-left">
-                  <div className="font-semibold">Target Market & Offerings</div>
-                  <div className="text-xs text-muted-foreground">Industries served and services offered</div>
+                <div className="text-left flex items-center gap-3">
+                  <Target className="h-4 w-4 text-primary" />
+                  <div>
+                    <div className="font-semibold">Target Market & Offerings</div>
+                    <div className="text-xs text-muted-foreground">Industries served and services offered</div>
+                  </div>
                 </div>
               </AccordionTrigger>
               <AccordionContent>
-                <div className="pt-4">{renderStep2()}</div>
+                <div className="pt-4">{renderStep2({ header: false })}</div>
               </AccordionContent>
             </AccordionItem>
 
@@ -649,13 +661,16 @@ export function BusinessProfileWizard({
 
             <AccordionItem value="value">
               <AccordionTrigger>
-                <div className="text-left">
-                  <div className="font-semibold">Value Proposition</div>
-                  <div className="text-xs text-muted-foreground">Differentiators and pain points you solve</div>
+                <div className="text-left flex items-center gap-3">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <div>
+                    <div className="font-semibold">Value Proposition</div>
+                    <div className="text-xs text-muted-foreground">Differentiators and pain points you solve</div>
+                  </div>
                 </div>
               </AccordionTrigger>
               <AccordionContent>
-                <div className="pt-4">{renderStep3()}</div>
+                <div className="pt-4">{renderStep3({ header: false })}</div>
               </AccordionContent>
             </AccordionItem>
 
@@ -663,13 +678,16 @@ export function BusinessProfileWizard({
 
             <AccordionItem value="ideal">
               <AccordionTrigger>
-                <div className="text-left">
-                  <div className="font-semibold">Ideal Customer & Challenges</div>
-                  <div className="text-xs text-muted-foreground">Ideal customer profile and current challenges</div>
+                <div className="text-left flex items-center gap-3">
+                  <MessageSquare className="h-4 w-4 text-primary" />
+                  <div>
+                    <div className="font-semibold">Ideal Customer & Challenges</div>
+                    <div className="text-xs text-muted-foreground">Ideal customer profile and current challenges</div>
+                  </div>
                 </div>
               </AccordionTrigger>
               <AccordionContent>
-                <div className="pt-4">{renderStep4()}</div>
+                <div className="pt-4">{renderStep4({ header: false })}</div>
               </AccordionContent>
             </AccordionItem>
           </Accordion>
