@@ -86,14 +86,15 @@ export function useAdminConfiguration() {
 export function useAdminSystemControl() {
   const systemStatus = useQuery(api.admin.queries.getSystemControlStatus);
   const systemActivity = useQuery(api.admin.queries.getSystemActivity);
+  // Use functions from admin/systemControl module (correct paths)
   const pauseAllLeadGeneration = useMutation(
-    api.admin.mutations.pauseAllLeadGeneration,
+    api.admin.systemControl.pauseAllLeadGeneration,
   );
   const resumeAllLeadGeneration = useMutation(
-    api.admin.mutations.resumeAllLeadGeneration,
+    api.admin.systemControl.resumeAllLeadGeneration,
   );
   const clearAllActiveSearches = useMutation(
-    api.admin.mutations.clearAllActiveSearches,
+    api.admin.systemControl.clearAllActiveSearches,
   );
 
   return {

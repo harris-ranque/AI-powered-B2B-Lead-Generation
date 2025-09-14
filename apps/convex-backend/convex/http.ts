@@ -350,6 +350,7 @@ http.route({
   path: "/api/sse/issue-token",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
+    // Ensure CORS headers are returned even on unexpected errors
     const requestOrigin = request.headers.get("origin") || undefined;
     const allowedOrigin = requestOrigin || process.env.APP_URL || "*";
     const headersBase = {
@@ -360,60 +361,72 @@ http.route({
       "Content-Type": "application/json",
     } as Record<string, string>;
 
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: headersBase,
-      });
-    }
+    try {
+      const identity = await ctx.auth.getUserIdentity();
+      if (!identity) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: headersBase,
+        });
+      }
 
-    // Resolve user by Clerk ID using runQuery (actions can't access db directly)
-    const user = await ctx.runQuery(internal.users.internal.getUserByClerkIdInternal, {
-      clerkId: identity.subject,
-    });
-
-    if (!user) {
-      return new Response(JSON.stringify({ error: "User not found" }), {
-        status: 401,
-        headers: headersBase,
-      });
-    }
-    if (!user.isActive) {
-      return new Response(JSON.stringify({ error: "User inactive" }), {
-        status: 401,
-        headers: headersBase,
-      });
-    }
-
-    const secret = process.env.SSE_TOKEN_SECRET;
-    if (!secret) {
-      return new Response(
-        JSON.stringify({ error: "Server misconfigured: missing SSE_TOKEN_SECRET" }),
-        { status: 500, headers: headersBase },
+      // Resolve user by Clerk ID using runQuery (actions can't access db directly)
+      const user = await ctx.runQuery(
+        internal.users.internal.getUserByClerkIdInternal,
+        {
+          clerkId: identity.subject,
+        },
       );
+
+      if (!user) {
+        return new Response(JSON.stringify({ error: "User not found" }), {
+          status: 401,
+          headers: headersBase,
+        });
+      }
+      if (!user.isActive) {
+        return new Response(JSON.stringify({ error: "User inactive" }), {
+          status: 401,
+          headers: headersBase,
+        });
+      }
+
+      const secret = process.env.SSE_TOKEN_SECRET;
+      if (!secret) {
+        return new Response(
+          JSON.stringify({ error: "Server misconfigured: missing SSE_TOKEN_SECRET" }),
+          { status: 500, headers: headersBase },
+        );
+      }
+
+      const nowSec = Math.floor(Date.now() / 1000);
+      const payload = {
+        uid: String(user._id),
+        iat: nowSec,
+        exp: nowSec + 10 * 60, // 10 minutes
+        aud: "sse",
+        n: randomNonce(),
+        iss: "convex",
+        ver: 2,
+        // Optionally include origin for additional checks
+        ori: requestOrigin || undefined,
+      } as const;
+
+      const payloadB64 = base64urlEncodeString(JSON.stringify(payload));
+      const sig = await hmacSha256(secret, payloadB64);
+      const token = `v2.${payloadB64}.${sig}`;
+
+      return new Response(JSON.stringify({ token }), {
+        headers: headersBase,
+      });
+    } catch (err) {
+      // Return structured error with CORS headers for visibility in browser
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return new Response(JSON.stringify({ error: "Token issuance failed", message }), {
+        status: 500,
+        headers: headersBase,
+      });
     }
-
-    const nowSec = Math.floor(Date.now() / 1000);
-    const payload = {
-      uid: String(user._id),
-      iat: nowSec,
-      exp: nowSec + 10 * 60, // 10 minutes
-      aud: "sse",
-      n: randomNonce(),
-      iss: "convex",
-      ver: 2,
-      // Optionally include origin for additional checks
-      ori: requestOrigin || undefined,
-    } as const;
-
-    const payloadB64 = base64urlEncodeString(JSON.stringify(payload));
-    const sig = await hmacSha256(secret, payloadB64);
-    const token = `v2.${payloadB64}.${sig}`;
-
-    return new Response(JSON.stringify({ token }), {
-      headers: headersBase,
-    });
   }),
 });
 
