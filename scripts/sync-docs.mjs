@@ -4,8 +4,11 @@
 
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const repoRoot = path.resolve(process.cwd());
+// Resolve repo root based on this script's location to avoid cwd issues
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(scriptDir, '..');
 const sourceDir = path.join(repoRoot, 'docs');
 const destDir = path.join(repoRoot, 'apps', 'web', 'public', 'docs');
 
@@ -74,20 +77,20 @@ function buildTree(rootDir) {
 }
 
 function main() {
-  if (!fs.existsSync(sourceDir)) {
-    console.log(`[sync-docs] No docs directory at ${sourceDir}, skipping.`);
-    return;
-  }
-
   // Clean destination
   if (fs.existsSync(destDir)) {
     fs.rmSync(destDir, { recursive: true, force: true });
   }
   ensureDir(destDir);
 
-  const files = walk(sourceDir);
-  for (const f of files) {
-    copyFile(f, destDir, sourceDir);
+  const hasDocs = fs.existsSync(sourceDir);
+  const files = hasDocs ? walk(sourceDir) : [];
+  if (hasDocs) {
+    for (const f of files) {
+      copyFile(f, destDir, sourceDir);
+    }
+  } else {
+    console.log(`[sync-docs] No docs directory at ${sourceDir}, continuing with root README only if present.`);
   }
 
   // Optionally copy root README as README.root.md
@@ -106,14 +109,19 @@ function main() {
   }
 
   // Generate manifest.json
-  const tree = buildTree(sourceDir);
+  let tree;
+  if (hasDocs) {
+    tree = buildTree(sourceDir);
+  } else {
+    tree = { type: 'dir', name: 'docs', path: '', children: [] };
+  }
   if (readmeNode) {
     tree.children = tree.children || [];
     tree.children.push(readmeNode);
   }
   const manifest = { generatedAt: Date.now(), root: tree };
   fs.writeFileSync(path.join(destDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
-  console.log(`[sync-docs] Synced ${files.length} files to ${destDir}`);
+  console.log(`[sync-docs] Synced ${files.length} files to ${destDir}${readmeNode ? ' + root README' : ''}`);
 }
 
 main();
