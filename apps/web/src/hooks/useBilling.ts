@@ -5,9 +5,11 @@ export function useBilling() {
   const billing = useQuery(api.billing.queries.getUserBilling);
   const usage = useQuery(api.billing.queries.getUsageStats);
   const transactions = useQuery(api.billing.queries.getCreditTransactions);
+  const creditPacks = useQuery(api.billing.queries.getCreditPacks);
+  const planCatalog = useQuery(api.billing.queries.getPlanCatalog);
 
   const updatePlan = useMutation(api.billing.mutations.updateSubscription);
-  const purchaseCredits = useMutation(api.billing.mutations.purchaseCredits);
+  const purchaseCredits = useAction(api.billing.mutations.purchaseCredits);
   const createCheckoutSession = useAction(
     api.billing.mutations.createCheckoutSession,
   );
@@ -16,6 +18,8 @@ export function useBilling() {
     billing,
     usage,
     transactions,
+    creditPacks,
+    planCatalog,
     updatePlan,
     purchaseCredits,
     createCheckoutSession,

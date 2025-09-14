@@ -18,10 +18,12 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useBilling } from "@/hooks/useBilling";
+import { getStripePriceId, type PlanType } from "@/lib/pricing-config";
+import { useRuntimeConfig } from "@/lib/runtime-config";
 import { useUser, useUserCredits } from "@/hooks/useUser";
 
 interface PricingPlan {
-  id: string;
+  id: PlanType;
   name: string;
   description: string;
   price: number;
@@ -62,10 +64,11 @@ export function CreditManager({
   const { credits, isLoading: creditsLoading } = useUserCredits();
   const { billing, usage, createCheckoutSession, purchaseCredits, updatePlan } =
     useBilling();
+  const { config: runtimeConfig } = useRuntimeConfig();
 
   // Get real data from Convex
   const currentCredits = credits || 0;
-  const currentPlan = user?.plan || "free";
+  const currentPlan = (user?.plan as PlanType) || "starter";
   const usageStats: UsageStats = {
     currentPeriodUsage: usage?.currentPeriodUsage || 0,
     totalCreditsUsed: usage?.totalCreditsUsed || 0,
@@ -77,8 +80,8 @@ export function CreditManager({
 
   const pricingPlans: PricingPlan[] = [
     {
-      id: "free",
-      name: "Free",
+      id: "starter",
+      name: "Starter",
       description: "Perfect for trying out the platform",
       price: 0,
       credits: 100,
@@ -88,11 +91,11 @@ export function CreditManager({
         "Basic lead information",
         "Email support",
       ],
-      currentPlan: currentPlan === "free",
+      currentPlan: currentPlan === "starter",
     },
     {
-      id: "pro",
-      name: "Pro",
+      id: "professional",
+      name: "Professional",
       description: "Best for growing businesses",
       price: 49,
       credits: 1000,
@@ -105,7 +108,7 @@ export function CreditManager({
         "Export to CSV/CRM",
       ],
       popular: true,
-      currentPlan: currentPlan === "pro",
+      currentPlan: currentPlan === "professional",
     },
     {
       id: "enterprise",
@@ -125,12 +128,20 @@ export function CreditManager({
     },
   ];
 
-  const creditPacks = [
+  const creditPacks = (runtimeConfig?.creditPacks || []).map((p) => ({
+    amount: p.credits,
+    price: Math.round(p.priceCents / 100),
+    bonus: p.bonus || 0,
+  }));
+  // Fallback defaults if admin hasn't configured packs yet
+  const fallbackCreditPacks = [
     { amount: 100, price: 15, bonus: 0 },
-    { amount: 500, price: 65, bonus: 50 },
-    { amount: 1000, price: 120, bonus: 150 },
-    { amount: 2500, price: 280, bonus: 500 },
+    { amount: 550, price: 65, bonus: 0 },
+    { amount: 1150, price: 120, bonus: 0 },
+    { amount: 3000, price: 280, bonus: 0 },
   ];
+  const visiblePacks =
+    creditPacks.length > 0 ? creditPacks : fallbackCreditPacks;
 
   const getCreditUsagePercentage = () => {
     const monthlyAllowance = getPlanCredits();
@@ -152,16 +163,21 @@ export function CreditManager({
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
   };
 
-  const handleUpgrade = async (planId: string) => {
+  const handleUpgrade = async (planId: PlanType) => {
     if (planId === currentPlan) return;
 
     setIsProcessing(true);
 
     try {
+      // For now default to monthly billing in this UI
+      const billingCycle: "monthly" | "yearly" = "monthly";
+      const priceId = getStripePriceId(planId, billingCycle === "yearly");
+
       // Create Stripe checkout session for plan upgrade
       const result = await createCheckoutSession({
-        type: "subscription",
+        priceId,
         planId,
+        billingCycle,
         successUrl: `${window.location.origin}/dashboard?upgraded=true`,
         cancelUrl: `${window.location.origin}/dashboard`,
       });
@@ -194,14 +210,12 @@ export function CreditManager({
     setIsProcessing(true);
 
     try {
-      // Create Stripe checkout session for credit purchase
+      // Create Stripe checkout session for credit purchase (one-time)
       const pack = creditPacks.find((p) => p.amount + p.bonus === amount);
       if (!pack) throw new Error("Invalid credit pack");
 
-      const result = await createCheckoutSession({
-        type: "one_time",
+      const result = await purchaseCredits({
         credits: amount,
-        amount: pack.price * 100, // Convert to cents
         successUrl: `${window.location.origin}/dashboard?credits_purchased=true`,
         cancelUrl: `${window.location.origin}/dashboard`,
       });
@@ -253,17 +267,19 @@ export function CreditManager({
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Credit Overview</h3>
           <Badge
-            variant={currentPlan === "free" ? "secondary" : "default"}
+            variant={currentPlan === "starter" ? "secondary" : "default"}
             className={`${
-              currentPlan === "pro"
+              currentPlan === "professional"
                 ? "bg-blue-100 text-blue-800"
                 : currentPlan === "enterprise"
                   ? "bg-purple-100 text-purple-800"
                   : ""
             }`}
           >
-            {currentPlan === "free" && <Star className="h-3 w-3 mr-1" />}
-            {currentPlan === "pro" && <Crown className="h-3 w-3 mr-1" />}
+            {currentPlan === "starter" && <Star className="h-3 w-3 mr-1" />}
+            {currentPlan === "professional" && (
+              <Crown className="h-3 w-3 mr-1" />
+            )}
             {currentPlan === "enterprise" && <Zap className="h-3 w-3 mr-1" />}
             {pricingPlans.find((p) => p.id === currentPlan)?.name} Plan
           </Badge>
@@ -366,7 +382,7 @@ export function CreditManager({
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {creditPacks.map((pack, index) => (
+            {visiblePacks.map((pack, index) => (
               <div
                 key={index}
                 className={`border rounded-lg p-4 cursor-pointer transition-colors ${
@@ -416,9 +432,9 @@ export function CreditManager({
                 <>
                   <Plus className="h-4 w-4 mr-2" />
                   Purchase{" "}
-                  {creditPacks[selectedCreditPack].amount +
-                    creditPacks[selectedCreditPack].bonus}{" "}
-                  Credits for ${creditPacks[selectedCreditPack].price}
+                  {visiblePacks[selectedCreditPack].amount +
+                    visiblePacks[selectedCreditPack].bonus}{" "}
+                  Credits for ${visiblePacks[selectedCreditPack].price}
                 </>
               )}
             </Button>

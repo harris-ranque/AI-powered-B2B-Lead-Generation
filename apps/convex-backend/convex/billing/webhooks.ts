@@ -116,24 +116,65 @@ export const handleCheckoutCompleted = internalMutation({
       }
 
       // Ensure user has stripeCustomerId and subscription linkage
-      const patches: Partial<Doc<"users">> = {} as any;
-      if (!user.stripeCustomerId && args.customerId)
+      const u0 = user as Doc<"users">;
+      const patches: Partial<Doc<"users">> = {};
+      if (!u0.stripeCustomerId && args.customerId)
         patches.stripeCustomerId = args.customerId;
-      if (!user.stripeSubscriptionId && args.subscriptionId)
+      if (!u0.stripeSubscriptionId && args.subscriptionId)
         patches.stripeSubscriptionId = args.subscriptionId;
       if (Object.keys(patches).length > 0) {
-        await ctx.db.patch(user._id, { ...patches, updatedAt: Date.now() });
+        await ctx.db.patch(u0._id, { ...patches, updatedAt: Date.now() });
       }
 
-      // Log the event
-      await ctx.db.insert("subscriptionEvents", {
-        userId: user._id,
-        stripeCustomerId: args.customerId,
-        stripeSubscriptionId: args.subscriptionId,
-        eventType: "subscription_created",
-        metadata: { sessionId: args.sessionId, mode: args.mode },
-        createdAt: Date.now(),
-      });
+      // If this was a credits purchase (one-time payment), credit the account idempotently
+      const md = args.metadata as
+        | { type?: string; credits?: unknown }
+        | undefined;
+      if (args.mode === "payment" && md?.type === "credits_purchase") {
+        const creditsToAdd = parseInt(String(md?.credits ?? 0), 10);
+        if (!isFinite(creditsToAdd) || creditsToAdd <= 0) {
+          console.error(
+            "Invalid credits in metadata for session",
+            args.sessionId,
+          );
+        } else {
+          // Idempotency: if a transaction with this sessionId already exists, skip
+          const existingTx = await ctx.db
+            .query("creditTransactions")
+            .withIndex("by_user", (q) => q.eq("userId", u0._id))
+            .filter((q) => q.eq(q.field("stripePaymentId"), args.sessionId))
+            .first();
+
+          if (!existingTx) {
+            const newBalance = (u0.credits || 0) + creditsToAdd;
+            await ctx.db.patch(u0._id, {
+              credits: newBalance,
+              updatedAt: Date.now(),
+            });
+
+            await ctx.db.insert("creditTransactions", {
+              userId: u0._id,
+              type: "purchase",
+              amount: creditsToAdd,
+              description: `Credits purchase via Checkout ${args.sessionId}`,
+              relatedEntity: { type: "stripe_checkout", id: args.sessionId },
+              stripePaymentId: args.sessionId,
+              balanceAfter: newBalance,
+              createdAt: Date.now(),
+            });
+          }
+        }
+      } else {
+        // Log subscription checkout completions as events
+        await ctx.db.insert("subscriptionEvents", {
+          userId: u0._id,
+          stripeCustomerId: args.customerId,
+          stripeSubscriptionId: args.subscriptionId,
+          eventType: "subscription_created",
+          metadata: { sessionId: args.sessionId, mode: args.mode },
+          createdAt: Date.now(),
+        });
+      }
 
       return { success: true };
     } catch (error) {

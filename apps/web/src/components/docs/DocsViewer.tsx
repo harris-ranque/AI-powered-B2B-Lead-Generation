@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeHighlight from "rehype-highlight";
-import 'highlight.js/styles/github.css';
+import "highlight.js/styles/github.css";
 
 interface DocsViewerProps {
   path: string; // relative path under /docs
@@ -42,16 +42,16 @@ export const DocsViewer: React.FC<DocsViewerProps> = ({ path, onHeadings }) => {
         }
         onHeadings?.(headings);
       })
-      .catch((e) => !cancelled && setError(e.message || "Failed to load content"));
+      .catch(
+        (e) => !cancelled && setError(e.message || "Failed to load content"),
+      );
     return () => {
       cancelled = true;
     };
   }, [path, onHeadings]);
 
   if (error) {
-    return (
-      <div className="text-sm text-red-600">{error}</div>
-    );
+    return <div className="text-sm text-red-600">{error}</div>;
   }
 
   return (
@@ -60,23 +60,34 @@ export const DocsViewer: React.FC<DocsViewerProps> = ({ path, onHeadings }) => {
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[
           rehypeSlug,
-          [rehypeAutolinkHeadings, { behavior: 'append', properties: { className: ['anchor-link'] } }],
+          [
+            rehypeAutolinkHeadings,
+            { behavior: "append", properties: { className: ["anchor-link"] } },
+          ],
           rehypeHighlight,
         ]}
         components={{
           a: (props) => {
             const href = props.href || "";
             const isExternal = /^(https?:)?\/\//.test(href);
-            if (!isExternal && href.endsWith('.md')) {
+            if (!isExternal && href.endsWith(".md")) {
               // Convert relative doc links to /admin/docs routes
-              const normalized = href.replace(/^\.\//, '');
+              const normalized = href.replace(/^\.\//, "");
               return <a {...props} href={`/admin/docs/${normalized}`} />;
             }
-            return <a {...props} target={isExternal ? "_blank" : undefined} rel={isExternal ? "noreferrer" : undefined} />;
+            return (
+              <a
+                {...props}
+                target={isExternal ? "_blank" : undefined}
+                rel={isExternal ? "noreferrer" : undefined}
+              />
+            );
           },
           img: (props) => {
             const src = props.src || "";
-            const rewritten = src.startsWith("http") ? src : `/docs/${src.replace(/^\.\//, '')}`;
+            const rewritten = src.startsWith("http")
+              ? src
+              : `/docs/${src.replace(/^\.\//, "")}`;
             return <img {...props} src={rewritten} />;
           },
         }}
@@ -86,4 +97,3 @@ export const DocsViewer: React.FC<DocsViewerProps> = ({ path, onHeadings }) => {
     </div>
   );
 };
-

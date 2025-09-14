@@ -24,13 +24,8 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState } from "react";
-import {
-  PRICING_CONFIG,
-  getPlanPrice,
-  getAnnualSavings,
-  formatPrice,
-  type PlanType,
-} from "@/lib/pricing-config";
+import { formatPrice, type PlanType } from "@/lib/pricing-config";
+import { useRuntimeConfig } from "@/lib/runtime-config";
 
 interface PricingPlan {
   id: PlanType;
@@ -45,6 +40,7 @@ interface PricingPlan {
 
 export default function PricingPage() {
   const [isAnnual, setIsAnnual] = useState(false);
+  const { config: runtimeConfig } = useRuntimeConfig();
 
   const plans: PricingPlan[] = [
     {
@@ -226,11 +222,22 @@ export default function PricingPage() {
   ];
 
   const getPrice = (plan: PricingPlan) => {
-    return getPlanPrice(plan.id, isAnnual);
+    const entry = (runtimeConfig?.planCatalog || []).find(
+      (p) => p.planId === plan.id,
+    );
+    if (!entry) return 0;
+    return isAnnual ? entry.yearlyPrice : entry.monthlyPrice;
   };
 
   const getSavings = (plan: PricingPlan) => {
-    return getAnnualSavings(plan.id);
+    const entry = (runtimeConfig?.planCatalog || []).find(
+      (p) => p.planId === plan.id,
+    );
+    if (!entry) return 0;
+    const monthlyTotal = entry.monthlyPrice * 12;
+    const yearlyTotal = entry.yearlyPrice * 12;
+    if (monthlyTotal === 0) return 0;
+    return Math.round(((monthlyTotal - yearlyTotal) / monthlyTotal) * 100);
   };
 
   return (

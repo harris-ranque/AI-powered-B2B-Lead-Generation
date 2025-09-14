@@ -149,7 +149,7 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
             ⚡
           </div>
           <span className="text-xl font-bold">Genni</span>
-      </div>
+        </div>
 
         {/* Main Navigation */}
         <nav className="space-y-6">
@@ -174,7 +174,11 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
               aria-expanded={adminOpen}
             >
               <span>Admin</span>
-              <span className={`transition-transform ${adminOpen ? "rotate-90" : "rotate-0"}`}>›</span>
+              <span
+                className={`transition-transform ${adminOpen ? "rotate-90" : "rotate-0"}`}
+              >
+                ›
+              </span>
             </button>
             {adminOpen && (
               <div className="mt-2 space-y-1">
@@ -184,7 +188,9 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
                     setIsOpen(false);
                   }}
                   className={`w-full text-left block rounded-lg px-3 py-2 text-sm hover:bg-muted/10 ${
-                    isAdminRoute && location.pathname === "/admin" ? "bg-primary/10 text-primary" : ""
+                    isAdminRoute && location.pathname === "/admin"
+                      ? "bg-primary/10 text-primary"
+                      : ""
                   }`}
                 >
                   Admin Dashboard
@@ -240,7 +246,9 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
                     setIsOpen(false);
                   }}
                   className={`w-full text-left block rounded-lg px-3 py-2 text-sm hover:bg-muted/10 ${
-                    location.pathname.startsWith("/admin/docs") ? "bg-primary/10 text-primary" : ""
+                    location.pathname.startsWith("/admin/docs")
+                      ? "bg-primary/10 text-primary"
+                      : ""
                   }`}
                 >
                   Documentation

@@ -624,14 +624,20 @@ export function BusinessProfileWizard({
         </div>
 
         <Card className="p-4">
-          <Accordion type="multiple" defaultValue={["company","market","value","ideal"]} className="w-full">
+          <Accordion
+            type="multiple"
+            defaultValue={["company", "market", "value", "ideal"]}
+            className="w-full"
+          >
             <AccordionItem value="company">
               <AccordionTrigger>
                 <div className="text-left flex items-center gap-3">
                   <Building2 className="h-4 w-4 text-primary" />
                   <div>
                     <div className="font-semibold">Company Information</div>
-                    <div className="text-xs text-muted-foreground">Name, industry, tone of voice</div>
+                    <div className="text-xs text-muted-foreground">
+                      Name, industry, tone of voice
+                    </div>
                   </div>
                 </div>
               </AccordionTrigger>
@@ -647,8 +653,12 @@ export function BusinessProfileWizard({
                 <div className="text-left flex items-center gap-3">
                   <Target className="h-4 w-4 text-primary" />
                   <div>
-                    <div className="font-semibold">Target Market & Offerings</div>
-                    <div className="text-xs text-muted-foreground">Industries served and services offered</div>
+                    <div className="font-semibold">
+                      Target Market & Offerings
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Industries served and services offered
+                    </div>
                   </div>
                 </div>
               </AccordionTrigger>
@@ -665,7 +675,9 @@ export function BusinessProfileWizard({
                   <Sparkles className="h-4 w-4 text-primary" />
                   <div>
                     <div className="font-semibold">Value Proposition</div>
-                    <div className="text-xs text-muted-foreground">Differentiators and pain points you solve</div>
+                    <div className="text-xs text-muted-foreground">
+                      Differentiators and pain points you solve
+                    </div>
                   </div>
                 </div>
               </AccordionTrigger>
@@ -681,8 +693,12 @@ export function BusinessProfileWizard({
                 <div className="text-left flex items-center gap-3">
                   <MessageSquare className="h-4 w-4 text-primary" />
                   <div>
-                    <div className="font-semibold">Ideal Customer & Challenges</div>
-                    <div className="text-xs text-muted-foreground">Ideal customer profile and current challenges</div>
+                    <div className="font-semibold">
+                      Ideal Customer & Challenges
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Ideal customer profile and current challenges
+                    </div>
                   </div>
                 </div>
               </AccordionTrigger>
@@ -693,7 +709,10 @@ export function BusinessProfileWizard({
           </Accordion>
 
           <div className="flex items-center justify-end pt-6">
-            <Button onClick={handleComplete} disabled={!isEditorValid() || isSaving}>
+            <Button
+              onClick={handleComplete}
+              disabled={!isEditorValid() || isSaving}
+            >
               {isSaving ? "Saving..." : "Save Changes"}
             </Button>
           </div>

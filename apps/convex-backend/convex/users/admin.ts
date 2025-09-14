@@ -374,6 +374,7 @@ export const getSystemConfiguration = query({
       return {
         creditCosts: config.creditCosts,
         planLimits: config.planLimits,
+        creditPacks: config.creditPacks || null,
         lastUpdated: config.updatedAt,
         updatedBy: config.updatedBy,
       };
@@ -383,6 +384,7 @@ export const getSystemConfiguration = query({
     return {
       creditCosts: CREDIT_COSTS,
       planLimits: PLAN_LIMITS,
+      creditPacks: null,
       lastUpdated: null,
       updatedBy: null,
     };
@@ -563,6 +565,138 @@ export const updatePlanLimits = mutation({
   },
 });
 
+// Update credit packs (admin only)
+export const updateCreditPacks = mutation({
+  args: {
+    creditPacks: v.array(
+      v.object({
+        id: v.string(),
+        credits: v.number(),
+        priceCents: v.number(),
+        bonus: v.optional(v.number()),
+        active: v.boolean(),
+        stripePriceId: v.optional(v.string()),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await getCurrentUser(ctx);
+    if (!currentUser || !isAdmin(currentUser)) {
+      throw createError("Admin access required", ERROR_CODES.FORBIDDEN, 403);
+    }
+    // Basic validation
+    for (const p of args.creditPacks) {
+      if (p.credits <= 0 || p.priceCents < 0) {
+        throw createError(
+          "Invalid credit pack values",
+          ERROR_CODES.VALIDATION_ERROR,
+          400,
+        );
+      }
+    }
+    let config = await ctx.db.query("systemConfiguration").unique();
+    if (config) {
+      await ctx.db.patch(config._id, {
+        creditPacks: args.creditPacks,
+        updatedAt: Date.now(),
+        updatedBy: currentUser._id,
+      });
+    } else {
+      await ctx.db.insert("systemConfiguration", {
+        creditCosts: CREDIT_COSTS,
+        planLimits: PLAN_LIMITS,
+        creditPacks: args.creditPacks,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        updatedBy: currentUser._id,
+      });
+    }
+    await ctx.db.insert("systemLogs", {
+      type: "configuration_change",
+      action: "update_credit_packs",
+      userId: currentUser._id,
+      data: { creditPacks: args.creditPacks },
+      timestamp: Date.now(),
+    });
+    return { success: true };
+  },
+});
+
+// Upsert a plan configuration (admin only)
+export const upsertPlanConfiguration = mutation({
+  args: {
+    planId: v.string(),
+    planName: v.string(),
+    monthlyPrice: v.number(),
+    yearlyPrice: v.number(),
+    stripePriceIdMonthly: v.optional(v.string()),
+    stripePriceIdYearly: v.optional(v.string()),
+    limits: v.object({
+      monthlySearches: v.number(),
+      maxLeadsPerSearch: v.number(),
+      monthlyEnrichments: v.number(),
+      monthlyExports: v.number(),
+      emailGeneration: v.boolean(),
+      bulkOperations: v.boolean(),
+      apiAccess: v.boolean(),
+      requiresOwnApiKeys: v.boolean(),
+      supportLevel: v.string(),
+    }),
+    features: v.array(v.string()),
+    isActive: v.boolean(),
+    isVisible: v.boolean(),
+    sortOrder: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await getCurrentUser(ctx);
+    if (!currentUser || !isAdmin(currentUser)) {
+      throw createError("Admin access required", ERROR_CODES.FORBIDDEN, 403);
+    }
+    const existing = await ctx.db
+      .query("planConfigurations")
+      .withIndex("by_plan_id", (q) => q.eq("planId", args.planId))
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        ...args,
+        updatedAt: Date.now(),
+        updatedBy: currentUser._id,
+      } as any);
+    } else {
+      await ctx.db.insert("planConfigurations", {
+        ...args,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        updatedBy: currentUser._id,
+      } as any);
+    }
+    await ctx.db.insert("systemLogs", {
+      type: "configuration_change",
+      action: "upsert_plan_configuration",
+      userId: currentUser._id,
+      data: { planId: args.planId },
+      timestamp: Date.now(),
+    });
+    return { success: true };
+  },
+});
+
+// List all plan configurations (admin only)
+export const listPlanConfigurations = query({
+  args: {},
+  handler: async (ctx) => {
+    const currentUser = await getCurrentUser(ctx);
+    if (!currentUser || !isAdmin(currentUser)) {
+      throw createError("Admin access required", ERROR_CODES.FORBIDDEN, 403);
+    }
+    const plans = await ctx.db
+      .query("planConfigurations")
+      .withIndex("by_sort_order")
+      .collect();
+    return plans;
+  },
+});
+
 // Internal query to get user by ID (for internal actions)
 export const getUserByIdInternal = internalQuery({
   args: { userId: v.id("users") },
@@ -590,7 +724,8 @@ export const pauseUserProcessing = mutation({
     }
 
     const user = await ctx.db.get(args.userId);
-    if (!user) throw createError("User not found", ERROR_CODES.USER_NOT_FOUND, 404);
+    if (!user)
+      throw createError("User not found", ERROR_CODES.USER_NOT_FOUND, 404);
 
     await ctx.db.patch(args.userId, {
       processingPaused: true,
@@ -645,7 +780,8 @@ export const resumeUserProcessing = mutation({
     }
 
     const user = await ctx.db.get(args.userId);
-    if (!user) throw createError("User not found", ERROR_CODES.USER_NOT_FOUND, 404);
+    if (!user)
+      throw createError("User not found", ERROR_CODES.USER_NOT_FOUND, 404);
 
     await ctx.db.patch(args.userId, {
       processingPaused: false,

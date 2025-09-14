@@ -26,12 +26,20 @@ const MAX_ATTEMPTS_PER_WINDOW = 10;
 
 // Utilities for signed SSE tokens (Option A)
 function base64urlEncodeString(str: string): string {
-  return Buffer.from(str, "utf8").toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+  return Buffer.from(str, "utf8")
+    .toString("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
 }
 
 function base64urlEncodeBytes(bytes: ArrayBuffer | Uint8Array): string {
   const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  return Buffer.from(buf).toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+  return Buffer.from(buf)
+    .toString("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
 }
 
 async function hmacSha256(secret: string, data: string): Promise<string> {
@@ -43,7 +51,11 @@ async function hmacSha256(secret: string, data: string): Promise<string> {
     false,
     ["sign", "verify"],
   );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(data),
+  );
   return base64urlEncodeBytes(sig);
 }
 
@@ -140,7 +152,10 @@ http.route({
           });
         }
         try {
-          const payloadJson = Buffer.from(payloadB64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+          const payloadJson = Buffer.from(
+            payloadB64.replace(/-/g, "+").replace(/_/g, "/"),
+            "base64",
+          ).toString("utf8");
           const payload = JSON.parse(payloadJson) as {
             uid: string;
             iat: number;
@@ -152,10 +167,13 @@ http.route({
             ori?: string;
           };
           if (!secret) {
-            return new Response("Server misconfigured: missing SSE_TOKEN_SECRET", {
-              status: 500,
-              headers: corsHeaders,
-            });
+            return new Response(
+              "Server misconfigured: missing SSE_TOKEN_SECRET",
+              {
+                status: 500,
+                headers: corsHeaders,
+              },
+            );
           }
           // Verify signature over payload (base64url body)
           const expectedSig = await hmacSha256(secret, payloadB64);
@@ -196,12 +214,17 @@ http.route({
     if (!authed) {
       // Backward-compatible fallback: basic base64 user:timestamp:random (max age 1h)
       try {
-        const tokenData = Buffer.from(authToken, "base64").toString("utf8").split(":");
+        const tokenData = Buffer.from(authToken, "base64")
+          .toString("utf8")
+          .split(":");
         if (tokenData.length !== 3 || tokenData[0] !== userId) {
-          return new Response("Invalid authentication token: user mismatch or bad format", {
-            status: 401,
-            headers: corsHeaders,
-          });
+          return new Response(
+            "Invalid authentication token: user mismatch or bad format",
+            {
+              status: 401,
+              headers: corsHeaders,
+            },
+          );
         }
         const tokenTimestamp = parseInt(tokenData[1]!);
         const tokenAge = Date.now() - tokenTimestamp;
@@ -394,7 +417,9 @@ http.route({
       const secret = process.env.SSE_TOKEN_SECRET;
       if (!secret) {
         return new Response(
-          JSON.stringify({ error: "Server misconfigured: missing SSE_TOKEN_SECRET" }),
+          JSON.stringify({
+            error: "Server misconfigured: missing SSE_TOKEN_SECRET",
+          }),
           { status: 500, headers: headersBase },
         );
       }
@@ -422,10 +447,13 @@ http.route({
     } catch (err) {
       // Return structured error with CORS headers for visibility in browser
       const message = err instanceof Error ? err.message : "Unknown error";
-      return new Response(JSON.stringify({ error: "Token issuance failed", message }), {
-        status: 500,
-        headers: headersBase,
-      });
+      return new Response(
+        JSON.stringify({ error: "Token issuance failed", message }),
+        {
+          status: 500,
+          headers: headersBase,
+        },
+      );
     }
   }),
 });
@@ -952,6 +980,51 @@ http.route({
     } catch (error) {
       console.error("Stripe webhook error:", error);
       return new Response(JSON.stringify({ error: "Webhook handler failed" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }),
+});
+
+// Public runtime configuration endpoint (cacheable)
+http.route({
+  path: "/api/public/config",
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    try {
+      // Load admin-configured system configuration and plan catalog via queries
+      const systemConfig = await ctx.runQuery(
+        api.admin.queries.getSystemConfiguration,
+        {},
+      );
+      const activePlans = await ctx.runQuery(
+        api.billing.queries.getPlanCatalog,
+        {},
+      );
+      const packs = await ctx.runQuery(api.billing.queries.getCreditPacks, {});
+
+      const creditCosts = systemConfig?.creditCosts || null;
+      const version = systemConfig?.updatedAt || Date.now();
+
+      const body = JSON.stringify({
+        version,
+        creditPacks: packs,
+        planCatalog: activePlans,
+        creditCosts,
+      });
+
+      // Basic caching headers; clients can also cache in localStorage
+      return new Response(body, {
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "public, max-age=600, stale-while-revalidate=86400",
+          ETag: `W/\"${version}-${packs.length}-${activePlans.length}\"`,
+        },
+      });
+    } catch (error) {
+      console.error("Public config error:", error);
+      return new Response(JSON.stringify({ error: "Config fetch failed" }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });

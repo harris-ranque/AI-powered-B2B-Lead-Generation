@@ -19,9 +19,7 @@ export function useAdminUsers() {
   const updateUserPlan = useMutation(api.admin.mutations.updateUserPlan);
   const addUserCredits = useMutation(api.admin.mutations.addUserCredits);
   const exportUsers = useMutation(api.admin.mutations.exportUsers);
-  const pauseUserProcessing = useMutation(
-    api.users.admin.pauseUserProcessing,
-  );
+  const pauseUserProcessing = useMutation(api.users.admin.pauseUserProcessing);
   const resumeUserProcessing = useMutation(
     api.users.admin.resumeUserProcessing,
   );
@@ -74,11 +72,21 @@ export function useAdminConfiguration() {
   const configuration = useQuery(api.admin.queries.getSystemConfiguration);
   const updateCreditCosts = useMutation(api.admin.mutations.updateCreditCosts);
   const updatePlanLimits = useMutation(api.admin.mutations.updatePlanLimits);
+  const updateCreditPacks = useMutation(api.users.admin.updateCreditPacks);
+  const listPlanConfigurations = useQuery(
+    api.users.admin.listPlanConfigurations,
+  );
+  const upsertPlanConfiguration = useMutation(
+    api.users.admin.upsertPlanConfiguration,
+  );
 
   return {
     configuration,
     updateCreditCosts,
     updatePlanLimits,
+    updateCreditPacks,
+    listPlanConfigurations,
+    upsertPlanConfiguration,
     isLoading: configuration === undefined,
   };
 }

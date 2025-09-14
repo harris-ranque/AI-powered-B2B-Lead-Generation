@@ -66,6 +66,95 @@ export const createCheckoutSession = action({
   },
 });
 
+// Create Stripe checkout session for one-time credit purchase
+export const purchaseCredits = action({
+  args: {
+    credits: v.number(),
+    successUrl: v.optional(v.string()),
+    cancelUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    "use node";
+    const user = await requireAuth(ctx);
+
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      throw new Error("Stripe secret key not configured");
+    }
+
+    // Load admin-configured credit packs
+    const config = await ctx.runQuery(
+      api.admin.queries.getSystemConfiguration,
+      {},
+    );
+    const packs = (config?.creditPacks || []).filter(
+      (p: { active: boolean }) => p.active,
+    );
+    if (packs.length === 0) {
+      throw new Error("No active credit packs configured");
+    }
+    const requested = args.credits;
+    const pack = packs.find(
+      (p: { credits: number }) => p.credits === requested,
+    );
+    if (!pack) {
+      throw new Error("Invalid credits pack selection");
+    }
+
+    // Ensure success/cancel URLs are properly set
+    const appUrl = process.env.APP_URL;
+    if (!args.successUrl && !appUrl) {
+      throw new Error(
+        "Missing successUrl and APP_URL; cannot construct redirect URLs",
+      );
+    }
+
+    try {
+      const stripe = new Stripe(stripeSecretKey);
+      const useStripePriceId = !!pack.stripePriceId;
+      const lineItem: Stripe.Checkout.SessionCreateParams.LineItem =
+        useStripePriceId
+          ? { price: pack.stripePriceId!, quantity: 1 }
+          : {
+              price_data: {
+                currency: "usd",
+                unit_amount: pack.priceCents,
+                product_data: {
+                  name: "Genni Credits Pack",
+                  description: `${requested} credits`,
+                },
+              },
+              quantity: 1,
+            };
+
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        payment_method_types: ["card"],
+        line_items: [lineItem],
+        success_url:
+          args.successUrl ||
+          `${appUrl}/dashboard?credits_purchased=true&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: args.cancelUrl || `${appUrl}/dashboard`,
+        customer: user.stripeCustomerId,
+        customer_email: user.stripeCustomerId ? undefined : user.email,
+        metadata: {
+          userId: user._id,
+          type: "credits_purchase",
+          credits: String(requested),
+        },
+      });
+
+      return {
+        sessionId: session.id,
+        url: session.url!,
+      };
+    } catch (error) {
+      console.error("Error creating Stripe credits checkout:", error);
+      throw new Error("Failed to create credits checkout session");
+    }
+  },
+});
+
 // Create Stripe customer portal session
 export const createPortalSession = action({
   args: {

@@ -240,18 +240,28 @@ export const enrichLeads: any = action({
 
       // Early exit if search cancelled or user paused
       if (search.status === "cancelled" || user.processingPaused) {
-        await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
-          searchId: args.searchId,
-          status: "cancelled",
-          error: user.processingPaused ? (user.pauseReason || "User processing paused by admin") : undefined,
-        });
-        await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
-          userId: search.userId,
-          searchId: args.searchId,
-          stage: "cancelled",
-          progress: 0,
-          message: user.processingPaused ? (user.pauseReason || "User processing paused by admin") : "Search cancelled",
-        } as any);
+        await ctx.runMutation(
+          internal.search.internal.updateSearchStatusInternal,
+          {
+            searchId: args.searchId,
+            status: "cancelled",
+            error: user.processingPaused
+              ? user.pauseReason || "User processing paused by admin"
+              : undefined,
+          },
+        );
+        await ctx.runMutation(
+          internal.realtime.broadcaster.broadcastPipelineUpdate,
+          {
+            userId: search.userId,
+            searchId: args.searchId,
+            stage: "cancelled",
+            progress: 0,
+            message: user.processingPaused
+              ? user.pauseReason || "User processing paused by admin"
+              : "Search cancelled",
+          } as any,
+        );
         return { success: false, message: "Cancelled" } as any;
       }
 
@@ -309,25 +319,45 @@ export const enrichLeads: any = action({
 
       for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
         // Re-check cancellation/paused before each batch
-        const latest = await ctx.runQuery(internal.search.internal.getSearchInternal, {
-          searchId: args.searchId,
-        });
-        const latestUser = await ctx.runQuery(internal.users.internal.getUserInternal, {
-          userId: search.userId,
-        });
-        if (!latest || latest.status === "cancelled" || latestUser?.processingPaused) {
-          await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
+        const latest = await ctx.runQuery(
+          internal.search.internal.getSearchInternal,
+          {
             searchId: args.searchId,
-            status: "cancelled",
-            error: latestUser?.processingPaused ? (latestUser.pauseReason || "User processing paused by admin") : undefined,
-          });
-          await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+          },
+        );
+        const latestUser = await ctx.runQuery(
+          internal.users.internal.getUserInternal,
+          {
             userId: search.userId,
-            searchId: args.searchId,
-            stage: "cancelled",
-            progress: 0,
-            message: latestUser?.processingPaused ? (latestUser.pauseReason || "User processing paused by admin") : "Search cancelled",
-          } as any);
+          },
+        );
+        if (
+          !latest ||
+          latest.status === "cancelled" ||
+          latestUser?.processingPaused
+        ) {
+          await ctx.runMutation(
+            internal.search.internal.updateSearchStatusInternal,
+            {
+              searchId: args.searchId,
+              status: "cancelled",
+              error: latestUser?.processingPaused
+                ? latestUser.pauseReason || "User processing paused by admin"
+                : undefined,
+            },
+          );
+          await ctx.runMutation(
+            internal.realtime.broadcaster.broadcastPipelineUpdate,
+            {
+              userId: search.userId,
+              searchId: args.searchId,
+              stage: "cancelled",
+              progress: 0,
+              message: latestUser?.processingPaused
+                ? latestUser.pauseReason || "User processing paused by admin"
+                : "Search cancelled",
+            } as any,
+          );
           return { success: false, message: "Cancelled" } as any;
         }
         const batch = batches[batchIndex];
@@ -471,9 +501,12 @@ export const enrichLeads: any = action({
 
       // Trigger AI analysis stage (if not cancelled)
       {
-        const latest = await ctx.runQuery(internal.search.internal.getSearchInternal, {
-          searchId: args.searchId,
-        });
+        const latest = await ctx.runQuery(
+          internal.search.internal.getSearchInternal,
+          {
+            searchId: args.searchId,
+          },
+        );
         if (latest && latest.status !== "cancelled") {
           await ctx.scheduler.runAfter(0, "leads/actions:analyzeLeads" as any, {
             searchId: args.searchId,
@@ -490,12 +523,15 @@ export const enrichLeads: any = action({
     } catch (error) {
       console.error(`Enrichment failed for search ${args.searchId}:`, error);
 
-      // Update search status to failed
-      await ctx.runMutation(api.search.mutations.updateSearchStatus, {
-        searchId: args.searchId,
-        status: "failed",
-        error: error instanceof Error ? error.message : "Enrichment failed",
-      });
+      // Update search status to failed (internal to bypass auth in actions)
+      await ctx.runMutation(
+        internal.search.internal.updateSearchStatusInternal,
+        {
+          searchId: args.searchId,
+          status: "failed",
+          error: error instanceof Error ? error.message : "Enrichment failed",
+        },
+      );
 
       throw error;
     }
@@ -534,18 +570,28 @@ export const analyzeLeads: any = action({
 
       // Early exit if cancelled or paused
       if (search.status === "cancelled" || user.processingPaused) {
-        await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
-          searchId: args.searchId,
-          status: "cancelled",
-          error: user.processingPaused ? (user.pauseReason || "User processing paused by admin") : undefined,
-        });
-        await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
-          userId: search.userId,
-          searchId: args.searchId,
-          stage: "cancelled",
-          progress: 0,
-          message: user.processingPaused ? (user.pauseReason || "User processing paused by admin") : "Search cancelled",
-        } as any);
+        await ctx.runMutation(
+          internal.search.internal.updateSearchStatusInternal,
+          {
+            searchId: args.searchId,
+            status: "cancelled",
+            error: user.processingPaused
+              ? user.pauseReason || "User processing paused by admin"
+              : undefined,
+          },
+        );
+        await ctx.runMutation(
+          internal.realtime.broadcaster.broadcastPipelineUpdate,
+          {
+            userId: search.userId,
+            searchId: args.searchId,
+            stage: "cancelled",
+            progress: 0,
+            message: user.processingPaused
+              ? user.pauseReason || "User processing paused by admin"
+              : "Search cancelled",
+          } as any,
+        );
         return { success: false, message: "Cancelled" } as any;
       }
 
@@ -577,10 +623,10 @@ export const analyzeLeads: any = action({
         };
       }
 
-      // Get user's business profile for AI context
+      // Get user's business profile for AI context (no auth in actions)
       const profile = await ctx.runQuery(
-        api.profile.queries.getBusinessProfile,
-        {},
+        api.profile.queries.getProfileByUserId,
+        { userId: search.userId as any },
       );
 
       if (!profile) {
@@ -612,25 +658,45 @@ export const analyzeLeads: any = action({
 
         // Check for cancellation/paused before each batch
         {
-          const latest = await ctx.runQuery(internal.search.internal.getSearchInternal, {
-            searchId: args.searchId,
-          });
-          const latestUser = await ctx.runQuery(internal.users.internal.getUserInternal, {
-            userId: search.userId,
-          });
-          if (!latest || latest.status === "cancelled" || latestUser?.processingPaused) {
-            await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
+          const latest = await ctx.runQuery(
+            internal.search.internal.getSearchInternal,
+            {
               searchId: args.searchId,
-              status: "cancelled",
-              error: latestUser?.processingPaused ? (latestUser.pauseReason || "User processing paused by admin") : undefined,
-            });
-            await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+            },
+          );
+          const latestUser = await ctx.runQuery(
+            internal.users.internal.getUserInternal,
+            {
               userId: search.userId,
-              searchId: args.searchId,
-              stage: "cancelled",
-              progress: 0,
-              message: latestUser?.processingPaused ? (latestUser.pauseReason || "User processing paused by admin") : "Search cancelled",
-            } as any);
+            },
+          );
+          if (
+            !latest ||
+            latest.status === "cancelled" ||
+            latestUser?.processingPaused
+          ) {
+            await ctx.runMutation(
+              internal.search.internal.updateSearchStatusInternal,
+              {
+                searchId: args.searchId,
+                status: "cancelled",
+                error: latestUser?.processingPaused
+                  ? latestUser.pauseReason || "User processing paused by admin"
+                  : undefined,
+              },
+            );
+            await ctx.runMutation(
+              internal.realtime.broadcaster.broadcastPipelineUpdate,
+              {
+                userId: search.userId,
+                searchId: args.searchId,
+                stage: "cancelled",
+                progress: 0,
+                message: latestUser?.processingPaused
+                  ? latestUser.pauseReason || "User processing paused by admin"
+                  : "Search cancelled",
+              } as any,
+            );
             return { success: false, message: "Cancelled" } as any;
           }
         }
@@ -750,12 +816,15 @@ export const analyzeLeads: any = action({
     } catch (error) {
       console.error(`AI analysis failed for search ${args.searchId}:`, error);
 
-      // Update search status to failed
-      await ctx.runMutation(api.search.mutations.updateSearchStatus, {
-        searchId: args.searchId,
-        status: "failed",
-        error: error instanceof Error ? error.message : "AI analysis failed",
-      });
+      // Update search status to failed (internal to bypass auth in actions)
+      await ctx.runMutation(
+        internal.search.internal.updateSearchStatusInternal,
+        {
+          searchId: args.searchId,
+          status: "failed",
+          error: error instanceof Error ? error.message : "AI analysis failed",
+        },
+      );
 
       throw error;
     }

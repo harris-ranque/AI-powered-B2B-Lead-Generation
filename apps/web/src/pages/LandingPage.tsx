@@ -25,13 +25,11 @@ import {
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { ErrorBoundaryWrapper } from "@/components/ErrorBoundary";
-import {
-  PRICING_CONFIG,
-  getPlanPrice,
-  formatPrice,
-} from "@/lib/pricing-config";
+import { formatPrice } from "@/lib/pricing-config";
+import { useRuntimeConfig } from "@/lib/runtime-config";
 
 export default function LandingPage() {
+  const { config: runtimeConfig } = useRuntimeConfig();
   const [isHovered, setIsHovered] = useState<string | null>(null);
   const [hasError, setHasError] = useState(false);
 
@@ -137,10 +135,16 @@ export default function LandingPage() {
     },
   ];
 
+  const starter = (runtimeConfig?.planCatalog || []).find(
+    (p) => p.planId === "starter",
+  );
+  const professional = (runtimeConfig?.planCatalog || []).find(
+    (p) => p.planId === "professional",
+  );
   const pricingPlans = [
     {
       name: "Starter",
-      price: formatPrice(getPlanPrice("starter", false)),
+      price: formatPrice(starter ? starter.monthlyPrice : 0),
       description: "Perfect for trying out Lead Eternity",
       features: [
         "10 searches per month",
@@ -154,7 +158,7 @@ export default function LandingPage() {
     },
     {
       name: "Professional",
-      price: formatPrice(getPlanPrice("professional", false)),
+      price: formatPrice(professional ? professional.monthlyPrice : 0),
       description: "For growing businesses and sales teams",
       features: [
         "50 searches per month",

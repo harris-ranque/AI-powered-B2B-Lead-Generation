@@ -23,14 +23,12 @@ import {
 } from "lucide-react";
 import { PipelineOrchestrator } from "./pipeline/PipelineOrchestrator";
 import { PipelineProvider } from "@/pipeline/context";
-import { AIEmailGenerator } from "./AIEmailGenerator";
+import { LeadSearchHistory } from "./LeadSearchHistory";
 import { BusinessProfileWizard } from "./BusinessProfileWizard";
 import { CreditManager } from "./CreditManager";
 import { AdminDashboard } from "./AdminDashboard";
 import { Dashboard } from "./Dashboard";
 import { Settings as SettingsComponent } from "./Settings";
-import { DebugDashboard } from "./DebugDashboard";
-import { PerformanceMonitoringDashboard } from "./PerformanceMonitoringDashboard";
 import type {
   Lead,
   EmailGenerationResult,
@@ -57,7 +55,11 @@ export function LeadEternityDashboard() {
 
   // Real backend integration
   const { user, isAuthenticated } = useAuth();
-  const { profile, isComplete: hasCompletedOnboarding, isLoading: isProfileLoading } = useProfile();
+  const {
+    profile,
+    isComplete: hasCompletedOnboarding,
+    isLoading: isProfileLoading,
+  } = useProfile();
   const { balance } = useCredits();
   const userCredits = balance?.credits || 0;
   const { purchaseCredits, usage } = useBilling();
@@ -89,11 +91,11 @@ export function LeadEternityDashboard() {
   };
 
   const handleGenerateEmail = (lead: Lead) => {
+    // Keep selection (possible future preview usage), no navigation
     setSelectedLead(lead);
-    handleTabChange("email-generator");
     toast({
       title: "Lead Selected",
-      description: `Selected ${lead.company_name} for AI email generation.`,
+      description: `${lead.company_name} selected. Email preview is not available here.`,
     });
   };
 
@@ -132,15 +134,23 @@ export function LeadEternityDashboard() {
 
   const handlePurchaseCredits = async (amount: number) => {
     try {
-      await purchaseCredits({ amount });
-      toast({
-        title: "Credits Purchased",
-        description: `Added ${amount} credits to your account.`,
+      const res = await purchaseCredits({
+        credits: amount,
+        successUrl: `${window.location.origin}/dashboard?credits_purchased=true`,
+        cancelUrl: `${window.location.origin}/dashboard`,
       });
+      if (res?.url) {
+        window.location.href = res.url;
+      } else {
+        toast({
+          title: "Purchase Started",
+          description: `Continue checkout in the opened window.`,
+        });
+      }
     } catch (error) {
       toast({
         title: "Purchase Failed",
-        description: "Failed to purchase credits. Please try again.",
+        description: "Failed to start purchase. Please try again.",
         variant: "destructive",
       });
     }
@@ -148,9 +158,7 @@ export function LeadEternityDashboard() {
 
   // Avoid flashing onboarding while loading profile
   if (isProfileLoading) {
-    return (
-      <div className="min-h-screen bg-background" />
-    );
+    return <div className="min-h-screen bg-background" />;
   }
 
   // Show onboarding if not completed (after loading)
@@ -214,12 +222,12 @@ export function LeadEternityDashboard() {
               </Button>
 
               <Button
-                variant={currentTab === "email-generator" ? "default" : "ghost"}
+                variant={currentTab === "search-history" ? "default" : "ghost"}
                 className="w-full justify-start"
-                onClick={() => handleTabChange("email-generator")}
+                onClick={() => handleTabChange("search-history")}
               >
-                <Bot className="h-4 w-4 mr-2" />
-                AI Email Generator
+                <Activity className="h-4 w-4 mr-2" />
+                Search History
               </Button>
 
               <Button
@@ -275,34 +283,6 @@ export function LeadEternityDashboard() {
                   <UserCheck className="h-4 w-4 mr-2" />
                   Admin Dashboard
                   <Badge variant="secondary" className="ml-auto text-xs">
-                    Admin
-                  </Badge>
-                </Button>
-              )}
-
-              {isAdmin && (
-                <Button
-                  variant={currentTab === "debug" ? "default" : "ghost"}
-                  className="w-full justify-start"
-                  onClick={() => handleTabChange("debug")}
-                >
-                  <Bug className="h-4 w-4 mr-2" />
-                  Debug Panel
-                  <Badge variant="outline" className="ml-auto text-xs">
-                    Dev
-                  </Badge>
-                </Button>
-              )}
-
-              {isAdmin && (
-                <Button
-                  variant={currentTab === "performance" ? "default" : "ghost"}
-                  className="w-full justify-start"
-                  onClick={() => handleTabChange("performance")}
-                >
-                  <Activity className="h-4 w-4 mr-2" />
-                  Performance
-                  <Badge variant="outline" className="ml-auto text-xs">
                     Admin
                   </Badge>
                 </Button>
@@ -407,32 +387,17 @@ export function LeadEternityDashboard() {
               </div>
             )}
 
-            {currentTab === "email-generator" && (
+            {currentTab === "search-history" && (
               <div className="p-6">
                 <div className="mb-6">
                   <h2 className="text-2xl font-bold mb-2">
-                    AI Email Generator
+                    Lead Search History
                   </h2>
                   <p className="text-muted-foreground">
-                    Generate highly personalized emails using our 5-agent AI
-                    system for maximum conversion.
+                    Review past searches, see lead counts, and export CSVs.
                   </p>
                 </div>
-
-                {selectedLead ? (
-                  <AIEmailGenerator
-                    selectedLead={selectedLead}
-                    onEmailGenerated={handleEmailGenerated}
-                  />
-                ) : (
-                  <Alert>
-                    <Bot className="h-4 w-4" />
-                    <AlertDescription>
-                      Select a lead from the Lead Search to generate a
-                      personalized AI email.
-                    </AlertDescription>
-                  </Alert>
-                )}
+                <LeadSearchHistory />
               </div>
             )}
 
@@ -466,34 +431,6 @@ export function LeadEternityDashboard() {
             {currentTab === "admin" && isAdmin && (
               <div>
                 <AdminDashboard />
-              </div>
-            )}
-
-            {currentTab === "debug" && isAdmin && (
-              <div className="p-6">
-                <div className="mb-6">
-                  <h2 className="text-2xl font-bold mb-2">Debug Dashboard</h2>
-                  <p className="text-muted-foreground">
-                    Advanced debugging tools for correlation tracking,
-                    performance monitoring, and system diagnostics.
-                  </p>
-                </div>
-                <DebugDashboard />
-              </div>
-            )}
-
-            {currentTab === "performance" && isAdmin && (
-              <div className="p-6">
-                <div className="mb-6">
-                  <h2 className="text-2xl font-bold mb-2">
-                    Performance Monitoring
-                  </h2>
-                  <p className="text-muted-foreground">
-                    Real-time system metrics, performance analysis, and
-                    comprehensive monitoring dashboard.
-                  </p>
-                </div>
-                <PerformanceMonitoringDashboard />
               </div>
             )}
           </div>

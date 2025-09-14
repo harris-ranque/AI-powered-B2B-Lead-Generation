@@ -138,24 +138,20 @@ export function isValidTabName(
   tab: string,
 ): tab is
   | "pipeline"
-  | "email-generator"
+  | "search-history"
   | "profile"
   | "credits"
   | "admin"
   | "dashboard"
-  | "settings"
-  | "debug"
-  | "performance" {
+  | "settings" {
   const validTabs = [
     "pipeline",
-    "email-generator",
+    "search-history",
     "profile",
     "credits",
     "admin",
     "dashboard",
     "settings",
-    "debug",
-    "performance",
   ];
   return validTabs.includes(tab);
 }

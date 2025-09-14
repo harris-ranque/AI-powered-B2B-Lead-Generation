@@ -5,17 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Mail,
-  Send,
-  Edit,
-  Copy,
-  Trash2,
-  Plus,
-  Bot,
-  Sparkles,
-} from "lucide-react";
-import { AIEmailGenerator } from "./AIEmailGenerator";
+import { Mail, Send, Edit, Copy, Trash2, Plus, Sparkles } from "lucide-react";
 import type { EmailGenerationResult } from "@/lib/api-client";
 
 export function EmailStudio() {
@@ -76,15 +66,8 @@ export function EmailStudio() {
             </div>
           </div>
 
-          <Tabs defaultValue="ai-generator" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger
-                value="ai-generator"
-                className="flex items-center gap-2"
-              >
-                <Bot className="h-4 w-4" />
-                AI Email Generator
-              </TabsTrigger>
+          <Tabs defaultValue="templates" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger
                 value="templates"
                 className="flex items-center gap-2"
@@ -100,10 +83,6 @@ export function EmailStudio() {
                 Performance
               </TabsTrigger>
             </TabsList>
-
-            <TabsContent value="ai-generator" className="mt-6">
-              <AIEmailGenerator onEmailGenerated={handleEmailGenerated} />
-            </TabsContent>
 
             <TabsContent value="templates" className="mt-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

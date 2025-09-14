@@ -66,7 +66,7 @@ import {
   useAdminSystemControl,
 } from "@/hooks/useAdmin";
 import { CreditManagement } from "./admin/CreditManagement";
-import type { Id } from "@genni/convex-types/dataModel";
+import type { Id, Doc } from "@genni/convex-types/dataModel";
 
 // User type based on Convex schema
 interface User {
@@ -155,6 +155,41 @@ interface PlanLimits {
     maxSearches: number;
   };
 }
+
+// Admin-configurable credit pack type
+type CreditPack = {
+  id: string;
+  credits: number;
+  priceCents: number;
+  bonus?: number;
+  active: boolean;
+  stripePriceId?: string;
+};
+
+// Input shape for upserting a plan configuration
+type PlanConfigurationInput = {
+  planId: string;
+  planName: string;
+  monthlyPrice: number;
+  yearlyPrice: number;
+  stripePriceIdMonthly?: string;
+  stripePriceIdYearly?: string;
+  limits: {
+    monthlySearches: number;
+    maxLeadsPerSearch: number;
+    monthlyEnrichments: number;
+    monthlyExports: number;
+    emailGeneration: boolean;
+    bulkOperations: boolean;
+    apiAccess: boolean;
+    requiresOwnApiKeys: boolean;
+    supportLevel: string;
+  };
+  features: string[];
+  isActive: boolean;
+  isVisible: boolean;
+  sortOrder: number;
+};
 
 // External Services Configuration
 interface ExternalService {
@@ -505,6 +540,9 @@ export function AdminDashboard() {
     configuration,
     updateCreditCosts,
     updatePlanLimits,
+    updateCreditPacks,
+    listPlanConfigurations,
+    upsertPlanConfiguration,
     isLoading: configLoading,
   } = useAdminConfiguration();
   const {
@@ -1247,7 +1285,9 @@ export function AdminDashboard() {
                 <DollarSign className="h-4 w-4 text-orange-500" />
                 <span className="text-sm">Credits Spent (7d)</span>
               </div>
-              <span className="font-bold">{metrics?.credits?.spent7d ?? 0}</span>
+              <span className="font-bold">
+                {metrics?.credits?.spent7d ?? 0}
+              </span>
             </div>
           </div>
         </Card>
@@ -1354,7 +1394,11 @@ export function AdminDashboard() {
                               ? resumeUserProcessing({ userId: user._id })
                               : pauseUserProcessing({ userId: user._id })
                           }
-                          title={status === "paused" ? "Resume processing" : "Pause processing"}
+                          title={
+                            status === "paused"
+                              ? "Resume processing"
+                              : "Pause processing"
+                          }
                         >
                           {status === "paused" ? (
                             <Play className="h-4 w-4" />
@@ -1366,9 +1410,14 @@ export function AdminDashboard() {
                           variant="ghost"
                           size="sm"
                           onClick={() =>
-                            handleUserAction(user._id as string, user.isActive ? "ban" : "activate")
+                            handleUserAction(
+                              user._id as string,
+                              user.isActive ? "ban" : "activate",
+                            )
                           }
-                          title={user.isActive ? "Suspend user" : "Activate user"}
+                          title={
+                            user.isActive ? "Suspend user" : "Activate user"
+                          }
                         >
                           {user.isActive ? (
                             <Ban className="h-4 w-4" />
@@ -1453,7 +1502,7 @@ export function AdminDashboard() {
         <div>
           <h3 className="text-lg font-semibold">System Configuration</h3>
           <p className="text-sm text-muted-foreground">
-            Manage credit costs and plan limits
+            Manage credit costs, credit packs, and plan catalog
           </p>
         </div>
       </div>
@@ -1801,6 +1850,48 @@ export function AdminDashboard() {
         </Card>
       </div>
 
+      {/* Credit Packs Configuration */}
+      <CreditPacksEditor
+        configuration={configuration}
+        onSave={async (packs) => {
+          try {
+            await updateCreditPacks({ creditPacks: packs });
+            toast({
+              title: "Credit Packs Updated",
+              description: `Saved ${packs.length} packs.`,
+            });
+          } catch (e) {
+            toast({
+              title: "Save Failed",
+              description: "Could not save credit packs.",
+              variant: "destructive",
+            });
+          }
+        }}
+      />
+
+      {/* Plan Catalog Configuration */}
+      <PlanCatalogEditor
+        plans={listPlanConfigurations || []}
+        onSave={async (updated) => {
+          try {
+            for (const p of updated) {
+              await upsertPlanConfiguration(p as PlanConfigurationInput);
+            }
+            toast({
+              title: "Plan Catalog Updated",
+              description: `Saved ${updated.length} plan(s).`,
+            });
+          } catch (e) {
+            toast({
+              title: "Save Failed",
+              description: "Could not save plan catalog.",
+              variant: "destructive",
+            });
+          }
+        }}
+      />
+
       {/* Current Configuration Summary */}
       <Card className="p-6">
         <h4 className="text-lg font-semibold mb-4">
@@ -1853,6 +1944,426 @@ export function AdminDashboard() {
       </Card>
     </div>
   );
+
+  // Inline editors for configuration
+  const CreditPacksEditor: React.FC<{
+    configuration: { creditPacks?: CreditPack[] } | null | undefined;
+    onSave: (packs: CreditPack[]) => Promise<void>;
+  }> = ({ configuration, onSave }) => {
+    const [packs, setPacks] = useState<CreditPack[]>(
+      () => configuration?.creditPacks || [],
+    );
+
+    useEffect(() => {
+      if (configuration?.creditPacks) setPacks(configuration.creditPacks);
+    }, [configuration?.creditPacks]);
+
+    const addPack = () => {
+      setPacks((prev) => [
+        ...prev,
+        {
+          id: `pack_${Date.now()}`,
+          credits: 100,
+          priceCents: 1500,
+          bonus: 0,
+          active: true,
+        },
+      ]);
+    };
+
+    const removePack = (idx: number) => {
+      setPacks((prev) => prev.filter((_, i) => i !== idx));
+    };
+
+    const update = (
+      idx: number,
+      field: keyof CreditPack,
+      value: string | number | boolean | undefined,
+    ) => {
+      setPacks((prev) =>
+        prev.map((p, i) => (i === idx ? { ...p, [field]: value } : p)),
+      );
+    };
+
+    return (
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-lg font-semibold">Credit Packs</h4>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={addPack} size="sm">
+              <Plus className="h-4 w-4 mr-2" /> Add Pack
+            </Button>
+            <Button size="sm" onClick={() => onSave(packs)}>
+              <Save className="h-4 w-4 mr-2" /> Save Packs
+            </Button>
+          </div>
+        </div>
+
+        {packs.length === 0 ? (
+          <div className="text-sm text-muted-foreground">
+            No packs configured.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {packs.map((p, idx) => (
+              <div
+                key={p.id}
+                className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end border rounded-md p-3"
+              >
+                <div>
+                  <label className="text-xs text-muted-foreground">ID</label>
+                  <Input
+                    value={p.id}
+                    onChange={(e) => update(idx, "id", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">
+                    Credits
+                  </label>
+                  <Input
+                    type="number"
+                    value={p.credits}
+                    onChange={(e) =>
+                      update(idx, "credits", parseInt(e.target.value) || 0)
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">
+                    Price (USD cents)
+                  </label>
+                  <Input
+                    type="number"
+                    value={p.priceCents}
+                    onChange={(e) =>
+                      update(idx, "priceCents", parseInt(e.target.value) || 0)
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Bonus</label>
+                  <Input
+                    type="number"
+                    value={p.bonus || 0}
+                    onChange={(e) =>
+                      update(idx, "bonus", parseInt(e.target.value) || 0)
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">
+                    Stripe Price ID (optional)
+                  </label>
+                  <Input
+                    value={p.stripePriceId || ""}
+                    onChange={(e) =>
+                      update(idx, "stripePriceId", e.target.value)
+                    }
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground">
+                    Active
+                  </label>
+                  <input
+                    type="checkbox"
+                    checked={p.active}
+                    onChange={(e) => update(idx, "active", e.target.checked)}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removePack(idx)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    );
+  };
+
+  const PlanCatalogEditor: React.FC<{
+    plans: Array<PlanConfigurationInput | Doc<"planConfigurations">>;
+    onSave: (plans: PlanConfigurationInput[]) => Promise<void>;
+  }> = ({ plans, onSave }) => {
+    const [localPlans, setLocalPlans] = useState<PlanConfigurationInput[]>(() =>
+      (plans || []).map((p) => ({
+        planId: p.planId,
+        planName: p.planName,
+        monthlyPrice: p.monthlyPrice,
+        yearlyPrice: p.yearlyPrice,
+        stripePriceIdMonthly: p.stripePriceIdMonthly,
+        stripePriceIdYearly: p.stripePriceIdYearly,
+        limits: p.limits,
+        features: p.features ?? [],
+        isActive: p.isActive,
+        isVisible: p.isVisible,
+        sortOrder: p.sortOrder,
+      })),
+    );
+
+    useEffect(() => {
+      if (plans) {
+        setLocalPlans(
+          plans.map((p) => ({
+            planId: p.planId,
+            planName: p.planName,
+            monthlyPrice: p.monthlyPrice,
+            yearlyPrice: p.yearlyPrice,
+            stripePriceIdMonthly: p.stripePriceIdMonthly,
+            stripePriceIdYearly: p.stripePriceIdYearly,
+            limits: p.limits,
+            features: p.features ?? [],
+            isActive: p.isActive,
+            isVisible: p.isVisible,
+            sortOrder: p.sortOrder,
+          })),
+        );
+      }
+    }, [plans]);
+
+    const addPlan = () => {
+      setLocalPlans((prev) => [
+        ...prev,
+        {
+          planId: "custom",
+          planName: "Custom",
+          monthlyPrice: 0,
+          yearlyPrice: 0,
+          isActive: true,
+          isVisible: true,
+          sortOrder: (prev[prev.length - 1]?.sortOrder || 0) + 1,
+          limits: {
+            monthlySearches: 10,
+            maxLeadsPerSearch: 25,
+            monthlyEnrichments: 500,
+            monthlyExports: 10,
+            emailGeneration: false,
+            bulkOperations: false,
+            apiAccess: false,
+            requiresOwnApiKeys: true,
+            supportLevel: "basic",
+          },
+          features: [],
+        },
+      ]);
+    };
+
+    const update = (
+      idx: number,
+      field: keyof PlanConfigurationInput,
+      value:
+        | string
+        | number
+        | boolean
+        | string[]
+        | PlanConfigurationInput["limits"]
+        | undefined,
+    ) => {
+      setLocalPlans((prev) =>
+        prev.map((p, i) => (i === idx ? { ...p, [field]: value } : p)),
+      );
+    };
+
+    const updateLimit = (
+      idx: number,
+      field: keyof PlanConfigurationInput["limits"],
+      value: string | number | boolean,
+    ) => {
+      setLocalPlans((prev) =>
+        prev.map((p, i) =>
+          i === idx ? { ...p, limits: { ...p.limits, [field]: value } } : p,
+        ),
+      );
+    };
+
+    return (
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-lg font-semibold">Plan Catalog</h4>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={addPlan} size="sm">
+              <Plus className="h-4 w-4 mr-2" /> Add Plan
+            </Button>
+            <Button size="sm" onClick={() => onSave(localPlans)}>
+              <Save className="h-4 w-4 mr-2" /> Save Plans
+            </Button>
+          </div>
+        </div>
+
+        {localPlans.length === 0 ? (
+          <div className="text-sm text-muted-foreground">
+            No plans configured.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {localPlans.map((p, idx) => (
+              <div
+                key={`${p.planId}-${idx}`}
+                className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end border rounded-md p-3"
+              >
+                <div>
+                  <label className="text-xs text-muted-foreground">
+                    Plan ID
+                  </label>
+                  <Input
+                    value={p.planId}
+                    onChange={(e) => update(idx, "planId", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Name</label>
+                  <Input
+                    value={p.planName}
+                    onChange={(e) => update(idx, "planName", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">
+                    Monthly Price
+                  </label>
+                  <Input
+                    type="number"
+                    value={p.monthlyPrice}
+                    onChange={(e) =>
+                      update(idx, "monthlyPrice", parseInt(e.target.value) || 0)
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">
+                    Yearly Price
+                  </label>
+                  <Input
+                    type="number"
+                    value={p.yearlyPrice}
+                    onChange={(e) =>
+                      update(idx, "yearlyPrice", parseInt(e.target.value) || 0)
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">
+                    Stripe Price ID (Monthly)
+                  </label>
+                  <Input
+                    value={p.stripePriceIdMonthly || ""}
+                    onChange={(e) =>
+                      update(idx, "stripePriceIdMonthly", e.target.value)
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">
+                    Stripe Price ID (Yearly)
+                  </label>
+                  <Input
+                    value={p.stripePriceIdYearly || ""}
+                    onChange={(e) =>
+                      update(idx, "stripePriceIdYearly", e.target.value)
+                    }
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3 md:col-span-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground">
+                      Active
+                    </label>
+                    <input
+                      type="checkbox"
+                      checked={p.isActive}
+                      onChange={(e) =>
+                        update(idx, "isActive", e.target.checked)
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground">
+                      Visible
+                    </label>
+                    <input
+                      type="checkbox"
+                      checked={p.isVisible}
+                      onChange={(e) =>
+                        update(idx, "isVisible", e.target.checked)
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">
+                      Sort
+                    </label>
+                    <Input
+                      type="number"
+                      value={p.sortOrder || 0}
+                      onChange={(e) =>
+                        update(idx, "sortOrder", parseInt(e.target.value) || 0)
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3 md:col-span-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">
+                      Monthly Searches
+                    </label>
+                    <Input
+                      type="number"
+                      value={p.limits?.monthlySearches || 0}
+                      onChange={(e) =>
+                        updateLimit(
+                          idx,
+                          "monthlySearches",
+                          parseInt(e.target.value) || 0,
+                        )
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">
+                      Max Leads/Search
+                    </label>
+                    <Input
+                      type="number"
+                      value={p.limits?.maxLeadsPerSearch || 0}
+                      onChange={(e) =>
+                        updateLimit(
+                          idx,
+                          "maxLeadsPerSearch",
+                          parseInt(e.target.value) || 0,
+                        )
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">
+                      Monthly Enrichments
+                    </label>
+                    <Input
+                      type="number"
+                      value={p.limits?.monthlyEnrichments || 0}
+                      onChange={(e) =>
+                        updateLimit(
+                          idx,
+                          "monthlyEnrichments",
+                          parseInt(e.target.value) || 0,
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    );
+  };
 
   // Memoized external services render function for performance
   const renderExternalServices = React.useMemo(() => {

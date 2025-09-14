@@ -48,19 +48,25 @@ export const searchGoogleMaps = action({
     });
     if (user?.processingPaused) {
       // Mark search as cancelled due to pause
-      await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
-        searchId: args.searchId,
-        status: "cancelled",
-        error: user.pauseReason || "User processing paused by admin",
-      });
+      await ctx.runMutation(
+        internal.search.internal.updateSearchStatusInternal,
+        {
+          searchId: args.searchId,
+          status: "cancelled",
+          error: user.pauseReason || "User processing paused by admin",
+        },
+      );
       // Broadcast cancellation
-      await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
-        userId: search.userId,
-        searchId: args.searchId,
-        stage: "cancelled",
-        progress: 0,
-        message: user.pauseReason || "User processing paused by admin",
-      } as any);
+      await ctx.runMutation(
+        internal.realtime.broadcaster.broadcastPipelineUpdate,
+        {
+          userId: search.userId,
+          searchId: args.searchId,
+          stage: "cancelled",
+          progress: 0,
+          message: user.pauseReason || "User processing paused by admin",
+        } as any,
+      );
       return {
         success: false,
         message: "User processing paused – search cancelled",
@@ -91,9 +97,12 @@ export const searchGoogleMaps = action({
 
       // Re-check cancellation before external calls
       {
-        const latest = await ctx.runQuery(internal.search.internal.getSearchInternal, {
-          searchId: args.searchId,
-        });
+        const latest = await ctx.runQuery(
+          internal.search.internal.getSearchInternal,
+          {
+            searchId: args.searchId,
+          },
+        );
         if (!latest || latest.status === "cancelled") {
           return {
             success: false,
@@ -181,9 +190,12 @@ export const searchGoogleMaps = action({
 
       // Re-check cancellation before processing results
       {
-        const latest = await ctx.runQuery(internal.search.internal.getSearchInternal, {
-          searchId: args.searchId,
-        });
+        const latest = await ctx.runQuery(
+          internal.search.internal.getSearchInternal,
+          {
+            searchId: args.searchId,
+          },
+        );
         if (!latest || latest.status === "cancelled") {
           return {
             success: false,
@@ -218,9 +230,12 @@ export const searchGoogleMaps = action({
       const leadIds: string[] = [];
       for (let i = 0; i < totalFound; i++) {
         // Early exit if cancelled mid-loop
-        const current = await ctx.runQuery(internal.search.internal.getSearchInternal, {
-          searchId: args.searchId,
-        });
+        const current = await ctx.runQuery(
+          internal.search.internal.getSearchInternal,
+          {
+            searchId: args.searchId,
+          },
+        );
         if (!current || current.status === "cancelled") {
           return {
             success: false,
@@ -350,9 +365,12 @@ export const searchGoogleMaps = action({
 
       // Trigger enrichment stage for discovered leads (if not cancelled)
       {
-        const latest = await ctx.runQuery(internal.search.internal.getSearchInternal, {
-          searchId: args.searchId,
-        });
+        const latest = await ctx.runQuery(
+          internal.search.internal.getSearchInternal,
+          {
+            searchId: args.searchId,
+          },
+        );
         if (latest && latest.status !== "cancelled") {
           await ctx.scheduler.runAfter(0, "leads/actions:enrichLeads" as any, {
             searchId: args.searchId,

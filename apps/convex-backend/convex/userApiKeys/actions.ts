@@ -1,7 +1,7 @@
 import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 
 // Simple decryption function (matches mutations.ts)
 function decryptApiKey(encryptedKey: string): string {
@@ -152,13 +152,13 @@ export const getDecryptedApiKey: any = action({
   handler: async (ctx, args) => {
     // This is an internal action, should only be called by other backend functions
 
-    // TODO: Replace with proper query when available
-    const apiKeys = await ctx.runQuery(
-      api.userApiKeys.queries.getUserApiKeys,
-      {},
-    );
-    const apiKey = apiKeys.find(
-      (k: any) => k.service === args.service && k.userId === args.userId,
+    // Fetch API key internally without requiring auth
+    const apiKey = await ctx.runQuery(
+      internal.userApiKeys.internal.getApiKeyForUserAndService,
+      {
+        userId: args.userId as any,
+        service: args.service as any,
+      },
     );
 
     if (!apiKey) {

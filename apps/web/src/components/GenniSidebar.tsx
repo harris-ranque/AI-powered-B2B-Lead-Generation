@@ -4,7 +4,6 @@ import {
   User,
   Search,
   History,
-  TrendingUp,
   Settings,
   Moon,
   Menu,
@@ -42,11 +41,6 @@ export function GenniSidebar({ currentPage, onPageChange }: GenniSidebarProps) {
       id: "search-history",
       icon: History,
       title: "Search History",
-    },
-    {
-      id: "performance",
-      icon: TrendingUp,
-      title: "Performance",
     },
     {
       id: "settings",

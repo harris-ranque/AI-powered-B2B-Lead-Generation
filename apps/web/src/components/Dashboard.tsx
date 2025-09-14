@@ -27,7 +27,6 @@ import {
   formatBroadcastTime,
 } from "@/hooks/useStatusBroadcasts";
 import { SearchProgressTracker } from "@/components/SearchProgressTracker";
-import { CorrelationDebugPanel } from "@/components/CorrelationDebugPanel";
 import { SubscriptionStatusCard } from "@/components/SubscriptionStatusCard";
 import { UsageMetersCard } from "@/components/UsageMetersCard";
 import { useState } from "react";

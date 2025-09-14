@@ -116,7 +116,9 @@ export function SourceSelector() {
                     <div className="flex items-center gap-2">
                       <CardTitle className="text-lg">{source.name}</CardTitle>
                       {isDisabled && (
-                        <Badge variant="secondary" className="text-[10px]">Disabled</Badge>
+                        <Badge variant="secondary" className="text-[10px]">
+                          Disabled
+                        </Badge>
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -172,7 +174,9 @@ export function SourceSelector() {
                     <Button
                       className="w-full mt-4"
                       variant={isHovered && !isDisabled ? "default" : "outline"}
-                      onClick={() => !isDisabled && handleSourceSelect(source.type)}
+                      onClick={() =>
+                        !isDisabled && handleSourceSelect(source.type)
+                      }
                       disabled={isDisabled}
                     >
                       {isDisabled ? "Disabled" : `Select ${source.name}`}

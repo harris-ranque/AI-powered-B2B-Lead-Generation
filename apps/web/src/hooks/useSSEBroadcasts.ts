@@ -90,7 +90,9 @@ export function useSSEBroadcasts() {
     const token = await (async () => {
       try {
         if (!clerkLoaded || !isSignedIn) {
-          logger.warn("Clerk not ready or not signed in; cannot issue SSE token");
+          logger.warn(
+            "Clerk not ready or not signed in; cannot issue SSE token",
+          );
           return null;
         }
         const jwt = await getToken();
@@ -106,7 +108,10 @@ export function useSSEBroadcasts() {
         });
         if (!resp.ok) {
           const text = await resp.text();
-          logger.error("SSE token issuance failed", { status: resp.status, text });
+          logger.error("SSE token issuance failed", {
+            status: resp.status,
+            text,
+          });
           return null;
         }
         const json = (await resp.json()) as { token?: string };

@@ -144,6 +144,50 @@ export const getUsageStats = query({
   },
 });
 
+// Public: Get active credit packs for purchase
+export const getCreditPacks = query({
+  args: {},
+  handler: async (ctx) => {
+    const config = await ctx.db.query("systemConfiguration").unique();
+    const packs = config?.creditPacks || [];
+    // Only expose active packs; sort by credits ascending
+    return packs
+      .filter((p) => p.active)
+      .sort((a, b) => a.credits - b.credits)
+      .map((p) => ({
+        id: p.id,
+        credits: p.credits,
+        priceCents: p.priceCents,
+        bonus: p.bonus || 0,
+      }));
+  },
+});
+
+// Public: Get visible plan catalog for subscriptions
+export const getPlanCatalog = query({
+  args: {},
+  handler: async (ctx) => {
+    const plans = await ctx.db
+      .query("planConfigurations")
+      .withIndex("by_visible", (q) => q.eq("isVisible", true))
+      .collect();
+
+    return plans
+      .filter((p) => p.isActive)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((p) => ({
+        planId: p.planId,
+        planName: p.planName,
+        monthlyPrice: p.monthlyPrice,
+        yearlyPrice: p.yearlyPrice,
+        stripePriceIdMonthly: p.stripePriceIdMonthly,
+        stripePriceIdYearly: p.stripePriceIdYearly,
+        limits: p.limits,
+        features: p.features,
+      }));
+  },
+});
+
 // Get spending breakdown by category
 export const getSpendingBreakdown = query({
   args: {

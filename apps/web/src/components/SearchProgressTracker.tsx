@@ -342,7 +342,9 @@ export function SearchProgressTracker({
                   <AlertDialogHeader>
                     <AlertDialogTitle>Cancel this search?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      You can stop the search at any time. Discovery may spend 1 credit if already started. No additional credits are charged after cancellation.
+                      You can stop the search at any time. Discovery may spend 1
+                      credit if already started. No additional credits are
+                      charged after cancellation.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>

@@ -617,6 +617,18 @@ export default defineSchema({
       EMAIL_GENERATION: v.number(),
       BULK_ANALYSIS: v.number(),
     }),
+    creditPacks: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          credits: v.number(),
+          priceCents: v.number(),
+          bonus: v.optional(v.number()),
+          active: v.boolean(),
+          stripePriceId: v.optional(v.string()),
+        }),
+      ),
+    ),
     planLimits: v.object({
       free: v.object({
         monthlyCredits: v.number(),

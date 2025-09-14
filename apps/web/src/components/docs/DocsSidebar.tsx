@@ -3,7 +3,14 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, Coins, Globe, Settings, Activity } from "lucide-react";
+import {
+  LayoutDashboard,
+  Users,
+  Coins,
+  Globe,
+  Settings,
+  Activity,
+} from "lucide-react";
 
 export type DocsNode = {
   type: "dir" | "file";
@@ -33,7 +40,8 @@ export const DocsSidebar: React.FC<DocsSidebarProps> = ({ root }) => {
     if (!query.trim()) return null;
     const q = query.toLowerCase();
     return files.filter(
-      (f) => f.title?.toLowerCase().includes(q) || f.path.toLowerCase().includes(q),
+      (f) =>
+        f.title?.toLowerCase().includes(q) || f.path.toLowerCase().includes(q),
     );
   }, [files, query]);
 
