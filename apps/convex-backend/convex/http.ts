@@ -7,6 +7,11 @@ import Stripe from "stripe";
 
 const http = httpRouter();
 
+// In-memory cache for public config to avoid hitting queries on every request
+let publicConfigCache: { body: string; etag: string; expiresAt: number } | null =
+  null;
+const PUBLIC_CONFIG_TTL_MS = 60 * 1000; // 60s server-side TTL
+
 // Simple connection tracking (for testing)
 interface Connection {
   connectionId: string;
@@ -993,6 +998,28 @@ http.route({
   method: "GET",
   handler: httpAction(async (ctx) => {
     try {
+      // Serve from cache if fresh and ETag matches
+      const now = Date.now();
+      const ifNoneMatch = (ctx.request.headers.get("If-None-Match") || "").trim();
+      if (publicConfigCache && now < publicConfigCache.expiresAt) {
+        if (ifNoneMatch && ifNoneMatch === publicConfigCache.etag) {
+          return new Response(undefined, {
+            status: 304,
+            headers: {
+              "Cache-Control": "public, max-age=600, stale-while-revalidate=86400",
+              ETag: publicConfigCache.etag,
+            },
+          });
+        }
+        return new Response(publicConfigCache.body, {
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "public, max-age=600, stale-while-revalidate=86400",
+            ETag: publicConfigCache.etag,
+          },
+        });
+      }
+
       // Load admin-configured system configuration and plan catalog via queries
       const systemConfig = await ctx.runQuery(
         api.admin.queries.getSystemConfiguration,
@@ -1014,12 +1041,21 @@ http.route({
         creditCosts,
       });
 
+      const etag = `W/"${version}-${packs.length}-${activePlans.length}"`;
+
+      // Populate cache
+      publicConfigCache = {
+        body,
+        etag,
+        expiresAt: now + PUBLIC_CONFIG_TTL_MS,
+      };
+
       // Basic caching headers; clients can also cache in localStorage
       return new Response(body, {
         headers: {
           "Content-Type": "application/json",
           "Cache-Control": "public, max-age=600, stale-while-revalidate=86400",
-          ETag: `W/\"${version}-${packs.length}-${activePlans.length}\"`,
+          ETag: etag,
         },
       });
     } catch (error) {
