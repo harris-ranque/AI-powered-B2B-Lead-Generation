@@ -2,6 +2,15 @@ import { action } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { Doc } from "../_generated/dataModel";
+import {
+  createCorrelationContext,
+  createChildContext,
+  logWithCorrelation,
+  startPerformanceTracking,
+  endPerformanceTracking,
+  OPERATION_TYPES,
+  createBatchCorrelationContext,
+} from "../lib/correlation";
 
 // Type definitions for external API responses
 type FindyMailResponse = Record<
@@ -83,10 +92,46 @@ async function processLeadWithLangGraph(
   searchId: string,
   retryAttempts: number = 3,
 ): Promise<{ success: boolean; result?: any; error?: string; leadId: any }> {
+  // Create correlation context for individual lead analysis
+  const leadCorrelation = createCorrelationContext(
+    OPERATION_TYPES.LANGGRAPH_API,
+    "system",
+    {
+      searchId,
+      leadId: lead._id,
+      metadata: {
+        businessName: lead.businessName,
+        maxRetries: retryAttempts,
+      },
+    },
+  );
+
   for (let attempt = 1; attempt <= retryAttempts; attempt++) {
+    const attemptCorrelation = createChildContext(
+      leadCorrelation,
+      OPERATION_TYPES.LANGGRAPH_API,
+      {
+        metadata: {
+          attempt,
+          maxAttempts: retryAttempts,
+        },
+      },
+    );
+
+    const attemptPerf = startPerformanceTracking();
+
     try {
-      console.log(
-        `Analyzing lead ${lead.businessName} (attempt ${attempt}/${retryAttempts})`,
+      logWithCorrelation(
+        "info",
+        attemptCorrelation,
+        "🤖 Starting LangGraph Lead Analysis",
+        {
+          businessName: lead.businessName,
+          attempt,
+          maxAttempts: retryAttempts,
+          hasWebsite: !!lead.website,
+          hasContactInfo: !!lead.contactInfo?.emails?.length,
+        },
       );
 
       // Prepare enhanced lead data for LangGraph
@@ -173,6 +218,21 @@ async function processLeadWithLangGraph(
       const result = (await response.json()) as LangGraphResponse;
 
       if (result.status === "completed" && result.result) {
+        const perfData = endPerformanceTracking(attemptPerf);
+        
+        logWithCorrelation(
+          "info",
+          attemptCorrelation,
+          "✅ LangGraph Analysis Successful",
+          {
+            businessName: lead.businessName,
+            attempt,
+            durationMs: perfData.duration,
+            relevanceScore: result.result.relevance_score,
+            hasEmail: !!result.result.primary_email,
+          },
+        );
+        
         return {
           success: true,
           result: result.result,
@@ -182,9 +242,21 @@ async function processLeadWithLangGraph(
         throw new Error(result.error || "LangGraph analysis failed");
       }
     } catch (error) {
-      console.error(
-        `Error analyzing lead ${lead._id} (attempt ${attempt}):`,
-        error,
+      const perfData = endPerformanceTracking(attemptPerf);
+      
+      logWithCorrelation(
+        "error",
+        attemptCorrelation,
+        "❌ LangGraph Analysis Failed",
+        {
+          businessName: lead.businessName,
+          attempt,
+          maxAttempts: retryAttempts,
+          durationMs: perfData.duration,
+          willRetry: attempt < retryAttempts,
+          backoffDelay: attempt < retryAttempts ? Math.pow(2, attempt) * 1000 : 0,
+        },
+        error as Error,
       );
 
       if (attempt === retryAttempts) {
@@ -215,8 +287,33 @@ export const enrichLeads: any = action({
     searchId: v.id("searches"),
   },
   handler: async (ctx, args) => {
+    // Create correlation context for enrichment phase
+    const correlation = createCorrelationContext(
+      OPERATION_TYPES.LEAD_ENRICHMENT,
+      "system", // Will be updated with actual userId
+      {
+        searchId: args.searchId,
+        metadata: {
+          stage: "lead_enrichment",
+        },
+      },
+    );
+
+    const performanceTracker = startPerformanceTracking();
+    let leads: any[] = [];
+    let enrichedCount = 0;
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "🚀 PHASE 2 START: Lead Enrichment Phase Beginning",
+      {
+        searchId: args.searchId,
+        timestamp: new Date().toISOString(),
+      },
+    );
+
     try {
-      console.log(`Starting lead enrichment for search ${args.searchId}`);
 
       // Get search and user info
       const search = await ctx.runQuery(
@@ -227,8 +324,17 @@ export const enrichLeads: any = action({
       );
 
       if (!search) {
+        logWithCorrelation(
+          "error",
+          correlation,
+          "❌ PHASE 2 FAILED: Search record not found",
+          { searchId: args.searchId },
+        );
         throw new Error("Search not found");
       }
+
+      // Update correlation with actual userId
+      correlation.userId = search.userId;
 
       const user = await ctx.runQuery(internal.users.internal.getUserInternal, {
         userId: search.userId,
@@ -273,11 +379,28 @@ export const enrichLeads: any = action({
         },
       );
 
-      console.log(
-        `Found ${leads.length} leads to enrich for search ${args.searchId}`,
+      logWithCorrelation(
+        "info",
+        correlation,
+        "📋 Lead Enrichment Configuration",
+        {
+          totalLeadsToEnrich: leads.length,
+          userPlan: user.plan,
+          apiKeySource: user.plan === "enterprise" ? "user_provided" : "system",
+        },
       );
 
       if (leads.length === 0) {
+        logWithCorrelation(
+          "warn",
+          correlation,
+          "⚠️ PHASE 2 COMPLETE: No Leads to Enrich - Skipping to Analysis",
+          {
+            reason: "zero_leads_for_enrichment",
+            nextPhase: "ai_analysis",
+          },
+        );
+        
         // No leads to enrich, proceed to analysis
         await ctx.scheduler.runAfter(0, "leads/actions:analyzeLeads" as any, {
           searchId: args.searchId,
@@ -315,7 +438,18 @@ export const enrichLeads: any = action({
 
       // Process leads in batches of 10 to avoid rate limits
       const batches = chunk(leads, 10);
-      let enrichedCount = 0;
+
+      logWithCorrelation(
+        "info",
+        correlation,
+        "🔄 Starting Batch Processing for Lead Enrichment",
+        {
+          totalLeads: leads.length,
+          batchSize: 10,
+          totalBatches: batches.length,
+          estimatedDuration: batches.length * 2000, // ~2s per batch
+        },
+      );
 
       for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
         // Re-check cancellation/paused before each batch
@@ -363,8 +497,30 @@ export const enrichLeads: any = action({
         const batch = batches[batchIndex];
         if (!batch) continue;
 
-        console.log(
-          `Processing enrichment batch ${batchIndex + 1}/${batches.length} with ${batch.length} leads`,
+        // Create batch correlation context
+        const batchCorrelation = createChildContext(
+          correlation,
+          OPERATION_TYPES.BATCH_PROCESSING,
+          {
+            batchId: `batch_${batchIndex + 1}`,
+            metadata: {
+              batchNumber: batchIndex + 1,
+              totalBatches: batches.length,
+              batchSize: batch.length,
+            },
+          },
+        );
+
+        logWithCorrelation(
+          "info",
+          batchCorrelation,
+          "🔄 Processing Enrichment Batch",
+          {
+            batchNumber: batchIndex + 1,
+            totalBatches: batches.length,
+            leadsInBatch: batch.length,
+            progressPercent: ((batchIndex + 1) / batches.length) * 100,
+          },
         );
 
         // Prepare domains for bulk enrichment
@@ -495,8 +651,21 @@ export const enrichLeads: any = action({
         }
       }
 
-      console.log(
-        `Enrichment completed for search ${args.searchId}: ${enrichedCount}/${leads.length} leads enriched`,
+      const performanceData = endPerformanceTracking(performanceTracker);
+      
+      logWithCorrelation(
+        "info",
+        correlation,
+        "🎉 PHASE 2 COMPLETE: Lead Enrichment Phase Finished",
+        {
+          totalLeads: leads.length,
+          enrichedCount,
+          failedCount: leads.length - enrichedCount,
+          enrichmentRate: (enrichedCount / leads.length) * 100,
+          durationMs: performanceData.duration,
+          averageTimePerLead: leads.length > 0 ? (performanceData.duration || 0) / leads.length : 0,
+          nextPhase: "ai_analysis",
+        },
       );
 
       // Trigger AI analysis stage (if not cancelled)
@@ -508,6 +677,17 @@ export const enrichLeads: any = action({
           },
         );
         if (latest && latest.status !== "cancelled") {
+          logWithCorrelation(
+            "info",
+            correlation,
+            "🔄 PHASE TRANSITION: Triggering Phase 3 (AI Analysis)",
+            {
+              enrichedLeads: enrichedCount,
+              totalLeads: leads.length,
+              schedulingDelay: "immediate",
+            },
+          );
+          
           await ctx.scheduler.runAfter(0, "leads/actions:analyzeLeads" as any, {
             searchId: args.searchId,
           });
@@ -521,7 +701,20 @@ export const enrichLeads: any = action({
         totalLeads: leads.length,
       };
     } catch (error) {
-      console.error(`Enrichment failed for search ${args.searchId}:`, error);
+      const performanceData = endPerformanceTracking(performanceTracker);
+      
+      logWithCorrelation(
+        "error",
+        correlation,
+        "💥 PHASE 2 FAILED: Lead Enrichment Phase Error",
+        {
+          errorType: error instanceof Error ? error.constructor.name : "Unknown",
+          duration: performanceData.duration,
+          totalLeads: leads?.length || 0,
+          enrichedSoFar: enrichedCount || 0,
+        },
+        error as Error,
+      );
 
       // Update search status to failed (internal to bypass auth in actions)
       await ctx.runMutation(
@@ -544,8 +737,34 @@ export const analyzeLeads: any = action({
     searchId: v.id("searches"),
   },
   handler: async (ctx, args) => {
+    // Create correlation context for AI analysis phase
+    const correlation = createCorrelationContext(
+      OPERATION_TYPES.AI_ANALYSIS,
+      "system", // Will be updated with actual userId
+      {
+        searchId: args.searchId,
+        metadata: {
+          stage: "ai_analysis",
+        },
+      },
+    );
+
+    const performanceTracker = startPerformanceTracking();
+    let leads: any[] = [];
+    let analyzedCount = 0;
+    let failedCount = 0;
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "🚀 PHASE 3 START: AI Analysis Phase Beginning",
+      {
+        searchId: args.searchId,
+        timestamp: new Date().toISOString(),
+      },
+    );
+
     try {
-      console.log(`Starting AI analysis for search ${args.searchId}`);
 
       // Get search and user info
       const search = await ctx.runQuery(
@@ -556,8 +775,17 @@ export const analyzeLeads: any = action({
       );
 
       if (!search) {
+        logWithCorrelation(
+          "error",
+          correlation,
+          "❌ PHASE 3 FAILED: Search record not found",
+          { searchId: args.searchId },
+        );
         throw new Error("Search not found");
       }
+
+      // Update correlation with actual userId
+      correlation.userId = search.userId;
 
       // Fetch user for pause checks
       const user = await ctx.runQuery(internal.users.internal.getUserInternal, {
@@ -603,11 +831,33 @@ export const analyzeLeads: any = action({
         },
       );
 
-      console.log(
-        `Found ${leads.length} leads to analyze for search ${args.searchId}`,
+      // LangGraph service configuration
+      const langgraphUrl = process.env.LANGGRAPH_URL;
+      const langgraphApiKey = process.env.LANGGRAPH_API_KEY;
+
+      logWithCorrelation(
+        "info",
+        correlation,
+        "📋 AI Analysis Configuration",
+        {
+          totalLeadsToAnalyze: leads.length,
+          batchSize: 3,
+          estimatedDuration: Math.ceil(leads.length / 3) * 30000, // ~30s per batch
+          langgraphUrl: langgraphUrl?.includes("localhost") ? "local" : "production",
+        },
       );
 
       if (leads.length === 0) {
+        logWithCorrelation(
+          "warn",
+          correlation,
+          "⚠️ PHASE 3 COMPLETE: No Leads to Analyze - Completing Search",
+          {
+            reason: "zero_leads_for_analysis",
+            nextPhase: "search_completion",
+          },
+        );
+        
         // No leads to analyze, complete the search
         await ctx.scheduler.runAfter(
           0,
@@ -633,27 +883,57 @@ export const analyzeLeads: any = action({
         throw new Error("Business profile required for AI analysis");
       }
 
-      // LangGraph service configuration
-      const langgraphUrl = process.env.LANGGRAPH_URL;
-      const langgraphApiKey = process.env.LANGGRAPH_API_KEY;
-
       if (!langgraphUrl || !langgraphApiKey) {
         throw new Error("LangGraph service not configured");
       }
-
-      let analyzedCount = 0;
-      let failedCount = 0;
 
       // Process leads in concurrent batches for better performance
       const batchSize = 3; // Process 3 leads concurrently
       const leadBatches = chunk(leads, batchSize);
 
+      logWithCorrelation(
+        "info",
+        correlation,
+        "🔄 Starting LangGraph AI Analysis Batches",
+        {
+          totalLeads: leads.length,
+          batchSize,
+          totalBatches: leadBatches.length,
+          estimatedDuration: leadBatches.length * 30000, // ~30s per batch
+          concurrentAnalysis: true,
+        },
+      );
+
       for (let batchIndex = 0; batchIndex < leadBatches.length; batchIndex++) {
         const batch = leadBatches[batchIndex];
         if (!batch) continue;
 
-        console.log(
-          `Processing analysis batch ${batchIndex + 1}/${leadBatches.length} with ${batch.length} leads`,
+        // Create batch correlation context
+        const batchCorrelation = createChildContext(
+          correlation,
+          OPERATION_TYPES.LANGGRAPH_API,
+          {
+            batchId: `analysis_batch_${batchIndex + 1}`,
+            metadata: {
+              batchNumber: batchIndex + 1,
+              totalBatches: leadBatches.length,
+              batchSize: batch.length,
+              concurrentProcessing: true,
+            },
+          },
+        );
+
+        logWithCorrelation(
+          "info",
+          batchCorrelation,
+          "🤖 Processing AI Analysis Batch",
+          {
+            batchNumber: batchIndex + 1,
+            totalBatches: leadBatches.length,
+            leadsInBatch: batch.length,
+            progressPercent: ((batchIndex + 1) / leadBatches.length) * 100,
+            concurrentAnalysis: true,
+          },
         );
 
         // Check for cancellation/paused before each batch
@@ -798,10 +1078,35 @@ export const analyzeLeads: any = action({
         }
       }
 
-      console.log(
-        `AI analysis completed for search ${args.searchId}: ${analyzedCount}/${leads.length} leads analyzed`,
+      const performanceData = endPerformanceTracking(performanceTracker);
+      
+      logWithCorrelation(
+        "info",
+        correlation,
+        "🎉 PHASE 3 COMPLETE: AI Analysis Phase Finished",
+        {
+          totalLeads: leads.length,
+          analyzedCount,
+          failedCount,
+          analysisSuccessRate: (analyzedCount / leads.length) * 100,
+          durationMs: performanceData.duration,
+          averageTimePerLead: leads.length > 0 ? (performanceData.duration || 0) / leads.length : 0,
+          nextPhase: "search_completion",
+        },
       );
 
+      logWithCorrelation(
+        "info",
+        correlation,
+        "🔄 PHASE TRANSITION: Triggering Final Phase (Search Completion)",
+        {
+          analyzedLeads: analyzedCount,
+          failedLeads: failedCount,
+          totalLeads: leads.length,
+          schedulingDelay: "immediate",
+        },
+      );
+      
       // Complete the search
       await ctx.scheduler.runAfter(0, "search/actions:completeSearch" as any, {
         searchId: args.searchId,
@@ -814,7 +1119,21 @@ export const analyzeLeads: any = action({
         totalLeads: leads.length,
       };
     } catch (error) {
-      console.error(`AI analysis failed for search ${args.searchId}:`, error);
+      const performanceData = endPerformanceTracking(performanceTracker);
+      
+      logWithCorrelation(
+        "error",
+        correlation,
+        "💥 PHASE 3 FAILED: AI Analysis Phase Error",
+        {
+          errorType: error instanceof Error ? error.constructor.name : "Unknown",
+          duration: performanceData.duration,
+          totalLeads: leads?.length || 0,
+          analyzedSoFar: analyzedCount || 0,
+          failedSoFar: failedCount || 0,
+        },
+        error as Error,
+      );
 
       // Update search status to failed (internal to bypass auth in actions)
       await ctx.runMutation(

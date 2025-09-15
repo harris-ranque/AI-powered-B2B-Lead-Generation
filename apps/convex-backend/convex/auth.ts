@@ -1,8 +1,9 @@
 import { v } from "convex/values";
 import { api } from "./_generated/api";
+import { Doc } from "./_generated/dataModel";
 
 // Get current user from context (can return null if not authenticated)
-export async function getCurrentUser(ctx: any) {
+export async function getCurrentUser(ctx: any): Promise<Doc<"users"> | null> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     return null;
@@ -24,7 +25,7 @@ export async function getCurrentUser(ctx: any) {
 }
 
 // Require authentication (throws if not authenticated)
-export async function requireAuth(ctx: any) {
+export async function requireAuth(ctx: any): Promise<Doc<"users">> {
   const user = await getCurrentUser(ctx);
   if (!user) {
     throw new Error("Authentication required");
@@ -33,7 +34,7 @@ export async function requireAuth(ctx: any) {
 }
 
 // Require admin role (throws if not admin)
-export async function requireAdmin(ctx: any) {
+export async function requireAdmin(ctx: any): Promise<Doc<"users">> {
   const user = await requireAuth(ctx);
   if (user.role !== "admin") {
     throw new Error("Admin access required");

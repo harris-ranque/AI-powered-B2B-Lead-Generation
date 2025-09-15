@@ -1,19 +1,18 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { auth, getCurrentUser, requireAuth, requireAdmin } from "../auth";
+import { auth, requireAuth, requireAdmin } from "../auth";
 
 // Get current user profile
 export const getCurrentUserData = query({
   args: {},
   handler: async (ctx) => {
-    const user = await getCurrentUser(ctx);
-
-    if (!user) {
-      return null;
-    }
-
-    // Return user data (excluding sensitive fields if needed)
-    return user;
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+    return user || null;
   },
 });
 

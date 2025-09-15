@@ -1,6 +1,15 @@
 import { action } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
+import {
+  createCorrelationContext,
+  createChildContext,
+  logWithCorrelation,
+  startPerformanceTracking,
+  endPerformanceTracking,
+  OPERATION_TYPES,
+  formatCorrelationForLogging,
+} from "../lib/correlation";
 // Note: This action can be scheduled by the orchestrator (no user auth).
 
 // Google Maps search action
@@ -10,6 +19,32 @@ export const searchGoogleMaps = action({
     forceRestart: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    // Create correlation context for this search operation
+    const correlation = createCorrelationContext(
+      OPERATION_TYPES.GOOGLE_MAPS_DISCOVERY,
+      "system", // Will be updated with actual userId once we have search
+      {
+        searchId: args.searchId,
+        metadata: {
+          forceRestart: args.forceRestart,
+          stage: "google_maps_discovery",
+        },
+      },
+    );
+
+    const performanceTracker = startPerformanceTracking();
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "🚀 PHASE 1 START: Google Maps Discovery Phase Beginning",
+      {
+        searchId: args.searchId,
+        forceRestart: args.forceRestart,
+        timestamp: new Date().toISOString(),
+      },
+    );
+
     // Check emergency stop first
     const systemConfig = await ctx.runQuery(
       api.admin.queries.getSystemConfiguration,
@@ -31,8 +66,30 @@ export const searchGoogleMaps = action({
       { searchId: args.searchId },
     );
     if (!search) {
+      logWithCorrelation(
+        "error",
+        correlation,
+        "❌ PHASE 1 FAILED: Search record not found",
+        { searchId: args.searchId },
+      );
       throw new Error("Search not found or access denied");
     }
+
+    // Update correlation with actual userId
+    correlation.userId = search.userId;
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "📋 Search Configuration Loaded",
+      {
+        userId: search.userId,
+        keywords: search.parameters.keywords,
+        location: search.parameters.location,
+        radius: search.parameters.radius,
+        maxResults: search.parameters.maxResults,
+      },
+    );
 
     // If already cancelled, do nothing
     if (search.status === "cancelled") {
@@ -90,9 +147,29 @@ export const searchGoogleMaps = action({
         },
       );
 
-      // Log search started
-      console.log(
-        `Search ${args.searchId} started for user ${search.userId}: Starting lead discovery...`,
+      // Create child context for discovery operation
+      const discoveryCorrelation = createChildContext(
+        correlation,
+        OPERATION_TYPES.GOOGLE_MAPS_API,
+        {
+          metadata: {
+            query: search.parameters.keywords.join(" "),
+            location: search.parameters.location,
+            radius: search.parameters.radius,
+          },
+        },
+      );
+
+      logWithCorrelation(
+        "info",
+        discoveryCorrelation,
+        "🔍 Starting Google Maps API Lead Discovery",
+        {
+          query: search.parameters.keywords.join(" "),
+          location: search.parameters.location,
+          radius: search.parameters.radius,
+          maxResults: search.parameters.maxResults,
+        },
       );
 
       // Re-check cancellation before external calls
@@ -149,9 +226,24 @@ export const searchGoogleMaps = action({
         const coordinates = geocodeData.results[0].geometry.location;
         lat = coordinates.lat;
         lng = coordinates.lng;
-        console.log(`Geocoded location "${location}" to ${lat},${lng}`);
+        
+        logWithCorrelation(
+          "info",
+          discoveryCorrelation,
+          "📍 Location Geocoding Successful",
+          {
+            originalLocation: location,
+            geocodedCoordinates: { lat, lng },
+          },
+        );
       } catch (geocodeError) {
-        console.error("Geocoding error:", geocodeError);
+        logWithCorrelation(
+          "warn",
+          discoveryCorrelation,
+          "⚠️ Geocoding Failed - Using Text Search Fallback",
+          { originalLocation: location },
+          geocodeError as Error,
+        );
         // Fallback: use text search without location bias
         lat = 0;
         lng = 0;
@@ -221,9 +313,15 @@ export const searchGoogleMaps = action({
         },
       );
 
-      // Log progress update
-      console.log(
-        `Search ${args.searchId} progress: Discovered ${totalFound} leads`,
+      logWithCorrelation(
+        "info",
+        discoveryCorrelation,
+        "✅ Google Maps API Discovery Completed",
+        {
+          totalFound,
+          requestedMax: params.maxResults,
+          discoveryRate: (totalFound / params.maxResults) * 100,
+        },
       );
 
       // Create lead records for discovered places with Place Details enrichment
@@ -340,13 +438,35 @@ export const searchGoogleMaps = action({
         },
       );
 
-      // Log discovery completion
-      console.log(
-        `Search ${args.searchId} discovery completed: ${totalFound} leads found`,
+      const performanceData = endPerformanceTracking(performanceTracker);
+      
+      logWithCorrelation(
+        "info",
+        correlation,
+        "🎉 PHASE 1 COMPLETE: Google Maps Discovery Phase Finished",
+        {
+          totalFound,
+          leadIds: leadIds.length,
+          discoveryDurationMs: performanceData.duration,
+          averageTimePerLead: totalFound > 0 ? (performanceData.duration || 0) / totalFound : 0,
+          nextPhase: "lead_enrichment",
+          phaseCompletionRate: 100,
+        },
       );
 
       // If no leads found, complete the search immediately
       if (totalFound === 0) {
+        logWithCorrelation(
+          "warn",
+          correlation,
+          "⚠️ PHASE 1 COMPLETE: No Leads Found - Pipeline Ending",
+          {
+            searchQuery: search.parameters.keywords.join(" "),
+            location: search.parameters.location,
+            reason: "zero_results",
+          },
+        );
+        
         await ctx.runMutation(
           internal.search.internal.updateSearchStatusInternal,
           {
@@ -372,6 +492,16 @@ export const searchGoogleMaps = action({
           },
         );
         if (latest && latest.status !== "cancelled") {
+          logWithCorrelation(
+            "info",
+            correlation,
+            "🔄 PHASE TRANSITION: Triggering Phase 2 (Lead Enrichment)",
+            {
+              leadsToEnrich: totalFound,
+              schedulingDelay: "immediate",
+            },
+          );
+          
           await ctx.scheduler.runAfter(0, "leads/actions:enrichLeads" as any, {
             searchId: args.searchId,
           });
@@ -385,7 +515,20 @@ export const searchGoogleMaps = action({
         leadIds,
       };
     } catch (error) {
-      console.error("Google Maps search error:", error);
+      const performanceData = endPerformanceTracking(performanceTracker);
+      
+      logWithCorrelation(
+        "error",
+        correlation,
+        "💥 PHASE 1 FAILED: Google Maps Discovery Phase Error",
+        {
+          errorType: error instanceof Error ? error.constructor.name : "Unknown",
+          duration: performanceData.duration,
+          searchQuery: search?.parameters?.keywords?.join(" ") || "unknown",
+          location: search?.parameters?.location || "unknown",
+        },
+        error as Error,
+      );
 
       // Update search status to failed using scheduler
       await ctx.runMutation(
@@ -395,12 +538,6 @@ export const searchGoogleMaps = action({
           status: "failed",
           error: error instanceof Error ? error.message : "Unknown error",
         },
-      );
-
-      // Log error
-      console.error(
-        `Search ${args.searchId} failed:`,
-        error instanceof Error ? error.message : "Unknown error",
       );
 
       throw error;
@@ -414,8 +551,31 @@ export const completeSearch: any = action({
     searchId: v.id("searches"),
   },
   handler: async (ctx, args) => {
+    // Create correlation context for completion phase
+    const correlation = createCorrelationContext(
+      OPERATION_TYPES.SEARCH_COMPLETION,
+      "system", // Will be updated with actual userId
+      {
+        searchId: args.searchId,
+        metadata: {
+          stage: "search_completion",
+        },
+      },
+    );
+
+    const performanceTracker = startPerformanceTracking();
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "🏁 PIPELINE COMPLETION: Finalizing Search Results",
+      {
+        searchId: args.searchId,
+        timestamp: new Date().toISOString(),
+      },
+    );
+
     try {
-      console.log(`Completing search ${args.searchId}`);
 
       // Get search info
       const search = await ctx.runQuery(
@@ -506,8 +666,22 @@ export const completeSearch: any = action({
         );
       }
 
-      console.log(
-        `Search ${args.searchId} completed successfully: ${results.totalFound} leads, ${results.enrichedCount} enriched, ${results.analyzedCount} analyzed`,
+      const performanceData = endPerformanceTracking(performanceTracker);
+      
+      logWithCorrelation(
+        "info",
+        correlation,
+        "🎉 PIPELINE COMPLETE: Search Successfully Finished",
+        {
+          totalLeads: results.totalFound,
+          enrichedLeads: results.enrichedCount,
+          analyzedLeads: results.analyzedCount,
+          avgRelevanceScore: results.avgRelevanceScore,
+          completionDurationMs: performanceData.duration,
+          enrichmentRate: results.totalFound > 0 ? (results.enrichedCount / results.totalFound) * 100 : 0,
+          analysisRate: results.totalFound > 0 ? (results.analyzedCount / results.totalFound) * 100 : 0,
+          finalStatus: "completed",
+        },
       );
 
       return {
@@ -516,7 +690,18 @@ export const completeSearch: any = action({
         results: results,
       };
     } catch (error) {
-      console.error(`Search completion failed for ${args.searchId}:`, error);
+      const performanceData = endPerformanceTracking(performanceTracker);
+      
+      logWithCorrelation(
+        "error",
+        correlation,
+        "💥 PIPELINE FAILED: Search Completion Error",
+        {
+          duration: performanceData.duration,
+          errorType: error instanceof Error ? error.constructor.name : "Unknown",
+        },
+        error as Error,
+      );
 
       // Update search status to failed
       await ctx.runMutation(
