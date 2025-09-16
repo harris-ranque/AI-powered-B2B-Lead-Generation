@@ -41,7 +41,8 @@ export default defineSchema({
     .index("by_clerk_id", ["clerkId"])
     .index("by_email", ["email"])
     .index("by_plan", ["plan"])
-    .index("by_role", ["role"]),
+    .index("by_role", ["role"])
+    .index("by_created", ["createdAt"]),
 
   // Business Profiles - Company information for AI personalization
   businessProfiles: defineTable({
@@ -178,7 +179,10 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_created", ["createdAt"])
     .index("by_research_tier", ["researchTier"])
-    .index("by_research_stage", ["researchStage"]),
+    .index("by_research_stage", ["researchStage"])
+    // Compound indexes for search queries
+    .index("by_user_status", ["userId", "status"])
+    .index("by_user_status_created", ["userId", "status", "createdAt"]),
 
   // Leads - Individual business leads with enrichment data
   leads: defineTable({
@@ -424,7 +428,9 @@ export default defineSchema({
     .index("by_plan", ["plan"])
     .index("by_status", ["status"])
     .index("by_trial", ["isTrialing"])
-    .index("by_period_end", ["currentPeriodEnd"]),
+    .index("by_period_end", ["currentPeriodEnd"])
+    // Compound indexes for billing webhooks optimization
+    .index("by_stripe_customer_status", ["stripeCustomerId", "status"]),
 
   // Credit Transactions - Credit purchases and usage
   creditTransactions: defineTable({
@@ -452,7 +458,10 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_type", ["type"])
     .index("by_created", ["createdAt"])
-    .index("by_parent", ["parentTransactionId"]),
+    .index("by_parent", ["parentTransactionId"])
+    // Compound indexes for credit transaction queries
+    .index("by_user_type", ["userId", "type"])
+    .index("by_user_type_created", ["userId", "type", "createdAt"]),
 
   // Credit Reservations - Two-phase commit for credit operations
   creditReservations: defineTable({
@@ -550,7 +559,10 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_type", ["type"])
     .index("by_read", ["read"])
-    .index("by_created", ["createdAt"]),
+    .index("by_created", ["createdAt"])
+    // Compound indexes for notification queries
+    .index("by_user_read", ["userId", "read"])
+    .index("by_user_read_created", ["userId", "read", "createdAt"]),
 
   // Admin Metrics - Aggregated data for admin dashboard
   adminMetrics: defineTable({
@@ -1065,7 +1077,10 @@ export default defineSchema({
     .index("by_user_service", ["userId", "service"])
     .index("by_hash", ["keyHash"])
     .index("by_service", ["service"])
-    .index("by_active", ["isActive"]),
+    .index("by_active", ["isActive"])
+    // Compound indexes for API key validation queries
+    .index("by_user_service_active", ["userId", "service", "isActive"])
+    .index("by_user_active_valid", ["userId", "isActive", "isValid"]),
 
   // Usage Tracking - Track user activity per billing period
   usageTracking: defineTable({
@@ -1108,7 +1123,10 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_user_period", ["userId", "billingPeriodStart"])
     .index("by_current", ["isCurrentPeriod"])
-    .index("by_period", ["billingPeriodStart"]),
+    .index("by_period", ["billingPeriodStart"])
+    // Critical compound indexes for query optimization
+    .index("by_user_current", ["userId", "isCurrentPeriod"])
+    .index("by_user_period_current", ["userId", "billingPeriodStart", "isCurrentPeriod"]),
 
   // Subscription Events - Track important subscription lifecycle events
   subscriptionEvents: defineTable({

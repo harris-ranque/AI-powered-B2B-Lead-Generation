@@ -15,7 +15,7 @@ export const getUserApiKeys = query({
 
     const apiKeys = await ctx.db
       .query("userApiKeys")
-      .filter((q) => q.eq(q.field("userId"), user._id))
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
 
     // Return keys without the actual encrypted key for security
@@ -53,7 +53,7 @@ export const getApiKeyStatus = query({
 
     const apiKeys = await ctx.db
       .query("userApiKeys")
-      .filter((q) => q.eq(q.field("userId"), user._id))
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
       .filter((q) => q.eq(q.field("isActive"), true))
       .collect();
 
@@ -97,9 +97,9 @@ export const hasApiKeyForService = query({
 
     const apiKey = await ctx.db
       .query("userApiKeys")
-      .filter((q) => q.eq(q.field("userId"), user._id))
-      .filter((q) => q.eq(q.field("service"), args.service))
-      .filter((q) => q.eq(q.field("isActive"), true))
+      .withIndex("by_user_service_active", (q) => 
+        q.eq("userId", user._id).eq("service", args.service).eq("isActive", true)
+      )
       .filter((q) => q.eq(q.field("isValid"), true))
       .unique();
 

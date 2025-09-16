@@ -447,8 +447,8 @@ export const searchGoogleMaps = action({
         {
           totalFound,
           leadIds: leadIds.length,
-          discoveryDurationMs: performanceData.duration,
-          averageTimePerLead: totalFound > 0 ? (performanceData.duration || 0) / totalFound : 0,
+          discoveryDurationMs: performanceData?.duration || 0,
+          averageTimePerLead: totalFound > 0 ? (performanceData?.duration || 0) / totalFound : 0,
           nextPhase: "lead_enrichment",
           phaseCompletionRate: 100,
         },
@@ -523,7 +523,7 @@ export const searchGoogleMaps = action({
         "💥 PHASE 1 FAILED: Google Maps Discovery Phase Error",
         {
           errorType: error instanceof Error ? error.constructor.name : "Unknown",
-          duration: performanceData.duration,
+          duration: performanceData?.duration || 0,
           searchQuery: search?.parameters?.keywords?.join(" ") || "unknown",
           location: search?.parameters?.location || "unknown",
         },
@@ -677,7 +677,7 @@ export const completeSearch: any = action({
           enrichedLeads: results.enrichedCount,
           analyzedLeads: results.analyzedCount,
           avgRelevanceScore: results.avgRelevanceScore,
-          completionDurationMs: performanceData.duration,
+          completionDurationMs: performanceData?.duration || 0,
           enrichmentRate: results.totalFound > 0 ? (results.enrichedCount / results.totalFound) * 100 : 0,
           analysisRate: results.totalFound > 0 ? (results.analyzedCount / results.totalFound) * 100 : 0,
           finalStatus: "completed",
@@ -697,7 +697,7 @@ export const completeSearch: any = action({
         correlation,
         "💥 PIPELINE FAILED: Search Completion Error",
         {
-          duration: performanceData.duration,
+          duration: performanceData?.duration || 0,
           errorType: error instanceof Error ? error.constructor.name : "Unknown",
         },
         error as Error,

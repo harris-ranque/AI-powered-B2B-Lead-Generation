@@ -227,7 +227,7 @@ async function processLeadWithLangGraph(
           {
             businessName: lead.businessName,
             attempt,
-            durationMs: perfData.duration,
+            durationMs: perfData?.duration || 0,
             relevanceScore: result.result.relevance_score,
             hasEmail: !!result.result.primary_email,
           },
@@ -252,7 +252,7 @@ async function processLeadWithLangGraph(
           businessName: lead.businessName,
           attempt,
           maxAttempts: retryAttempts,
-          durationMs: perfData.duration,
+          durationMs: perfData?.duration || 0,
           willRetry: attempt < retryAttempts,
           backoffDelay: attempt < retryAttempts ? Math.pow(2, attempt) * 1000 : 0,
         },
@@ -662,8 +662,8 @@ export const enrichLeads: any = action({
           enrichedCount,
           failedCount: leads.length - enrichedCount,
           enrichmentRate: (enrichedCount / leads.length) * 100,
-          durationMs: performanceData.duration,
-          averageTimePerLead: leads.length > 0 ? (performanceData.duration || 0) / leads.length : 0,
+          durationMs: performanceData?.duration || 0,
+          averageTimePerLead: leads.length > 0 ? (performanceData?.duration || 0) / leads.length : 0,
           nextPhase: "ai_analysis",
         },
       );
@@ -709,7 +709,7 @@ export const enrichLeads: any = action({
         "💥 PHASE 2 FAILED: Lead Enrichment Phase Error",
         {
           errorType: error instanceof Error ? error.constructor.name : "Unknown",
-          duration: performanceData.duration,
+          duration: performanceData?.duration || 0,
           totalLeads: leads?.length || 0,
           enrichedSoFar: enrichedCount || 0,
         },
@@ -1089,8 +1089,8 @@ export const analyzeLeads: any = action({
           analyzedCount,
           failedCount,
           analysisSuccessRate: (analyzedCount / leads.length) * 100,
-          durationMs: performanceData.duration,
-          averageTimePerLead: leads.length > 0 ? (performanceData.duration || 0) / leads.length : 0,
+          durationMs: performanceData?.duration || 0,
+          averageTimePerLead: leads.length > 0 ? (performanceData?.duration || 0) / leads.length : 0,
           nextPhase: "search_completion",
         },
       );
@@ -1127,7 +1127,7 @@ export const analyzeLeads: any = action({
         "💥 PHASE 3 FAILED: AI Analysis Phase Error",
         {
           errorType: error instanceof Error ? error.constructor.name : "Unknown",
-          duration: performanceData.duration,
+          duration: performanceData?.duration || 0,
           totalLeads: leads?.length || 0,
           analyzedSoFar: analyzedCount || 0,
           failedSoFar: failedCount || 0,

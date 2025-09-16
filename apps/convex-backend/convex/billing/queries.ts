@@ -92,19 +92,19 @@ export const getUsageStats = query({
         break;
     }
 
-    // Get credit transactions in period
+    // Get credit transactions in period (limit for performance)
     const transactions = await ctx.db
       .query("creditTransactions")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .filter((q) => q.gte(q.field("createdAt"), startTime))
-      .collect();
+      .take(1000);
 
-    // Get searches in period
+    // Get searches in period (limit for performance)
     const searches = await ctx.db
       .query("searches")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .filter((q) => q.gte(q.field("createdAt"), startTime))
-      .collect();
+      .take(500);
 
     // Calculate statistics
     const creditsSpent = transactions

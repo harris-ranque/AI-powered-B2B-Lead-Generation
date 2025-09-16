@@ -32,8 +32,9 @@ export const initializeUsageTracking = mutation({
     // Check if current period tracking already exists
     const existing = await ctx.db
       .query("usageTracking")
-      .filter((q) => q.eq(q.field("userId"), args.userId))
-      .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
+      .withIndex("by_user_current", (q) => 
+        q.eq("userId", args.userId).eq("isCurrentPeriod", true)
+      )
       .unique();
 
     if (existing) {
@@ -75,7 +76,7 @@ export const trackSearchUsage = mutation({
     // Get user's billing period
     const billing = await ctx.db
       .query("billing")
-      .filter((q) => q.eq(q.field("userId"), args.userId))
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .unique();
 
     const billingPeriod = billing
@@ -88,8 +89,9 @@ export const trackSearchUsage = mutation({
     // Get or create current usage tracking
     let usage = await ctx.db
       .query("usageTracking")
-      .filter((q) => q.eq(q.field("userId"), args.userId))
-      .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
+      .withIndex("by_user_current", (q) => 
+        q.eq("userId", args.userId).eq("isCurrentPeriod", true)
+      )
       .unique();
 
     if (!usage) {
@@ -105,7 +107,7 @@ export const trackSearchUsage = mutation({
 
       usage = await ctx.db
         .query("usageTracking")
-        .filter((q) => q.eq(q.field("userId"), args.userId))
+        .withIndex("by_user", (q) => q.eq("userId", args.userId))
         .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
         .unique();
     }
@@ -134,8 +136,9 @@ export const trackEmailUsage = mutation({
   handler: async (ctx, args) => {
     const usage = await ctx.db
       .query("usageTracking")
-      .filter((q) => q.eq(q.field("userId"), args.userId))
-      .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
+      .withIndex("by_user_current", (q) => 
+        q.eq("userId", args.userId).eq("isCurrentPeriod", true)
+      )
       .unique();
 
     if (!usage) {
@@ -161,8 +164,9 @@ export const trackExportUsage = mutation({
   handler: async (ctx, args) => {
     const usage = await ctx.db
       .query("usageTracking")
-      .filter((q) => q.eq(q.field("userId"), args.userId))
-      .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
+      .withIndex("by_user_current", (q) => 
+        q.eq("userId", args.userId).eq("isCurrentPeriod", true)
+      )
       .unique();
 
     if (!usage) {
@@ -188,8 +192,9 @@ export const trackApiCallUsage = mutation({
   handler: async (ctx, args) => {
     const usage = await ctx.db
       .query("usageTracking")
-      .filter((q) => q.eq(q.field("userId"), args.userId))
-      .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
+      .withIndex("by_user_current", (q) => 
+        q.eq("userId", args.userId).eq("isCurrentPeriod", true)
+      )
       .unique();
 
     if (!usage) {
@@ -226,7 +231,7 @@ export const checkUsageLimits = mutation({
     // Get billing info with limits
     const billing = await ctx.db
       .query("billing")
-      .filter((q) => q.eq(q.field("userId"), args.userId))
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .unique();
 
     if (!billing) {
@@ -240,7 +245,7 @@ export const checkUsageLimits = mutation({
 
       const usage = await ctx.db
         .query("usageTracking")
-        .filter((q) => q.eq(q.field("userId"), args.userId))
+        .withIndex("by_user", (q) => q.eq("userId", args.userId))
         .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
         .unique();
 
@@ -298,8 +303,9 @@ export const checkUsageLimits = mutation({
     const limits = billing.planLimits;
     const usage = await ctx.db
       .query("usageTracking")
-      .filter((q) => q.eq(q.field("userId"), args.userId))
-      .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
+      .withIndex("by_user_current", (q) => 
+        q.eq("userId", args.userId).eq("isCurrentPeriod", true)
+      )
       .unique();
 
     if (!usage) {
@@ -372,8 +378,9 @@ export const resetUsageForNewPeriod = mutation({
     // Mark current period as not current
     const currentUsage = await ctx.db
       .query("usageTracking")
-      .filter((q) => q.eq(q.field("userId"), args.userId))
-      .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
+      .withIndex("by_user_current", (q) => 
+        q.eq("userId", args.userId).eq("isCurrentPeriod", true)
+      )
       .unique();
 
     if (currentUsage) {

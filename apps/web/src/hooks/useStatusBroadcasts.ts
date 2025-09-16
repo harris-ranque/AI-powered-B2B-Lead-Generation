@@ -1,16 +1,15 @@
-import { useMutation } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@genni/convex-types";
 import type { Id } from "@genni/convex-types/dataModel";
 import { useCallback } from "react";
 import { createLogger, timeOperation } from "@/utils/logger";
-import { useSSEBroadcasts, type SSEBroadcastMessage } from "./useSSEBroadcasts";
 
 const logger = createLogger("useStatusBroadcasts");
 
-export type BroadcastPriority = 1 | 2 | 3 | 4 | 5;
+export type BroadcastPriority = "low" | "normal" | "high" | "urgent" | "critical";
 
 export interface StatusBroadcast {
-  _id: Id<"statusBroadcasts"> | string;
+  _id: Id<"statusBroadcasts">;
   userId: Id<"users">;
   type: string;
   title: string;
@@ -27,71 +26,33 @@ export interface StatusBroadcast {
   deliveredAt?: number;
   acknowledgedAt?: number;
   error?: string;
+  read: boolean;
 }
 
 /**
- * Hook for managing real-time status broadcasts (SSE-POWERED)
- * Now uses Server-Sent Events for true real-time updates instead of database polling
+ * Hook for managing real-time status broadcasts using Convex's native subscriptions
+ * Replaces the SSE implementation with proper Convex real-time queries
  */
 export function useStatusBroadcasts() {
-  // Use SSE for real-time updates instead of database polling
-  const {
-    messages,
-    urgentMessages,
-    isConnected,
-    getMessagesByType,
-    clearMessagesByType,
-  } = useSSEBroadcasts();
+  // Use Convex queries for real-time updates
+  const broadcasts = useQuery(api.realtime.queries.getUserBroadcasts, {
+    limit: 50,
+    includeDelivered: true,
+  });
+  
+  const urgentBroadcasts = useQuery(api.realtime.queries.getUrgentBroadcasts, {
+    limit: 20,
+  });
+
+  const unreadCounts = useQuery(api.realtime.queries.getUnreadBroadcastCount);
 
   const acknowledgeAction = useMutation(
     api.realtime.mutations.acknowledgeBroadcast,
   );
 
-  // Convert SSE messages to StatusBroadcast format for backward compatibility
-  const convertToStatusBroadcast = useCallback(
-    (message: SSEBroadcastMessage): StatusBroadcast => {
-      return {
-        _id: message.messageId || `sse_${message.timestamp}`,
-        userId: "" as Id<"users">, // Will be filled by the current user
-        type: message.type.replace("queued_", ""), // Remove queued prefix
-        title: message.data?.title || message.type,
-        message: message.message,
-        data: message.data,
-        priority: mapSSEPriorityToBroadcast(message.priority),
-        tags: message.data?.category ? [message.data.category] : [],
-        status: "delivered" as const,
-        delivered: true,
-        acknowledged: false,
-        requiresAck: false,
-        createdAt: message.timestamp,
-        expiresAt: message.timestamp + 60 * 60 * 1000, // 1 hour from creation
-        error: message.error,
-      };
-    },
-    [],
+  const markAsReadAction = useMutation(
+    api.realtime.mutations.markBroadcastAsRead,
   );
-
-  // Map SSE priority to broadcast priority
-  const mapSSEPriorityToBroadcast = (priority?: string): BroadcastPriority => {
-    switch (priority) {
-      case "critical":
-        return 5;
-      case "urgent":
-        return 4;
-      case "high":
-        return 3;
-      case "normal":
-        return 2;
-      case "low":
-        return 1;
-      default:
-        return 2;
-    }
-  };
-
-  // Convert SSE messages to StatusBroadcast format
-  const broadcasts = messages.map(convertToStatusBroadcast);
-  const urgentBroadcasts = urgentMessages.map(convertToStatusBroadcast);
 
   const acknowledgeBroadcast = useCallback(
     async (broadcastId: Id<"statusBroadcasts">) => {
@@ -103,19 +64,30 @@ export function useStatusBroadcasts() {
     [acknowledgeAction],
   );
 
+  const markAsRead = useCallback(
+    async (broadcastId: Id<"statusBroadcasts">) => {
+      logger.info("Marking broadcast as read", { broadcastId });
+      return timeOperation("markBroadcastAsRead", () =>
+        markAsReadAction({ broadcastId }),
+      );
+    },
+    [markAsReadAction],
+  );
+
   // Filter broadcasts by type
   const getByType = useCallback(
     (type: string) => {
-      const sseMessages = getMessagesByType(type);
-      return sseMessages.map(convertToStatusBroadcast);
+      return broadcasts?.filter((b) => b.type === type) || [];
     },
-    [getMessagesByType, convertToStatusBroadcast],
+    [broadcasts],
   );
 
-  // Filter broadcasts by tags (limited in SSE version)
+  // Filter broadcasts by tags
   const getByTags = useCallback(
     (tags: string[]) => {
-      return broadcasts.filter((b) => tags.some((tag) => b.tags.includes(tag)));
+      return broadcasts?.filter((b) => 
+        tags.some((tag) => b.tags.includes(tag))
+      ) || [];
     },
     [broadcasts],
   );
@@ -133,8 +105,8 @@ export function useStatusBroadcasts() {
   const systemAlerts = getByType("system_alert");
 
   return {
-    broadcasts,
-    urgentBroadcasts,
+    broadcasts: broadcasts || [],
+    urgentBroadcasts: urgentBroadcasts || [],
     searchBroadcasts,
     creditBroadcasts,
     rateLimitWarnings,
@@ -142,84 +114,63 @@ export function useStatusBroadcasts() {
     getByType,
     getByTags,
     acknowledgeBroadcast,
-    isLoading: false, // SSE is always "loaded"
-    hasUrgent: urgentBroadcasts.length > 0,
-    needsAcknowledgment: 0, // SSE messages don't require acknowledgment in this version
+    markAsRead,
+    isLoading: broadcasts === undefined,
+    hasUrgent: (urgentBroadcasts?.length || 0) > 0,
+    needsAcknowledgment: broadcasts?.filter(b => b.requiresAck && !b.acknowledged).length || 0,
+    unreadCount: unreadCounts?.total || 0,
+    urgentUnreadCount: unreadCounts?.urgent || 0,
 
-    // SSE-specific additions
-    isConnected,
-    clearMessagesByType,
+    // Real-time connection is always "connected" with Convex
+    isConnected: true,
   };
 }
 
 /**
- * Hook for broadcasts related to a specific search (SSE-POWERED)
+ * Hook for broadcasts related to a specific search using Convex queries
  */
 export function useSearchBroadcasts(searchId?: Id<"searches">) {
-  const { broadcasts, acknowledgeBroadcast } = useStatusBroadcasts();
-  const { getPipelineMessages } = useSSEBroadcasts();
+  const searchBroadcasts = useQuery(
+    api.realtime.queries.getSearchBroadcasts,
+    searchId ? { searchId, limit: 50 } : "skip",
+  );
 
-  // Use SSE pipeline messages for real-time updates
-  const pipelineMessages = getPipelineMessages(searchId);
-  const searchSpecificBroadcasts = pipelineMessages.map((msg) => ({
-    _id: msg.messageId || `sse_${msg.timestamp}`,
-    userId: "" as Id<"users">,
-    type: "pipeline_update",
-    title: `Pipeline ${msg.data?.stage}`,
-    message: msg.message,
-    data: msg.data,
-    priority: mapSSEPriorityToBroadcast(msg.priority),
-    tags: ["pipeline", msg.data?.stage].filter(Boolean),
-    status: "delivered" as const,
-    delivered: true,
-    acknowledged: false,
-    requiresAck: false,
-    createdAt: msg.timestamp,
-    expiresAt: msg.timestamp + 60 * 60 * 1000,
-    error: msg.error,
-  }));
+  const latestPipelineStatus = useQuery(
+    api.realtime.queries.getSearchPipelineStatus,
+    searchId ? { searchId } : "skip",
+  );
+
+  const { acknowledgeBroadcast, markAsRead } = useStatusBroadcasts();
 
   // Sort by creation time (newest first)
-  const sortedBroadcasts = searchSpecificBroadcasts.sort(
+  const sortedBroadcasts = (searchBroadcasts || []).sort(
     (a, b) => b.createdAt - a.createdAt,
   );
 
   // Get latest status update
-  const latestStatus = sortedBroadcasts[0];
+  const latestStatus = sortedBroadcasts[0] || latestPipelineStatus;
 
   // Get progress updates
   const progressUpdates = sortedBroadcasts.filter(
-    (b) => b.data?.progress !== undefined || b.message.includes("%"),
+    (b) => b.data && typeof b.data === 'object' && 'progress' in b.data,
   );
-
-  // Helper function for SSE priority mapping (duplicate from above for this function)
-  function mapSSEPriorityToBroadcast(priority?: string): BroadcastPriority {
-    switch (priority) {
-      case "critical":
-        return 5;
-      case "urgent":
-        return 4;
-      case "high":
-        return 3;
-      case "normal":
-        return 2;
-      case "low":
-        return 1;
-      default:
-        return 2;
-    }
-  }
 
   return {
     broadcasts: sortedBroadcasts,
     latestStatus,
     progressUpdates,
     acknowledgeBroadcast,
+    markAsRead,
     hasUpdates: sortedBroadcasts.length > 0,
+    isLoading: searchId ? searchBroadcasts === undefined : false,
 
-    // SSE-specific additions
-    currentProgress: latestStatus?.data?.progress || 0,
-    currentStage: latestStatus?.data?.stage || "pending",
+    // Extract current progress and stage from latest status
+    currentProgress: latestStatus?.data && typeof latestStatus.data === 'object' && 'progress' in latestStatus.data
+      ? (latestStatus.data.progress as number) || 0
+      : 0,
+    currentStage: latestStatus?.data && typeof latestStatus.data === 'object' && 'stage' in latestStatus.data
+      ? (latestStatus.data.stage as string) || "pending"
+      : "pending",
   };
 }
 
@@ -227,10 +178,15 @@ export function useSearchBroadcasts(searchId?: Id<"searches">) {
  * Hook for batch processing broadcasts
  */
 export function useBatchBroadcasts(batchPlanId?: string) {
-  const { broadcasts, acknowledgeBroadcast } = useStatusBroadcasts();
+  const broadcasts = useQuery(api.realtime.queries.getBroadcastsByType, {
+    type: "batch_progress",
+    limit: 50,
+  });
+
+  const { acknowledgeBroadcast } = useStatusBroadcasts();
 
   const batchBroadcasts = (broadcasts || []).filter(
-    (b) => b.type === "batch_progress" && b.data?.batchPlanId === batchPlanId,
+    (b) => b.data && typeof b.data === 'object' && 'batchPlanId' in b.data && b.data.batchPlanId === batchPlanId,
   );
 
   // Get latest batch progress
@@ -238,14 +194,22 @@ export function useBatchBroadcasts(batchPlanId?: string) {
     (a, b) => b.createdAt - a.createdAt,
   )[0];
 
+  const getDataField = <T>(data: unknown, field: string): T | undefined => {
+    if (data && typeof data === "object" && field in (data as Record<string, unknown>)) {
+      return (data as Record<string, unknown>)[field] as T;
+    }
+    return undefined;
+  };
+
   return {
     broadcasts: batchBroadcasts,
     latestProgress,
     acknowledgeBroadcast,
     hasProgress: batchBroadcasts.length > 0,
-    completedBatches: latestProgress?.data?.completedBatches || 0,
-    totalBatches: latestProgress?.data?.totalBatches || 0,
-    progressPercent: latestProgress?.data?.progressPercent || 0,
+    completedBatches: getDataField(latestProgress?.data, 'completedBatches') || 0,
+    totalBatches: getDataField(latestProgress?.data, 'totalBatches') || 0,
+    progressPercent: getDataField(latestProgress?.data, 'progressPercent') || 0,
+    isLoading: broadcasts === undefined,
   };
 }
 
@@ -253,25 +217,38 @@ export function useBatchBroadcasts(batchPlanId?: string) {
  * Hook for credit and billing broadcasts
  */
 export function useCreditBroadcasts() {
-  const { creditBroadcasts, acknowledgeBroadcast } = useStatusBroadcasts();
+  const creditBroadcasts = useQuery(api.realtime.queries.getCreditBroadcasts, {
+    limit: 30,
+  });
+
+  const { acknowledgeBroadcast } = useStatusBroadcasts();
 
   // Filter for low credit warnings
-  const lowCreditWarnings = creditBroadcasts.filter(
-    (b) => b.data?.isLowCredits || b.priority >= 3,
-  );
+  const hasLowCredits = (data: unknown): data is { isLowCredits?: boolean } =>
+    typeof data === "object" && data !== null && "isLowCredits" in (data as Record<string, unknown>);
+
+  const lowCreditWarnings = (creditBroadcasts || []).filter((b) => {
+    const data = b.data;
+    const isLow = hasLowCredits(data) && Boolean(data.isLowCredits);
+    const isHighPriority = b.priority === "high" || b.priority === "urgent" || b.priority === "critical";
+    return isLow || isHighPriority;
+  });
 
   // Get latest credit update
-  const latestCreditUpdate = creditBroadcasts.sort(
+  const latestCreditUpdate = (creditBroadcasts || []).sort(
     (a, b) => b.createdAt - a.createdAt,
   )[0];
 
   return {
-    broadcasts: creditBroadcasts,
+    broadcasts: creditBroadcasts || [],
     lowCreditWarnings,
     latestCreditUpdate,
     acknowledgeBroadcast,
     hasLowCredits: lowCreditWarnings.length > 0,
-    currentBalance: latestCreditUpdate?.data?.newBalance,
+    currentBalance: latestCreditUpdate?.data && typeof latestCreditUpdate.data === 'object' && 'newBalance' in latestCreditUpdate.data
+      ? (latestCreditUpdate.data.newBalance as number)
+      : undefined,
+    isLoading: creditBroadcasts === undefined,
   };
 }
 
@@ -280,7 +257,7 @@ export function useCreditBroadcasts() {
  */
 export function getPriorityDisplay(priority: BroadcastPriority) {
   switch (priority) {
-    case 5:
+    case "critical":
       return {
         label: "Critical",
         variant: "destructive" as const,
@@ -288,7 +265,7 @@ export function getPriorityDisplay(priority: BroadcastPriority) {
         bgColor: "bg-red-50 border-red-200",
         icon: "🚨",
       };
-    case 4:
+    case "urgent":
       return {
         label: "Urgent",
         variant: "destructive" as const,
@@ -296,7 +273,7 @@ export function getPriorityDisplay(priority: BroadcastPriority) {
         bgColor: "bg-orange-50 border-orange-200",
         icon: "⚠️",
       };
-    case 3:
+    case "high":
       return {
         label: "High",
         variant: "default" as const,
@@ -304,7 +281,7 @@ export function getPriorityDisplay(priority: BroadcastPriority) {
         bgColor: "bg-yellow-50 border-yellow-200",
         icon: "📢",
       };
-    case 2:
+    case "normal":
       return {
         label: "Normal",
         variant: "secondary" as const,
@@ -312,7 +289,7 @@ export function getPriorityDisplay(priority: BroadcastPriority) {
         bgColor: "bg-blue-50 border-blue-200",
         icon: "💬",
       };
-    case 1:
+    case "low":
       return {
         label: "Low",
         variant: "outline" as const,

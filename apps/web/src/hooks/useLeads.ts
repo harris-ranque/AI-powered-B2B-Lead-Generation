@@ -1,8 +1,9 @@
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@genni/convex-types";
 import type { Id } from "@genni/convex-types/dataModel";
-import { useEffect } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { createLogger, timeOperation } from "@/utils/logger";
+import type { Lead } from "@/lib/types";
 
 const logger = createLogger("useLeads");
 
@@ -22,6 +23,22 @@ export function useLeads(searchId?: Id<"searches">) {
   const addLeadNotesMutation = useMutation(api.leads.mutations.addLeadNotes);
   const deleteLeadMutation = useMutation(api.leads.mutations.deleteLead);
 
+  // Optimistic updates for leads
+  const [optimisticLeads, setOptimisticLeads] = useState<Lead[]>(leads);
+
+  // Keep optimistic state in sync with server data when it changes
+  useEffect(() => {
+    setOptimisticLeads(leads);
+  }, [leads]);
+
+  const updateOptimisticLeads = (
+    updater: Lead[] | ((prev: Lead[]) => Lead[]),
+  ) => {
+    setOptimisticLeads((prev) =>
+      typeof updater === "function" ? (updater as (p: Lead[]) => Lead[])(prev) : updater,
+    );
+  };
+
   useEffect(() => {
     if (leads && leads.length > 0) {
       logger.debug("Leads loaded", {
@@ -38,37 +55,97 @@ export function useLeads(searchId?: Id<"searches">) {
     }
   }, [leads, searchId]);
 
-  const updateLead = async (...args: Parameters<typeof updateLeadMutation>) => {
-    logger.info("Updating lead", { leadId: args[0].leadId });
-    return timeOperation("updateLead", () => updateLeadMutation(...args));
-  };
+  const updateLead = useCallback(async (...args: Parameters<typeof updateLeadMutation>) => {
+    const { leadId, updates } = args[0];
+    logger.info("Updating lead", { leadId, updates });
+    
+    // Optimistic update: update lead immediately
+    updateOptimisticLeads((prev) => 
+      prev.map(lead => 
+        lead._id === leadId 
+          ? { ...lead, ...updates, updatedAt: Date.now() }
+          : lead
+      )
+    );
+    
+    try {
+      return await timeOperation("updateLead", () => updateLeadMutation(...args));
+    } catch (error) {
+      // Let server state correct optimistic update on error
+      logger.error("Failed to update lead, server will correct", error);
+      throw error;
+    }
+  }, [updateLeadMutation, updateOptimisticLeads]);
 
-  const updateLeadStatus = async (
+  const updateLeadStatus = useCallback(async (
     ...args: Parameters<typeof updateLeadStatusMutation>
   ) => {
-    logger.info("Updating lead status", {
-      leadId: args[0].leadId,
-      status: args[0].status,
-    });
-    return timeOperation("updateLeadStatus", () =>
-      updateLeadStatusMutation(...args),
+    const { leadId, status } = args[0];
+    logger.info("Updating lead status", { leadId, status });
+    
+    // Optimistic update: update status immediately
+    updateOptimisticLeads((prev) => 
+      prev.map(lead => 
+        lead._id === leadId 
+          ? { ...lead, status, updatedAt: Date.now() }
+          : lead
+      )
     );
-  };
+    
+    try {
+      return await timeOperation("updateLeadStatus", () =>
+        updateLeadStatusMutation(...args),
+      );
+    } catch (error) {
+      // Let server state correct optimistic update on error
+      logger.error("Failed to update lead status, server will correct", error);
+      throw error;
+    }
+  }, [updateLeadStatusMutation, updateOptimisticLeads]);
 
-  const addLeadNotes = async (
+  const addLeadNotes = useCallback(async (
     ...args: Parameters<typeof addLeadNotesMutation>
   ) => {
-    logger.info("Adding lead notes", { leadId: args[0].leadId });
-    return timeOperation("addLeadNotes", () => addLeadNotesMutation(...args));
-  };
+    const { leadId, notes } = args[0];
+    logger.info("Adding lead notes", { leadId });
+    
+    // Optimistic update: add notes immediately
+    updateOptimisticLeads((prev) => 
+      prev.map(lead => 
+        lead._id === leadId 
+          ? { ...lead, notes, updatedAt: Date.now() }
+          : lead
+      )
+    );
+    
+    try {
+      return await timeOperation("addLeadNotes", () => addLeadNotesMutation(...args));
+    } catch (error) {
+      // Let server state correct optimistic update on error
+      logger.error("Failed to add lead notes, server will correct", error);
+      throw error;
+    }
+  }, [addLeadNotesMutation, updateOptimisticLeads]);
 
-  const deleteLead = async (...args: Parameters<typeof deleteLeadMutation>) => {
-    logger.warn("Deleting lead", { leadId: args[0].leadId });
-    return timeOperation("deleteLead", () => deleteLeadMutation(...args));
-  };
+  const deleteLead = useCallback(async (...args: Parameters<typeof deleteLeadMutation>) => {
+    const { leadId } = args[0];
+    logger.warn("Deleting lead", { leadId });
+    
+    // Optimistic update: remove lead immediately
+    const originalLeads = optimisticLeads;
+    updateOptimisticLeads((prev) => prev.filter(lead => lead._id !== leadId));
+    
+    try {
+      return await timeOperation("deleteLead", () => deleteLeadMutation(...args));
+    } catch (error) {
+      // Restore lead on error
+      updateOptimisticLeads(originalLeads);
+      throw error;
+    }
+  }, [deleteLeadMutation, updateOptimisticLeads, optimisticLeads]);
 
   return {
-    leads,
+    leads: optimisticLeads,
     updateLead,
     updateLeadStatus,
     addLeadNotes,

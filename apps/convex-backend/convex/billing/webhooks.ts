@@ -254,7 +254,7 @@ export const handleSubscriptionCreated = internalMutation({
       // Create or update billing record
       const existingBilling = await ctx.db
         .query("billing")
-        .filter((q) => q.eq(q.field("userId"), u._id))
+        .withIndex("by_user", (q) => q.eq("userId", u._id))
         .unique();
 
       if (existingBilling) {
@@ -312,8 +312,9 @@ export const handleSubscriptionCreated = internalMutation({
       // Create usage tracking record for the current period
       const existingUsage = await ctx.db
         .query("usageTracking")
-        .filter((q) => q.eq(q.field("userId"), u._id))
-        .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
+        .withIndex("by_user_current", (q) => 
+          q.eq("userId", u._id).eq("isCurrentPeriod", true)
+        )
         .unique();
 
       if (!existingUsage) {
@@ -423,7 +424,7 @@ export const handleSubscriptionUpdated = internalMutation({
       // Get existing billing record
       const billing = await ctx.db
         .query("billing")
-        .filter((q) => q.eq(q.field("userId"), u2._id))
+        .withIndex("by_user", (q) => q.eq("userId", u2._id))
         .unique();
 
       if (!billing) {
@@ -475,8 +476,9 @@ export const handleSubscriptionUpdated = internalMutation({
       // Update usage tracking period if period changed
       const currentUsage = await ctx.db
         .query("usageTracking")
-        .filter((q) => q.eq(q.field("userId"), u2._id))
-        .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
+        .withIndex("by_user_current", (q) => 
+          q.eq("userId", u2._id).eq("isCurrentPeriod", true)
+        )
         .unique();
 
       if (
@@ -584,7 +586,7 @@ export const handleSubscriptionDeleted = internalMutation({
       // Update billing record
       const billing = await ctx.db
         .query("billing")
-        .filter((q) => q.eq(q.field("userId"), user._id))
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
         .unique();
 
       if (billing) {
@@ -653,7 +655,7 @@ export const handlePaymentSucceeded = internalMutation({
       // Update billing record with payment info
       const billing = await ctx.db
         .query("billing")
-        .filter((q) => q.eq(q.field("userId"), user._id))
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
         .unique();
 
       if (billing) {
@@ -720,7 +722,7 @@ export const handlePaymentFailed = internalMutation({
       // Update billing record status if multiple failures
       const billing = await ctx.db
         .query("billing")
-        .filter((q) => q.eq(q.field("userId"), user._id))
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
         .unique();
 
       if (billing && args.attemptCount >= 3) {

@@ -79,7 +79,12 @@ export const getUserStatistics = query({
       throw createError("Admin access required", ERROR_CODES.FORBIDDEN, 403);
     }
 
-    const users = await ctx.db.query("users").collect();
+    // Limit to most recent 5000 users for performance
+    const users = await ctx.db
+      .query("users")
+      .withIndex("by_created")
+      .order("desc")
+      .take(5000);
 
     const now = Date.now();
     const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
@@ -343,7 +348,12 @@ export const searchUsers = query({
     const limit = args.limit || 20;
     const searchQuery = args.query.toLowerCase();
 
-    const users = await ctx.db.query("users").collect();
+    // Limit to most recent 1000 users for search performance
+    const users = await ctx.db
+      .query("users")
+      .withIndex("by_created")
+      .order("desc")
+      .take(1000);
 
     const filteredUsers = users
       .filter(
