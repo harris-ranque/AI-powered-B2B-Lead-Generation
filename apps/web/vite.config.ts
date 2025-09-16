@@ -12,6 +12,9 @@ export default defineConfig(({ mode }) => ({
   plugins: [react(), mode === "development" && componentTagger()].filter(
     Boolean,
   ),
+  build: {
+    sourcemap: mode === "development",
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
