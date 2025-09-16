@@ -11,10 +11,18 @@ from typing import List, Dict, Any, Optional
 
 # Initialize Sentry SDK before other imports
 import sentry_sdk
-from .utils.config import get_settings
+from .utils.config import get_settings, validate_required_settings
 
 # Get settings first to configure Sentry
 settings = get_settings()
+try:
+    validate_required_settings()
+except ValueError as config_error:
+    logging.getLogger(__name__).critical(
+        "LangGraph worker configuration invalid: %s",
+        config_error,
+    )
+    raise
 
 # Initialize Sentry if DSN is configured
 if settings.sentry_dsn:
@@ -285,6 +293,19 @@ async def generate_email(
         # Capture the exception in Sentry
         sentry_sdk.capture_exception(e)
         
+        try:
+            await webhook_client.send_result(
+                request_id=request.request_id,
+                status="error",
+                error=str(e),
+            )
+        except Exception as webhook_error:
+            logger.error(
+                "Failed to send failure webhook for %s: %s",
+                request.request_id,
+                webhook_error,
+            )
+
         log_error_details(logger, e, {
             "request_id": request.request_id,
             "lead_company": request.lead.company_name,
@@ -395,14 +416,20 @@ async def analyze_lead(
         # Capture the exception in Sentry
         sentry_sdk.capture_exception(e)
         
-        # Send error webhook
-        await webhook_client.send_analysis_result(
-            request_id=f"analysis_{lead.id}",
-            lead_id=lead.id,
-            status="failed",
-            error=str(e),
-            processing_time=duration
-        )
+        try:
+            await webhook_client.send_analysis_result(
+                request_id=f"analysis_{lead.id}",
+                lead_id=lead.id,
+                status="failed",
+                error=str(e),
+                processing_time=duration
+            )
+        except Exception as webhook_error:
+            logger.error(
+                "Failed to send analysis failure webhook for %s: %s",
+                lead.id,
+                webhook_error,
+            )
         
         log_error_details(logger, e, {
             "lead_id": lead.id,

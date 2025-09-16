@@ -233,7 +233,7 @@ export const handleEmailGenerationCompleted = internalMutation({
           }
         }
 
-        // Broadcast success update via SSE
+        // Broadcast success update via real-time status broadcast
         await ctx.runMutation(
           internal.realtime.broadcaster.broadcastPipelineUpdate,
           {
@@ -281,7 +281,7 @@ export const handleEmailGenerationCompleted = internalMutation({
           emailContent: undefined,
         });
 
-        // Broadcast error via SSE
+        // Broadcast error via real-time status broadcast
         await ctx.runMutation(
           internal.realtime.broadcaster.broadcastPipelineUpdate,
           {
@@ -379,7 +379,7 @@ export const handleAnalysisCompleted = internalMutation({
           emailContent: undefined, // Analysis only, no email
         });
 
-        // Broadcast success update via SSE
+        // Broadcast success update via real-time status broadcast
         await ctx.runMutation(
           internal.realtime.broadcaster.broadcastPipelineUpdate,
           {
@@ -428,7 +428,7 @@ export const handleAnalysisCompleted = internalMutation({
           emailContent: undefined,
         });
 
-        // Broadcast error via SSE
+        // Broadcast error via real-time status broadcast
         await ctx.runMutation(
           internal.realtime.broadcaster.broadcastPipelineUpdate,
           {

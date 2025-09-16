@@ -32,8 +32,7 @@ class WebhookClient:
         """Send processing result via webhook"""
         
         if not self.webhook_url:
-            logger.warning("No webhook URL configured, skipping notification")
-            return False
+            raise RuntimeError("LangGraph webhook URL not configured")
             
         # Prepare result payload robustly (handle dict or Pydantic model)
         result_payload = None
@@ -79,10 +78,13 @@ class WebhookClient:
                             logger.info(f"Webhook sent successfully for request {request_id}")
                             return True
                         elif response.status in [401, 403]:
-                            # Don't retry auth errors
                             error_text = await response.text()
-                            logger.error(f"Webhook authentication failed (status {response.status}): {error_text}")
-                            return False
+                            logger.error(
+                                f"Webhook authentication failed (status {response.status}): {error_text}"
+                            )
+                            raise RuntimeError(
+                                f"Webhook authentication failed with status {response.status}"
+                            )
                         elif response.status == 400:
                             # Check if this is a retryable 400 error based on response
                             try:
@@ -90,13 +92,22 @@ class WebhookClient:
                                 if error_data.get("retryable", False):
                                     logger.warning(f"Webhook failed with retryable 400: {error_data.get('message', 'Unknown error')}")
                                 else:
-                                    logger.error(f"Webhook failed with non-retryable 400: {error_data.get('message', 'Unknown error')}")
-                                    return False
+                                    message = error_data.get("message", "Unknown error")
+                                    logger.error(
+                                        f"Webhook failed with non-retryable 400: {message}"
+                                    )
+                                    raise RuntimeError(
+                                        f"Webhook rejected payload: {message}"
+                                    )
                             except:
                                 # If we can't parse the response, don't retry 400s
                                 error_text = await response.text()
-                                logger.error(f"Webhook validation failed (status 400): {error_text}")
-                                return False
+                                logger.error(
+                                    f"Webhook validation failed (status 400): {error_text}"
+                                )
+                                raise RuntimeError(
+                                    "Webhook validation failed with status 400"
+                                )
                         else:
                             # 500+ errors are retryable
                             error_text = await response.text()
@@ -116,8 +127,12 @@ class WebhookClient:
                 logger.info(f"Retrying webhook in {wait_time:.1f} seconds...")
                 await asyncio.sleep(wait_time)
         
-        logger.error(f"Failed to send webhook after {retries + 1} attempts for request {request_id}")
-        return False
+        logger.error(
+            f"Failed to send webhook after {retries + 1} attempts for request {request_id}"
+        )
+        raise RuntimeError(
+            f"Unable to deliver webhook for request {request_id} after retries"
+        )
     
     async def send_analysis_result(
         self,
@@ -132,8 +147,7 @@ class WebhookClient:
         """Send lead analysis result via webhook"""
         
         if not self.webhook_url:
-            logger.warning("No webhook URL configured, skipping analysis notification")
-            return False
+            raise RuntimeError("LangGraph webhook URL not configured")
         
         # Construct analysis webhook URL
         analysis_webhook_url = self.webhook_url.replace(
@@ -165,10 +179,15 @@ class WebhookClient:
                         headers=headers
                     ) as response:
                         if response.status == 200:
-                            logger.info(f"Analysis webhook sent successfully for request {request_id}")
+                            logger.info(
+                                f"Analysis webhook sent successfully for request {request_id}"
+                            )
                             return True
-                        else:
-                            logger.warning(f"Analysis webhook failed with status {response.status}")
+
+                        error_text = await response.text()
+                        logger.warning(
+                            f"Analysis webhook failed with status {response.status}: {error_text}"
+                        )
                             
             except asyncio.TimeoutError:
                 logger.warning(f"Analysis webhook timeout for request {request_id} (attempt {attempt + 1})")
@@ -181,8 +200,12 @@ class WebhookClient:
                 logger.info(f"Retrying analysis webhook in {wait_time} seconds...")
                 await asyncio.sleep(wait_time)
         
-        logger.error(f"Failed to send analysis webhook after {retries + 1} attempts for request {request_id}")
-        return False
+        logger.error(
+            f"Failed to send analysis webhook after {retries + 1} attempts for request {request_id}"
+        )
+        raise RuntimeError(
+            f"Unable to deliver analysis webhook for request {request_id} after retries"
+        )
     
     async def send_status_update(
         self,
@@ -194,7 +217,7 @@ class WebhookClient:
         """Send intermediate status update"""
         
         if not self.webhook_url:
-            return False
+            raise RuntimeError("LangGraph webhook URL not configured")
             
         payload = {
             "request_id": request_id,
@@ -212,8 +235,14 @@ class WebhookClient:
                     json=payload,
                     headers={"Content-Type": "application/json", "User-Agent": "langgraph-worker/2.0"}
                 ) as response:
-                    return response.status == 200
-                    
+                    if response.status == 200:
+                        return True
+
+                    error_text = await response.text()
+                    raise RuntimeError(
+                        f"Status update webhook failed with status {response.status}: {error_text}"
+                    )
+
         except Exception as e:
             logger.warning(f"Status update webhook failed: {str(e)}")
-            return False
+            raise

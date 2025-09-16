@@ -338,4 +338,186 @@ http.route({
   }),
 });
 
+// LangGraph webhook handler for email generation completion
+http.route({
+  path: "/webhooks/langgraph/email-completed",
+  method: "POST",
+  handler: httpAction(async (ctx, request: Request) => {
+    try {
+      const authHeader = request.headers.get("Authorization");
+      const expectedKey =
+        process.env.LANGGRAPH_API_KEY ?? process.env.API_KEY ?? undefined;
+      const userAgent = request.headers.get("User-Agent");
+
+      if (!authHeader || !expectedKey) {
+        console.error("Missing authorization header or API key not configured");
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (authHeader !== `Bearer ${expectedKey}`) {
+        console.error("Invalid API key provided");
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (userAgent && !userAgent.includes("langgraph-worker")) {
+        console.warn("Unexpected user agent for LangGraph webhook:", userAgent);
+      }
+
+      const payload = (await request.json()) as unknown;
+
+      if (!payload || typeof payload !== "object" || !("request_id" in payload)) {
+        return new Response(
+          JSON.stringify({ error: "Missing request_id in payload" }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      const result = await ctx.runMutation(
+        internal.langgraph.webhooks.handleEmailGenerationCompleted,
+        {
+          payload: payload as any,
+        },
+      );
+
+      if (!result.success) {
+        console.error(`Webhook processing failed: ${result.error}`);
+        return new Response(JSON.stringify({ error: result.error }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("LangGraph email webhook error:", error);
+
+      const isRetryable =
+        error instanceof Error &&
+        (error.message.includes("timeout") ||
+          error.message.includes("connection") ||
+          error.message.includes("unavailable") ||
+          error.message.includes("overloaded"));
+
+      const statusCode = isRetryable ? 500 : 400;
+
+      return new Response(
+        JSON.stringify({
+          error: "Webhook processing failed",
+          retryable: isRetryable,
+          message: error instanceof Error ? error.message : "Unknown error",
+        }),
+        {
+          status: statusCode,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+  }),
+});
+
+// LangGraph webhook handler for lead analysis completion
+http.route({
+  path: "/webhooks/langgraph/analysis-completed",
+  method: "POST",
+  handler: httpAction(async (ctx, request: Request) => {
+    try {
+      const authHeader = request.headers.get("Authorization");
+      const expectedKey =
+        process.env.LANGGRAPH_API_KEY ?? process.env.API_KEY ?? undefined;
+      const userAgent = request.headers.get("User-Agent");
+
+      if (!authHeader || !expectedKey) {
+        console.error("Missing authorization header or API key not configured");
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (authHeader !== `Bearer ${expectedKey}`) {
+        console.error("Invalid API key provided");
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (userAgent && !userAgent.includes("langgraph-worker")) {
+        console.warn("Unexpected user agent for LangGraph webhook:", userAgent);
+      }
+
+      const payload = (await request.json()) as unknown;
+
+      if (
+        !payload ||
+        typeof payload !== "object" ||
+        (!("request_id" in payload) && !("lead_id" in payload))
+      ) {
+        return new Response(
+          JSON.stringify({ error: "Missing request_id or lead_id in payload" }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      const result = await ctx.runMutation(
+        internal.langgraph.webhooks.handleAnalysisCompleted,
+        {
+          payload: payload as any,
+        },
+      );
+
+      if (!result.success) {
+        console.error(`Analysis webhook processing failed: ${result.error}`);
+        return new Response(JSON.stringify({ error: result.error }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("LangGraph analysis webhook error:", error);
+
+      const isRetryable =
+        error instanceof Error &&
+        (error.message.includes("timeout") ||
+          error.message.includes("connection") ||
+          error.message.includes("unavailable") ||
+          error.message.includes("overloaded"));
+
+      const statusCode = isRetryable ? 500 : 400;
+
+      return new Response(
+        JSON.stringify({
+          error: "Webhook processing failed",
+          retryable: isRetryable,
+          message: error instanceof Error ? error.message : "Unknown error",
+        }),
+        {
+          status: statusCode,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+  }),
+});
+
 export default http;
