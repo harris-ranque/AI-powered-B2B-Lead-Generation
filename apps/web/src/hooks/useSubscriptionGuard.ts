@@ -96,7 +96,7 @@ export function useSubscriptionGuard() {
   const { usage, isLoading: usageLoading } = useUsage();
 
   const currentPlan: PlanTier = subscription?.plan || "starter";
-  const planFeatures = PLAN_FEATURES[currentPlan];
+  const planFeatures = PLAN_FEATURES[currentPlan] || PLAN_FEATURES.starter;
 
   // Feature access checks
   const hasFeature = (feature: FeatureKey): boolean => {

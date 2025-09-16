@@ -281,7 +281,7 @@ export function CreditManager({
               <Crown className="h-3 w-3 mr-1" />
             )}
             {currentPlan === "enterprise" && <Zap className="h-3 w-3 mr-1" />}
-            {pricingPlans.find((p) => p.id === currentPlan)?.name} Plan
+            {pricingPlans.find((p) => p.id === currentPlan)?.name || "Unknown"} Plan
           </Badge>
         </div>
 
