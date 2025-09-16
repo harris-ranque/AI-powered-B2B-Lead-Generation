@@ -15,6 +15,7 @@ export const CREDIT_COSTS = {
   AI_ANALYSIS: 3,
   EMAIL_GENERATION: 5,
   BULK_ANALYSIS: 10,
+  DEEP_RESEARCH: 5, // Additional cost for Perplexity deep research
 } as const;
 
 // Plan limits

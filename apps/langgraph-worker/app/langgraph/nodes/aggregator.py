@@ -84,7 +84,13 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
             follow_up_sequence=state.get("follow_up_sequence"),
             agent_results=state.get("agent_results", []),
             processing_time=total_time,
-            recommendations=recommendations[:5]  # Limit to top 5 recommendations
+            recommendations=recommendations[:5],  # Limit to top 5 recommendations
+            # Deep research metadata
+            deep_research_used=state.get("deep_research_triggered", False),
+            deep_research_reason=state.get("deep_research_reason"),
+            additional_credits_used=max(0, state.get("research_credit_cost", 0) - __import__('app.config', fromlist=['CREDIT_COSTS']).CREDIT_COSTS['AI_ANALYSIS']),  # Subtract base AI_ANALYSIS cost
+            missing_data_points=state.get("missing_data_points", []),
+            data_completeness_score=state.get("base_data_validation_score", 1.0)
         )
         
         execution_time = time.time() - start_time
@@ -137,7 +143,13 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
             follow_up_sequence=None,
             agent_results=state.get("agent_results", []),
             processing_time=execution_time,
-            recommendations=["Error during aggregation - manual review recommended"]
+            recommendations=["Error during aggregation - manual review recommended"],
+            # Deep research metadata (preserve whatever was collected)
+            deep_research_used=state.get("deep_research_triggered", False),
+            deep_research_reason=state.get("deep_research_reason"),
+            additional_credits_used=max(0, state.get("research_credit_cost", 0) - __import__('app.config', fromlist=['CREDIT_COSTS']).CREDIT_COSTS['AI_ANALYSIS']),
+            missing_data_points=state.get("missing_data_points", []),
+            data_completeness_score=state.get("base_data_validation_score", 1.0)
         )
         
         return {

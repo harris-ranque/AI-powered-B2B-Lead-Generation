@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
 from ...utils.research_clients import ResearchOrchestrator, ResearchResult, ResearchTier
+from ...utils.data_validation import BaseDataValidator
 from ...models.lead_models import AgentResult
 from ..state import EmailGenerationState
 
@@ -115,6 +116,23 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         
         research_time = time.time() - research_start
         logger.info(f"Research completed in {research_time:.2f}s using {research_result.tier.value} tier")
+        
+        # Track deep research usage
+        deep_research_used = research_result.tier == ResearchTier.PERPLEXITY
+        deep_research_reason = research_result.escalation_reason if deep_research_used else None
+        
+        # Validate data completeness for tracking
+        data_validator = BaseDataValidator()
+        validation_result = data_validator.validate_research_result(research_result)
+        
+        # Calculate credit cost (base cost + deep research cost if used)
+        from ...config import CREDIT_COSTS
+        base_credit_cost = CREDIT_COSTS['AI_ANALYSIS']
+        deep_research_cost = CREDIT_COSTS['DEEP_RESEARCH'] if deep_research_used else 0
+        total_credit_cost = base_credit_cost + deep_research_cost
+        
+        logger.info(f"Deep research: {'Used' if deep_research_used else 'Not used'}, "
+                   f"Reason: {deep_research_reason}, Credits: {total_credit_cost}")
         
         # Phase 2: Comprehensive business intelligence analysis
         logger.info(f"Phase 2: Comprehensive business intelligence analysis")
@@ -369,7 +387,15 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
                 "business_intelligence": intelligence.relevance_score >= 0.4,
                 "research_quality": research_result.confidence_score >= 0.6,
                 "value_alignment": intelligence.value_alignment_score >= 0.5
-            }
+            },
+            # Deep research tracking
+            "deep_research_triggered": deep_research_used,
+            "deep_research_reason": deep_research_reason,
+            "missing_data_points": validation_result.missing_data_points,
+            "research_credit_cost": total_credit_cost,
+            "base_data_validation_score": validation_result.validation_score,
+            "research_tier": research_result.tier.value,
+            "escalation_reason": research_result.escalation_reason
         }
         
     except Exception as e:

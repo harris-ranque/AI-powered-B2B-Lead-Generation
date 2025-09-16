@@ -300,6 +300,13 @@ export default defineSchema({
     tags: v.array(v.string()),
     notes: v.optional(v.string()),
 
+    // Deep research tracking
+    deepResearchUsed: v.optional(v.boolean()),
+    deepResearchReason: v.optional(v.string()),
+    deepResearchTimestamp: v.optional(v.number()),
+    deepResearchDataPoints: v.optional(v.array(v.string())),
+    deepResearchCreditsCharged: v.optional(v.number()),
+
     createdAt: v.number(),
     updatedAt: v.number(),
   })

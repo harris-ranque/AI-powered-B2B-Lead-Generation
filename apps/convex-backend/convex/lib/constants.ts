@@ -45,14 +45,8 @@ export const API_CONFIG = {
   },
 } as const;
 
-// Credit Costs
-export const CREDIT_COSTS = {
-  SEARCH: 1,
-  LEAD_ENRICHMENT: 2,
-  EMAIL_GENERATION: 3,
-  EMAIL_SEQUENCE: 5,
-  AI_ANALYSIS: 2,
-} as const;
+// Credit Costs - Import from environment-based config
+export { CREDIT_COSTS } from './config';
 
 // Business Rules
 export const BUSINESS_RULES = {
@@ -215,29 +209,18 @@ export const EMAIL_TEMPLATES = {
   },
 } as const;
 
-// AI Configuration
-export const AI_CONFIG = {
-  LANGGRAPH_AGENTS: {
-    RELEVANCE_ANALYZER: "relevance_analyzer",
-    PAIN_POINT_RESEARCHER: "pain_point_researcher",
-    VALUE_MATCHER: "value_matcher",
-    EMAIL_WRITER: "email_writer",
-    FOLLOW_UP_STRATEGIST: "follow_up_strategist",
-    SUPERVISOR: "supervisor",
-    AGGREGATOR: "aggregator",
-  },
+// AI Configuration - Import configurable parts from config
+export { AI_CONFIG } from './config';
 
-  CONFIDENCE_THRESHOLDS: {
-    LOW: 0.3,
-    MEDIUM: 0.6,
-    HIGH: 0.8,
-  },
-
-  RELEVANCE_WEIGHTS: {
-    PAIN_POINTS: 0.4,
-    VALUE_MATCHES: 0.3,
-    CONFIDENCE: 0.3,
-  },
+// Static AI constants that don't need configuration
+export const LANGGRAPH_AGENTS = {
+  RELEVANCE_ANALYZER: "relevance_analyzer",
+  PAIN_POINT_RESEARCHER: "pain_point_researcher",
+  VALUE_MATCHER: "value_matcher",
+  EMAIL_WRITER: "email_writer",
+  FOLLOW_UP_STRATEGIST: "follow_up_strategist",
+  SUPERVISOR: "supervisor",
+  AGGREGATOR: "aggregator",
 } as const;
 
 // Webhook Events

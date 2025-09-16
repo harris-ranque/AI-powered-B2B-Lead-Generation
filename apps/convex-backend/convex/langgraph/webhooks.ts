@@ -34,6 +34,12 @@ const EmailGenerationResult = v.object({
           }),
         ),
       ),
+      // Deep research metadata
+      deep_research_used: v.optional(v.boolean()),
+      deep_research_reason: v.optional(v.string()),
+      additional_credits_used: v.optional(v.number()),
+      missing_data_points: v.optional(v.array(v.string())),
+      data_completeness_score: v.optional(v.number()),
     }),
   ),
   error: v.optional(v.string()),
@@ -158,6 +164,43 @@ export const handleEmailGenerationCompleted = internalMutation({
               }
             : undefined,
         });
+
+        // Process deep research tracking and credit charges
+        if (result.deep_research_used) {
+          logger.info("Processing deep research charge", {
+            leadId,
+            reason: result.deep_research_reason,
+            additionalCredits: result.additional_credits_used,
+            missingDataPoints: result.missing_data_points,
+          });
+
+          // Update lead with deep research metadata
+          await ctx.db.patch(lead._id, {
+            deepResearchUsed: true,
+            deepResearchReason: result.deep_research_reason,
+            deepResearchTimestamp: Date.now(),
+            deepResearchDataPoints: result.missing_data_points || [],
+            deepResearchCreditsCharged: result.additional_credits_used || 0,
+          });
+
+          // Charge additional credits for deep research
+          if (result.additional_credits_used && result.additional_credits_used > 0) {
+            await ctx.runMutation(internal.credits.transactions.recordTransaction, {
+              userId: search.userId,
+              amount: result.additional_credits_used,
+              operation: "usage",
+              description: `Deep Research - ${result.deep_research_reason || "Enhanced business intelligence"}`,
+              relatedEntityType: "lead",
+              relatedEntityId: leadId,
+            });
+
+            logger.info("Deep research credits charged", {
+              userId: search.userId,
+              credits: result.additional_credits_used,
+              leadId,
+            });
+          }
+        }
 
         // Create email sequence record if we have email content (idempotent by request_id per lead)
         if (result.primary_email) {

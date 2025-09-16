@@ -71,9 +71,16 @@ class EmailGenerationState(TypedDict):
     
     # Research progress tracking (for tiered research system)
     research_progress: Optional[Dict[str, Any]]  # Current research stage and progress
-    research_tier: Optional[str]  # Research tier being used (tavily/exa/perplexity)
+    research_tier: Optional[str]  # Research tier being used (tavily/perplexity)
     research_confidence: Optional[float]  # Current research confidence score
     user_tier: Optional[str]  # User subscription tier (free/pro/enterprise)
+    
+    # Deep research tracking
+    deep_research_triggered: Optional[bool]  # Whether deep research (Perplexity) was used
+    deep_research_reason: Optional[str]  # Reason for triggering deep research
+    missing_data_points: Optional[List[str]]  # Missing data points that triggered deep research
+    research_credit_cost: Optional[int]  # Total credit cost including deep research
+    base_data_validation_score: Optional[float]  # Score for base data completeness (0-1)
     
     # Enhanced context fields
     competitors_found: Optional[List[Dict[str, Any]]]  # Discovered competitors from research

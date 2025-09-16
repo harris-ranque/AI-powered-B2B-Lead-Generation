@@ -113,6 +113,13 @@ class EmailGenerationResult(BaseModel):
     agent_results: List[AgentResult] = Field(..., description="Individual agent outputs")
     processing_time: float = Field(..., description="Total processing time")
     recommendations: List[str] = Field(..., description="Strategic recommendations")
+    
+    # Deep research metadata
+    deep_research_used: bool = Field(default=False, description="Whether deep research (Perplexity) was used")
+    deep_research_reason: Optional[str] = Field(None, description="Reason for triggering deep research")
+    additional_credits_used: int = Field(default=0, description="Additional credits used for deep research")
+    missing_data_points: List[str] = Field(default_factory=list, description="Missing data points that triggered deep research")
+    data_completeness_score: float = Field(default=1.0, description="Base data completeness score (0-1)")
 
 class EmailGenerationResponse(BaseModel):
     """API response for email generation"""
