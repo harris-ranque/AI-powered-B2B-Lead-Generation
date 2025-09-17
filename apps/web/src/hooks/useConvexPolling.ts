@@ -92,10 +92,8 @@ export function useConvexPolling<TArgs extends Record<string, unknown> | undefin
     } catch (e: unknown) {
       const error = e instanceof Error ? e : new Error(String(e));
 
-      // Don't log 401 errors as they're expected during auth transitions
-      if (!error.message.includes("401") && !error.message.includes("Unauthorized")) {
-        console.warn("Convex query error:", error);
-      }
+      // Log all errors including 401s for debugging
+      console.warn("Convex query error:", error);
 
       setError(error);
     } finally {
