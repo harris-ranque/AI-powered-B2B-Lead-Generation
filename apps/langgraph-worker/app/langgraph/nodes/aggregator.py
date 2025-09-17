@@ -27,7 +27,7 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
     Returns:
         Updated state with final results
     """
-    start_time = time.time()
+    perf_start = time.time()
     logger.info(f"Starting result aggregation for request {state['request_id']}")
     
     try:
@@ -36,8 +36,8 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
         start_time_str = state.get("start_time")
         if start_time_str:
             try:
-                start_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
-                total_time = (end_time - start_time).total_seconds()
+                workflow_start = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+                total_time = (end_time - workflow_start).total_seconds()
             except (ValueError, AttributeError):
                 total_time = 0.0
         else:
@@ -93,7 +93,7 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
             data_completeness_score=state.get("base_data_validation_score", 1.0)
         )
         
-        execution_time = time.time() - start_time
+        execution_time = time.time() - perf_start
         
         # Create aggregator result
         aggregator_result = AgentResult(
@@ -130,7 +130,7 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Error in aggregator: {str(e)}")
-        execution_time = time.time() - start_time
+        execution_time = time.time() - perf_start
         
         # Create minimal result on error
         minimal_result = EmailGenerationResult(

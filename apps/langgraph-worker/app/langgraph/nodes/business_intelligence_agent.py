@@ -8,12 +8,12 @@ import asyncio
 from typing import Dict, Any, List
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
 from ...utils.research_clients import ResearchOrchestrator, ResearchResult, ResearchTier
 from ...utils.data_validation import BaseDataValidator
-from ...models.lead_models import AgentResult
+from ...models.lead_models import AgentResult, CompetitorInsight
 from ..state import EmailGenerationState
 
 logger = setup_logger(__name__)
@@ -21,6 +21,8 @@ settings = get_settings()
 
 class BusinessIntelligence(BaseModel):
     """Comprehensive business intelligence analysis"""
+    model_config = ConfigDict(extra="forbid")
+
     # Company overview and context
     company_overview: str = Field(..., description="Comprehensive company overview")
     industry_focus: str = Field(..., description="Primary industry and market focus")
@@ -36,7 +38,10 @@ class BusinessIntelligence(BaseModel):
     research_tier: str = Field(..., description="Research tier used (tavily/exa/perplexity)")
     confidence_score: float = Field(..., ge=0, le=1, description="Research confidence score")
     data_sources: List[str] = Field(..., description="Sources of information gathered")
-    competitors: List[Dict[str, Any]] = Field(default_factory=list, description="Discovered competitor companies")
+    competitors: List[CompetitorInsight] = Field(
+        default_factory=list,
+        description="Discovered competitor companies",
+    )
     industry_insights: str = Field(default="", description="Deep industry analysis and trends")
     
     # Relevance analysis
@@ -310,59 +315,15 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
                    f"Value alignment={intelligence.value_alignment_score:.2f}, "
                    f"Time={total_time:.2f}s")
         
+        intelligence_data = intelligence.model_dump()
+
         # Update state with comprehensive business intelligence
         return {
             "current_stage": "business_intelligence_complete",
             "business_intelligence": {
-                # Core intelligence
-                "company_overview": intelligence.company_overview,
-                "industry_focus": intelligence.industry_focus,
-                "business_model": intelligence.business_model,
-                "key_services": intelligence.key_services,
-                "target_customers": intelligence.target_customers,
-                "competitive_landscape": intelligence.competitive_landscape,
-                "growth_stage": intelligence.growth_stage,
-                "technology_stack": intelligence.technology_stack,
-                "recent_news": intelligence.recent_news,
-                
-                # Research data
-                "research_tier": intelligence.research_tier,
-                "confidence_score": intelligence.confidence_score,
-                "data_sources": intelligence.data_sources,
-                "competitors": intelligence.competitors,
-                "industry_insights": intelligence.industry_insights,
-                
-                # Relevance analysis
-                "relevance_score": intelligence.relevance_score,
-                "qualification_level": intelligence.qualification_level,
-                "fit_assessment": intelligence.fit_assessment,
-                "key_factors": intelligence.key_factors,
-                "decision_factors": intelligence.decision_factors,
-                "timing_assessment": intelligence.timing_assessment,
-                "red_flags": intelligence.red_flags,
-                "opportunities": intelligence.opportunities,
-                
-                # Pain points
-                "pain_points": intelligence.pain_points,
-                "pain_point_categories": intelligence.pain_point_categories,
-                "urgency_indicators": intelligence.urgency_indicators,
-                "impact_assessment": intelligence.impact_assessment,
-                
-                # Value matching
-                "value_matches": intelligence.value_matches,
-                "value_alignment_score": intelligence.value_alignment_score,
-                "quantified_benefits": intelligence.quantified_benefits,
-                "risk_mitigation": intelligence.risk_mitigation,
-                "competitive_advantages": intelligence.competitive_advantages,
-                
-                # Personalization
-                "personalization_elements": intelligence.personalization_elements,
-                "messaging_strategy": intelligence.messaging_strategy,
-                "engagement_hooks": intelligence.engagement_hooks,
-                
-                # Metadata
+                **intelligence_data,
                 "research_metadata": research_result.raw_data,
-                "analysis_time": total_time
+                "analysis_time": total_time,
             },
             # Populate legacy/top-level compatibility fields used by downstream components
             "relevance_score": intelligence.relevance_score,

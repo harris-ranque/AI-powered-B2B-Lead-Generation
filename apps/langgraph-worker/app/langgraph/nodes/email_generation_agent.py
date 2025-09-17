@@ -7,7 +7,7 @@ import time
 from typing import Dict, Any, List
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
 from ...models.lead_models import AgentResult, EmailContent, FollowUpSequence
@@ -16,8 +16,27 @@ from ..state import EmailGenerationState
 logger = setup_logger(__name__)
 settings = get_settings()
 
+class FollowUpEmailPlan(BaseModel):
+    """Structured follow-up email draft returned by the LLM"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    subject: str = Field(..., description="Subject line for the follow-up email")
+    body: str = Field(..., description="Full body content for the follow-up email")
+    objective: str = Field(
+        default="",
+        description="Goal or focus for this follow-up touch point",
+    )
+    call_to_action: str = Field(
+        default="",
+        description="Call to action or next step requested",
+    )
+
+
 class EmailSequence(BaseModel):
     """Complete email sequence with primary email and follow-ups"""
+    model_config = ConfigDict(extra="forbid")
+
     # Primary email
     primary_subject: str = Field(..., description="Primary email subject line")
     primary_opening: str = Field(..., description="Personalized opening that shows research")
@@ -33,7 +52,10 @@ class EmailSequence(BaseModel):
     industry_insights_used: List[str] = Field(default_factory=list, description="Industry trends referenced")
     
     # Follow-up sequence (if requested)
-    follow_up_emails: List[Dict[str, Any]] = Field(default_factory=list, description="Follow-up email sequence")
+    follow_up_emails: List[FollowUpEmailPlan] = Field(
+        default_factory=list,
+        description="Follow-up email sequence",
+    )
     follow_up_strategy: str = Field(default="", description="Overall follow-up strategy")
     timing_schedule: List[int] = Field(default_factory=list, description="Days between emails")
     
@@ -278,13 +300,19 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         # Create follow-up sequence if requested
         follow_up_sequence = None
         if requirements.follow_up_sequence and email_sequence.follow_up_emails:
-            follow_up_emails = []
+            follow_up_emails: List[EmailContent] = []
             for i, follow_up in enumerate(email_sequence.follow_up_emails):
+                subject = follow_up.subject or f"Follow-up {i + 1}"
+                body_parts = [follow_up.body.strip()]
+                if follow_up.call_to_action:
+                    body_parts.append(follow_up.call_to_action.strip())
+                body_text = "\n\n".join(part for part in body_parts if part)
+
                 follow_up_email = EmailContent(
-                    subject=follow_up.get("subject", f"Follow-up {i+1}"),
-                    body=follow_up.get("body", ""),
+                    subject=subject,
+                    body=body_text,
                     personalization_notes=email_sequence.personalization_elements,
-                    estimated_effectiveness=email_sequence.estimated_effectiveness * 0.8  # Slightly lower for follow-ups
+                    estimated_effectiveness=email_sequence.estimated_effectiveness * 0.8,  # Slightly lower for follow-ups
                 )
                 follow_up_emails.append(follow_up_email)
             

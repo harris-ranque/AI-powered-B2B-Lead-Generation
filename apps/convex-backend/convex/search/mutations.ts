@@ -67,6 +67,7 @@ export const createSearch = mutation({
           results: {
             totalFound: 0,
             enrichedCount: 0,
+            analyzedCount: 0,
             avgRelevanceScore: 0,
           },
           creditsUsed: 0,
@@ -142,6 +143,7 @@ export const createSearchCompleted = mutation({
           results: {
             totalFound: 0,
             enrichedCount: 0,
+            analyzedCount: 0,
             avgRelevanceScore: 0,
           },
           creditsUsed: 0,
@@ -361,6 +363,7 @@ export const duplicateSearch = mutation({
       results: {
         totalFound: 0,
         enrichedCount: 0,
+        analyzedCount: 0,
         avgRelevanceScore: 0,
       },
       creditsUsed: 0,

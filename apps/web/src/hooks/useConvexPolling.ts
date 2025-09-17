@@ -60,8 +60,21 @@ export function useConvexPolling<TArgs extends Record<string, unknown> | undefin
 
   const fetchOnce = useCallback(async () => {
     if (!isConvexHttpConfigured() || !enabled) return;
+    if (!isLoaded) return;
+
+    if (!isSignedIn) {
+      // Avoid hammering Convex with unauthenticated requests
+      setIsLoading(false);
+      setIsPolling(false);
+      return;
+    }
+
     setIsPolling(true);
     try {
+      // Refresh auth before each query to avoid 401 bursts when tokens expire
+      const token = await getToken();
+      convexHttp.setAuth(token ?? null);
+
       // Note: args may be undefined for arg-less queries
       const result = await convexHttp.query(queryRef as never, stableArgs as never);
       setData(result as TRes);
@@ -72,7 +85,15 @@ export function useConvexPolling<TArgs extends Record<string, unknown> | undefin
       setIsLoading(false);
       setIsPolling(false);
     }
-  }, [queryRef, stableArgs, enabled]);
+  }, [
+    enabled,
+    getToken,
+    isConvexHttpConfigured,
+    isLoaded,
+    isSignedIn,
+    queryRef,
+    stableArgs,
+  ]);
 
   // Polling loop
   useEffect(() => {

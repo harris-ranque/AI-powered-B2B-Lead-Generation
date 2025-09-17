@@ -7,11 +7,11 @@ import asyncio
 from typing import Dict, Any, Optional, List
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
 from ...utils.research_clients import ResearchOrchestrator, ResearchResult, ResearchTier
-from ...models.lead_models import AgentResult
+from ...models.lead_models import AgentResult, CompetitorInsight
 from ..state import EmailGenerationState
 import json
 
@@ -20,6 +20,8 @@ settings = get_settings()
 
 class BusinessContext(BaseModel):
     """Enhanced structured output for tiered business context research"""
+    model_config = ConfigDict(extra="forbid")
+
     company_overview: str = Field(..., description="Comprehensive company overview")
     industry_focus: str = Field(..., description="Primary industry and market focus")  
     business_model: str = Field(..., description="Core business model and revenue streams")
@@ -32,7 +34,10 @@ class BusinessContext(BaseModel):
     recent_news: List[str] = Field(default_factory=list, description="Recent company developments")
     
     # Enhanced fields for tiered research
-    competitors: List[Dict[str, Any]] = Field(default_factory=list, description="Discovered competitor companies")
+    competitors: List[CompetitorInsight] = Field(
+        default_factory=list,
+        description="Discovered competitor companies",
+    )
     industry_insights: str = Field(default="", description="Deep industry analysis and trends")
     research_tier: str = Field(..., description="Research tier used (tavily/exa/perplexity)")
     confidence_score: float = Field(..., ge=0, le=1, description="Research confidence score")

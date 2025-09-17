@@ -125,6 +125,7 @@ interface Search {
   results: {
     totalFound: number;
     enrichedCount: number;
+    analyzedCount: number;
     avgRelevanceScore?: number;
   };
   error?: string;

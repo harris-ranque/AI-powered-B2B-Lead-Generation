@@ -61,6 +61,37 @@ class BusinessProfile(BaseModel):
     case_studies: List[Dict[str, Any]] = Field(default_factory=list, description="Success stories")
     contact_info: Dict[str, str] = Field(..., description="Our contact information")
 
+
+class CompetitorInsight(BaseModel):
+    """Structured competitor insight used in AI-generated analyses"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., description="Competitor company name")
+    website: Optional[str] = Field(default=None, description="Competitor website")
+    relevance_score: Optional[float] = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="Relative relevance score from 0-1 if provided",
+    )
+    summary: Optional[str] = Field(
+        default=None,
+        description="Short summary of the competitor's positioning",
+    )
+    key_strengths: List[str] = Field(
+        default_factory=list,
+        description="Notable strengths or differentiators for the competitor",
+    )
+    key_weaknesses: List[str] = Field(
+        default_factory=list,
+        description="Observed weaknesses or gaps for the competitor",
+    )
+    notes: Optional[str] = Field(
+        default=None,
+        description="Additional contextual notes about the competitor",
+    )
+
 class EmailRequirements(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
     """Email generation requirements"""
