@@ -89,7 +89,8 @@
       "Bash(pnpm --filter @genni/convex-backend lint)",
       "Read(//Users/mountain/Documents/**)",
       "Bash(pnpm test:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(CONVEX_DEPLOYMENT=dev:dashing-coyote-96 npx convex dev --once)"
     ],
     "deny": []
   }

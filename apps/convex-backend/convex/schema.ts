@@ -112,7 +112,7 @@ export default defineSchema({
     results: v.object({
       totalFound: v.number(),
       enrichedCount: v.number(),
-      analyzedCount: v.number(),
+      analyzedCount: v.optional(v.number()),
       avgRelevanceScore: v.optional(v.number()),
     }),
     error: v.optional(v.string()),
