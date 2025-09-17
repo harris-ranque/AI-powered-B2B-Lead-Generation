@@ -60,10 +60,14 @@ export function useConvexPolling<TArgs extends Record<string, unknown> | undefin
 
   const fetchOnce = useCallback(async () => {
     if (!isConvexHttpConfigured() || !enabled) return;
+
+    // Wait for Clerk to fully load AND confirm sign-in status
     if (!isLoaded) return;
 
     if (!isSignedIn) {
-      // Avoid hammering Convex with unauthenticated requests
+      // Clear any existing data and stop polling for unauthenticated users
+      setData(undefined);
+      setError(null);
       setIsLoading(false);
       setIsPolling(false);
       return;
@@ -73,14 +77,27 @@ export function useConvexPolling<TArgs extends Record<string, unknown> | undefin
     try {
       // Refresh auth before each query to avoid 401 bursts when tokens expire
       const token = await getToken();
-      convexHttp.setAuth(token ?? null);
+      if (!token) {
+        // Token unavailable - user likely not fully authenticated yet
+        setError(new Error("Authentication token unavailable"));
+        return;
+      }
+
+      convexHttp.setAuth(token);
 
       // Note: args may be undefined for arg-less queries
       const result = await convexHttp.query(queryRef as never, stableArgs as never);
       setData(result as TRes);
       setError(null);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e : new Error(String(e)));
+      const error = e instanceof Error ? e : new Error(String(e));
+
+      // Don't log 401 errors as they're expected during auth transitions
+      if (!error.message.includes("401") && !error.message.includes("Unauthorized")) {
+        console.warn("Convex query error:", error);
+      }
+
+      setError(error);
     } finally {
       setIsLoading(false);
       setIsPolling(false);
