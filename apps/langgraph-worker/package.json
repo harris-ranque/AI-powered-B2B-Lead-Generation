@@ -10,7 +10,10 @@
     "type-check": "python3 -m py_compile app/main.py",
     "lint": "echo 'Python linting not configured yet'",
     "install-deps": "pip install -r requirements.txt",
-    "test": "echo 'Python tests not configured yet'"
+    "test": "python3 test_comprehensive_integration.py",
+    "test:api": "python3 test_api_integrations.py",
+    "test:integration": "python3 test_comprehensive_integration.py",
+    "test:all": "python3 test_comprehensive_integration.py && python3 test_api_integrations.py"
   },
   "engines": {
     "node": ">=18.0.0"

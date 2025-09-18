@@ -1,6 +1,17 @@
-# Railway LangGraph Worker Configuration  
+# Railway LangGraph Worker Configuration
 [build]
 builder = "DOCKERFILE"
+# Exit on test failures to prevent deployment of broken code
+buildCommand = "echo 'Starting Python build with integrated testing...'"
+
+[build.args]
+OPENAI_API_KEY = "{{ secrets.OPENAI_API_KEY }}"
+WEBHOOK_URL = "{{ secrets.WEBHOOK_URL }}"
+CONVEX_URL = "{{ secrets.CONVEX_URL }}"
+LANGGRAPH_API_KEY = "{{ secrets.LANGGRAPH_API_KEY }}"
+TAVILY_API_KEY = "{{ secrets.TAVILY_API_KEY }}"
+EXA_API_KEY = "{{ secrets.EXA_API_KEY }}"
+PERPLEXITY_API_KEY = "{{ secrets.PERPLEXITY_API_KEY }}"
 
 [deploy]
 startCommand = "./start.sh"

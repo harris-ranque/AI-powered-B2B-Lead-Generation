@@ -67,6 +67,13 @@ RUN cd apps/convex-backend && \
     pnpm exec convex codegen && \
     cp -r convex/_generated ../web/convex/
 
+# Run tests before building (fail build if tests fail)
+RUN echo "🧪 Running tests before build..." && \
+    cd apps/web && \
+    pnpm run type-check && \
+    pnpm test --run --reporter=verbose && \
+    echo "✅ All tests passed, proceeding with build..."
+
 # Build the web app
 RUN cd apps/web && \
     if [ "$NODE_ENV" = "development" ] || [ "$ENVIRONMENT" = "development" ]; then \
