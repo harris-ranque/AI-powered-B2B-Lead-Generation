@@ -54,6 +54,9 @@ export const validateApiKey = action({
         case "findymail":
           isValid = await validateFindyMailKey(decryptedKey);
           break;
+        case "icypeas":
+          isValid = await validateIcyPeasKey(decryptedKey);
+          break;
         case "apify":
           isValid = await validateApifyKey(decryptedKey);
           break;
@@ -145,6 +148,7 @@ export const getDecryptedApiKey: any = action({
       v.literal("openai"),
       v.literal("google_maps"),
       v.literal("findymail"),
+      v.literal("icypeas"),
       v.literal("apify"),
     ),
     userId: v.id("users"),
@@ -227,6 +231,23 @@ async function validateFindyMailKey(apiKey: string): Promise<boolean> {
     return response.status === 200;
   } catch (error) {
     console.error("FindyMail validation error:", error);
+    return false;
+  }
+}
+
+async function validateIcyPeasKey(apiKey: string): Promise<boolean> {
+  try {
+    // Test with IcyPeas API - checking credits endpoint
+    const response = await fetch("https://app.icypeas.com/api/credits", {
+      method: "GET",
+      headers: {
+        Authorization: apiKey,
+      },
+    });
+
+    return response.status === 200;
+  } catch (error) {
+    console.error("IcyPeas validation error:", error);
     return false;
   }
 }

@@ -9,6 +9,7 @@ export const getApiKeyForUserAndService = internalQuery({
       v.literal("openai"),
       v.literal("google_maps"),
       v.literal("findymail"),
+      v.literal("icypeas"),
       v.literal("apify"),
     ),
   },

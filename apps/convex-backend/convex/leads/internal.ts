@@ -69,11 +69,13 @@ export const updateLeadEnrichment = internalMutation({
       v.literal("completed_fallback"),
       v.literal("failed"),
     ),
+    enrichmentProvider: v.optional(v.union(v.literal("findymail"), v.literal("icypeas"))),
   },
   handler: async (ctx, args) => {
     const updateData: any = {
       enrichmentStatus: args.status,
       enrichmentData: args.enrichmentData,
+      enrichmentProvider: args.enrichmentProvider,
       updatedAt: Date.now(),
     };
 
@@ -88,7 +90,7 @@ export const updateLeadEnrichment = internalMutation({
       if (args.status === "completed_fallback") {
         contactInfo.fallbackUsed = true;
         contactInfo.fallbackReason =
-          args.enrichmentData.fallbackReason || "FindyMail unavailable";
+          args.enrichmentData.fallbackReason || `${args.enrichmentProvider || "Enrichment provider"} unavailable`;
       }
 
       updateData.contactInfo = contactInfo;

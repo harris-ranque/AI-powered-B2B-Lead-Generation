@@ -1,5 +1,6 @@
 import { internalMutation } from "../_generated/server";
 import { v } from "convex/values";
+import { Id } from "../_generated/dataModel";
 
 const DEFAULT_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
 
@@ -7,7 +8,7 @@ type BroadcastPriority = "low" | "normal" | "high" | "urgent" | "critical";
 type BroadcastStatus = "pending" | "delivered" | "failed" | "expired" | "active";
 
 interface BroadcastDocument extends Record<string, unknown> {
-  userId: string;
+  userId: Id<"users">;
   entityType: string;
   entityId?: string;
   type: string;
@@ -29,7 +30,7 @@ interface BroadcastDocument extends Record<string, unknown> {
 }
 
 function createBroadcastDocument(args: {
-  userId: string;
+  userId: Id<"users">;
   entityType: string;
   entityId?: string;
   type: string;
@@ -86,7 +87,7 @@ function createBroadcastDocument(args: {
 async function upsertPipelineBroadcast(
   ctx: any,
   args: {
-    userId: string;
+    userId: Id<"users">;
     searchId: string;
     stage: string;
     progress: number;
@@ -124,10 +125,10 @@ async function upsertPipelineBroadcast(
 
   const latest = await ctx.db
     .query("statusBroadcasts")
-    .withIndex("by_entity", (q) =>
+    .withIndex("by_entity", (q: any) =>
       q.eq("entityType", "search").eq("entityId", args.searchId),
     )
-    .filter((q) => q.eq(q.field("type"), "pipeline_update"))
+    .filter((q: any) => q.eq(q.field("type"), "pipeline_update"))
     .order("desc")
     .first();
 

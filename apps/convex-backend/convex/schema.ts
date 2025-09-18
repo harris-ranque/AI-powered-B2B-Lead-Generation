@@ -220,7 +220,10 @@ export default defineSchema({
       v.literal("failed"),
     ),
 
-    // Contact information from FindyMail
+    // Enrichment provider used
+    enrichmentProvider: v.optional(v.union(v.literal("findymail"), v.literal("icypeas"))),
+
+    // Contact information from enrichment provider
     contactInfo: v.optional(
       v.object({
         emails: v.array(
@@ -252,7 +255,7 @@ export default defineSchema({
       }),
     ),
 
-    // Raw enrichment data from FindyMail API
+    // Raw enrichment data from enrichment provider API
     enrichmentData: v.optional(v.any()), // Flexible storage for API response data
 
     // AI Analysis from LangGraph
@@ -966,7 +969,7 @@ export default defineSchema({
     .index("by_level", ["level"])
     .index("by_created", ["createdAt"]),
 
-  // FindyMail domain cache to prevent duplicate API calls within same search
+  // FindyMail domain cache to prevent duplicate API calls within same search (legacy)
   findymailDomainCache: defineTable({
     domain: v.string(),
     searchId: v.id("searches"),
@@ -1001,6 +1004,42 @@ export default defineSchema({
   })
     .index("by_domain_search", ["domain", "searchId"])
     .index("by_search", ["searchId"])
+    .index("by_expires", ["expiresAt"]),
+
+  // Enrichment cache for all providers (replaces findymailDomainCache)
+  enrichmentCache: defineTable({
+    provider: v.union(v.literal("findymail"), v.literal("icypeas")),
+    domain: v.string(),
+    searchId: v.id("searches"),
+    enrichmentData: v.any(), // Flexible storage for different provider response formats
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_provider_domain_search", ["provider", "domain", "searchId"])
+    .index("by_search", ["searchId"])
+    .index("by_expires", ["expiresAt"])
+    .index("by_provider", ["provider"]),
+
+  // IcyPeas async search tracking
+  icypeasSearchCache: defineTable({
+    searchId: v.string(), // IcyPeas search ID
+    internalSearchId: v.id("searches"), // Our internal search ID
+    domains: v.array(v.string()), // Domains being searched
+    status: v.union(
+      v.literal("NONE"),
+      v.literal("SCHEDULED"),
+      v.literal("IN_PROGRESS"),
+      v.literal("DEBITED"),
+      v.literal("COMPLETED"),
+      v.literal("FAILED")
+    ),
+    results: v.optional(v.any()), // Store results when complete
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_search_id", ["searchId"])
+    .index("by_internal_search", ["internalSearchId"])
+    .index("by_status", ["status"])
     .index("by_expires", ["expiresAt"]),
 
   // Research Metrics - Track tiered business context research analytics
@@ -1059,6 +1098,7 @@ export default defineSchema({
       v.literal("openai"),
       v.literal("google_maps"),
       v.literal("findymail"),
+      v.literal("icypeas"),
       v.literal("apify"),
     ),
     keyName: v.string(), // User-friendly name for the key
@@ -1117,6 +1157,7 @@ export default defineSchema({
       v.object({
         googleMaps: v.number(),
         findymail: v.number(),
+        icypeas: v.number(),
         openai: v.number(),
         apify: v.number(),
       }),

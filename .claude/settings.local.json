@@ -90,7 +90,9 @@
       "Read(//Users/mountain/Documents/**)",
       "Bash(pnpm test:*)",
       "WebSearch",
-      "Bash(CONVEX_DEPLOYMENT=dev:dashing-coyote-96 npx convex dev --once)"
+      "Bash(CONVEX_DEPLOYMENT=dev:dashing-coyote-96 npx convex dev --once)",
+      "WebFetch(domain:api-doc.icypeas.com)",
+      "WebFetch(domain:www.icypeas.com)"
     ],
     "deny": []
   }

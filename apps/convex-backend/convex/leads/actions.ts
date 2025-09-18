@@ -11,31 +11,13 @@ import {
   OPERATION_TYPES,
   createBatchCorrelationContext,
 } from "../lib/correlation";
+import {
+  createEnrichmentService,
+  EnrichmentProviderFactory
+} from "./enrichment/provider";
 
-// Type definitions for external API responses
-type FindyMailResponse = Record<
-  string,
-  {
-    emails: Array<{
-      email: string;
-      type: string;
-      confidence: number;
-    }>;
-    contacts: Array<{
-      name: string;
-      title?: string;
-      email?: string;
-      linkedin?: string;
-      confidence: number;
-      domain?: string;
-    }>;
-    socialProfiles?: {
-      linkedin?: string;
-      twitter?: string;
-      facebook?: string;
-    };
-  }
->;
+// Import enrichment types
+import { EnrichmentBatchResult } from "./enrichment/types";
 
 type LangGraphResponse = {
   status: string;
@@ -379,17 +361,6 @@ export const enrichLeads: any = action({
         },
       );
 
-      logWithCorrelation(
-        "info",
-        correlation,
-        "📋 Lead Enrichment Configuration",
-        {
-          totalLeadsToEnrich: leads.length,
-          userPlan: user.plan,
-          apiKeySource: user.plan === "enterprise" ? "user_provided" : "system",
-        },
-      );
-
       if (leads.length === 0) {
         logWithCorrelation(
           "warn",
@@ -400,7 +371,7 @@ export const enrichLeads: any = action({
             nextPhase: "ai_analysis",
           },
         );
-        
+
         // No leads to enrich, proceed to analysis
         await ctx.scheduler.runAfter(0, "leads/actions:analyzeLeads" as any, {
           searchId: args.searchId,
@@ -412,29 +383,53 @@ export const enrichLeads: any = action({
         };
       }
 
-      // Determine API key source (Enterprise users provide their own)
-      let apiKey: string;
+      // Determine enrichment provider and API key
+      const providerType = EnrichmentProviderFactory.getConfiguredProvider();
+      let userApiKey: string | undefined;
+
       if (user.plan === "enterprise") {
         try {
           const keyResult = await ctx.runAction(
             "userApiKeys/actions:getDecryptedApiKey" as any,
             {
-              service: "findymail",
+              service: providerType, // Use configured provider
               userId: user._id,
             },
           );
-          apiKey = keyResult.apiKey;
+          userApiKey = keyResult.apiKey;
         } catch (error) {
-          // Fallback to system API key if user key not available
-          apiKey = process.env.FINDYMAIL_API_KEY || "";
+          // Will fallback to system API key in EnrichmentService
+          logWithCorrelation(
+            "warn",
+            correlation,
+            "Enterprise user API key not available, falling back to system key",
+            {
+              provider: providerType,
+              userId: user._id,
+            },
+          );
         }
-      } else {
-        apiKey = process.env.FINDYMAIL_API_KEY || "";
       }
 
-      if (!apiKey) {
-        throw new Error("FindyMail API key not available");
+      // Create enrichment service
+      let enrichmentService;
+      try {
+        enrichmentService = createEnrichmentService(userApiKey);
+      } catch (error) {
+        throw new Error(`${providerType.toUpperCase()} API key not configured`);
       }
+
+      logWithCorrelation(
+        "info",
+        correlation,
+        "📋 Lead Enrichment Configuration",
+        {
+          totalLeadsToEnrich: leads.length,
+          userPlan: user.plan,
+          enrichmentProvider: providerType,
+          apiKeySource: user.plan === "enterprise" && userApiKey ? "user_provided" : "system",
+        },
+      );
 
       // Process leads in batches of 10 to avoid rate limits
       const batches = chunk(leads, 10);
@@ -447,6 +442,7 @@ export const enrichLeads: any = action({
           totalLeads: leads.length,
           batchSize: 10,
           totalBatches: batches.length,
+          enrichmentProvider: providerType,
           estimatedDuration: batches.length * 2000, // ~2s per batch
         },
       );
@@ -545,40 +541,19 @@ export const enrichLeads: any = action({
         }
 
         try {
-          // Call FindyMail bulk enrichment API
-          const response = await fetch(
-            "https://app.findymail.com/api/v1/bulk-enrich",
+          // Call enrichment provider (FindyMail or IcyPeas)
+          logWithCorrelation(
+            "info",
+            batchCorrelation,
+            "🔍 Calling Enrichment Provider",
             {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                domains: domains,
-              }),
+              provider: providerType,
+              domainsCount: domains.length,
+              domains: domains.slice(0, 3), // Log first 3 domains for debugging
             },
           );
 
-          if (!response.ok) {
-            console.error(
-              `FindyMail API error: ${response.status} ${response.statusText}`,
-            );
-            // Mark leads as failed but continue with others
-            for (const lead of batch) {
-              await ctx.runMutation(
-                internal.leads.internal.updateEnrichmentStatus,
-                {
-                  leadId: (lead as any)._id,
-                  status: "failed",
-                  error: `FindyMail API error: ${response.status}`,
-                },
-              );
-            }
-            continue;
-          }
-
-          const enrichmentData = (await response.json()) as FindyMailResponse;
+          const enrichmentData: EnrichmentBatchResult = await enrichmentService.enrichBatch(domains);
 
           // Update each lead with enrichment data
           for (const lead of batch) {
@@ -592,6 +567,7 @@ export const enrichLeads: any = action({
                   leadId: (lead as any)._id,
                   enrichmentData: leadEnrichmentData,
                   status: "completed",
+                  enrichmentProvider: providerType,
                 },
               );
               enrichedCount++;
@@ -602,7 +578,7 @@ export const enrichLeads: any = action({
                 {
                   leadId: (lead as any)._id,
                   status: "completed_fallback",
-                  error: "No enrichment data found",
+                  error: `No enrichment data found from ${providerType}`,
                 },
               );
             }
@@ -634,7 +610,18 @@ export const enrichLeads: any = action({
             await new Promise((resolve) => setTimeout(resolve, 1000));
           }
         } catch (error) {
-          console.error(`Error enriching batch ${batchIndex + 1}:`, error);
+          logWithCorrelation(
+            "error",
+            batchCorrelation,
+            "❌ Enrichment Provider Error",
+            {
+              provider: providerType,
+              batchNumber: batchIndex + 1,
+              domainsCount: domains.length,
+              errorType: error instanceof Error ? error.constructor.name : "Unknown",
+            },
+            error as Error,
+          );
 
           // Mark batch as failed but continue
           for (const lead of batch) {
@@ -644,7 +631,7 @@ export const enrichLeads: any = action({
                 leadId: (lead as any)._id,
                 status: "failed",
                 error:
-                  error instanceof Error ? error.message : "Enrichment failed",
+                  error instanceof Error ? error.message : `${providerType} enrichment failed`,
               },
             );
           }
@@ -662,6 +649,7 @@ export const enrichLeads: any = action({
           enrichedCount,
           failedCount: leads.length - enrichedCount,
           enrichmentRate: (enrichedCount / leads.length) * 100,
+          enrichmentProvider: providerType,
           durationMs: performanceData?.duration || 0,
           averageTimePerLead: leads.length > 0 ? (performanceData?.duration || 0) / leads.length : 0,
           nextPhase: "ai_analysis",
@@ -696,9 +684,10 @@ export const enrichLeads: any = action({
 
       return {
         success: true,
-        message: `Enrichment completed: ${enrichedCount}/${leads.length} leads enriched`,
+        message: `Enrichment completed: ${enrichedCount}/${leads.length} leads enriched using ${providerType}`,
         enrichedCount,
         totalLeads: leads.length,
+        enrichmentProvider: providerType,
       };
     } catch (error) {
       const performanceData = endPerformanceTracking(performanceTracker);

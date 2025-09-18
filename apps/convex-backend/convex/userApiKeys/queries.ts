@@ -57,7 +57,7 @@ export const getApiKeyStatus = query({
       .filter((q) => q.eq(q.field("isActive"), true))
       .collect();
 
-    const allServices = ["openai", "google_maps", "findymail", "apify"];
+    const allServices = ["openai", "google_maps", "findymail", "icypeas", "apify"];
     const configuredServices = apiKeys
       .filter((key) => key.isValid)
       .map((key) => key.service);
@@ -84,6 +84,7 @@ export const hasApiKeyForService = query({
       v.literal("openai"),
       v.literal("google_maps"),
       v.literal("findymail"),
+      v.literal("icypeas"),
       v.literal("apify"),
     ),
   },

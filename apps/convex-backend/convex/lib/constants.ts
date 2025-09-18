@@ -24,6 +24,24 @@ export const API_CONFIG = {
     TIMEOUT: 30000, // 30 seconds for domain search, 15 seconds for name search
   },
 
+  ICYPEAS: {
+    BASE_URL: "https://app.icypeas.com/api",
+    ENDPOINTS: {
+      EMAIL_SEARCH: "/email-search",
+      BULK_SEARCH: "/bulk-search",
+      READ_RESULTS: "/bulk-single-searchs/read",
+      GET_CREDITS: "/credits",
+      DOMAIN_SEARCH: "/sync/domain-search",
+      EMAIL_VERIFICATION: "/sync/email-verification",
+    },
+    RATE_LIMIT_SINGLE: 10, // 10 requests per second for single search
+    RATE_LIMIT_BULK: 1, // 1 request per second for bulk search
+    TIMEOUT: 15000, // 15 seconds
+    POLL_INTERVAL: 1000, // 1 second between polls
+    MAX_POLL_ATTEMPTS: 15, // Maximum 15 attempts (15 seconds)
+    BATCH_SIZE: 10, // Process in batches of 10
+  },
+
   LANGGRAPH_WORKER: {
     ENDPOINTS: {
       GENERATE_EMAIL: "/generate-email",
