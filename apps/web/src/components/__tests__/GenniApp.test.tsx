@@ -6,23 +6,18 @@ import { ConvexReactClient } from 'convex/react'
 import { mockUser, mockBusinessProfile, mockSearch, mockLead } from '../../test/setup'
 import GenniApp from '../GenniApp'
 
-// Mock the ConvexReactClient
-const mockConvexClient = new ConvexReactClient(process.env.VITE_CONVEX_URL || 'https://test.convex.cloud')
-
-// Mock hooks
-const mockUseQuery = vi.fn()
-const mockUseMutation = vi.fn()
-const mockUseAction = vi.fn()
-
 vi.mock('convex/react', async () => {
   const actual = await vi.importActual('convex/react')
   return {
     ...actual,
-    useQuery: mockUseQuery,
-    useMutation: mockUseMutation,
-    useAction: mockUseAction,
+    useQuery: vi.fn(),
+    useMutation: vi.fn(),
+    useAction: vi.fn(),
   }
 })
+
+// Mock the ConvexReactClient
+const mockConvexClient = new ConvexReactClient(process.env.VITE_CONVEX_URL || 'https://test.convex.cloud')
 
 // Test wrapper component
 const TestWrapper = ({ children }: { children: React.ReactNode }) => (

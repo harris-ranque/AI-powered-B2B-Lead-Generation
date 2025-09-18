@@ -1,5 +1,16 @@
 import '@testing-library/jest-dom'
 import { vi } from 'vitest'
+import React from 'react'
+
+// Mock pricing config
+vi.mock('../lib/pricing-config', () => ({
+  PRICING_CONFIG: {
+    starter: { monthly: 99, yearly: 990 },
+    professional: { monthly: 199, yearly: 1990 },
+    business: { monthly: 399, yearly: 3990 },
+    enterprise: { monthly: 999, yearly: 9990 }
+  }
+}))
 
 // Mock Clerk authentication
 vi.mock('@clerk/clerk-react', () => ({
@@ -16,7 +27,7 @@ vi.mock('@clerk/clerk-react', () => ({
   ClerkProvider: ({ children }: { children: React.ReactNode }) => children,
   SignInButton: ({ children }: { children: React.ReactNode }) => children,
   SignOutButton: ({ children }: { children: React.ReactNode }) => children,
-  UserButton: () => <div data-testid="user-button">User Button</div>
+  UserButton: () => React.createElement('div', { 'data-testid': 'user-button' }, 'User Button')
 }))
 
 // Mock Convex client
@@ -56,7 +67,7 @@ vi.mock('@googlemaps/js-api-loader', () => ({
           PlacesService: vi.fn()
         }
       }
-    }))
+    })
   }))
 }))
 
