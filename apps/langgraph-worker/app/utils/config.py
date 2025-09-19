@@ -38,9 +38,12 @@ class Settings(BaseSettings):
         super().__init__(**kwargs)
         # Auto-construct webhook URL from Convex URL if not explicitly set
         if not self.webhook_url and self.convex_url:
-            # Convert site URL to HTTP endpoint
-            # e.g., "https://happy-horse-123.convex.site" -> "https://happy-horse-123.convex.site/webhooks/langgraph/email-completed"
+            # Convert site URL to callable HTTP endpoint (Convex HTTP routes live under /api/http)
             base_url = self.convex_url.rstrip('/')
+            if base_url.endswith("/api"):
+                base_url = base_url[: -4]
+            if not base_url.endswith("/api/http") and "/api/http/" not in base_url:
+                base_url = f"{base_url}/api/http"
             self.webhook_url = f"{base_url}/webhooks/langgraph/email-completed"
     
     # Server Configuration

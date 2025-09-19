@@ -33,6 +33,7 @@ export function useConvexPolling<TArgs extends Record<string, unknown> | undefin
   const immediate = options?.immediate ?? true;
 
   const stableArgs = useMemo(() => args, [args]);
+  const convexConfigured = isConvexHttpConfigured();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stoppedRef = useRef(false);
 
@@ -42,7 +43,9 @@ export function useConvexPolling<TArgs extends Record<string, unknown> | undefin
     async function syncAuth() {
       try {
         if (isLoaded) {
-          const token = isSignedIn ? await getToken() : null;
+          const token = isSignedIn
+            ? await getToken({ template: "convex" })
+            : null;
           // setAuth accepts string | null
           convexHttp.setAuth(token ?? null);
         }
@@ -59,7 +62,7 @@ export function useConvexPolling<TArgs extends Record<string, unknown> | undefin
   }, [isLoaded, isSignedIn, getToken]);
 
   const fetchOnce = useCallback(async () => {
-    if (!isConvexHttpConfigured() || !enabled) return;
+    if (!convexConfigured || !enabled) return;
 
     // Wait for Clerk to fully load AND confirm sign-in status
     if (!isLoaded) return;
@@ -76,9 +79,10 @@ export function useConvexPolling<TArgs extends Record<string, unknown> | undefin
     setIsPolling(true);
     try {
       // Refresh auth before each query to avoid 401 bursts when tokens expire
-      const token = await getToken();
+      const token = await getToken({ template: "convex" });
       if (!token) {
         // Token unavailable - user likely not fully authenticated yet
+        convexHttp.setAuth(null);
         setError(new Error("Authentication token unavailable"));
         return;
       }
@@ -103,11 +107,11 @@ export function useConvexPolling<TArgs extends Record<string, unknown> | undefin
   }, [
     enabled,
     getToken,
-    isConvexHttpConfigured,
     isLoaded,
     isSignedIn,
     queryRef,
     stableArgs,
+    convexConfigured,
   ]);
 
   // Polling loop
