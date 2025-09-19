@@ -83,7 +83,12 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security
     logger.debug("API key verified successfully")
     return True
 
-# Initialize webhook client
+# Initialize webhook client with enhanced logging
+logger.info(f"Initializing webhook client with URL: {settings.webhook_url}")
+logger.info(f"Convex URL setting: {settings.convex_url}")
+logger.info(f"Environment WEBHOOK_URL: {os.getenv('WEBHOOK_URL', 'Not set')}")
+logger.info(f"Environment CONVEX_URL: {os.getenv('CONVEX_URL', 'Not set')}")
+
 webhook_client = WebhookClient(settings.webhook_url, settings.api_key)
 
 @app.on_event("startup")
@@ -380,7 +385,11 @@ async def analyze_lead(
             "recommended_approach": relevance_analysis.get("recommended_approach", "")
         }
         
-        # Send webhook notification
+        # Send webhook notification with debug logging
+        logger.info(f"Preparing to send analysis webhook for lead {lead.id}")
+        logger.debug(f"Analysis result keys: {list(analysis_result.keys())}")
+        logger.debug(f"Webhook client URL: {webhook_client.webhook_url}")
+
         await webhook_client.send_analysis_result(
             request_id=f"analysis_{lead.id}",
             lead_id=lead.id,
@@ -388,6 +397,8 @@ async def analyze_lead(
             analysis=analysis_result,
             processing_time=duration
         )
+
+        logger.info(f"Analysis webhook sent successfully for lead {lead.id}")
         
         response = {
             "lead_id": lead.id,
@@ -417,6 +428,9 @@ async def analyze_lead(
         sentry_sdk.capture_exception(e)
         
         try:
+            logger.info(f"Sending analysis error webhook for lead {lead.id}: {str(e)}")
+            logger.debug(f"Error webhook URL: {webhook_client.webhook_url}")
+
             await webhook_client.send_analysis_result(
                 request_id=f"analysis_{lead.id}",
                 lead_id=lead.id,
@@ -424,11 +438,14 @@ async def analyze_lead(
                 error=str(e),
                 processing_time=duration
             )
+
+            logger.info(f"Analysis error webhook sent successfully for lead {lead.id}")
         except Exception as webhook_error:
             logger.error(
-                "Failed to send analysis failure webhook for %s: %s",
+                "Failed to send analysis failure webhook for %s: %s, webhook_url=%s",
                 lead.id,
                 webhook_error,
+                webhook_client.webhook_url,
             )
         
         log_error_details(logger, e, {

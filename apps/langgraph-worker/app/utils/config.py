@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     # Model Configuration
     default_model: str = os.getenv("DEFAULT_MODEL_OPTIONAL", "gpt-4o-mini")
     temperature: float = float(os.getenv("TEMPERATURE_OPTIONAL", "0.7"))
-    max_tokens: int = int(os.getenv("MAX_TOKENS_OPTIONAL", "2000"))
+    max_tokens: int = int(os.getenv("MAX_TOKENS_OPTIONAL", "8000"))
     
     # Sentry Configuration
     sentry_dsn: Optional[str] = os.getenv("SENTRY_DSN", None)
