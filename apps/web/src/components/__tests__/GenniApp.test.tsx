@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { ConvexProvider } from 'convex/react'
+import * as convexReact from 'convex/react'
 import { ClerkProvider } from '@clerk/clerk-react'
-import { ConvexReactClient } from 'convex/react'
+import { ConvexReactClient, ConvexProvider } from 'convex/react'
 import { mockUser, mockBusinessProfile, mockSearch, mockLead } from '../../test/setup'
-import GenniApp from '../GenniApp'
+import { GenniApp } from '../GenniApp'
 
 vi.mock('convex/react', async () => {
   const actual = await vi.importActual('convex/react')
@@ -15,6 +15,11 @@ vi.mock('convex/react', async () => {
     useAction: vi.fn(),
   }
 })
+
+// Get references to the mocked functions
+const mockUseQuery = convexReact.useQuery as any
+const mockUseMutation = convexReact.useMutation as any
+const mockUseAction = convexReact.useAction as any
 
 // Mock the ConvexReactClient
 const mockConvexClient = new ConvexReactClient(process.env.VITE_CONVEX_URL || 'https://test.convex.cloud')

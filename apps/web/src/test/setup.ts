@@ -24,6 +24,26 @@ vi.mock('@clerk/clerk-react', () => ({
     isLoaded: true,
     isSignedIn: true
   }),
+  useAuth: () => ({
+    isLoaded: true,
+    isSignedIn: true,
+    userId: 'test-user-id',
+    sessionId: 'test-session-id',
+    signOut: vi.fn(),
+    getToken: vi.fn().mockResolvedValue('test-token')
+  }),
+  useClerk: () => ({
+    signOut: vi.fn(),
+    openSignIn: vi.fn(),
+    openSignUp: vi.fn(),
+    session: {
+      id: 'test-session-id',
+      user: {
+        id: 'test-user-id',
+        emailAddresses: [{ emailAddress: 'test@example.com' }]
+      }
+    }
+  }),
   ClerkProvider: ({ children }: { children: React.ReactNode }) => children,
   SignInButton: ({ children }: { children: React.ReactNode }) => children,
   SignOutButton: ({ children }: { children: React.ReactNode }) => children,
