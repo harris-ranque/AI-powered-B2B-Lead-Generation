@@ -117,7 +117,7 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         llm = ChatOpenAI(
             model=settings.default_model,
             temperature=0.4,  # Slightly higher for creative email writing
-            max_tokens=settings.max_tokens,
+            max_tokens=min(settings.max_tokens, 4000),  # Limit to 4000 to prevent token limit errors
             openai_api_key=settings.openai_api_key
         ).with_structured_output(EmailSequence)
         

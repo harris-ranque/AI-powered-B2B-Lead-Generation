@@ -73,6 +73,9 @@ class Settings(BaseSettings):
         # Auto-construct webhook URL from Convex URL if not explicitly set
         if not self.webhook_url and self.convex_url:
             base_url = self.convex_url.rstrip('/')
+            # Convert .convex.cloud to .convex.site for HTTP endpoints
+            if '.convex.cloud' in base_url:
+                base_url = base_url.replace('.convex.cloud', '.convex.site')
             if base_url.endswith("/api"):
                 base_url = base_url[:-4]
             constructed = f"{base_url}/webhooks/langgraph/email-completed"
