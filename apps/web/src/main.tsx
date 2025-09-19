@@ -11,10 +11,11 @@ import "./lib/error-handler";
 import { logger } from "./utils/logger";
 
 // Log environment status in development
-import { logEnvironmentStatus } from "./lib/env-validation";
+import { logEnvironmentStatus, validateClerkConfiguration } from "./lib/env-validation";
 logEnvironmentStatus();
 
-// Log application startup
+// Enhanced startup logging with Clerk configuration
+const clerkValidation = validateClerkConfiguration();
 logger.info("Application starting up", {
   timestamp: new Date().toISOString(),
   environment: import.meta.env.MODE,
@@ -26,6 +27,9 @@ logger.info("Application starting up", {
     import.meta.env.VITE_CONVEX_URL &&
       !import.meta.env.VITE_CONVEX_URL.includes("placeholder"),
   ),
+  clerkConfigured: clerkValidation.isValid,
+  clerkError: clerkValidation.error,
+  hasClerkKey: Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY),
 });
 
 // Trigger redeploy

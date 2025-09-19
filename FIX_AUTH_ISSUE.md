@@ -10,8 +10,20 @@ Check that your JWT's issuer and audience match one of your configured providers
 [OIDC(domain=https://fitting-guppy-40.clerk.accounts.dev, app_id=convex)]
 ```
 
-## Root Cause
-The Railway frontend deployment (`genni-web` service) is missing the `VITE_CLERK_PUBLISHABLE_KEY` environment variable or has an incorrect value.
+## Root Cause Analysis ✅
+
+**Primary Issue**: The Railway frontend deployment (`genni-web` service) is missing the `VITE_CLERK_PUBLISHABLE_KEY` environment variable or has an incorrect value.
+
+**Why This Happens**:
+1. **Build-time Variable Injection**: Vite requires `VITE_` prefixed variables to be available during the Docker build process
+2. **Railway Environment Variables**: Variables set in Railway UI must be properly passed to the Docker build as ARG and ENV
+3. **Required vs Optional**: The app now treats `VITE_CLERK_PUBLISHABLE_KEY` as a required variable (not optional)
+
+**Enhanced Diagnostics Added**:
+- ✅ Enhanced error messages with step-by-step Railway fix instructions
+- ✅ Build-time environment variable validation
+- ✅ Production debugging logs with Clerk-specific error context
+- ✅ Visual error screens with environment variable troubleshooting guides
 
 ## Solution
 

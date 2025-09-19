@@ -2,6 +2,7 @@ import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { ClerkProvider, useAuth } from "@clerk/clerk-react";
 import { ReactNode } from "react";
 import { convex, isConvexConfigured } from "@/lib/convex";
+import { validateClerkConfiguration } from "@/lib/env-validation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -80,26 +81,78 @@ export function ConvexProvider({ children }: ConvexProviderProps) {
     return <ConvexErrorFallback />;
   }
 
-  const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  // Enhanced Clerk validation with detailed error messages
+  const clerkValidation = validateClerkConfiguration();
 
-  if (!clerkPublishableKey) {
+  if (!clerkValidation.isValid) {
+    const isDev = import.meta.env.DEV;
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Configuration Error</AlertTitle>
-          <AlertDescription>
-            Missing Clerk publishable key. Please check your environment
-            configuration.
-          </AlertDescription>
-        </Alert>
+        <div className="max-w-md w-full">
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>🔑 Clerk Authentication Error</AlertTitle>
+            <AlertDescription className="mt-2">
+              <div className="font-medium mb-2">{clerkValidation.error}</div>
+
+              {!isDev && (
+                <div className="bg-red-50 border border-red-200 rounded p-3 mt-3">
+                  <div className="text-sm font-medium text-red-800 mb-1">
+                    🚀 Railway Deployment Issue
+                  </div>
+                  <div className="text-xs text-red-700 space-y-1">
+                    <div>• Go to Railway dashboard → genni-web service</div>
+                    <div>• Add environment variable: VITE_CLERK_PUBLISHABLE_KEY</div>
+                    <div>• Value: pk_test_Zml0dGluZy1ndXBweS00MC5jbGVyay5hY2NvdW50cy5kZXYk</div>
+                    <div>• Redeploy the service</div>
+                  </div>
+                </div>
+              )}
+
+              {isDev && (
+                <div className="bg-amber-50 border border-amber-200 rounded p-3 mt-3">
+                  <div className="text-sm font-medium text-amber-800 mb-1">
+                    💻 Local Development Setup
+                  </div>
+                  <div className="text-xs text-amber-700 space-y-1">
+                    <div>• Check your .env.local file</div>
+                    <div>• Add: VITE_CLERK_PUBLISHABLE_KEY=pk_test_...</div>
+                    <div>• Restart the development server</div>
+                  </div>
+                </div>
+              )}
+            </AlertDescription>
+          </Alert>
+
+          <div className="mt-4 text-center">
+            <Button onClick={() => window.location.reload()}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Retry After Fix
+            </Button>
+          </div>
+
+          {isDev && (
+            <div className="mt-4 text-xs text-gray-600 bg-gray-100 p-2 rounded">
+              <div><strong>Debug Info:</strong></div>
+              <div>Environment: {import.meta.env.MODE}</div>
+              <div>Has Clerk Key: {Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY)}</div>
+              <div>Clerk Key Preview: {import.meta.env.VITE_CLERK_PUBLISHABLE_KEY?.substring(0, 15)}...</div>
+              <div>
+                All VITE_ vars: {Object.keys(import.meta.env)
+                  .filter((k) => k.startsWith("VITE_"))
+                  .join(", ")}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
 
   try {
     return (
-      <ClerkProvider publishableKey={clerkPublishableKey}>
+      <ClerkProvider publishableKey={clerkValidation.clerkKey!}>
         <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
           {children}
         </ConvexProviderWithClerk>

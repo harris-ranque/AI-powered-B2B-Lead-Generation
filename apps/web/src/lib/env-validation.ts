@@ -20,7 +20,7 @@ interface ValidationResult {
   errors: string[];
 }
 
-const REQUIRED_VARS = ["VITE_CONVEX_URL"] as const;
+const REQUIRED_VARS = ["VITE_CONVEX_URL", "VITE_CLERK_PUBLISHABLE_KEY"] as const;
 const OPTIONAL_VARS = [
   "VITE_STRIPE_PUBLISHABLE_KEY",
   "VITE_POSTHOG_KEY",
@@ -28,7 +28,6 @@ const OPTIONAL_VARS = [
   "VITE_CREWAI_URL",
   "VITE_CREWAI_API_KEY",
   "VITE_SENTRY_DSN",
-  "VITE_CLERK_PUBLISHABLE_KEY",
   "VITE_GOOGLE_MAPS_API_KEY",
 ] as const;
 
@@ -70,8 +69,37 @@ export function validateEnvironment(): ValidationResult {
   };
 }
 
+export function validateClerkConfiguration(): {
+  isValid: boolean;
+  error?: string;
+  clerkKey?: string;
+} {
+  const clerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+  if (!clerkKey) {
+    return {
+      isValid: false,
+      error: "VITE_CLERK_PUBLISHABLE_KEY is missing. Please set this environment variable in Railway.",
+    };
+  }
+
+  if (!clerkKey.startsWith('pk_')) {
+    return {
+      isValid: false,
+      error: `Invalid Clerk publishable key format. Expected format: pk_test_... or pk_live_..., got: ${clerkKey.substring(0, 10)}...`,
+      clerkKey,
+    };
+  }
+
+  return {
+    isValid: true,
+    clerkKey,
+  };
+}
+
 export function getEnvironmentInfo() {
   const validation = validateEnvironment();
+  const clerkValidation = validateClerkConfiguration();
   const env = import.meta.env;
 
   return {
@@ -80,10 +108,12 @@ export function getEnvironmentInfo() {
     prod: env.PROD,
     base: env.BASE_URL,
     validation,
+    clerkValidation,
     convexConfigured: Boolean(
       env.VITE_CONVEX_URL &&
         env.VITE_CONVEX_URL !== "https://placeholder.convex.cloud",
     ),
+    clerkConfigured: clerkValidation.isValid,
     hasStripe: Boolean(
       env.VITE_STRIPE_PUBLISHABLE_KEY &&
         !env.VITE_STRIPE_PUBLISHABLE_KEY.includes("..."),
@@ -102,8 +132,15 @@ export function logEnvironmentStatus() {
     console.group("🔧 Environment Status");
     console.log("Mode:", info.mode);
     console.log("Convex Configured:", info.convexConfigured);
+    console.log("Clerk Configured:", info.clerkConfigured);
     console.log("Stripe Configured:", info.hasStripe);
     console.log("Analytics Configured:", info.hasAnalytics);
+
+    if (!info.clerkConfigured && info.clerkValidation.error) {
+      console.group("🔑 Clerk Authentication Error");
+      console.error(info.clerkValidation.error);
+      console.groupEnd();
+    }
 
     if (info.validation.errors.length > 0) {
       console.group("❌ Errors");
@@ -124,6 +161,15 @@ export function logEnvironmentStatus() {
       logger.error("Missing required environment variables in production", {
         missing: info.validation.missing,
         errors: info.validation.errors,
+      });
+    }
+
+    // Enhanced Clerk-specific logging for production debugging
+    if (!info.clerkConfigured) {
+      logger.error("Clerk authentication configuration error in production", {
+        error: info.clerkValidation.error,
+        hasClerkKey: Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY),
+        clerkKeyPrefix: import.meta.env.VITE_CLERK_PUBLISHABLE_KEY?.substring(0, 10),
       });
     }
 

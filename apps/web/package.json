@@ -7,9 +7,10 @@
     "prebuild": "node ../../scripts/sync-docs.mjs",
     "pretest": "npm run type-check",
     "dev": "node ../../scripts/sync-docs.mjs && vite",
-    "build": "vite build",
-    "build:dev": "vite build --mode development",
-    "build:staging": "vite build --mode staging",
+    "build": "node troubleshoot-env.js && vite build",
+    "build:dev": "node troubleshoot-env.js && vite build --mode development",
+    "build:staging": "node troubleshoot-env.js && vite build --mode staging",
+    "build:safe": "vite build",
     "start": "./start.sh",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -17,7 +18,8 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "test:watch": "vitest --watch"
+    "test:watch": "vitest --watch",
+    "troubleshoot": "node troubleshoot-env.js"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.0.0",
