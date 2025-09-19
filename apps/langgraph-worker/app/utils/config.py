@@ -91,9 +91,9 @@ class Settings(BaseSettings):
     max_execution_time: int = int(os.getenv("MAX_EXECUTION_TIME_OPTIONAL", "300"))  # 5 minutes
     
     # Model Configuration
-    default_model: str = os.getenv("DEFAULT_MODEL_OPTIONAL", "gpt-4o-mini")
-    temperature: float = float(os.getenv("TEMPERATURE_OPTIONAL", "0.7"))
-    max_tokens: int = int(os.getenv("MAX_TOKENS_OPTIONAL", "8000"))
+    default_model: str = os.getenv("DEFAULT_MODEL_OPTIONAL", os.getenv("DEFAULT_MODEL", "gpt-4o-mini"))
+    temperature: float = float(os.getenv("TEMPERATURE_OPTIONAL", os.getenv("TEMPERATURE", "0.7")))
+    max_tokens: int = int(os.getenv("MAX_TOKENS_OPTIONAL", os.getenv("MAX_TOKENS", "2000")))
     
     # Sentry Configuration
     sentry_dsn: Optional[str] = os.getenv("SENTRY_DSN", None)

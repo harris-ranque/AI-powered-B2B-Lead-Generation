@@ -10,6 +10,9 @@ ARG LANGGRAPH_API_KEY=""
 ARG TAVILY_API_KEY=""
 ARG EXA_API_KEY=""
 ARG PERPLEXITY_API_KEY=""
+ARG MAX_TOKENS=""
+ARG TEMPERATURE=""
+ARG DEFAULT_MODEL=""
 
 # Make secrets available to build steps (tests) and runtime unless overridden later
 ENV OPENAI_API_KEY=${OPENAI_API_KEY} \
@@ -18,7 +21,10 @@ ENV OPENAI_API_KEY=${OPENAI_API_KEY} \
     LANGGRAPH_API_KEY=${LANGGRAPH_API_KEY} \
     TAVILY_API_KEY=${TAVILY_API_KEY} \
     EXA_API_KEY=${EXA_API_KEY} \
-    PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY}
+    PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY} \
+    MAX_TOKENS=${MAX_TOKENS} \
+    TEMPERATURE=${TEMPERATURE} \
+    DEFAULT_MODEL=${DEFAULT_MODEL}
 
 # Install minimal system dependencies
 RUN apt-get update && apt-get install -y \
