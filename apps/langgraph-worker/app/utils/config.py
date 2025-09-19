@@ -7,6 +7,7 @@ from typing import Optional
 from urllib.parse import urlparse, urlunparse
 
 from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator
 
 
 def _ensure_convex_http_path(url: str) -> str:
@@ -91,9 +92,23 @@ class Settings(BaseSettings):
     max_execution_time: int = int(os.getenv("MAX_EXECUTION_TIME_OPTIONAL", "300"))  # 5 minutes
     
     # Model Configuration
-    default_model: str = os.getenv("DEFAULT_MODEL_OPTIONAL", os.getenv("DEFAULT_MODEL", "gpt-4o-mini"))
-    temperature: float = float(os.getenv("TEMPERATURE_OPTIONAL", os.getenv("TEMPERATURE", "0.7")))
-    max_tokens: int = int(os.getenv("MAX_TOKENS_OPTIONAL", os.getenv("MAX_TOKENS", "2000")))
+    default_model: str = Field(default="gpt-4o-mini")
+    temperature: float = Field(default=0.7)
+    max_tokens: int = Field(default=2000)
+
+    @field_validator('temperature', mode='before')
+    @classmethod
+    def parse_temperature(cls, v):
+        if v == "" or v is None:
+            return 0.7
+        return float(v)
+
+    @field_validator('max_tokens', mode='before')
+    @classmethod
+    def parse_max_tokens(cls, v):
+        if v == "" or v is None:
+            return 2000
+        return int(v)
     
     # Sentry Configuration
     sentry_dsn: Optional[str] = os.getenv("SENTRY_DSN", None)
