@@ -91,19 +91,8 @@ RUN cd apps/web && \
 FROM nginx:alpine
 COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
 
-# Create nginx config template that uses Railway's $PORT
-RUN echo 'server { \
-    listen ${PORT}; \
-    server_name localhost; \
-    root /usr/share/nginx/html; \
-    index index.html; \
-    location / { \
-        try_files $uri $uri/ /index.html; \
-    } \
-    location /api { \
-        return 404; \
-    } \
-}' > /etc/nginx/conf.d/default.conf.template
+# Copy comprehensive nginx config as template
+COPY apps/web/nginx.conf /etc/nginx/nginx.conf.template
 
 # Copy and setup startup script that substitutes PORT and starts nginx
 COPY apps/web/docker-entrypoint.sh /docker-entrypoint.sh
