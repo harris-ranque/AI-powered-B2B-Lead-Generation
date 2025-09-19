@@ -61,7 +61,7 @@ export function LeadEternityDashboard() {
     isLoading: isProfileLoading,
   } = useProfile();
   const { balance } = useCredits();
-  // Prevent flashing 0 credits during initial HTTP polling by falling back to live Convex user data
+  // Prevent flashing 0 credits during initial load by falling back to live Convex user data
   const userCredits = (balance?.credits ?? user?.credits) || 0;
   const { purchaseCredits, usage } = useBilling();
   const { requests: emailRequests } = useLangGraphRequests();

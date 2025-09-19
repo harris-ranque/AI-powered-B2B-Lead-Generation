@@ -1,22 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "@clerk/clerk-react";
-import { convex } from "@/lib/convex";
+import { useQuery } from "convex/react";
+import { api } from "@genni/convex-types";
 
 export function useUsage() {
-  const { isSignedIn } = useAuth();
-
-  const { data: usage, isLoading } = useQuery({
-    queryKey: ["current-usage"],
-    queryFn: async () => {
-      const result = await convex.query(
-        "usageTracking/queries:getCurrentUsage",
-        {},
-      );
-      return result;
-    },
-    enabled: !!isSignedIn,
-    refetchInterval: 30 * 1000, // Refresh every 30 seconds
-  });
+  // Use Convex native reactive queries - real-time updates without polling!
+  const usage = useQuery(api.usageTracking.queries.getCurrentUsage);
 
   // Calculate percentage used with safety checks
   const getUsagePercentage = (used: number, limit: number) => {
@@ -53,7 +40,7 @@ export function useUsage() {
 
   return {
     usage,
-    isLoading,
+    isLoading: usage === undefined,
     searchesPercentage,
     enrichmentsPercentage,
     exportsPercentage,

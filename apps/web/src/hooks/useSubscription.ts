@@ -1,22 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "@clerk/clerk-react";
-import { convex } from "@/lib/convex";
+import { useQuery } from "convex/react";
+import { api } from "@genni/convex-types";
 
 export function useSubscription() {
-  const { isSignedIn } = useAuth();
-
-  const { data: subscription, isLoading } = useQuery({
-    queryKey: ["subscription-status"],
-    queryFn: async () => {
-      const result = await convex.mutation(
-        "billing/mutations:getSubscriptionStatus",
-        {},
-      );
-      return result;
-    },
-    enabled: !!isSignedIn,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-  });
+  // Use Convex native reactive queries - real-time updates without polling!
+  const subscription = useQuery(api.billing.queries.getSubscriptionStatus);
 
   const planDisplayNames = {
     starter: "Starter",
@@ -64,7 +51,7 @@ export function useSubscription() {
 
   return {
     subscription,
-    isLoading,
+    isLoading: subscription === undefined,
     planName,
     getStatusBadge,
     hasActiveSubscription: subscription?.hasActiveSubscription || false,

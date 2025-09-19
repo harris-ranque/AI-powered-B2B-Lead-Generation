@@ -10,45 +10,24 @@ import {
   Download,
   RefreshCw,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { convex } from "@/lib/convex";
+import { useConvex, useQuery } from "convex/react";
+import { api } from "@genni/convex-types";
 
 export function AdminBillingDashboard() {
-  const {
-    data: billingMetrics,
-    isLoading: metricsLoading,
-    refetch: refetchMetrics,
-  } = useQuery({
-    queryKey: ["admin-billing-metrics"],
-    queryFn: async () => {
-      const result = await convex.query("admin/billing:getBillingMetrics", {});
-      return result;
-    },
-    staleTime: 5 * 60 * 1000, // 5 minutes
-  });
+  // Use Convex native reactive queries - real-time updates without polling!
+  const billingMetrics = useQuery(api.admin.billing.getBillingMetrics);
+  const revenueAnalytics = useQuery(api.admin.billing.getRevenueAnalytics);
 
-  const { data: revenueAnalytics, isLoading: revenueLoading } = useQuery({
-    queryKey: ["admin-revenue-analytics"],
-    queryFn: async () => {
-      const result = await convex.query(
-        "admin/billing:getRevenueAnalytics",
-        {},
-      );
-      return result;
-    },
-    staleTime: 5 * 60 * 1000,
-  });
+  const costAnalytics = useQuery(api.admin.billing.getCostAnalytics);
+  const convex = useConvex();
 
-  const { data: costAnalytics, isLoading: costLoading } = useQuery({
-    queryKey: ["admin-cost-analytics"],
-    queryFn: async () => {
-      const result = await convex.query("admin/billing:getCostAnalytics", {});
-      return result;
-    },
-    staleTime: 5 * 60 * 1000,
-  });
+  const handleRefresh = () => {
+    void convex.refreshQuery(api.admin.billing.getBillingMetrics, undefined);
+    void convex.refreshQuery(api.admin.billing.getRevenueAnalytics, undefined);
+    void convex.refreshQuery(api.admin.billing.getCostAnalytics, undefined);
+  };
 
-  if (metricsLoading || revenueLoading || costLoading) {
+  if (billingMetrics === undefined || revenueAnalytics === undefined || costAnalytics === undefined) {
     return (
       <div className="p-6">
         <div className="flex items-center gap-2 mb-6">
@@ -76,7 +55,7 @@ export function AdminBillingDashboard() {
             Subscription management, revenue tracking, and cost analytics
           </p>
         </div>
-        <Button onClick={() => refetchMetrics()} variant="outline" size="sm">
+        <Button onClick={handleRefresh} variant="outline" size="sm">
           <RefreshCw className="h-4 w-4 mr-2" />
           Refresh
         </Button>

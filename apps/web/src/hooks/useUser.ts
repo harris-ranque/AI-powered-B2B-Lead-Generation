@@ -17,6 +17,7 @@ export function useUser() {
 }
 
 export function useUserCredits() {
+  // High-frequency data like credits should use WebSocket for efficiency
   const credits = useQuery(api.users.queries.getUserCredits);
   const addCredits = useMutation(api.users.mutations.addCredits);
 

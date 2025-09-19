@@ -3,8 +3,38 @@ Configuration management for Genni LangGraph Worker
 """
 import os
 from functools import lru_cache
-from pydantic_settings import BaseSettings
 from typing import Optional
+from urllib.parse import urlparse, urlunparse
+
+from pydantic_settings import BaseSettings
+
+
+def _ensure_convex_http_path(url: str) -> str:
+    """Ensure Convex webhook URLs include the /api/http prefix exactly once."""
+    if not url:
+        return url
+
+    parsed = urlparse(url)
+    path = parsed.path or ""
+    if not path.startswith("/"):
+        path = f"/{path}"
+
+    if "/api/http" not in path:
+        if path.startswith("/api/webhooks/"):
+            path = path.replace("/api/webhooks/", "/api/http/webhooks/", 1)
+        elif path.startswith("/api/"):
+            path = path.replace("/api/", "/api/http/", 1)
+        elif path.startswith("/webhooks/"):
+            path = f"/api/http{path}"
+        else:
+            path = f"/api/http{path}"
+
+    # Collapse any accidental duplicate slashes from the replacements
+    while "//" in path:
+        path = path.replace("//", "/")
+
+    normalized = parsed._replace(path=path)
+    return urlunparse(normalized)
 
 class Settings(BaseSettings):
     """Application settings"""
@@ -36,15 +66,17 @@ class Settings(BaseSettings):
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        # Normalize explicit webhook value first to guard against missing /api/http
+        if self.webhook_url:
+            self.webhook_url = _ensure_convex_http_path(self.webhook_url.rstrip('/'))
+
         # Auto-construct webhook URL from Convex URL if not explicitly set
         if not self.webhook_url and self.convex_url:
-            # Convert site URL to callable HTTP endpoint (Convex HTTP routes live under /api/http)
             base_url = self.convex_url.rstrip('/')
             if base_url.endswith("/api"):
-                base_url = base_url[: -4]
-            if not base_url.endswith("/api/http") and "/api/http/" not in base_url:
-                base_url = f"{base_url}/api/http"
-            self.webhook_url = f"{base_url}/webhooks/langgraph/email-completed"
+                base_url = base_url[:-4]
+            constructed = f"{base_url}/webhooks/langgraph/email-completed"
+            self.webhook_url = _ensure_convex_http_path(constructed)
     
     # Server Configuration
     port: int = int(os.getenv("PORT_OPTIONAL", os.getenv("PORT", "8080")))

@@ -17,8 +17,8 @@ import {
   Calendar,
   CreditCard,
 } from "lucide-react";
-import { convex } from "@/lib/convex";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "convex/react";
+import { api } from "@genni/convex-types";
 
 export default function SubscriptionSuccess() {
   const [searchParams] = useSearchParams();
@@ -33,20 +33,8 @@ export default function SubscriptionSuccess() {
     }
   }, [isSignedIn, navigate]);
 
-  // Get subscription status
-  const { data: subscription, isLoading } = useQuery({
-    queryKey: ["subscription-status"],
-    queryFn: async () => {
-      const result = await convex.mutation(
-        "billing/mutations:getSubscriptionStatus",
-        {},
-      );
-      return result;
-    },
-    enabled: !!isSignedIn,
-    refetchInterval: 5000, // Poll for updates
-    refetchIntervalInBackground: false,
-  });
+  // Use Convex native reactive queries - real-time updates without polling!
+  const subscription = useQuery(api.billing.queries.getSubscriptionStatus);
 
   if (!isSignedIn) {
     return null;

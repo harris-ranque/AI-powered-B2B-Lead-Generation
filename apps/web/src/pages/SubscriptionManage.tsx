@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useAction, useQuery } from "convex/react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,107 +20,79 @@ import {
   ExternalLink,
   Loader2,
   TrendingUp,
-  Download,
   Settings,
   ArrowLeft,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { convex } from "@/lib/convex";
+import { api } from "@genni/convex-types";
 
 export default function SubscriptionManage() {
-  const { isSignedIn, user } = useAuth();
+  const { isSignedIn } = useAuth();
   const navigate = useNavigate();
   const [isLoadingPortal, setIsLoadingPortal] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
 
-  // Get subscription status
-  const { data: subscription, isLoading } = useQuery({
-    queryKey: ["subscription-status"],
-    queryFn: async () => {
-      const result = await convex.mutation(
-        "billing/mutations:getSubscriptionStatus",
-        {},
-      );
-      return result;
-    },
-    enabled: !!isSignedIn,
-  });
+  // Use Convex native reactive queries - real-time updates without polling!
+  const subscription = useQuery(api.billing.queries.getSubscriptionStatus);
+  const usage = useQuery(api.usageTracking.queries.getCurrentUsage);
+  const createPortalSession = useAction(
+    api.billing.mutations.createPortalSession,
+  );
+  const cancelSubscription = useAction(api.billing.mutations.cancelSubscription);
 
-  // Get current usage
-  const { data: usage } = useQuery({
-    queryKey: ["current-usage"],
-    queryFn: async () => {
-      const result = await convex.query(
-        "usageTracking/queries:getCurrentUsage",
-        {},
-      );
-      return result;
-    },
-    enabled: !!isSignedIn,
-  });
+  const isLoading = subscription === undefined;
 
-  const createPortalSession = useMutation({
-    mutationFn: async () => {
-      const result = await convex.action(
-        "billing/mutations:createPortalSession",
-        {},
-      );
-      return result;
-    },
-    onSuccess: (data) => {
-      window.location.href = data.url;
-    },
-    onError: (error) => {
+  const handlePortalAccess = async () => {
+    try {
+      setIsLoadingPortal(true);
+      const result = await createPortalSession({});
+      if (!result?.url) {
+        throw new Error("Missing portal URL");
+      }
+      window.location.href = result.url;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to open billing portal";
       toast({
         title: "Error",
-        description: error.message || "Failed to open billing portal",
+        description: message,
         variant: "destructive",
       });
       setIsLoadingPortal(false);
-    },
-  });
+    }
+  };
 
-  const cancelSubscription = useMutation({
-    mutationFn: async (cancelAtPeriodEnd: boolean) => {
-      const result = await convex.action(
-        "billing/mutations:cancelSubscription",
-        {
-          cancelAtPeriodEnd,
-        },
-      );
-      return result;
-    },
-    onSuccess: (data) => {
+  const handleCancelSubscription = async () => {
+    try {
+      setIsCanceling(true);
+      const willCancel = !subscription?.billing?.cancelAtPeriodEnd;
+      const result = await cancelSubscription({
+        cancelAtPeriodEnd: willCancel,
+      });
+
       toast({
-        title: data.cancelAtPeriodEnd
+        title: result?.cancelAtPeriodEnd
           ? "Subscription Canceled"
           : "Cancellation Undone",
-        description: data.cancelAtPeriodEnd
+        description: result?.cancelAtPeriodEnd
           ? "Your subscription will end at the end of the current period"
           : "Your subscription will continue",
       });
-      setIsCanceling(false);
-      window.location.reload(); // Refresh to get updated data
-    },
-    onError: (error) => {
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to update subscription";
       toast({
         title: "Error",
-        description: error.message || "Failed to update subscription",
+        description: message,
         variant: "destructive",
       });
+    } finally {
       setIsCanceling(false);
-    },
-  });
-
-  const handlePortalAccess = () => {
-    setIsLoadingPortal(true);
-    createPortalSession.mutate();
-  };
-
-  const handleCancelSubscription = () => {
-    setIsCanceling(true);
-    const willCancel = !subscription?.billing?.cancelAtPeriodEnd;
-    cancelSubscription.mutate(willCancel);
+    }
   };
 
   if (!isSignedIn) {
