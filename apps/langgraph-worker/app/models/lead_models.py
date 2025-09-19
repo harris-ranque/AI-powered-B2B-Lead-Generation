@@ -112,11 +112,14 @@ class EmailGenerationRequest(BaseModel):
 
 class AgentResult(BaseModel):
     """Individual agent result"""
-    agent_name: str = Field(..., description="Agent name")
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    agent_name: str = Field(..., alias="agentName", description="Agent name")
     role: str = Field(..., description="Agent role")
     output: str = Field(..., description="Agent output")
-    confidence_score: float = Field(..., description="Confidence in result (0-1)")
-    execution_time: float = Field(..., description="Execution time in seconds")
+    confidence_score: float = Field(..., alias="confidenceScore", description="Confidence in result (0-1)")
+    execution_time: float = Field(..., alias="executionTime", description="Execution time in seconds")
 
 class EmailContent(BaseModel):
     """Generated email content"""

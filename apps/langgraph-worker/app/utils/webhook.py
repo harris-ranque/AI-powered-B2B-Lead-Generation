@@ -46,8 +46,8 @@ class WebhookClient:
         result_payload = None
         if result is not None:
             try:
-                # Pydantic v2 models
-                result_payload = result.model_dump()  # type: ignore[attr-defined]
+                # Pydantic v2 models - preserve API contract via aliases
+                result_payload = result.model_dump(by_alias=True)  # type: ignore[attr-defined]
             except Exception:
                 # If it's already a dict or not a pydantic model
                 if isinstance(result, dict):  # type: ignore[arg-type]
@@ -55,7 +55,7 @@ class WebhookClient:
                 else:
                     try:
                         # Pydantic v1 compatibility
-                        result_payload = result.dict()  # type: ignore[attr-defined]
+                        result_payload = result.dict(by_alias=True)  # type: ignore[attr-defined]
                     except Exception:
                         result_payload = None
 

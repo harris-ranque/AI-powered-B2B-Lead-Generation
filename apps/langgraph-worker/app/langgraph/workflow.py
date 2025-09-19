@@ -288,10 +288,10 @@ async def execute_with_streaming(
                 qa = event.get("quality_assessment", {})
                 # Normalize Pydantic model to dict if needed
                 try:
-                    final_result_payload = final_result.model_dump()  # type: ignore[attr-defined]
+                    final_result_payload = final_result.model_dump(by_alias=True)  # type: ignore[attr-defined]
                 except Exception:
                     try:
-                        final_result_payload = final_result.dict()  # type: ignore[attr-defined]
+                        final_result_payload = final_result.dict(by_alias=True)  # type: ignore[attr-defined]
                     except Exception:
                         final_result_payload = final_result
 
