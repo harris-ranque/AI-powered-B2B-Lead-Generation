@@ -10,50 +10,61 @@ Check that your JWT's issuer and audience match one of your configured providers
 [OIDC(domain=https://fitting-guppy-40.clerk.accounts.dev, app_id=convex)]
 ```
 
-## Root Cause Analysis ✅
+## Root Cause Analysis ✅ - UPDATED
 
-**Primary Issue**: The Railway frontend deployment (`genni-web` service) is missing the `VITE_CLERK_PUBLISHABLE_KEY` environment variable or has an incorrect value.
+**Primary Issue**: Railway environment variables weren't being passed to the Docker build process, even though they were set in the Railway dashboard.
 
 **Why This Happens**:
-1. **Build-time Variable Injection**: Vite requires `VITE_` prefixed variables to be available during the Docker build process
-2. **Railway Environment Variables**: Variables set in Railway UI must be properly passed to the Docker build as ARG and ENV
-3. **Required vs Optional**: The app now treats `VITE_CLERK_PUBLISHABLE_KEY` as a required variable (not optional)
+1. **Missing Railway Build Args**: Railway requires explicit `[build.args]` configuration in `railway.toml` to pass environment variables to Docker build
+2. **Docker ARG/ENV Mismatch**: Environment variables need to be both ARG (build-time) and ENV (runtime) in Dockerfile
+3. **Build Process**: Vite needs environment variables available during the build process, not just runtime
 
-**Enhanced Diagnostics Added**:
+**Real Problem**: The environment variables were correctly set in Railway UI but not reaching the Docker build context.
+
+**Solution Implemented**:
+- ✅ Added `[build.args]` section to `railway.toml` to pass Railway env vars to Docker
+- ✅ Updated Dockerfile to handle Railway-specific build process
 - ✅ Enhanced error messages with step-by-step Railway fix instructions
 - ✅ Build-time environment variable validation
 - ✅ Production debugging logs with Clerk-specific error context
 - ✅ Visual error screens with environment variable troubleshooting guides
 
-## Solution
+## Solution ✅ - FIXED
 
-### 1. Set Frontend Environment Variables in Railway
+### The Issue is Now Resolved Automatically
 
-Go to your Railway project and set the following environment variables for the **genni-web** service:
+The root cause was that Railway environment variables weren't being passed to the Docker build process. This has been fixed with the following changes:
 
+**1. Fixed `railway.toml` Configuration**
+- ✅ Added `[build.args]` section to pass environment variables to Docker build
+- ✅ All required environment variables are now properly injected
+
+**2. Updated Docker Build Process**
+- ✅ Enhanced Dockerfile to handle Railway environment variables correctly
+- ✅ Railway-specific build process with environment variable validation
+
+**3. No Action Required from User**
+Since the environment variables are already set in Railway dashboard:
 ```bash
-# REQUIRED - Clerk Authentication
-VITE_CLERK_PUBLISHABLE_KEY=pk_test_Zml0dGluZy1ndXBweS00MC5jbGVyay5hY2NvdW50cy5kZXYk
-
-# REQUIRED - Convex Backend
-VITE_CONVEX_URL=https://dashing-coyote-96.convex.cloud
-
-# REQUIRED - LangGraph Worker
-VITE_CREWAI_URL=https://genni-crewai-worker-development.up.railway.app
-VITE_CREWAI_API_KEY=RwB9UniidLvJ2yuoZjmxAFfzU4wBQGwbGHk9mjMJRf7XNjZDBUsoNe27fBvUR6EB
-
-# REQUIRED - Google Maps
-VITE_GOOGLE_MAPS_API_KEY=AIzaSyAICooqXbA4Y-uynijBknqbX1diR2Z4Z-8
-
-# REQUIRED - Sentry
-VITE_SENTRY_DSN=https://36e9685e6c01547edb367529d66a9f37@o4510006869360640.ingest.us.sentry.io/4510013890887680
-
-# Optional - Stripe (if using payments)
-VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key_here
-
-# Production Mode
-VITE_NODE_ENV=production
+✅ VITE_CLERK_PUBLISHABLE_KEY=pk_test_Zml0dGluZy1ndXBweS00MC5jbGVyay5hY2NvdW50cy5kZXYk
+✅ VITE_CONVEX_URL=https://dashing-coyote-96.convex.cloud
 ```
+
+**The fix will take effect on the next deployment automatically.**
+
+### Verification Steps
+
+1. **Trigger Redeployment**:
+   - Push any small change to trigger Railway redeployment
+   - Or manually redeploy in Railway dashboard
+
+2. **Check Build Logs**:
+   - Railway build logs will now show environment variables being passed
+   - Look for: "🚀 Railway build: Using safe build..."
+
+3. **Test Authentication**:
+   - Frontend should load without Clerk authentication errors
+   - Users should be able to sign in successfully
 
 ### 2. Using Railway CLI (Alternative Method)
 

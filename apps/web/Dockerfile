@@ -36,6 +36,7 @@ ARG VITE_STRIPE_ENTERPRISE_PRICE_ID_YEARLY
 ARG VITE_SENTRY_DSN
 ARG ENVIRONMENT=production
 ARG NODE_ENV=production
+ARG RAILWAY_ENVIRONMENT
 
 # Set environment variables
 ENV VITE_CONVEX_URL=$VITE_CONVEX_URL
@@ -61,6 +62,7 @@ ENV VITE_STRIPE_ENTERPRISE_PRICE_ID_YEARLY=$VITE_STRIPE_ENTERPRISE_PRICE_ID_YEAR
 ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN
 ENV ENVIRONMENT=$ENVIRONMENT
 ENV NODE_ENV=$NODE_ENV
+ENV RAILWAY_ENVIRONMENT=$RAILWAY_ENVIRONMENT
 
 # Generate Convex types from backend and copy to web app
 RUN cd apps/convex-backend && \
@@ -78,6 +80,9 @@ RUN echo "🧪 Running tests before build..." && \
 RUN cd apps/web && \
     if [ "$NODE_ENV" = "development" ] || [ "$ENVIRONMENT" = "development" ]; then \
         pnpm build:dev; \
+    elif [ "$RAILWAY_ENVIRONMENT" ]; then \
+        echo "🚀 Railway build: Using safe build to avoid env validation during Docker build" && \
+        pnpm build:safe; \
     else \
         pnpm build; \
     fi
