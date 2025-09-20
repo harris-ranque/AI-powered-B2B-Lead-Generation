@@ -10,8 +10,8 @@ from pydantic_settings import BaseSettings
 from pydantic import Field, field_validator
 
 
-def _ensure_convex_http_path(url: str) -> str:
-    """Ensure Convex webhook URLs include the /api/http prefix exactly once."""
+def _ensure_convex_webhook_path(url: str) -> str:
+    """Ensure Convex webhook URLs use the correct path format (no /api/http prefix needed)."""
     if not url:
         return url
 
@@ -20,17 +20,22 @@ def _ensure_convex_http_path(url: str) -> str:
     if not path.startswith("/"):
         path = f"/{path}"
 
-    if "/api/http" not in path:
-        if path.startswith("/api/webhooks/"):
-            path = path.replace("/api/webhooks/", "/api/http/webhooks/", 1)
-        elif path.startswith("/api/"):
-            path = path.replace("/api/", "/api/http/", 1)
-        elif path.startswith("/webhooks/"):
-            path = f"/api/http{path}"
-        else:
-            path = f"/api/http{path}"
+    # Remove any incorrect /api/http prefix if present
+    if path.startswith("/api/http/"):
+        path = path.replace("/api/http/", "/", 1)
+    elif path.startswith("/api/"):
+        # Only remove /api/ if it's not part of the correct webhook path
+        if not path.startswith("/api/webhooks/"):
+            path = path.replace("/api/", "/", 1)
 
-    # Collapse any accidental duplicate slashes from the replacements
+    # Ensure webhooks paths start with /webhooks/
+    if not path.startswith("/webhooks/") and not path.startswith("/api/"):
+        if path.startswith("/"):
+            path = f"/webhooks{path}"
+        else:
+            path = f"/webhooks/{path}"
+
+    # Collapse any accidental duplicate slashes
     while "//" in path:
         path = path.replace("//", "/")
 
@@ -67,9 +72,9 @@ class Settings(BaseSettings):
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # Normalize explicit webhook value first to guard against missing /api/http
+        # Normalize explicit webhook value first to ensure correct path format
         if self.webhook_url:
-            self.webhook_url = _ensure_convex_http_path(self.webhook_url.rstrip('/'))
+            self.webhook_url = _ensure_convex_webhook_path(self.webhook_url.rstrip('/'))
 
         # Auto-construct webhook URL from Convex URL if not explicitly set
         if not self.webhook_url and self.convex_url:
@@ -80,7 +85,7 @@ class Settings(BaseSettings):
             if base_url.endswith("/api"):
                 base_url = base_url[:-4]
             constructed = f"{base_url}/webhooks/langgraph/email-completed"
-            self.webhook_url = _ensure_convex_http_path(constructed)
+            self.webhook_url = _ensure_convex_webhook_path(constructed)
     
     # Server Configuration
     port: int = int(os.getenv("PORT_OPTIONAL", os.getenv("PORT", "8080")))
@@ -92,7 +97,7 @@ class Settings(BaseSettings):
     max_execution_time: int = int(os.getenv("MAX_EXECUTION_TIME_OPTIONAL", "300"))  # 5 minutes
     
     # Model Configuration
-    default_model: str = os.getenv("DEFAULT_MODEL", "gpt-4o-mini")
+    default_model: str = os.getenv("DEFAULT_MODEL", "gpt-5-nano")
 
     @property
     def temperature(self) -> float:

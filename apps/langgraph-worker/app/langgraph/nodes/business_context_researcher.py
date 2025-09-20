@@ -65,52 +65,37 @@ async def broadcast_research_progress(search_id: str, stage: str, tier: str, con
             logger.warning("No Convex URL configured, cannot broadcast research progress")
             return
         
-        webhook_url = f"{settings.convex_url.rstrip('/')}/api/webhooks/research/progress"
-        
-        # Prepare payload
-        payload = {
-            "searchId": search_id,
-            "stage": stage,
-            "tier": tier,
-            "confidence": confidence,
-            "dataPoints": data_points,
-            "message": message,
-        }
+        # Research progress webhook not currently implemented in Convex backend
+        # Temporarily disabled until endpoint is implemented
+        logger.debug(f"Research progress update (disabled): {search_id} - {stage} - {tier} - confidence: {confidence}")
+        return  # Skip webhook call for now
 
-        # Normalize and add optional fields from kwargs (accept snake_case and camelCase)
-        # sourcesAnalyzed
-        if kwargs.get("sourcesAnalyzed") is not None:
-            payload["sourcesAnalyzed"] = kwargs["sourcesAnalyzed"]
-        elif kwargs.get("sources_analyzed") is not None:
-            payload["sourcesAnalyzed"] = kwargs["sources_analyzed"]
-        # escalationReason
-        if kwargs.get("escalationReason") is not None:
-            payload["escalationReason"] = kwargs["escalationReason"]
-        elif kwargs.get("escalation_reason") is not None:
-            payload["escalationReason"] = kwargs["escalation_reason"]
-        # error
-        if kwargs.get("error") is not None:
-            payload["error"] = kwargs["error"]
-        # metadata
-        if kwargs.get("metadata") is not None:
-            payload["metadata"] = kwargs["metadata"]
-        
-        # Make HTTP request to Convex webhook
-        headers = {
-            "Content-Type": "application/json"
-        }
-        
-        # Add API key if configured
-        if hasattr(settings, 'api_key') and settings.api_key:
-            headers["x-api-key"] = settings.api_key
-        
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-            async with session.post(webhook_url, json=payload, headers=headers) as response:
-                if response.status == 200:
-                    logger.info(f"Research progress broadcast successful: {search_id} - {stage}")
-                else:
-                    response_text = await response.text()
-                    logger.warning(f"Research progress broadcast failed: {response.status} - {response_text}")
+        # TODO: Re-enable when Convex backend implements /webhooks/research/progress endpoint
+        # webhook_url = f"{settings.convex_url.rstrip('/')}/webhooks/research/progress"
+        #
+        # # Prepare payload
+        # payload = {
+        #     "searchId": search_id,
+        #     "stage": stage,
+        #     "tier": tier,
+        #     "confidence": confidence,
+        #     "dataPoints": data_points,
+        #     "message": message,
+        # }
+        #
+        # # Make HTTP request to Convex webhook
+        # headers = {
+        #     "Content-Type": "application/json",
+        #     "Authorization": f"Bearer {settings.api_key}"
+        # }
+        #
+        # async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+        #     async with session.post(webhook_url, json=payload, headers=headers) as response:
+        #         if response.status == 200:
+        #             logger.info(f"Research progress broadcast successful: {search_id} - {stage}")
+        #         else:
+        #             response_text = await response.text()
+        #             logger.warning(f"Research progress broadcast failed: {response.status} - {response_text}")
                     
     except Exception as e:
         logger.warning(f"Failed to broadcast research progress: {str(e)}")

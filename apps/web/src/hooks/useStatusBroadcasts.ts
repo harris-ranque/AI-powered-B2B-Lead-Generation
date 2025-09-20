@@ -262,7 +262,7 @@ export function getPriorityDisplay(priority: BroadcastPriority) {
         label: "Critical",
         variant: "destructive" as const,
         color: "text-red-600",
-        bgColor: "bg-red-50 border-red-200",
+        bgColor: "bg-red-50 border-red-200 text-red-900",
         icon: "🚨",
       };
     case "urgent":
@@ -270,7 +270,7 @@ export function getPriorityDisplay(priority: BroadcastPriority) {
         label: "Urgent",
         variant: "destructive" as const,
         color: "text-orange-600",
-        bgColor: "bg-orange-50 border-orange-200",
+        bgColor: "bg-orange-50 border-orange-200 text-orange-900",
         icon: "⚠️",
       };
     case "high":
@@ -278,7 +278,7 @@ export function getPriorityDisplay(priority: BroadcastPriority) {
         label: "High",
         variant: "default" as const,
         color: "text-yellow-600",
-        bgColor: "bg-yellow-50 border-yellow-200",
+        bgColor: "bg-yellow-50 border-yellow-200 text-yellow-900",
         icon: "📢",
       };
     case "normal":
@@ -286,7 +286,7 @@ export function getPriorityDisplay(priority: BroadcastPriority) {
         label: "Normal",
         variant: "secondary" as const,
         color: "text-blue-600",
-        bgColor: "bg-blue-50 border-blue-200",
+        bgColor: "bg-blue-50 border-blue-200 text-blue-900",
         icon: "💬",
       };
     case "low":
@@ -294,7 +294,7 @@ export function getPriorityDisplay(priority: BroadcastPriority) {
         label: "Low",
         variant: "outline" as const,
         color: "text-gray-600",
-        bgColor: "bg-gray-50 border-gray-200",
+        bgColor: "bg-gray-50 border-gray-200 text-gray-900",
         icon: "ℹ️",
       };
     default:
@@ -302,7 +302,7 @@ export function getPriorityDisplay(priority: BroadcastPriority) {
         label: "Unknown",
         variant: "outline" as const,
         color: "text-gray-600",
-        bgColor: "bg-gray-50 border-gray-200",
+        bgColor: "bg-gray-50 border-gray-200 text-gray-900",
         icon: "❓",
       };
   }
