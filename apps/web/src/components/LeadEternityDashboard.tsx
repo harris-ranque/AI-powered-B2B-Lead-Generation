@@ -20,6 +20,7 @@ import {
   Building2,
   Bug,
   Activity,
+  Menu,
 } from "lucide-react";
 import { PipelineOrchestrator } from "./pipeline/PipelineOrchestrator";
 import { PipelineProvider, usePipeline } from "@/pipeline/context";
@@ -45,6 +46,7 @@ import {
   isValidTabName,
 } from "@/utils/typeValidation";
 import { ToastAction } from "@/components/ui/toast";
+import { ClerkUserButton } from "@/components/auth/ClerkAuthWrapper";
 
 export function LeadEternityDashboard() {
   return (
@@ -258,6 +260,15 @@ function LeadEternityDashboardContent() {
                 </p>
               </div>
             </div>
+            <Button
+              data-testid="mobile-menu-button"
+              variant="outline"
+              size="icon"
+              className="md:hidden"
+              aria-label="Toggle navigation"
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
           </div>
 
           <div className="ml-auto flex items-center space-x-4">
@@ -272,6 +283,8 @@ function LeadEternityDashboardContent() {
                 Ready for personalization
               </div>
             </div>
+
+            <ClerkUserButton />
           </div>
         </div>
       </div>

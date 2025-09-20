@@ -2,16 +2,16 @@
   "name": "@genni/convex-types",
   "version": "1.0.0",
   "description": "Shared Convex types for Genni",
-  "main": "./src/_generated/api.js",
-  "types": "./src/_generated/api.d.ts",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/_generated/api.d.ts",
-      "default": "./src/_generated/api.js"
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
     },
     "./dataModel": {
-      "types": "./src/_generated/dataModel.d.ts",
-      "default": "./src/_generated/dataModel.js"
+      "types": "./src/dataModel.d.ts",
+      "default": "./src/dataModel.js"
     }
   }
 }
