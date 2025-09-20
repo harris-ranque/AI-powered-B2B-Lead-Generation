@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     max_execution_time: int = int(os.getenv("MAX_EXECUTION_TIME_OPTIONAL", "300"))  # 5 minutes
     
     # Model Configuration
-    default_model: str = os.getenv("DEFAULT_MODEL", "gpt-5-nano")
+    default_model: str = os.getenv("DEFAULT_MODEL_OPTIONAL", os.getenv("DEFAULT_MODEL", "gpt-5-nano"))
 
     @property
     def temperature(self) -> float:
@@ -113,7 +113,7 @@ class Settings(BaseSettings):
     @property
     def max_tokens(self) -> int:
         """Get max_tokens with fallback handling"""
-        tokens_str = os.getenv("MAX_TOKENS", "2000")
+        tokens_str = os.getenv("MAX_TOKENS_OPTIONAL", os.getenv("MAX_TOKENS", "2000"))
         try:
             if tokens_str == "" or tokens_str is None:
                 return 2000
