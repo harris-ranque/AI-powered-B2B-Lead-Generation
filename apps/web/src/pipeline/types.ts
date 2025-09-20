@@ -63,6 +63,11 @@ export interface LeadSource {
 }
 
 export interface EmailGenerationResult {
+  requestId?: string;
+  leadId?: string;
+  completed_at?: number;
+  quality_score?: number;
+  processing_time?: number;
   primary_email: {
     subject: string;
     body: string;

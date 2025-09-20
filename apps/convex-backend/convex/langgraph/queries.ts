@@ -16,14 +16,46 @@ export const getUserRequests = query({
 
     const limit = args.limit || 20;
     const offset = args.offset || 0;
-
-    const requests = await ctx.db
+    const allRequests = await ctx.db
       .query("langgraphRequests")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .order("desc")
-      .take(limit + offset);
+      .collect();
 
-    return requests.slice(offset);
+    const page = allRequests.slice(offset, offset + limit).map((request) => {
+      const formatted =
+        request.outputData &&
+        typeof request.outputData === "object" &&
+        "formatted" in request.outputData
+          ? (request.outputData as Record<string, any>).formatted
+          : undefined;
+
+      return {
+        requestId: request.requestId,
+        leadId: request.leadId ? String(request.leadId) : undefined,
+        status: request.status,
+        createdAt: request.createdAt,
+        completedAt: request.completedAt,
+        error: request.error,
+        type: request.type,
+        result: formatted,
+        metadata: {
+          qualityScore:
+            typeof (request.outputData as Record<string, any>)?.qualityScore ===
+            "number"
+              ? (request.outputData as Record<string, any>).qualityScore
+              : undefined,
+          processingTime: request.processingTime,
+        },
+      };
+    });
+
+    return {
+      page,
+      total: allRequests.length,
+      hasMore: offset + page.length < allRequests.length,
+      nextOffset: Math.min(allRequests.length, offset + page.length),
+    };
   },
 });
 

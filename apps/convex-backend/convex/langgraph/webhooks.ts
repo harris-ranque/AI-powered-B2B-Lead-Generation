@@ -137,9 +137,79 @@ export const handleEmailGenerationCompleted = internalMutation({
         return { success: false, error: "Lead not found" };
       }
 
+      // Find the request document for downstream status updates
+      const requestDoc = await ctx.db
+        .query("langgraphRequests")
+        .withIndex("by_request_id", (q) =>
+          q.eq("requestId", args.payload.request_id),
+        )
+        .unique();
+
       if (args.payload.status === "completed" && args.payload.result) {
         // Process successful email generation
         const result = args.payload.result;
+
+        const formattedFollowUps = Array.isArray(
+          (result as Record<string, unknown>).follow_up_emails,
+        )
+          ? ((result as Record<string, unknown>).follow_up_emails as Array<
+              Record<string, unknown>
+            >).map((followUp, index) => ({
+              subject:
+                typeof followUp.subject === "string"
+                  ? followUp.subject
+                  : `Follow Up ${index + 1}`,
+              body:
+                typeof followUp.body === "string" ? followUp.body : "",
+              delay_days:
+                typeof followUp.delay_days === "number"
+                  ? followUp.delay_days
+                  : (index + 1) * 3,
+            }))
+          : [];
+
+        const formattedOutput = result.primary_email
+          ? {
+              primary_email: {
+                subject: result.primary_email.subject,
+                body: result.primary_email.body,
+                personalization_notes:
+                  result.primary_email.personalization_notes || [],
+                estimated_effectiveness:
+                  result.primary_email.estimated_effectiveness || 0.15,
+              },
+              follow_up_emails: formattedFollowUps,
+              relevance_score: result.relevance_score || 0,
+              personalization_notes:
+                result.primary_email.personalization_notes || [],
+              estimated_response_rate:
+                result.primary_email.estimated_effectiveness || 0.15,
+              leadId,
+              requestId: args.payload.request_id,
+              processing_time: result.processing_time || 0,
+              quality_score: args.payload.quality_score,
+            }
+          : undefined;
+
+        if (requestDoc) {
+          const additionalCredits =
+            result.additional_credits_used && result.additional_credits_used > 0
+              ? result.additional_credits_used
+              : 0;
+
+          await ctx.db.patch(requestDoc._id, {
+            status: "completed",
+            completedAt: Date.now(),
+            processingTime: result.processing_time || requestDoc.processingTime,
+            creditsUsed: (requestDoc.creditsUsed || 0) + additionalCredits,
+            outputData: {
+              raw: result,
+              formatted: formattedOutput,
+              qualityScore: args.payload.quality_score,
+              approved: args.payload.approved,
+            },
+          });
+        }
 
         // Update lead with AI analysis results
         await ctx.runMutation(internal.leads.internal.updateLeadAnalysis, {
@@ -239,10 +309,12 @@ export const handleEmailGenerationCompleted = internalMutation({
           {
             userId: search.userId,
             searchId: searchId as any,
-            stage: "analysis_completed",
+            stage: "email_generation_completed",
             progress: 100,
-            message: `AI analysis completed for ${lead.businessName}. Quality score: ${args.payload.quality_score || 0}`,
+            message: `Personalized emails ready for ${lead.businessName}. Download them from Search History or continue reviewing.`,
             data: {
+              stage: "email_generation_completed",
+              redirectTo: "search-history",
               leadId: leadId,
               leadName: lead.businessName,
               relevanceScore: result.relevance_score || 0,
@@ -250,9 +322,27 @@ export const handleEmailGenerationCompleted = internalMutation({
               approved: args.payload.approved || false,
               emailGenerated: !!result.primary_email,
               processingTime: result.processing_time || 0,
+              requestId: args.payload.request_id,
             },
           },
         );
+
+        await ctx.runMutation(internal.realtime.broadcaster.broadcast, {
+          userId: search.userId,
+          type: "email_generation_completed",
+          title: `Emails ready for ${lead.businessName}`,
+          message:
+            "We finished personalizing this lead. Visit Search History to review and export the CSV.",
+          data: {
+            searchId,
+            leadId,
+            requestId: args.payload.request_id,
+            redirectTo: "search-history",
+            downloadAvailable: true,
+          },
+          priority: "high",
+          tags: ["email", "pipeline", "history"],
+        });
 
         console.log(
           `Email generation completed successfully for lead ${leadId}`,
@@ -265,6 +355,14 @@ export const handleEmailGenerationCompleted = internalMutation({
       } else {
         // Handle error case
         const errorMessage = args.payload.error || "Unknown error";
+
+        if (requestDoc) {
+          await ctx.db.patch(requestDoc._id, {
+            status: "failed",
+            completedAt: Date.now(),
+            error: errorMessage,
+          });
+        }
 
         // Update lead with error state
         await ctx.runMutation(internal.leads.internal.updateLeadAnalysis, {
@@ -292,12 +390,27 @@ export const handleEmailGenerationCompleted = internalMutation({
             message: `AI analysis failed for ${lead.businessName}: ${errorMessage}`,
             error: errorMessage,
             data: {
+              stage: "email_generation_failed",
               leadId: leadId,
               leadName: lead.businessName,
               error: errorMessage,
             },
           },
         );
+
+        await ctx.runMutation(internal.realtime.broadcaster.broadcast, {
+          userId: search.userId,
+          type: "email_generation_failed",
+          title: `Email generation failed for ${lead.businessName}`,
+          message: errorMessage,
+          data: {
+            searchId,
+            leadId,
+            requestId: args.payload.request_id,
+          },
+          priority: "urgent",
+          tags: ["email", "pipeline", "error"],
+        });
 
         console.error(
           `Email generation failed for lead ${leadId}: ${errorMessage}`,
