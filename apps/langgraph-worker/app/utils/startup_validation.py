@@ -173,7 +173,7 @@ class StartupValidator:
             llm = ChatOpenAI(
                 model=self.settings.default_model,
                 temperature=0,
-                max_tokens=1,
+                max_tokens=min(50, self.settings.max_tokens or 50),
                 openai_api_key=self.settings.openai_api_key
             )
 
