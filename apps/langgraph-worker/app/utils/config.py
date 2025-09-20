@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     max_execution_time: int = int(os.getenv("MAX_EXECUTION_TIME_OPTIONAL", "300"))  # 5 minutes
     
     # Model Configuration
-    default_model: str = os.getenv("DEFAULT_MODEL_OPTIONAL", os.getenv("DEFAULT_MODEL", "gpt-5-nano"))
+    default_model: str = os.getenv("DEFAULT_MODEL", "gpt-5-nano")
 
     @property
     def temperature(self) -> float:
