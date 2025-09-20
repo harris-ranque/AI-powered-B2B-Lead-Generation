@@ -8,6 +8,19 @@ export interface ValidationResult<T> {
   errors: string[];
 }
 
+export interface TransformedEmailRequest {
+  requestId?: string;
+  leadId?: string;
+  completed_at?: number;
+  quality_score?: number;
+  processing_time?: number;
+  primary_email: { subject: string; body: string };
+  follow_up_emails: Array<{ subject: string; body: string; delay_days: number }>;
+  relevance_score: number;
+  personalization_notes: string[];
+  estimated_response_rate: number;
+}
+
 export function isEmailGenerationRequest(obj: unknown): obj is {
   status: string;
   result?: {
@@ -90,45 +103,122 @@ export function validateEmailGenerationResult(obj: unknown): ValidationResult<{
   };
 }
 
-export function safeTransformEmailRequests(emailRequests: unknown): Array<{
-  primary_email: { subject: string; body: string };
-  follow_up_emails: Array<{ subject: string; body: string }>;
-  relevance_score: number;
-  personalization_notes: string[];
-  estimated_response_rate: number;
-}> {
-  if (
-    !emailRequests ||
-    typeof emailRequests !== "object" ||
-    emailRequests === null ||
-    !(emailRequests as Record<string, unknown>).page ||
-    !Array.isArray((emailRequests as Record<string, unknown>).page)
+export function safeTransformEmailRequests(
+  emailRequests: unknown,
+): TransformedEmailRequest[] {
+  let page: unknown[] = [];
+
+  if (Array.isArray(emailRequests)) {
+    page = emailRequests;
+  } else if (
+    emailRequests &&
+    typeof emailRequests === "object" &&
+    emailRequests !== null &&
+    Array.isArray((emailRequests as Record<string, unknown>).page)
   ) {
+    page = (emailRequests as Record<string, unknown>).page as unknown[];
+  } else {
     return [];
   }
 
-  const page = (emailRequests as Record<string, unknown>).page as unknown[];
+  const results: TransformedEmailRequest[] = [];
 
-  const results: Array<{
-    primary_email: { subject: string; body: string };
-    follow_up_emails: Array<{ subject: string; body: string }>;
-    relevance_score: number;
-    personalization_notes: string[];
-    estimated_response_rate: number;
-  }> = [];
-
-  for (const request of page) {
-    if (
-      request &&
-      typeof request === "object" &&
-      (request as Record<string, unknown>).status === "completed" &&
-      isEmailGenerationRequest(request)
-    ) {
-      const validation = validateEmailGenerationResult(request);
-      if (validation.success && validation.data) {
-        results.push(validation.data);
-      }
+  for (const entry of page) {
+    if (!entry || typeof entry !== "object") {
+      continue;
     }
+
+    const request = entry as Record<string, unknown>;
+    if (request.status !== "completed") {
+      continue;
+    }
+
+    const rawResult = request.result;
+    if (!rawResult || typeof rawResult !== "object") {
+      continue;
+    }
+
+    const result = rawResult as Record<string, unknown>;
+    const primary = result.primary_email as Record<string, unknown> | undefined;
+    if (!primary) {
+      continue;
+    }
+
+    const subject =
+      typeof primary.subject === "string" ? primary.subject : "Generated Email";
+    const body = typeof primary.body === "string" ? primary.body : "";
+
+    const personalizationSource = Array.isArray(primary.personalization_notes)
+      ? primary.personalization_notes
+      : Array.isArray(result.personalization_notes)
+        ? result.personalization_notes
+        : [];
+
+    const personalizationNotes = personalizationSource.filter(
+      (note): note is string => typeof note === "string",
+    );
+
+    const followUpsRaw = Array.isArray(result.follow_up_emails)
+      ? result.follow_up_emails
+      : [];
+
+    const follow_up_emails = followUpsRaw.map((followUp, index) => {
+      if (!followUp || typeof followUp !== "object") {
+        return {
+          subject: `Follow Up ${index + 1}`,
+          body: "",
+          delay_days: (index + 1) * 3,
+        };
+      }
+      const data = followUp as Record<string, unknown>;
+      return {
+        subject:
+          typeof data.subject === "string"
+            ? data.subject
+            : `Follow Up ${index + 1}`,
+        body: typeof data.body === "string" ? data.body : "",
+        delay_days:
+          typeof data.delay_days === "number"
+            ? data.delay_days
+            : (index + 1) * 3,
+      };
+    });
+
+    const relevance_score =
+      typeof result.relevance_score === "number" ? result.relevance_score : 0;
+
+    const estimated_response_rate =
+      typeof result.estimated_response_rate === "number"
+        ? result.estimated_response_rate
+        : typeof primary.estimated_effectiveness === "number"
+          ? primary.estimated_effectiveness
+          : 0.15;
+
+    const metadata = request.metadata as Record<string, unknown> | undefined;
+
+    results.push({
+      requestId:
+        typeof request.requestId === "string" ? request.requestId : undefined,
+      leadId:
+        typeof request.leadId === "string" ? request.leadId : undefined,
+      completed_at:
+        typeof request.completedAt === "number"
+          ? (request.completedAt as number)
+          : undefined,
+      quality_score:
+        metadata && typeof metadata.qualityScore === "number"
+          ? (metadata.qualityScore as number)
+          : undefined,
+      processing_time:
+        metadata && typeof metadata.processingTime === "number"
+          ? (metadata.processingTime as number)
+          : undefined,
+      primary_email: { subject, body },
+      follow_up_emails,
+      relevance_score,
+      personalization_notes: personalizationNotes,
+      estimated_response_rate,
+    });
   }
 
   return results;

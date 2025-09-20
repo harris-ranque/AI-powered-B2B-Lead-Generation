@@ -32,10 +32,15 @@ const fallbackActivities = [
     description: "Create your first lead search to see activity",
     time: "now",
     status: "info" as const,
+    isHistoryEvent: false,
   },
 ];
 
-export function ActivityPanel() {
+interface ActivityPanelProps {
+  onNavigateToHistory?: () => void;
+}
+
+export function ActivityPanel({ onNavigateToHistory }: ActivityPanelProps = {}) {
   // Get real-time data
   const { broadcasts, latestStatus } = useStatusBroadcasts();
   const { searches } = useSearches();
@@ -74,6 +79,14 @@ export function ActivityPanel() {
   // Create activities from real-time broadcasts
   const realtimeActivities = broadcasts.slice(0, 6).map((broadcast, index) => {
     const stage = broadcast.data?.stage || broadcast.type;
+    const redirectTo =
+      broadcast.data &&
+      typeof broadcast.data === "object" &&
+      "redirectTo" in broadcast.data
+        ? (broadcast.data as Record<string, unknown>).redirectTo
+        : undefined;
+    const isHistoryEvent =
+      stage === "email_generation_completed" || redirectTo === "search-history";
     return {
       id: broadcast._id,
       type: broadcast.type,
@@ -82,6 +95,7 @@ export function ActivityPanel() {
       description: broadcast.message,
       time: formatBroadcastTime(broadcast.createdAt),
       status: getActivityStatus(broadcast.priority),
+      isHistoryEvent,
     };
   });
 
@@ -112,7 +126,16 @@ export function ActivityPanel() {
           return (
             <Card
               key={activity.id}
-              className="glass-card p-4 hover-accent transition-smooth cursor-pointer"
+              className={`glass-card p-4 hover-accent transition-smooth ${
+                activity.isHistoryEvent && onNavigateToHistory
+                  ? "cursor-pointer"
+                  : "cursor-default"
+              }`}
+              onClick={() => {
+                if (activity.isHistoryEvent && onNavigateToHistory) {
+                  onNavigateToHistory();
+                }
+              }}
             >
               <div className="flex items-start gap-3">
                 <div

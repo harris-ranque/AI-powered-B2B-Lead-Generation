@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -55,6 +56,7 @@ const EXPORT_FORMATS = [
 export function ReviewExportStage() {
   const { state, resetPipeline } = usePipeline();
   const { user } = useUser();
+  const { getToken: getClerkToken } = useClerkAuth();
   const { toast } = useToast();
   const [isExporting, setIsExporting] = useState(false);
   const [exportedFormats, setExportedFormats] = useState<string[]>([]);
@@ -83,22 +85,36 @@ export function ReviewExportStage() {
         // use as-is
       }
 
-      // TODO(auth): Migrate CSV export to server-signed token flow (Option A)
-      // - Call `${baseUrl}/api/sse/issue-token` with Clerk bearer to get `v2.*` token
-      // - Update backend /api/exports/leads.csv to accept v2 HMAC tokens (like /api/events)
-      // - Remove this legacy base64 token generation once backend accepts v2
-      // Generate legacy auth token (userId:timestamp:nonce base64)
-      const timestamp = Date.now();
-      const randomBytes = crypto.getRandomValues
-        ? Array.from(crypto.getRandomValues(new Uint8Array(16)))
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("")
-        : Math.random().toString(36).substring(2);
-      const token = btoa(`${user._id}:${timestamp}:${randomBytes}`);
+      if (!getClerkToken) {
+        throw new Error("Unable to access session token");
+      }
+
+      const authToken =
+        (await getClerkToken({ template: "convex" })) ||
+        (await getClerkToken());
+      if (!authToken) {
+        throw new Error("Unable to obtain session token");
+      }
+
+      const tokenResponse = await fetch(`${baseUrl}/api/exports/issue-token`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      if (!tokenResponse.ok) {
+        throw new Error("Failed to request export token");
+      }
+
+      const tokenBody = (await tokenResponse.json()) as { token?: string };
+      if (!tokenBody?.token) {
+        throw new Error("Invalid export token response");
+      }
 
       const params = new URLSearchParams();
       params.set("userId", user._id);
-      params.set("token", token);
+      params.set("token", tokenBody.token);
       if (state.searchId) params.set("searchId", state.searchId);
 
       const exportUrl = `${baseUrl}/api/exports/leads.csv?${params.toString()}`;

@@ -25,7 +25,10 @@ export function useEmailSequences(leadId?: Id<"leads">) {
 }
 
 export function useLangGraphRequests() {
-  const requests = useQuery(api.langgraph.queries.getUserRequests);
+  const requests = useQuery(api.langgraph.queries.getUserRequests, {
+    limit: 50,
+    offset: 0,
+  });
 
   return {
     requests,

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useAuth as useClerkAuth } from "@clerk/clerk-react";
 import type { Doc } from "@genni/convex-types/dataModel";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { Calendar, MapPin, Download, Loader2 } from "lucide-react";
 export function LeadSearchHistory() {
   const { searches, isLoading } = useSearches();
   const { user } = useAuth();
+  const { getToken: getClerkToken } = useClerkAuth();
   const { toast } = useToast();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
@@ -33,18 +35,36 @@ export function LeadSearchHistory() {
         // use as-is
       }
 
-      // Legacy base64 token generation (matches backend http.ts)
-      const timestamp = Date.now();
-      const randomBytes = crypto.getRandomValues
-        ? Array.from(crypto.getRandomValues(new Uint8Array(16)))
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("")
-        : Math.random().toString(36).substring(2);
-      const token = btoa(`${user._id}:${timestamp}:${randomBytes}`);
+      if (!getClerkToken) {
+        throw new Error("Unable to access session token");
+      }
+
+      const authToken =
+        (await getClerkToken({ template: "convex" })) ||
+        (await getClerkToken());
+      if (!authToken) {
+        throw new Error("Unable to obtain session token");
+      }
+
+      const tokenResponse = await fetch(`${baseUrl}/api/exports/issue-token`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      if (!tokenResponse.ok) {
+        throw new Error("Failed to request export token");
+      }
+
+      const tokenBody = (await tokenResponse.json()) as { token?: string };
+      if (!tokenBody?.token) {
+        throw new Error("Invalid export token response");
+      }
 
       const params = new URLSearchParams();
       params.set("userId", user._id);
-      params.set("token", token);
+      params.set("token", tokenBody.token);
       params.set("searchId", searchId);
 
       const exportUrl = `${baseUrl}/api/exports/leads.csv?${params.toString()}`;
