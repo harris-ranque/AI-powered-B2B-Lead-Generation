@@ -92,23 +92,29 @@ class Settings(BaseSettings):
     max_execution_time: int = int(os.getenv("MAX_EXECUTION_TIME_OPTIONAL", "300"))  # 5 minutes
     
     # Model Configuration
-    default_model: str = Field(default="gpt-4o-mini")
-    temperature: float = Field(default=0.7)
-    max_tokens: int = Field(default=2000)
+    default_model: str = os.getenv("DEFAULT_MODEL", "gpt-4o-mini")
 
-    @field_validator('temperature', mode='before')
-    @classmethod
-    def parse_temperature(cls, v):
-        if v == "" or v is None:
+    @property
+    def temperature(self) -> float:
+        """Get temperature with fallback handling"""
+        temp_str = os.getenv("TEMPERATURE", "0.7")
+        try:
+            if temp_str == "" or temp_str is None:
+                return 0.7
+            return float(temp_str)
+        except (ValueError, TypeError):
             return 0.7
-        return float(v)
 
-    @field_validator('max_tokens', mode='before')
-    @classmethod
-    def parse_max_tokens(cls, v):
-        if v == "" or v is None:
+    @property
+    def max_tokens(self) -> int:
+        """Get max_tokens with fallback handling"""
+        tokens_str = os.getenv("MAX_TOKENS", "2000")
+        try:
+            if tokens_str == "" or tokens_str is None:
+                return 2000
+            return int(tokens_str)
+        except (ValueError, TypeError):
             return 2000
-        return int(v)
     
     # Sentry Configuration
     sentry_dsn: Optional[str] = os.getenv("SENTRY_DSN", None)
