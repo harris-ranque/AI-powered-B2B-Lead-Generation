@@ -93,7 +93,7 @@ class Settings(BaseSettings):
     debug: bool = os.getenv("DEBUG_OPTIONAL", "false").lower() == "true"
     
     # LangGraph Configuration
-    langgraph_verbose: bool = os.getenv("LANGGRAPH_VERBOSE_OPTIONAL", "true").lower() == "true"
+    langgraph_verbose: bool = os.getenv("CREW_VERBOSE_OPTIONAL", os.getenv("LANGGRAPH_VERBOSE_OPTIONAL", "true")).lower() == "true"
     max_execution_time: int = int(os.getenv("MAX_EXECUTION_TIME_OPTIONAL", "300"))  # 5 minutes
     
     # Model Configuration
@@ -102,7 +102,7 @@ class Settings(BaseSettings):
     @property
     def temperature(self) -> float:
         """Get temperature with fallback handling"""
-        temp_str = os.getenv("TEMPERATURE", "0.7")
+        temp_str = os.getenv("TEMPERATURE_OPTIONAL", os.getenv("TEMPERATURE", "0.7"))
         try:
             if temp_str == "" or temp_str is None:
                 return 0.7
