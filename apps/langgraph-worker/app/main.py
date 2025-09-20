@@ -93,19 +93,43 @@ webhook_client = WebhookClient(settings.webhook_url, settings.api_key)
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize background services on startup"""
+    """Initialize background services on startup with comprehensive validation"""
+    from .utils.startup_validation import run_startup_validation, StartupValidationError
+
     logger.info("=" * 60)
     logger.info("GENNI LANGGRAPH WORKER STARTING UP")
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'production')}")
-    logger.info(f"OpenAI API Key configured: {'Yes' if settings.openai_api_key else 'No'}")
-    logger.info(f"Convex URL: {settings.convex_url}")
-    logger.info(f"Webhook URL: {settings.webhook_url} {'(auto-calculated)' if settings.convex_url and not os.getenv('WEBHOOK_URL') else '(explicit)'}")
-    logger.info(f"Sentry monitoring: {'Enabled' if settings.sentry_dsn else 'Disabled'}")
-    if settings.sentry_dsn:
-        logger.info(f"Sentry traces sample rate: {settings.sentry_traces_sample_rate}")
-        logger.info(f"Sentry logs enabled: {settings.sentry_enable_logs}")
-    logger.debug(f"API Key configured: {'Yes' if settings.api_key else 'No'}")
-    
+
+    try:
+        # Run comprehensive startup validation
+        logger.info("🔍 Running startup validation...")
+        await run_startup_validation()
+        logger.info("✅ Startup validation completed successfully!")
+
+        # Log configuration details after validation passes
+        logger.info(f"OpenAI API Key configured: {'Yes' if settings.openai_api_key else 'No'}")
+        logger.info(f"Convex URL: {settings.convex_url}")
+        logger.info(f"Webhook URL: {settings.webhook_url} {'(auto-calculated)' if settings.convex_url and not os.getenv('WEBHOOK_URL') else '(explicit)'}")
+        logger.info(f"Default Model: {settings.default_model}")
+        logger.info(f"Sentry monitoring: {'Enabled' if settings.sentry_dsn else 'Disabled'}")
+        if settings.sentry_dsn:
+            logger.info(f"Sentry traces sample rate: {settings.sentry_traces_sample_rate}")
+            logger.info(f"Sentry logs enabled: {settings.sentry_enable_logs}")
+        logger.debug(f"API Key configured: {'Yes' if settings.api_key else 'No'}")
+
+    except StartupValidationError as e:
+        logger.error("💥 STARTUP VALIDATION FAILED!")
+        logger.error(f"Error: {str(e)}")
+        logger.error("❌ Server will not start. Please fix the configuration issues above.")
+        # Exit with error code to fail the deployment
+        import sys
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"💥 Unexpected error during startup validation: {str(e)}")
+        logger.error("❌ Server will not start due to unexpected error.")
+        import sys
+        sys.exit(1)
+
     # Start the background processor
     asyncio.create_task(single_replica_optimizer.background_processor())
     logger.info("Background processor started successfully")
@@ -140,18 +164,46 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check with detailed status"""
+    """Health check with detailed status and validation results"""
+    from .utils.startup_validation import StartupValidator
+
     logger.debug("Health check requested")
     optimizer_status = single_replica_optimizer.get_status()
     logger.debug(f"Optimizer status: {optimizer_status}")
-    
+
+    # Run lightweight validation check
+    validator = StartupValidator()
+    validation_status = "passed"
+    validation_errors = []
+
+    try:
+        # Quick validation without full startup check
+        if not settings.openai_api_key or settings.openai_api_key == "test-openai-key":
+            validation_errors.append("OpenAI API key not configured")
+        if not settings.api_key or settings.api_key == "default-secure-key-change-in-production":
+            validation_errors.append("Convex API key not configured")
+        if not settings.webhook_url:
+            validation_errors.append("Webhook URL not configured")
+
+        if validation_errors:
+            validation_status = "failed"
+
+    except Exception as e:
+        validation_status = "error"
+        validation_errors.append(str(e))
+
     health_response = {
-        "status": "healthy",
+        "status": "healthy" if validation_status == "passed" else "degraded",
         "timestamp": datetime.utcnow().isoformat(),
+        "validation": {
+            "status": validation_status,
+            "errors": validation_errors
+        },
         "services": {
             "fastapi": "running",
             "langgraph": "initialized",
-            "openai": "connected" if settings.openai_api_key else "not configured"
+            "openai": "connected" if settings.openai_api_key and settings.openai_api_key != "test-openai-key" else "not configured",
+            "convex": "connected" if settings.webhook_url and settings.api_key else "not configured"
         },
         "performance": {
             "active_tasks": optimizer_status["active_tasks"],

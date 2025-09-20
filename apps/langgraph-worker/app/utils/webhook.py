@@ -35,7 +35,7 @@ class WebhookClient:
         error: Optional[str] = None,
         quality_score: Optional[float] = None,
         approved: Optional[bool] = None,
-        retries: int = 3
+        retries: int = 2
     ) -> bool:
         """Send processing result via webhook"""
         
@@ -59,15 +59,21 @@ class WebhookClient:
                     except Exception:
                         result_payload = None
 
+        # Build payload with only non-None values (Convex v.optional doesn't accept null)
         payload = {
             "request_id": request_id,
             "status": status,
-            "timestamp": datetime.utcnow().isoformat(),
-            "result": result_payload,
-            "error": error,
-            "quality_score": quality_score,
-            "approved": approved
         }
+
+        # Only include optional fields if they have values
+        if result_payload is not None:
+            payload["result"] = result_payload
+        if error is not None:
+            payload["error"] = error
+        if quality_score is not None:
+            payload["quality_score"] = quality_score
+        if approved is not None:
+            payload["approved"] = approved
         
         # Prepare headers
         headers = {"Content-Type": "application/json", "User-Agent": "langgraph-worker/2.0"}
@@ -175,7 +181,7 @@ class WebhookClient:
         analysis: Optional[Dict[str, Any]] = None,
         error: Optional[str] = None,
         processing_time: Optional[float] = None,
-        retries: int = 3
+        retries: int = 2
     ) -> bool:
         """Send lead analysis result via webhook"""
 
