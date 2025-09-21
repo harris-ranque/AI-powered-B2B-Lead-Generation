@@ -1,11 +1,17 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-import { Card } from "@/components/ui/card";
+import React, { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { formatDistanceToNow } from "date-fns";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -14,510 +20,230 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
-  Users,
-  Building,
-  DollarSign,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
   Activity,
-  Search,
-  Mail,
-  TrendingUp,
-  TrendingDown,
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  Ban,
-  Edit,
-  Download,
-  RefreshCw,
-  Eye,
-  Shield,
-  Settings,
-  Save,
-  Power,
-  Square,
-  Pause,
-  Play,
   AlertTriangle,
-  Trash2,
-  ExternalLink,
-  Globe,
-  Server,
-  Database,
   BarChart3,
-  Code,
-  CreditCard,
-  Key,
-  Cloud,
-  GitBranch,
-  Bug,
-  MapPin,
-  Brain,
-  Microscope,
-  FileText,
+  DollarSign,
+  PauseCircle,
+  PlayCircle,
+  RefreshCw,
+  Settings,
+  ShieldAlert,
+  Users,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
-  useAdminDashboard,
-  useAdminUsers,
   useAdminAnalytics,
   useAdminConfiguration,
+  useAdminDashboard,
   useAdminSystemControl,
+  useAdminUsers,
 } from "@/hooks/useAdmin";
-import { CreditManagement } from "./admin/CreditManagement";
 import type { Id, Doc } from "@genni/convex-types/dataModel";
+import { CreditManagement } from "./admin/CreditManagement";
 
-// User type based on Convex schema
-interface User {
-  _id: Id<"users">;
-  clerkId: string;
-  email: string;
-  name?: string;
-  avatar?: string;
-  plan: "free" | "pro" | "starter" | "professional" | "business" | "enterprise";
-  credits: number;
-  role: "user" | "admin";
-  isActive: boolean;
-  processingPaused?: boolean;
-  pauseReason?: string;
-  pausedAt?: number;
-  pausedBy?: Id<"users">;
-  createdAt?: number;
-  updatedAt?: number;
-}
-
-interface AdminMetrics {
-  totalUsers: number;
-  activeUsers: number;
-  totalRevenue: number;
-  monthlyRevenue: number;
-  searchesDaily: number;
-  leadsGenerated: number;
-  emailsGenerated: number;
-  averageResponseRate: number;
-  systemHealth: {
-    apiUptime: number;
-    queueHealth: number;
-    errorRate: number;
-    avgResponseTime: number;
-  };
-}
-
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  plan: "free" | "pro" | "enterprise";
-  status: "active" | "inactive" | "banned";
-  creditsRemaining: number;
-  totalSpent: number;
-  lastLogin: string;
-  signupDate: string;
-  searchesThisMonth: number;
-  leadsGenerated: number;
-}
-
-interface Company {
-  id: string;
-  name: string;
-  industry: string;
-  userCount: number;
-  totalRevenue: number;
-  plan: "free" | "pro" | "enterprise";
-  status: "active" | "trial" | "cancelled";
-  monthlySearches: number;
-  conversionRate: number;
-}
-
-interface CreditCosts {
+type CreditCostForm = {
   leadDiscovery: number;
-  contactEnrichment: number;
+  emailEnrichment: number;
   aiAnalysis: number;
   emailGeneration: number;
   bulkAnalysis: number;
-}
-
-interface PlanLimits {
-  free: {
-    monthlyCredits: number;
-    maxLeadsPerSearch: number;
-    maxSearches: number;
-  };
-  pro: {
-    monthlyCredits: number;
-    maxLeadsPerSearch: number;
-    maxSearches: number;
-  };
-  enterprise: {
-    monthlyCredits: number;
-    maxLeadsPerSearch: number;
-    maxSearches: number;
-  };
-}
-
-// Admin-configurable credit pack type
-type CreditPack = {
-  id: string;
-  credits: number;
-  priceCents: number;
-  bonus?: number;
-  active: boolean;
-  stripePriceId?: string;
 };
 
-// Input shape for upserting a plan configuration
-type PlanConfigurationInput = {
+type PlanKey = "free" | "pro" | "enterprise";
+
+type PlanLimitFields = {
+  monthlyCredits: number;
+  maxSearches: number;
+  maxLeadsPerSearch: number;
+  emailGeneration: boolean;
+  bulkOperations: boolean;
+  apiAccess: boolean;
+};
+
+type PlanLimitsForm = Record<PlanKey, PlanLimitFields>;
+
+type PlanCatalogEntry = {
+  _id: Id<"planConfigurations">;
   planId: string;
-  planName: string;
-  monthlyPrice: number;
-  yearlyPrice: number;
-  stripePriceIdMonthly?: string;
-  stripePriceIdYearly?: string;
-  limits: {
-    monthlySearches: number;
-    maxLeadsPerSearch: number;
-    monthlyEnrichments: number;
-    monthlyExports: number;
-    emailGeneration: boolean;
-    bulkOperations: boolean;
-    apiAccess: boolean;
-    requiresOwnApiKeys: boolean;
-    supportLevel: string;
+  planName?: string;
+  monthlyPrice?: number;
+  yearlyPrice?: number;
+  limits?: {
+    monthlySearches?: number;
+    maxLeadsPerSearch?: number;
+    monthlyEnrichments?: number;
+    monthlyExports?: number;
+    emailGeneration?: boolean;
+    bulkOperations?: boolean;
+    apiAccess?: boolean;
+    requiresOwnApiKeys?: boolean;
+    supportLevel?: string;
   };
-  features: string[];
-  isActive: boolean;
-  isVisible: boolean;
-  sortOrder: number;
+  features?: string[];
+  isActive?: boolean;
+  isVisible?: boolean;
+  sortOrder?: number;
 };
 
-// External Services Configuration
-interface ExternalService {
-  id: string;
-  name: string;
-  description: string;
-  icon: React.ComponentType<{ className?: string }>;
-  url: string;
-  status?: "operational" | "degraded" | "down" | "maintenance";
-  category: "infrastructure" | "monitoring" | "api" | "development";
-  quickActions?: Array<{
-    label: string;
-    url: string;
-    icon?: React.ComponentType<{ className?: string }>;
+type AdminUser = Doc<"users"> & {
+  processingPaused?: boolean;
+  pauseReason?: string;
+};
+
+type AdminPlan = "starter" | "professional" | "business" | "enterprise";
+
+type SystemActivity = {
+  activitySummary?: {
+    totalSearches: number;
+    failedSearches: number;
+    successRate: number;
+  };
+  systemLogs?: Array<{
+    id: string;
+    type: string;
+    action: string;
+    timestamp: number;
   }>;
+  recentSearches?: Array<{
+    id: Id<"searches">;
+    status: string;
+    createdAt: number;
+    name?: string;
+  }>;
+  failedOperations?: number;
+};
+
+type SystemStatus = {
+  maintenanceMode?: boolean;
+  leadGenerationPaused?: boolean;
+  orchestrationSettings?: {
+    pauseReason?: string;
+    pausedAt?: number;
+  };
+  processingQueue?: {
+    processing: number;
+    queued: number;
+    total: number;
+  };
+  systemLoad?: {
+    status: "low" | "medium" | "high";
+    activeProcesses: number;
+  };
+};
+
+type SystemHealth = {
+  status?: string;
+  failures?: { searches?: number; langGraphRequests?: number };
+  processing?: { activeSearches?: number; stuckSearches?: number };
+};
+
+const TAB_KEYS = ["overview", "users", "credits", "configuration", "system"] as const;
+
+const DEFAULT_CREDIT_COSTS: CreditCostForm = {
+  leadDiscovery: 1,
+  emailEnrichment: 2,
+  aiAnalysis: 3,
+  emailGeneration: 5,
+  bulkAnalysis: 10,
+};
+
+const DEFAULT_PLAN_LIMITS: PlanLimitsForm = {
+  free: {
+    monthlyCredits: 50,
+    maxSearches: 5,
+    maxLeadsPerSearch: 25,
+    emailGeneration: true,
+    bulkOperations: false,
+    apiAccess: false,
+  },
+  pro: {
+    monthlyCredits: 500,
+    maxSearches: 50,
+    maxLeadsPerSearch: 100,
+    emailGeneration: true,
+    bulkOperations: true,
+    apiAccess: true,
+  },
+  enterprise: {
+    monthlyCredits: 2000,
+    maxSearches: -1,
+    maxLeadsPerSearch: 500,
+    emailGeneration: true,
+    bulkOperations: true,
+    apiAccess: true,
+  },
+};
+
+const PLAN_OPTIONS: { value: AdminPlan; label: string }[] = [
+  { value: "starter", label: "Starter" },
+  { value: "professional", label: "Professional" },
+  { value: "business", label: "Business" },
+  { value: "enterprise", label: "Enterprise" },
+];
+
+const PLAN_LABELS: Record<string, string> = PLAN_OPTIONS.reduce(
+  (acc, plan) => ({ ...acc, [plan.value]: plan.label }),
+  {},
+);
+
+function formatNumber(value: number | undefined) {
+  if (value === undefined || Number.isNaN(value)) return "–";
+  return new Intl.NumberFormat("en-US").format(value);
 }
 
-// URL Validation Helper
-const validateUrl = (url: string): boolean => {
+function formatCurrency(value: number | undefined) {
+  if (value === undefined || Number.isNaN(value)) return "–";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatPercentage(value: number | undefined) {
+  if (value === undefined || Number.isNaN(value)) return "–";
+  return `${value.toFixed(1)}%`;
+}
+
+function formatTimestamp(timestamp?: number) {
+  if (!timestamp) return "Unknown";
   try {
-    const parsedUrl = new URL(url);
-    return parsedUrl.protocol === "https:" && parsedUrl.hostname.length > 0;
+    return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
   } catch {
-    return false;
+    return "Unknown";
   }
-};
+}
 
-// Safe External Services Configuration with Production URLs
-const getExternalServices = (): ExternalService[] => {
-  try {
-    const services: ExternalService[] = [
-      // Infrastructure & Deployment
-      {
-        id: "railway",
-        name: "Railway",
-        description:
-          "Application deployment platform hosting frontend and LangGraph worker",
-        icon: Server,
-        url: "https://railway.app/dashboard",
-        status: "operational",
-        category: "infrastructure",
-        quickActions: [
-          { label: "View Deployments", url: "https://railway.app/project" },
-          { label: "Check Logs", url: "https://railway.app/project" },
-          { label: "Variables", url: "https://railway.app/project" },
-        ],
-      },
-      {
-        id: "convex",
-        name: "Convex",
-        description: "Real-time backend database with functions and webhooks",
-        icon: Database,
-        url: "https://dashboard.convex.dev",
-        status: "operational",
-        category: "infrastructure",
-        quickActions: [
-          { label: "Dashboard", url: "https://dashboard.convex.dev" },
-          { label: "Functions", url: "https://dashboard.convex.dev" },
-          { label: "Data", url: "https://dashboard.convex.dev" },
-        ],
-      },
-      {
-        id: "github",
-        name: "GitHub",
-        description: "Source code repository, CI/CD, and project management",
-        icon: GitBranch,
-        url: "https://github.com/settings/repositories",
-        status: "operational",
-        category: "development",
-        quickActions: [
-          { label: "Repository", url: "https://github.com" },
-          { label: "Issues", url: "https://github.com/issues" },
-          { label: "Actions", url: "https://github.com/actions" },
-        ],
-      },
+function isAdminPlan(value: string): value is AdminPlan {
+  return PLAN_OPTIONS.some((plan) => plan.value === value);
+}
 
-      // Monitoring & Analytics
-      {
-        id: "posthog",
-        name: "PostHog",
-        description: "User analytics, feature flags, and product insights",
-        icon: BarChart3,
-        url: "https://app.posthog.com",
-        status: "operational",
-        category: "monitoring",
-        quickActions: [
-          { label: "Analytics", url: "https://app.posthog.com/insights" },
-          {
-            label: "Feature Flags",
-            url: "https://app.posthog.com/feature_flags",
-          },
-          { label: "Dashboards", url: "https://app.posthog.com/dashboard" },
-        ],
-      },
-      {
-        id: "sentry",
-        name: "Sentry",
-        description: "Error monitoring, performance tracking, and debugging",
-        icon: Bug,
-        url: "https://sentry.io/organizations/",
-        status: "operational",
-        category: "monitoring",
-        quickActions: [
-          { label: "Issues", url: "https://sentry.io/organizations/" },
-          { label: "Performance", url: "https://sentry.io/organizations/" },
-          { label: "Releases", url: "https://sentry.io/organizations/" },
-        ],
-      },
-      {
-        id: "semgrep",
-        name: "Semgrep",
-        description:
-          "Static code analysis, security scanning, and vulnerability detection",
-        icon: Shield,
-        url: "https://semgrep.dev/manage",
-        status: "operational",
-        category: "monitoring",
-        quickActions: [
-          { label: "Dashboard", url: "https://semgrep.dev/manage" },
-          { label: "Findings", url: "https://semgrep.dev/manage/findings" },
-          { label: "Policies", url: "https://semgrep.dev/manage/policies" },
-          { label: "Rules", url: "https://semgrep.dev/explore" },
-        ],
-      },
-      {
-        id: "langsmith",
-        name: "LangSmith",
-        description:
-          "LangGraph workflow observability, tracing, and debugging for AI agent operations",
-        icon: Microscope,
-        url: "https://smith.langchain.com",
-        status: "operational",
-        category: "monitoring",
-        quickActions: [
-          { label: "Projects", url: "https://smith.langchain.com/projects" },
-          { label: "Traces", url: "https://smith.langchain.com/traces" },
-          { label: "Datasets", url: "https://smith.langchain.com/datasets" },
-          { label: "Settings", url: "https://smith.langchain.com/settings" },
-        ],
-      },
-
-      // APIs & External Services
-      {
-        id: "google-cloud",
-        name: "Google Cloud Console",
-        description:
-          "Google Maps API for business location discovery and geocoding",
-        icon: MapPin,
-        url: "https://console.cloud.google.com",
-        status: "operational",
-        category: "api",
-        quickActions: [
-          {
-            label: "APIs & Services",
-            url: "https://console.cloud.google.com/apis",
-          },
-          { label: "Billing", url: "https://console.cloud.google.com/billing" },
-          { label: "IAM", url: "https://console.cloud.google.com/iam-admin" },
-        ],
-      },
-      {
-        id: "findymail",
-        name: "FindyMail",
-        description: "Email enrichment and contact data verification service",
-        icon: Mail,
-        url: "https://app.findymail.com",
-        status: "operational",
-        category: "api",
-        quickActions: [
-          { label: "Dashboard", url: "https://app.findymail.com/dashboard" },
-          { label: "Credits", url: "https://app.findymail.com/credits" },
-          { label: "API Docs", url: "https://docs.findymail.com" },
-        ],
-      },
-      {
-        id: "stripe",
-        name: "Stripe",
-        description:
-          "Payment processing, subscriptions, and billing management",
-        icon: CreditCard,
-        url: "https://dashboard.stripe.com",
-        status: "operational",
-        category: "api",
-        quickActions: [
-          { label: "Dashboard", url: "https://dashboard.stripe.com" },
-          { label: "Customers", url: "https://dashboard.stripe.com/customers" },
-          { label: "Payments", url: "https://dashboard.stripe.com/payments" },
-          {
-            label: "Subscriptions",
-            url: "https://dashboard.stripe.com/subscriptions",
-          },
-        ],
-      },
-      {
-        id: "clerk",
-        name: "Clerk",
-        description: "Authentication, user management, and session handling",
-        icon: Key,
-        url: "https://dashboard.clerk.com",
-        status: "operational",
-        category: "api",
-        quickActions: [
-          { label: "Dashboard", url: "https://dashboard.clerk.com" },
-          { label: "Users", url: "https://dashboard.clerk.com/users" },
-          { label: "Sessions", url: "https://dashboard.clerk.com/sessions" },
-          { label: "Webhooks", url: "https://dashboard.clerk.com/webhooks" },
-        ],
-      },
-
-      // AI Research Services - Tiered Research System
-      {
-        id: "openai",
-        name: "OpenAI",
-        description:
-          "GPT models for AI analysis and email generation in LangGraph workflow",
-        icon: Brain,
-        url: "https://platform.openai.com",
-        status: "operational",
-        category: "ai-research",
-        quickActions: [
-          { label: "Dashboard", url: "https://platform.openai.com/overview" },
-          { label: "Usage", url: "https://platform.openai.com/usage" },
-          { label: "API Keys", url: "https://platform.openai.com/api-keys" },
-          { label: "Models", url: "https://platform.openai.com/docs/models" },
-        ],
-      },
-      {
-        id: "tavily",
-        name: "Tavily Search",
-        description:
-          "Tier 1: Fast business context research and web search API (2-3s)",
-        icon: Search,
-        url: "https://tavily.com",
-        status: "operational",
-        category: "ai-research",
-        quickActions: [
-          { label: "Dashboard", url: "https://app.tavily.com" },
-          { label: "API Usage", url: "https://app.tavily.com/usage" },
-          { label: "Documentation", url: "https://docs.tavily.com" },
-        ],
-      },
-      {
-        id: "exa",
-        name: "Exa Search",
-        description:
-          "Tier 2: Enhanced semantic search for competitor analysis (3-4s)",
-        icon: Microscope,
-        url: "https://exa.ai",
-        status: "operational",
-        category: "ai-research",
-        quickActions: [
-          { label: "Dashboard", url: "https://dashboard.exa.ai" },
-          { label: "API Usage", url: "https://dashboard.exa.ai/usage" },
-          { label: "Documentation", url: "https://docs.exa.ai" },
-        ],
-      },
-      {
-        id: "perplexity",
-        name: "Perplexity API",
-        description:
-          "Tier 3: Premium comprehensive research reports and analysis (10-15s)",
-        icon: FileText,
-        url: "https://perplexity.ai",
-        status: "operational",
-        category: "ai-research",
-        quickActions: [
-          { label: "Lab", url: "https://labs.perplexity.ai" },
-          { label: "Pro Dashboard", url: "https://perplexity.ai/pro" },
-          { label: "API Docs", url: "https://docs.perplexity.ai" },
-        ],
-      },
-    ];
-
-    // Validate all URLs before returning
-    return services.filter((service) => {
-      const isMainUrlValid = validateUrl(service.url);
-      const areQuickActionsValid =
-        service.quickActions?.every((action) => validateUrl(action.url)) ??
-        true;
-
-      if (!isMainUrlValid || !areQuickActionsValid) {
-        console.warn(`Invalid URL configuration for service: ${service.name}`);
-        return false;
-      }
-      return true;
-    });
-  } catch (error) {
-    console.error("Error initializing external services configuration:", error);
-    return [];
+function getUserCreatedAt(user: AdminUser): number | undefined {
+  if (typeof user.createdAt === "number") {
+    return user.createdAt;
   }
-};
-
-const externalServices = getExternalServices();
+  const withCreationTime = user as { _creationTime?: unknown };
+  return typeof withCreationTime._creationTime === "number"
+    ? withCreationTime._creationTime
+    : undefined;
+}
 
 export function AdminDashboard() {
-  const [currentTab, setCurrentTab] = useState("overview");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [renderError, setRenderError] = useState<string | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Editable configuration state
-  const [creditCosts, setCreditCosts] = useState({
-    leadDiscovery: 1,
-    contactEnrichment: 2,
-    aiAnalysis: 3,
-    emailGeneration: 5,
-    bulkAnalysis: 10,
-  });
-
-  const [planLimits, setPlanLimits] = useState({
-    free: {
-      monthlyCredits: 50,
-      maxLeadsPerSearch: 25,
-      maxSearches: 5,
-    },
-    pro: {
-      monthlyCredits: 500,
-      maxLeadsPerSearch: 100,
-      maxSearches: 50,
-    },
-    enterprise: {
-      monthlyCredits: 2000,
-      maxLeadsPerSearch: 500,
-      maxSearches: -1, // Unlimited
-    },
-  });
-
-  // Real Convex hooks
   const {
     metrics,
     systemHealth,
@@ -534,16 +260,15 @@ export function AdminDashboard() {
   const {
     analytics,
     revenueStats,
+    usageStats,
     isLoading: analyticsLoading,
   } = useAdminAnalytics();
   const {
     configuration,
     updateCreditCosts,
     updatePlanLimits,
-    updateCreditPacks,
     listPlanConfigurations,
-    upsertPlanConfiguration,
-    isLoading: configLoading,
+    isLoading: configurationLoading,
   } = useAdminConfiguration();
   const {
     systemStatus,
@@ -551,2521 +276,1020 @@ export function AdminDashboard() {
     pauseAllLeadGeneration,
     resumeAllLeadGeneration,
     clearAllActiveSearches,
-    isLoading: systemControlLoading,
+    isLoading: systemLoading,
   } = useAdminSystemControl();
 
-  // Companies data not wired yet; avoid mocked data
-  const companies: Company[] = [];
+  const [currentTab, setCurrentTab] = useState<(typeof TAB_KEYS)[number]>("overview");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [creditCostsForm, setCreditCostsForm] = useState<CreditCostForm>(DEFAULT_CREDIT_COSTS);
+  const [planLimitsForm, setPlanLimitsForm] = useState<PlanLimitsForm>(DEFAULT_PLAN_LIMITS);
+  const [savingCreditCosts, setSavingCreditCosts] = useState(false);
+  const [savingPlanLimits, setSavingPlanLimits] = useState(false);
+  const [updatingUserId, setUpdatingUserId] = useState<Id<"users"> | null>(null);
+  const [processingUserId, setProcessingUserId] = useState<Id<"users"> | null>(null);
+  const [systemActionPending, setSystemActionPending] = useState(false);
 
-  // Router helpers and tab sync handlers must be declared before any early return
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  // Sync tab from URL (?tab=services) or hash (#services)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const fromSearch = params.get("tab");
+    const fromQuery = params.get("tab");
     const fromHash = location.hash ? location.hash.replace(/^#/, "") : null;
-    const candidate = (fromSearch || fromHash) as string | null;
-    const allowed = [
-      "overview",
-      "users",
-      "credits",
-      "services",
-      "configuration",
-      "system",
-    ];
-    if (candidate && allowed.includes(candidate) && candidate !== currentTab) {
+    const candidate = (fromQuery || fromHash) as (typeof TAB_KEYS)[number] | null;
+    if (candidate && TAB_KEYS.includes(candidate) && candidate !== currentTab) {
       setCurrentTab(candidate);
     }
   }, [location.search, location.hash, currentTab]);
 
-  // Use real data or fallback to defaults with bulletproof error handling
-  const adminMetrics: AdminMetrics = (() => {
-    try {
-      return {
-        totalUsers:
-          metrics?.totalUsers && typeof metrics.totalUsers === "number"
-            ? metrics.totalUsers
-            : 0,
-        activeUsers:
-          metrics?.activeUsers && typeof metrics.activeUsers === "number"
-            ? metrics.activeUsers
-            : 0,
-        totalRevenue:
-          revenueStats?.totalRevenue &&
-          typeof revenueStats.totalRevenue === "number"
-            ? revenueStats.totalRevenue
-            : 0,
-        monthlyRevenue:
-          revenueStats?.monthlyRevenue &&
-          typeof revenueStats.monthlyRevenue === "number"
-            ? revenueStats.monthlyRevenue
-            : 0,
-        searchesDaily:
-          analytics?.searchesDaily &&
-          typeof analytics.searchesDaily === "number"
-            ? analytics.searchesDaily
-            : 0,
-        leadsGenerated:
-          analytics?.leadsGenerated &&
-          typeof analytics.leadsGenerated === "number"
-            ? analytics.leadsGenerated
-            : 0,
-        emailsGenerated:
-          analytics?.emailsGenerated &&
-          typeof analytics.emailsGenerated === "number"
-            ? analytics.emailsGenerated
-            : 0,
-        averageResponseRate:
-          analytics?.averageResponseRate &&
-          typeof analytics.averageResponseRate === "number"
-            ? analytics.averageResponseRate
-            : 0,
-        systemHealth: {
-          apiUptime:
-            systemHealth?.apiUptime &&
-            typeof systemHealth.apiUptime === "number"
-              ? systemHealth.apiUptime
-              : 0,
-          queueHealth:
-            systemHealth?.queueHealth &&
-            typeof systemHealth.queueHealth === "number"
-              ? systemHealth.queueHealth
-              : 0,
-          errorRate:
-            systemHealth?.errorRate &&
-            typeof systemHealth.errorRate === "number"
-              ? systemHealth.errorRate
-              : 0,
-          avgResponseTime:
-            systemHealth?.avgResponseTime &&
-            typeof systemHealth.avgResponseTime === "number"
-              ? systemHealth.avgResponseTime
-              : 0,
-        },
-      };
-    } catch (error) {
-      console.error("Error constructing adminMetrics:", error);
-      setRenderError("Failed to load admin metrics data");
-      return {
-        totalUsers: 0,
-        activeUsers: 0,
-        totalRevenue: 0,
-        monthlyRevenue: 0,
-        searchesDaily: 0,
-        leadsGenerated: 0,
-        emailsGenerated: 0,
-        averageResponseRate: 0,
-        systemHealth: {
-          apiUptime: 0,
-          queueHealth: 0,
-          errorRate: 0,
-          avgResponseTime: 0,
-        },
-      };
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("tab") !== currentTab) {
+      params.set("tab", currentTab);
+      navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
     }
-  })();
+  }, [currentTab, location.pathname, location.search, navigate]);
 
-  // Initialize configuration state from loaded data with bulletproof error handling
-  React.useEffect(() => {
-    try {
-      if (configuration && typeof configuration === "object") {
-        // Safe credit costs update
-        if (
-          configuration.creditCosts &&
-          typeof configuration.creditCosts === "object"
-        ) {
-          try {
-            setCreditCosts({
-              leadDiscovery:
-                typeof configuration.creditCosts.LEAD_DISCOVERY === "number"
-                  ? configuration.creditCosts.LEAD_DISCOVERY
-                  : 1,
-              contactEnrichment:
-                typeof configuration.creditCosts.EMAIL_ENRICHMENT === "number"
-                  ? configuration.creditCosts.EMAIL_ENRICHMENT
-                  : 2,
-              aiAnalysis:
-                typeof configuration.creditCosts.AI_ANALYSIS === "number"
-                  ? configuration.creditCosts.AI_ANALYSIS
-                  : 3,
-              emailGeneration:
-                typeof configuration.creditCosts.EMAIL_GENERATION === "number"
-                  ? configuration.creditCosts.EMAIL_GENERATION
-                  : 5,
-              bulkAnalysis:
-                typeof configuration.creditCosts.BULK_ANALYSIS === "number"
-                  ? configuration.creditCosts.BULK_ANALYSIS
-                  : 10,
-            });
-          } catch (error) {
-            console.error("Error setting credit costs:", error);
-          }
-        }
-
-        // Safe plan limits update
-        if (
-          configuration.planLimits &&
-          typeof configuration.planLimits === "object"
-        ) {
-          try {
-            setPlanLimits({
-              free: {
-                monthlyCredits:
-                  configuration.planLimits.free?.monthlyCredits &&
-                  typeof configuration.planLimits.free.monthlyCredits ===
-                    "number"
-                    ? configuration.planLimits.free.monthlyCredits
-                    : 100,
-                maxLeadsPerSearch:
-                  configuration.planLimits.free?.maxLeadsPerSearch &&
-                  typeof configuration.planLimits.free.maxLeadsPerSearch ===
-                    "number"
-                    ? configuration.planLimits.free.maxLeadsPerSearch
-                    : 50,
-                maxSearches:
-                  configuration.planLimits.free?.maxSearches &&
-                  typeof configuration.planLimits.free.maxSearches === "number"
-                    ? configuration.planLimits.free.maxSearches
-                    : 5,
-              },
-              pro: {
-                monthlyCredits:
-                  configuration.planLimits.pro?.monthlyCredits &&
-                  typeof configuration.planLimits.pro.monthlyCredits ===
-                    "number"
-                    ? configuration.planLimits.pro.monthlyCredits
-                    : 500,
-                maxLeadsPerSearch:
-                  configuration.planLimits.pro?.maxLeadsPerSearch &&
-                  typeof configuration.planLimits.pro.maxLeadsPerSearch ===
-                    "number"
-                    ? configuration.planLimits.pro.maxLeadsPerSearch
-                    : 200,
-                maxSearches:
-                  configuration.planLimits.pro?.maxSearches &&
-                  typeof configuration.planLimits.pro.maxSearches === "number"
-                    ? configuration.planLimits.pro.maxSearches
-                    : 25,
-              },
-              enterprise: {
-                monthlyCredits:
-                  configuration.planLimits.enterprise?.monthlyCredits &&
-                  typeof configuration.planLimits.enterprise.monthlyCredits ===
-                    "number"
-                    ? configuration.planLimits.enterprise.monthlyCredits
-                    : 2000,
-                maxLeadsPerSearch:
-                  configuration.planLimits.enterprise?.maxLeadsPerSearch &&
-                  typeof configuration.planLimits.enterprise
-                    .maxLeadsPerSearch === "number"
-                    ? configuration.planLimits.enterprise.maxLeadsPerSearch
-                    : 1000,
-                maxSearches:
-                  configuration.planLimits.enterprise?.maxSearches &&
-                  typeof configuration.planLimits.enterprise.maxSearches ===
-                    "number"
-                    ? configuration.planLimits.enterprise.maxSearches
-                    : -1,
-              },
-            });
-          } catch (error) {
-            console.error("Error setting plan limits:", error);
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Error in configuration useEffect:", error);
-      setRenderError("Failed to initialize configuration data");
+  useEffect(() => {
+    if (configuration?.creditCosts) {
+      setCreditCostsForm({
+        leadDiscovery:
+          typeof configuration.creditCosts.LEAD_DISCOVERY === "number"
+            ? configuration.creditCosts.LEAD_DISCOVERY
+            : DEFAULT_CREDIT_COSTS.leadDiscovery,
+        emailEnrichment:
+          typeof configuration.creditCosts.EMAIL_ENRICHMENT === "number"
+            ? configuration.creditCosts.EMAIL_ENRICHMENT
+            : DEFAULT_CREDIT_COSTS.emailEnrichment,
+        aiAnalysis:
+          typeof configuration.creditCosts.AI_ANALYSIS === "number"
+            ? configuration.creditCosts.AI_ANALYSIS
+            : DEFAULT_CREDIT_COSTS.aiAnalysis,
+        emailGeneration:
+          typeof configuration.creditCosts.EMAIL_GENERATION === "number"
+            ? configuration.creditCosts.EMAIL_GENERATION
+            : DEFAULT_CREDIT_COSTS.emailGeneration,
+        bulkAnalysis:
+          typeof configuration.creditCosts.BULK_ANALYSIS === "number"
+            ? configuration.creditCosts.BULK_ANALYSIS
+            : DEFAULT_CREDIT_COSTS.bulkAnalysis,
+      });
     }
-  }, [configuration]);
+  }, [configuration?.creditCosts]);
 
-  // Configuration save handlers
+  useEffect(() => {
+    if (configuration?.planLimits) {
+      setPlanLimitsForm({
+        free: {
+          monthlyCredits:
+            typeof configuration.planLimits.free?.monthlyCredits === "number"
+              ? configuration.planLimits.free.monthlyCredits
+              : DEFAULT_PLAN_LIMITS.free.monthlyCredits,
+          maxSearches:
+            typeof configuration.planLimits.free?.maxSearches === "number"
+              ? configuration.planLimits.free.maxSearches
+              : DEFAULT_PLAN_LIMITS.free.maxSearches,
+          maxLeadsPerSearch:
+            typeof configuration.planLimits.free?.maxLeadsPerSearch === "number"
+              ? configuration.planLimits.free.maxLeadsPerSearch
+              : DEFAULT_PLAN_LIMITS.free.maxLeadsPerSearch,
+          emailGeneration:
+            typeof configuration.planLimits.free?.emailGeneration === "boolean"
+              ? configuration.planLimits.free.emailGeneration
+              : DEFAULT_PLAN_LIMITS.free.emailGeneration,
+          bulkOperations:
+            typeof configuration.planLimits.free?.bulkOperations === "boolean"
+              ? configuration.planLimits.free.bulkOperations
+              : DEFAULT_PLAN_LIMITS.free.bulkOperations,
+          apiAccess:
+            typeof configuration.planLimits.free?.apiAccess === "boolean"
+              ? configuration.planLimits.free.apiAccess
+              : DEFAULT_PLAN_LIMITS.free.apiAccess,
+        },
+        pro: {
+          monthlyCredits:
+            typeof configuration.planLimits.pro?.monthlyCredits === "number"
+              ? configuration.planLimits.pro.monthlyCredits
+              : DEFAULT_PLAN_LIMITS.pro.monthlyCredits,
+          maxSearches:
+            typeof configuration.planLimits.pro?.maxSearches === "number"
+              ? configuration.planLimits.pro.maxSearches
+              : DEFAULT_PLAN_LIMITS.pro.maxSearches,
+          maxLeadsPerSearch:
+            typeof configuration.planLimits.pro?.maxLeadsPerSearch === "number"
+              ? configuration.planLimits.pro.maxLeadsPerSearch
+              : DEFAULT_PLAN_LIMITS.pro.maxLeadsPerSearch,
+          emailGeneration:
+            typeof configuration.planLimits.pro?.emailGeneration === "boolean"
+              ? configuration.planLimits.pro.emailGeneration
+              : DEFAULT_PLAN_LIMITS.pro.emailGeneration,
+          bulkOperations:
+            typeof configuration.planLimits.pro?.bulkOperations === "boolean"
+              ? configuration.planLimits.pro.bulkOperations
+              : DEFAULT_PLAN_LIMITS.pro.bulkOperations,
+          apiAccess:
+            typeof configuration.planLimits.pro?.apiAccess === "boolean"
+              ? configuration.planLimits.pro.apiAccess
+              : DEFAULT_PLAN_LIMITS.pro.apiAccess,
+        },
+        enterprise: {
+          monthlyCredits:
+            typeof configuration.planLimits.enterprise?.monthlyCredits === "number"
+              ? configuration.planLimits.enterprise.monthlyCredits
+              : DEFAULT_PLAN_LIMITS.enterprise.monthlyCredits,
+          maxSearches:
+            typeof configuration.planLimits.enterprise?.maxSearches === "number"
+              ? configuration.planLimits.enterprise.maxSearches
+              : DEFAULT_PLAN_LIMITS.enterprise.maxSearches,
+          maxLeadsPerSearch:
+            typeof configuration.planLimits.enterprise?.maxLeadsPerSearch === "number"
+              ? configuration.planLimits.enterprise.maxLeadsPerSearch
+              : DEFAULT_PLAN_LIMITS.enterprise.maxLeadsPerSearch,
+          emailGeneration:
+            typeof configuration.planLimits.enterprise?.emailGeneration === "boolean"
+              ? configuration.planLimits.enterprise.emailGeneration
+              : DEFAULT_PLAN_LIMITS.enterprise.emailGeneration,
+          bulkOperations:
+            typeof configuration.planLimits.enterprise?.bulkOperations === "boolean"
+              ? configuration.planLimits.enterprise.bulkOperations
+              : DEFAULT_PLAN_LIMITS.enterprise.bulkOperations,
+          apiAccess:
+            typeof configuration.planLimits.enterprise?.apiAccess === "boolean"
+              ? configuration.planLimits.enterprise.apiAccess
+              : DEFAULT_PLAN_LIMITS.enterprise.apiAccess,
+        },
+      });
+    }
+  }, [configuration?.planLimits]);
+
+  const filteredUsers = useMemo(() => {
+    if (!searchTerm.trim()) return users as AdminUser[];
+    const query = searchTerm.toLowerCase();
+    return (users as AdminUser[]).filter((user) => {
+      const haystack = [user.email, user.name, user.plan, user.role]
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.toLowerCase());
+      return haystack.some((value) => value.includes(query));
+    });
+  }, [users, searchTerm]);
+
+  const planDistribution = useMemo(() => {
+    const distribution = metrics?.users?.planDistribution as
+      | Record<string, number>
+      | undefined;
+    if (!distribution) return [] as Array<[string, number]>;
+    return Object.entries(distribution).sort((a, b) => b[1] - a[1]);
+  }, [metrics?.users?.planDistribution]);
+
+  const activity = (systemActivity || {}) as SystemActivity;
+  const status = (systemStatus || {}) as SystemStatus;
+  const health = (systemHealth || {}) as SystemHealth;
+
+  const handleToggleUserActive = async (user: AdminUser) => {
+    setUpdatingUserId(user._id);
+    try {
+      await updateUserStatus({
+        userId: user._id,
+        isActive: !user.isActive,
+      });
+      toast({
+        title: "User status updated",
+        description: `${user.email} is now ${!user.isActive ? "active" : "suspended"}.`,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to update user";
+      toast({ title: "Update failed", description: message, variant: "destructive" });
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
+  const handleUserPlanChange = async (user: AdminUser, plan: AdminPlan) => {
+    setUpdatingUserId(user._id);
+    try {
+      await updateUserPlan({ userId: user._id, plan });
+      toast({
+        title: "Plan updated",
+        description: `${user.email} moved to ${PLAN_LABELS[plan]}.`,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to update plan";
+      toast({ title: "Update failed", description: message, variant: "destructive" });
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
+  const handlePauseProcessing = async (user: AdminUser) => {
+    setProcessingUserId(user._id);
+    try {
+      const reason = window.prompt("Reason for pausing processing?", user.pauseReason || "");
+      await pauseUserProcessing({ userId: user._id, reason: reason || undefined });
+      toast({
+        title: "Processing paused",
+        description: `${user.email} will no longer run new searches until resumed.`,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to pause processing";
+      toast({ title: "Action failed", description: message, variant: "destructive" });
+    } finally {
+      setProcessingUserId(null);
+    }
+  };
+
+  const handleResumeProcessing = async (user: AdminUser) => {
+    setProcessingUserId(user._id);
+    try {
+      await resumeUserProcessing({ userId: user._id });
+      toast({
+        title: "Processing resumed",
+        description: `${user.email} can run new searches again.`,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to resume processing";
+      toast({ title: "Action failed", description: message, variant: "destructive" });
+    } finally {
+      setProcessingUserId(null);
+    }
+  };
+
   const handleSaveCreditCosts = async () => {
+    setSavingCreditCosts(true);
     try {
       await updateCreditCosts({
         creditCosts: {
-          LEAD_DISCOVERY: creditCosts.leadDiscovery,
-          EMAIL_ENRICHMENT: creditCosts.contactEnrichment,
-          AI_ANALYSIS: creditCosts.aiAnalysis,
-          EMAIL_GENERATION: creditCosts.emailGeneration,
-          BULK_ANALYSIS: creditCosts.bulkAnalysis,
+          LEAD_DISCOVERY: creditCostsForm.leadDiscovery,
+          EMAIL_ENRICHMENT: creditCostsForm.emailEnrichment,
+          AI_ANALYSIS: creditCostsForm.aiAnalysis,
+          EMAIL_GENERATION: creditCostsForm.emailGeneration,
+          BULK_ANALYSIS: creditCostsForm.bulkAnalysis,
         },
       });
-      toast({
-        title: "Credit Costs Updated",
-        description: "Credit cost configuration has been saved successfully.",
-      });
+      toast({ title: "Credit costs updated", description: "New costs saved successfully." });
     } catch (error) {
-      toast({
-        title: "Save Failed",
-        description: "Failed to save credit costs. Please try again.",
-        variant: "destructive",
-      });
+      const message = error instanceof Error ? error.message : "Unable to save credit costs";
+      toast({ title: "Save failed", description: message, variant: "destructive" });
+    } finally {
+      setSavingCreditCosts(false);
     }
   };
 
   const handleSavePlanLimits = async () => {
+    setSavingPlanLimits(true);
     try {
-      await updatePlanLimits({
-        planLimits: {
-          free: {
-            monthlyCredits: planLimits.free.monthlyCredits,
-            maxSearches: planLimits.free.maxSearches,
-            maxLeadsPerSearch: planLimits.free.maxLeadsPerSearch,
-            emailGeneration: true,
-            bulkOperations: false,
-            apiAccess: false,
-          },
-          pro: {
-            monthlyCredits: planLimits.pro.monthlyCredits,
-            maxSearches: planLimits.pro.maxSearches,
-            maxLeadsPerSearch: planLimits.pro.maxLeadsPerSearch,
-            emailGeneration: true,
-            bulkOperations: true,
-            apiAccess: true,
-          },
-          enterprise: {
-            monthlyCredits: planLimits.enterprise.monthlyCredits,
-            maxSearches: planLimits.enterprise.maxSearches,
-            maxLeadsPerSearch: planLimits.enterprise.maxLeadsPerSearch,
-            emailGeneration: true,
-            bulkOperations: true,
-            apiAccess: true,
-          },
-        },
-      });
-      toast({
-        title: "Plan Limits Updated",
-        description: "Plan configuration has been saved successfully.",
-      });
+      await updatePlanLimits({ planLimits: planLimitsForm });
+      toast({ title: "Plan limits updated", description: "Limits saved successfully." });
     } catch (error) {
-      toast({
-        title: "Save Failed",
-        description: "Failed to save plan limits. Please try again.",
-        variant: "destructive",
-      });
+      const message = error instanceof Error ? error.message : "Unable to save plan limits";
+      toast({ title: "Save failed", description: message, variant: "destructive" });
+    } finally {
+      setSavingPlanLimits(false);
     }
   };
 
-  // Admin action handlers
-  const handleUserAction = async (userId: string, action: string) => {
-    try {
-      if (action === "ban" || action === "activate") {
-        await updateUserStatus({
-          userId: userId as Id<"users">,
-          isActive: action !== "ban",
-        });
-        toast({
-          title: "User Updated",
-          description: `User has been ${action === "ban" ? "suspended" : "activated"}.`,
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Action Failed",
-        description: "Failed to update user. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleExportData = async (type: string) => {
-    try {
-      toast({
-        title: "Export Started",
-        description: `Exporting ${type} data. Download will start shortly.`,
-      });
-      // Additional export logic would go here
-    } catch (error) {
-      toast({
-        title: "Export Failed",
-        description: "Failed to export data. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  // System Control Handlers
-  const handlePauseAllLeadGeneration = async () => {
-    if (
-      !confirm(
-        "Are you sure you want to pause ALL lead generation activities? This will cancel all active searches and refund credits to users.",
-      )
-    ) {
+  const handlePauseLeadGeneration = async () => {
+    if (!window.confirm("Pause all lead generation and cancel active searches?")) {
       return;
     }
-
-    const reason =
-      prompt("Enter reason for pause (optional):") ||
-      "Emergency pause by admin";
-
+    const reason = window.prompt("Reason for pausing the system?", "Emergency stop");
+    setSystemActionPending(true);
     try {
-      const result = await pauseAllLeadGeneration({
-        reason,
-        maintenanceMode: false,
-      });
-
-      if (result.success) {
-        toast({
-          title: "System Paused",
-          description: `Lead generation paused. Cancelled ${result.cancelledSearches} searches, cleared ${result.clearedBatches} batches, notified ${result.notifiedUsers} users.`,
-        });
-      } else {
-        toast({
-          title: "Pause Failed",
-          description: result.message || "Failed to pause system",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
+      const result = await pauseAllLeadGeneration({ reason: reason || undefined });
       toast({
-        title: "Pause Failed",
-        description: "Failed to pause lead generation. Please try again.",
-        variant: "destructive",
+        title: "Lead generation paused",
+        description:
+          result && typeof result.cancelledSearches === "number"
+            ? `Cancelled ${result.cancelledSearches} searches`
+            : "System is now paused.",
       });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to pause system";
+      toast({ title: "Action failed", description: message, variant: "destructive" });
+    } finally {
+      setSystemActionPending(false);
     }
   };
 
-  const handleResumeAllLeadGeneration = async () => {
-    if (
-      !confirm(
-        "Are you sure you want to resume all lead generation activities?",
-      )
-    ) {
+  const handleResumeLeadGeneration = async () => {
+    setSystemActionPending(true);
+    try {
+      const result = await resumeAllLeadGeneration();
+      toast({
+        title: "Lead generation resumed",
+        description: result?.message || "System resumed successfully.",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to resume system";
+      toast({ title: "Action failed", description: message, variant: "destructive" });
+    } finally {
+      setSystemActionPending(false);
+    }
+  };
+
+  const handleClearActiveSearches = async () => {
+    if (!window.confirm("Clear all active searches and refund credits?")) {
       return;
     }
-
-    const reason =
-      prompt("Enter reason for resume (optional):") ||
-      "System resumed by admin";
-
+    const reason = window.prompt("Reason for clearing active searches?", "Administrative cleanup");
+    setSystemActionPending(true);
     try {
-      const result = await resumeAllLeadGeneration({ reason });
-
-      if (result.success) {
-        toast({
-          title: "System Resumed",
-          description: `Lead generation resumed. Notified ${result.notifiedUsers} users. System was paused for ${Math.round(result.pausedDuration / 60000)} minutes.`,
-        });
-      } else {
-        toast({
-          title: "Resume Failed",
-          description: result.message || "Failed to resume system",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
+      const result = await clearAllActiveSearches({ reason: reason || undefined });
       toast({
-        title: "Resume Failed",
-        description: "Failed to resume lead generation. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleClearAllActiveSearches = async () => {
-    if (
-      !confirm(
-        "Are you sure you want to CLEAR all active searches? This action cannot be undone.",
-      )
-    ) {
-      return;
-    }
-
-    const reason = prompt("Enter reason for clearing searches (required):");
-    if (!reason) {
-      toast({
-        title: "Action Cancelled",
-        description: "Reason is required to clear all searches.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const refundCredits = confirm(
-      "Refund credits to users? (Recommended: Yes)",
-    );
-
-    try {
-      const result = await clearAllActiveSearches({
-        reason,
-        refundCredits,
-      });
-
-      toast({
-        title: "Searches Cleared",
-        description: `Cleared ${result.clearedSearches} searches, cleared ${result.batchesCleared} batches${refundCredits ? `, refunded ${result.totalCreditsRefunded} credits` : ""}.`,
+        title: "Active searches cleared",
+        description:
+          result && typeof result.clearedCount === "number"
+            ? `Cleared ${result.clearedCount} searches`
+            : "Cleanup completed.",
       });
     } catch (error) {
-      toast({
-        title: "Clear Failed",
-        description: "Failed to clear active searches. Please try again.",
-        variant: "destructive",
-      });
+      const message = error instanceof Error ? error.message : "Unable to clear searches";
+      toast({ title: "Action failed", description: message, variant: "destructive" });
+    } finally {
+      setSystemActionPending(false);
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      active: {
-        variant: "default" as const,
-        color: "bg-green-100 text-green-800",
-      },
-      inactive: {
-        variant: "secondary" as const,
-        color: "bg-gray-100 text-gray-800",
-      },
-      paused: {
-        variant: "outline" as const,
-        color: "bg-yellow-100 text-yellow-800",
-      },
-      banned: {
-        variant: "destructive" as const,
-        color: "bg-red-100 text-red-800",
-      },
-      trial: {
-        variant: "outline" as const,
-        color: "bg-blue-100 text-blue-800",
-      },
-      cancelled: {
-        variant: "destructive" as const,
-        color: "bg-red-100 text-red-800",
-      },
-    };
+  const overviewLoading = metricsLoading || analyticsLoading;
+  const configurationSaving = savingCreditCosts || savingPlanLimits;
 
-    const config =
-      statusConfig[status as keyof typeof statusConfig] ||
-      statusConfig.inactive;
-
-    return (
-      <Badge variant={config.variant} className={config.color}>
-        {status}
-      </Badge>
-    );
-  };
-
-  const getPlanBadge = (plan: string) => {
-    const planConfig = {
-      free: { color: "bg-gray-100 text-gray-800", icon: null },
-      pro: {
-        color: "bg-blue-100 text-blue-800",
-        icon: <CheckCircle className="h-3 w-3 mr-1" />,
-      },
-      enterprise: {
-        color: "bg-purple-100 text-purple-800",
-        icon: <Shield className="h-3 w-3 mr-1" />,
-      },
-    };
-
-    const config =
-      planConfig[plan as keyof typeof planConfig] || planConfig.free;
-
-    return (
-      <Badge variant="secondary" className={config.color}>
-        {config.icon}
-        {plan}
-      </Badge>
-    );
-  };
-
-  // Safe render wrapper to catch any render errors
-  const safeRender = (
-    renderFunction: () => JSX.Element,
-    fallbackMessage: string,
-  ) => {
-    try {
-      return renderFunction();
-    } catch (error) {
-      console.error("Render error in AdminDashboard:", error);
-      setRenderError(
-        `${fallbackMessage}: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
-      return (
-        <Alert className="m-4">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            <strong>Render Error:</strong> {fallbackMessage}
-            <br />
-            <small>
-              Error: {error instanceof Error ? error.message : "Unknown error"}
-            </small>
-          </AlertDescription>
-        </Alert>
-      );
-    }
-  };
-
-  // Filter users based on search term with bulletproof error handling
-  const filteredUsers = (() => {
-    try {
-      if (!users || !Array.isArray(users)) return [];
-      return users.filter((user: User) => {
-        try {
-          const name = user?.name?.toLowerCase() || "";
-          const email = user?.email?.toLowerCase() || "";
-          const term = searchTerm?.toLowerCase() || "";
-          return name.includes(term) || email.includes(term);
-        } catch (error) {
-          console.error("Error filtering user:", user, error);
-          return false;
-        }
-      });
-    } catch (error) {
-      console.error("Error in filteredUsers:", error);
-      return [];
-    }
-  })();
-
-  const renderOverview = () => (
-    <div className="space-y-6">
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="p-6">
-          <div className="flex items-center">
-            <Users className="h-8 w-8 text-blue-500" />
-            <div className="ml-4">
-              <p className="text-sm font-medium text-muted-foreground">
-                Total Users
-              </p>
-              <p className="text-2xl font-bold">
-                {adminMetrics.totalUsers.toLocaleString()}
-              </p>
-              <p className="text-sm text-green-600">
-                <TrendingUp className="h-3 w-3 inline mr-1" />
-                +12% from last month
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center">
-            <DollarSign className="h-8 w-8 text-green-500" />
-            <div className="ml-4">
-              <p className="text-sm font-medium text-muted-foreground">
-                Monthly Revenue
-              </p>
-              <p className="text-2xl font-bold">
-                ${adminMetrics.monthlyRevenue.toLocaleString()}
-              </p>
-              <p className="text-sm text-green-600">
-                <TrendingUp className="h-3 w-3 inline mr-1" />
-                +8% from last month
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center">
-            <Activity className="h-8 w-8 text-purple-500" />
-            <div className="ml-4">
-              <p className="text-sm font-medium text-muted-foreground">
-                Active Users
-              </p>
-              <p className="text-2xl font-bold">
-                {adminMetrics.activeUsers.toLocaleString()}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {(
-                  (adminMetrics.activeUsers / adminMetrics.totalUsers) *
-                  100
-                ).toFixed(1)}
-                % of total
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center">
-            <Mail className="h-8 w-8 text-orange-500" />
-            <div className="ml-4">
-              <p className="text-sm font-medium text-muted-foreground">
-                Avg Response Rate
-              </p>
-              <p className="text-2xl font-bold">
-                {adminMetrics.averageResponseRate}%
-              </p>
-              <p className="text-sm text-green-600">
-                <TrendingUp className="h-3 w-3 inline mr-1" />
-                +2.1% from last month
-              </p>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* System Health */}
-      <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">System Health</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">API Uptime</span>
-              <span className="text-sm font-bold text-green-600">
-                {adminMetrics.systemHealth.apiUptime}%
-              </span>
-            </div>
-            <Progress
-              value={adminMetrics.systemHealth.apiUptime}
-              className="h-2"
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Queue Health</span>
-              <span className="text-sm font-bold text-green-600">
-                {adminMetrics.systemHealth.queueHealth}%
-              </span>
-            </div>
-            <Progress
-              value={adminMetrics.systemHealth.queueHealth}
-              className="h-2"
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Error Rate</span>
-              <span className="text-sm font-bold text-red-600">
-                {adminMetrics.systemHealth.errorRate}%
-              </span>
-            </div>
-            <Progress
-              value={100 - adminMetrics.systemHealth.errorRate * 10}
-              className="h-2"
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Avg Response</span>
-              <span className="text-sm font-bold">
-                {adminMetrics.systemHealth.avgResponseTime}ms
-              </span>
-            </div>
-            <Progress
-              value={Math.max(
-                0,
-                100 - adminMetrics.systemHealth.avgResponseTime / 10,
-              )}
-              className="h-2"
-            />
-          </div>
-        </div>
-      </Card>
-
-      {/* Emergency controls are available in the System tab only */}
-
-      {/* Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Recent Statistics</h3>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Search className="h-4 w-4 text-blue-500" />
-                <span className="text-sm">Searches (7d)</span>
-              </div>
-              <span className="font-bold">{metrics?.searches?.new7d ?? 0}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-green-500" />
-                <span className="text-sm">New Users (7d)</span>
-              </div>
-              <span className="font-bold">{metrics?.users?.new7d ?? 0}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <DollarSign className="h-4 w-4 text-orange-500" />
-                <span className="text-sm">Credits Spent (7d)</span>
-              </div>
-              <span className="font-bold">
-                {metrics?.credits?.spent7d ?? 0}
-              </span>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Alerts & Issues</h3>
-          <div className="space-y-3">
-            <Alert>
-              <CheckCircle className="h-4 w-4" />
-              <AlertDescription>
-                All systems operational. No issues detected.
-              </AlertDescription>
-            </Alert>
-            <Alert>
-              <Clock className="h-4 w-4" />
-              <AlertDescription>
-                Scheduled maintenance window: Sunday 2:00 AM - 4:00 AM UTC
-              </AlertDescription>
-            </Alert>
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
-
-  const renderUserManagement = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h3 className="text-lg font-semibold">User Management</h3>
-          <p className="text-sm text-muted-foreground">
-            Manage user accounts and permissions
+          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+          <p className="text-muted-foreground">
+            Monitor platform health, manage users, and configure system policies.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => handleExportData("users")}>
-            <Download className="h-4 w-4 mr-2" />
-            Export Users
+          <Button
+            variant="outline"
+            onClick={handlePauseLeadGeneration}
+            disabled={systemActionPending}
+          >
+            <PauseCircle className="mr-2 h-4 w-4" /> Pause lead gen
           </Button>
-          <Button>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+          <Button
+            variant="outline"
+            onClick={handleResumeLeadGeneration}
+            disabled={systemActionPending}
+          >
+            <PlayCircle className="mr-2 h-4 w-4" /> Resume lead gen
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleClearActiveSearches}
+            disabled={systemActionPending}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" /> Clear active searches
           </Button>
         </div>
       </div>
 
-      <div className="flex items-center gap-4 mb-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search users..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-      </div>
+      <Tabs value={currentTab} onValueChange={(value) => setCurrentTab(value as typeof TAB_KEYS[number])}>
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="credits">Credits</TabsTrigger>
+          <TabsTrigger value="configuration">Configuration</TabsTrigger>
+          <TabsTrigger value="system">System</TabsTrigger>
+        </TabsList>
 
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Plan</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Credits</TableHead>
-                <TableHead>Joined</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredUsers.map((user: User) => {
-                const status = !user.isActive
-                  ? "inactive"
-                  : user.processingPaused
-                    ? "paused"
-                    : "active";
-                return (
-                  <TableRow key={String(user._id)}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{user.name || "—"}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {user.email}
-                        </div>
+        <TabsContent value="overview" className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total users</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {overviewLoading ? (
+                  <Skeleton className="h-9 w-24" />
+                ) : (
+                  <div className="text-2xl font-bold">
+                    {formatNumber(metrics?.users?.total)}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Active users: {formatNumber(metrics?.users?.active)}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Monthly revenue</CardTitle>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {overviewLoading ? (
+                  <Skeleton className="h-9 w-24" />
+                ) : (
+                  <div className="text-2xl font-bold">
+                    {formatCurrency(revenueStats?.revenueThisMonth)}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Purchases this week: {formatCurrency(revenueStats?.revenueThisWeek)}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Search volume</CardTitle>
+                <Activity className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {overviewLoading ? (
+                  <Skeleton className="h-9 w-24" />
+                ) : (
+                  <div className="text-2xl font-bold">
+                    {formatNumber(usageStats?.totalSearches)}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Avg leads per search: {formatNumber(usageStats?.averageLeadsPerSearch)}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">System health</CardTitle>
+                <ShieldAlert className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {systemLoading ? (
+                  <Skeleton className="h-9 w-32" />
+                ) : (
+                  <div className="flex items-center gap-2 text-2xl font-bold">
+                    {health.status || "Unknown"}
+                    {health.failures?.searches ? (
+                      <Badge variant="destructive">{health.failures.searches} failures</Badge>
+                    ) : null}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Active searches: {formatNumber(health.processing?.activeSearches)}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Plan distribution</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {planDistribution.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No plan data available.</p>
+                ) : (
+                  planDistribution.map(([plan, count]) => (
+                    <div key={plan} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">
+                          {PLAN_LABELS[plan] || plan}
+                        </Badge>
+                        <span className="text-sm text-muted-foreground">{count} users</span>
                       </div>
-                    </TableCell>
-                    <TableCell>{getPlanBadge(user.plan)}</TableCell>
-                    <TableCell>{getStatusBadge(status)}</TableCell>
-                    <TableCell>{user.credits ?? 0}</TableCell>
-                    <TableCell>
-                      {user.createdAt
-                        ? new Date(user.createdAt).toLocaleDateString()
-                        : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            status === "paused"
-                              ? resumeUserProcessing({ userId: user._id })
-                              : pauseUserProcessing({ userId: user._id })
-                          }
-                          title={
-                            status === "paused"
-                              ? "Resume processing"
-                              : "Pause processing"
-                          }
-                        >
-                          {status === "paused" ? (
-                            <Play className="h-4 w-4" />
-                          ) : (
-                            <Pause className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            handleUserAction(
-                              user._id as string,
-                              user.isActive ? "ban" : "activate",
-                            )
-                          }
-                          title={
-                            user.isActive ? "Suspend user" : "Activate user"
-                          }
-                        >
-                          {user.isActive ? (
-                            <Ban className="h-4 w-4" />
-                          ) : (
-                            <CheckCircle className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </TableCell>
+                      <span className="text-sm font-medium">
+                        {formatPercentage(
+                          metrics?.users?.total
+                            ? (count / metrics.users.total) * 100
+                            : undefined,
+                        )}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Engagement</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">User growth (30d)</span>
+                  </div>
+                  <span className="text-sm font-medium">
+                    {formatNumber(analytics?.growth?.userGrowth30d)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">Search growth (30d)</span>
+                  </div>
+                  <span className="text-sm font-medium">
+                    {formatNumber(analytics?.growth?.searchGrowth30d)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">Credit spend (30d)</span>
+                  </div>
+                  <span className="text-sm font-medium">
+                    {formatNumber(metrics?.credits?.spent30d)} credits
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="users" className="space-y-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold">User management</h2>
+              <p className="text-sm text-muted-foreground">
+                Suspend accounts, adjust plans, and control processing per user.
+              </p>
+            </div>
+            <Input
+              className="md:w-64"
+              placeholder="Search by email, name, or plan"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+            />
+          </div>
+
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>User</TableHead>
+                    <TableHead>Plan</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Credits</TableHead>
+                    <TableHead>Processing</TableHead>
+                    <TableHead className="w-[220px]">Actions</TableHead>
                   </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {usersLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={6}>
+                        <div className="p-6 text-center text-sm text-muted-foreground">
+                          Loading users…
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredUsers.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6}>
+                        <div className="p-6 text-center text-sm text-muted-foreground">
+                          No users match your filters.
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredUsers.map((user) => (
+                      <TableRow key={user._id}>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <div className="font-medium">{user.email}</div>
+                            {user.name ? (
+                              <div className="text-xs text-muted-foreground">{user.name}</div>
+                            ) : null}
+                            <div className="text-xs text-muted-foreground">
+                              Joined {formatTimestamp(getUserCreatedAt(user))}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={isAdminPlan(user.plan) ? user.plan : undefined}
+                            onValueChange={(value) => handleUserPlanChange(user, value as AdminPlan)}
+                            disabled={updatingUserId === user._id}
+                          >
+                            <SelectTrigger className="w-[160px]">
+                              <SelectValue placeholder={user.plan || "Select plan"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {PLAN_OPTIONS.map((plan) => (
+                                <SelectItem key={plan.value} value={plan.value}>
+                                  {plan.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={user.isActive ? "default" : "destructive"}>
+                            {user.isActive ? "Active" : "Suspended"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{formatNumber(user.credits)}</TableCell>
+                        <TableCell>
+                          {user.processingPaused ? (
+                            <Badge variant="outline">Paused</Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-green-500/10 text-green-600">
+                              Running
+                            </Badge>
+                          )}
+                          {user.pauseReason ? (
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {user.pauseReason}
+                            </div>
+                          ) : null}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleToggleUserActive(user)}
+                              disabled={updatingUserId === user._id}
+                            >
+                              {user.isActive ? "Suspend" : "Activate"}
+                            </Button>
+                            {user.processingPaused ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleResumeProcessing(user)}
+                                disabled={processingUserId === user._id}
+                              >
+                                Resume
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handlePauseProcessing(user)}
+                                disabled={processingUserId === user._id}
+                              >
+                                Pause
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="credits" className="space-y-4">
+          <CreditManagement />
+        </TabsContent>
+
+        <TabsContent value="configuration" className="space-y-6">
+          <div>
+            <h2 className="text-2xl font-semibold">System configuration</h2>
+            <p className="text-sm text-muted-foreground">
+              Tune credit pricing, plan limits, and review plan catalog entries.
+            </p>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Credit costs</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {Object.entries(creditCostsForm).map(([key, value]) => (
+                  <div key={key} className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      {key.replace(/([A-Z])/g, " $1").replace(/^\w/, (s) => s.toUpperCase())}
+                    </label>
+                    <Input
+                      type="number"
+                      value={value}
+                      min={0}
+                      onChange={(event) =>
+                        setCreditCostsForm((current) => ({
+                          ...current,
+                          [key]: Number.parseInt(event.target.value, 10) || 0,
+                        }))
+                      }
+                    />
+                  </div>
+                ))}
+                <Button onClick={handleSaveCreditCosts} disabled={savingCreditCosts}>
+                  Save credit costs
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Orchestration</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Lead generation paused</span>
+                  <Badge variant={status.leadGenerationPaused ? "destructive" : "outline"}>
+                    {status.leadGenerationPaused ? "Paused" : "Running"}
+                  </Badge>
+                </div>
+                {status.orchestrationSettings?.pauseReason ? (
+                  <div className="text-xs text-muted-foreground">
+                    Reason: {status.orchestrationSettings.pauseReason}
+                  </div>
+                ) : null}
+                {status.orchestrationSettings?.pausedAt ? (
+                  <div className="text-xs text-muted-foreground">
+                    Since {formatTimestamp(status.orchestrationSettings.pausedAt)}
+                  </div>
+                ) : null}
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Processing queue</div>
+                  <div className="text-xs text-muted-foreground">
+                    Processing: {formatNumber(status.processingQueue?.processing)} • Queued: {" "}
+                    {formatNumber(status.processingQueue?.queued)}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Plan limits</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {(Object.keys(planLimitsForm) as PlanKey[]).map((planKey) => {
+                const plan = planLimitsForm[planKey];
+                return (
+                  <div key={planKey} className="grid gap-4 md:grid-cols-3">
+                    <div>
+                      <h3 className="text-lg font-semibold capitalize">{planKey}</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Configure the maximum usage for the {planKey} tier.
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        Monthly credits
+                      </label>
+                      <Input
+                        type="number"
+                        value={plan.monthlyCredits}
+                        onChange={(event) =>
+                          setPlanLimitsForm((current) => ({
+                            ...current,
+                            [planKey]: {
+                              ...current[planKey],
+                              monthlyCredits:
+                                Number.parseInt(event.target.value, 10) || current[planKey].monthlyCredits,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        Max searches (-1 = unlimited)
+                      </label>
+                      <Input
+                        type="number"
+                        value={plan.maxSearches}
+                        onChange={(event) =>
+                          setPlanLimitsForm((current) => ({
+                            ...current,
+                            [planKey]: {
+                              ...current[planKey],
+                              maxSearches: Number.parseInt(event.target.value, 10) || 0,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        Max leads per search
+                      </label>
+                      <Input
+                        type="number"
+                        value={plan.maxLeadsPerSearch}
+                        onChange={(event) =>
+                          setPlanLimitsForm((current) => ({
+                            ...current,
+                            [planKey]: {
+                              ...current[planKey],
+                              maxLeadsPerSearch: Number.parseInt(event.target.value, 10) || 0,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="flex items-center justify-between border rounded-md p-3">
+                      <span className="text-sm">Email generation</span>
+                      <Switch
+                        checked={plan.emailGeneration}
+                        onCheckedChange={(checked) =>
+                          setPlanLimitsForm((current) => ({
+                            ...current,
+                            [planKey]: { ...current[planKey], emailGeneration: checked },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="flex items-center justify-between border rounded-md p-3">
+                      <span className="text-sm">Bulk operations</span>
+                      <Switch
+                        checked={plan.bulkOperations}
+                        onCheckedChange={(checked) =>
+                          setPlanLimitsForm((current) => ({
+                            ...current,
+                            [planKey]: { ...current[planKey], bulkOperations: checked },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="flex items-center justify-between border rounded-md p-3">
+                      <span className="text-sm">API access</span>
+                      <Switch
+                        checked={plan.apiAccess}
+                        onCheckedChange={(checked) =>
+                          setPlanLimitsForm((current) => ({
+                            ...current,
+                            [planKey]: { ...current[planKey], apiAccess: checked },
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
                 );
               })}
-            </TableBody>
-          </Table>
-        </div>
-      </Card>
-    </div>
-  );
-
-  const renderCompanies = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold">Company Insights</h3>
-          <p className="text-sm text-muted-foreground">
-            Monitor company performance and usage
-          </p>
-        </div>
-        <Button variant="outline" onClick={() => handleExportData("companies")}>
-          <Download className="h-4 w-4 mr-2" />
-          Export Data
-        </Button>
-      </div>
-
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Company</TableHead>
-                <TableHead>Industry</TableHead>
-                <TableHead>Users</TableHead>
-                <TableHead>Plan</TableHead>
-                <TableHead>Revenue</TableHead>
-                <TableHead>Monthly Searches</TableHead>
-                <TableHead>Conversion Rate</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {companies.map((company) => (
-                <TableRow key={company.id}>
-                  <TableCell className="font-medium">{company.name}</TableCell>
-                  <TableCell>{company.industry}</TableCell>
-                  <TableCell>{company.userCount}</TableCell>
-                  <TableCell>{getPlanBadge(company.plan)}</TableCell>
-                  <TableCell>${company.totalRevenue}</TableCell>
-                  <TableCell>{company.monthlySearches}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {company.conversionRate}%
-                      {company.conversionRate > 15 ? (
-                        <TrendingUp className="h-3 w-3 text-green-500" />
-                      ) : (
-                        <TrendingDown className="h-3 w-3 text-red-500" />
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>{getStatusBadge(company.status)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </Card>
-    </div>
-  );
-
-  const renderConfiguration = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold">System Configuration</h3>
-          <p className="text-sm text-muted-foreground">
-            Manage credit costs, credit packs, and plan catalog
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Credit Costs Configuration */}
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="text-lg font-semibold">Credit Costs</h4>
-            <Button onClick={handleSaveCreditCosts} size="sm">
-              <Save className="h-4 w-4 mr-2" />
-              Save Changes
-            </Button>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-muted-foreground">
-                Lead Discovery
-              </label>
-              <Input
-                type="number"
-                value={creditCosts.leadDiscovery}
-                onChange={(e) =>
-                  setCreditCosts((prev) => ({
-                    ...prev,
-                    leadDiscovery: parseInt(e.target.value) || 0,
-                  }))
-                }
-                className="mt-1"
-                min="0"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Credits charged for finding business leads
-              </p>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-muted-foreground">
-                Contact Enrichment
-              </label>
-              <Input
-                type="number"
-                value={creditCosts.contactEnrichment}
-                onChange={(e) =>
-                  setCreditCosts((prev) => ({
-                    ...prev,
-                    contactEnrichment: parseInt(e.target.value) || 0,
-                  }))
-                }
-                className="mt-1"
-                min="0"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Credits charged for email and contact data
-              </p>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-muted-foreground">
-                AI Analysis
-              </label>
-              <Input
-                type="number"
-                value={creditCosts.aiAnalysis}
-                onChange={(e) =>
-                  setCreditCosts((prev) => ({
-                    ...prev,
-                    aiAnalysis: parseInt(e.target.value) || 0,
-                  }))
-                }
-                className="mt-1"
-                min="0"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Credits charged for AI lead analysis
-              </p>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-muted-foreground">
-                Email Generation
-              </label>
-              <Input
-                type="number"
-                value={creditCosts.emailGeneration}
-                onChange={(e) =>
-                  setCreditCosts((prev) => ({
-                    ...prev,
-                    emailGeneration: parseInt(e.target.value) || 0,
-                  }))
-                }
-                className="mt-1"
-                min="0"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Credits charged for personalized email creation
-              </p>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-muted-foreground">
-                Bulk Analysis
-              </label>
-              <Input
-                type="number"
-                value={creditCosts.bulkAnalysis}
-                onChange={(e) =>
-                  setCreditCosts((prev) => ({
-                    ...prev,
-                    bulkAnalysis: parseInt(e.target.value) || 0,
-                  }))
-                }
-                className="mt-1"
-                min="0"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Credits charged for bulk operations
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        {/* Plan Limits Configuration */}
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="text-lg font-semibold">Plan Limits</h4>
-            <Button onClick={handleSavePlanLimits} size="sm">
-              <Save className="h-4 w-4 mr-2" />
-              Save Changes
-            </Button>
-          </div>
-
-          <div className="space-y-6">
-            {/* Free Plan */}
-            <div>
-              <h5 className="font-medium text-sm mb-3 flex items-center gap-2">
-                <span className="w-3 h-3 bg-gray-500 rounded-full"></span>
-                Free Plan
-              </h5>
-              <div className="space-y-3 pl-5">
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Monthly Credits
-                  </label>
-                  <Input
-                    type="number"
-                    value={planLimits.free.monthlyCredits}
-                    onChange={(e) =>
-                      setPlanLimits((prev) => ({
-                        ...prev,
-                        free: {
-                          ...prev.free,
-                          monthlyCredits: parseInt(e.target.value) || 0,
-                        },
-                      }))
-                    }
-                    className="mt-1"
-                    min="0"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Max Leads Per Search
-                  </label>
-                  <Input
-                    type="number"
-                    value={planLimits.free.maxLeadsPerSearch}
-                    onChange={(e) =>
-                      setPlanLimits((prev) => ({
-                        ...prev,
-                        free: {
-                          ...prev.free,
-                          maxLeadsPerSearch: parseInt(e.target.value) || 0,
-                        },
-                      }))
-                    }
-                    className="mt-1"
-                    min="0"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Max Searches
-                  </label>
-                  <Input
-                    type="number"
-                    value={planLimits.free.maxSearches}
-                    onChange={(e) =>
-                      setPlanLimits((prev) => ({
-                        ...prev,
-                        free: {
-                          ...prev.free,
-                          maxSearches: parseInt(e.target.value) || 0,
-                        },
-                      }))
-                    }
-                    className="mt-1"
-                    min="0"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Pro Plan */}
-            <div>
-              <h5 className="font-medium text-sm mb-3 flex items-center gap-2">
-                <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
-                Pro Plan
-              </h5>
-              <div className="space-y-3 pl-5">
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Monthly Credits
-                  </label>
-                  <Input
-                    type="number"
-                    value={planLimits.pro.monthlyCredits}
-                    onChange={(e) =>
-                      setPlanLimits((prev) => ({
-                        ...prev,
-                        pro: {
-                          ...prev.pro,
-                          monthlyCredits: parseInt(e.target.value) || 0,
-                        },
-                      }))
-                    }
-                    className="mt-1"
-                    min="0"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Max Leads Per Search
-                  </label>
-                  <Input
-                    type="number"
-                    value={planLimits.pro.maxLeadsPerSearch}
-                    onChange={(e) =>
-                      setPlanLimits((prev) => ({
-                        ...prev,
-                        pro: {
-                          ...prev.pro,
-                          maxLeadsPerSearch: parseInt(e.target.value) || 0,
-                        },
-                      }))
-                    }
-                    className="mt-1"
-                    min="0"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Max Searches
-                  </label>
-                  <Input
-                    type="number"
-                    value={planLimits.pro.maxSearches}
-                    onChange={(e) =>
-                      setPlanLimits((prev) => ({
-                        ...prev,
-                        pro: {
-                          ...prev.pro,
-                          maxSearches: parseInt(e.target.value) || 0,
-                        },
-                      }))
-                    }
-                    className="mt-1"
-                    min="0"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Enterprise Plan */}
-            <div>
-              <h5 className="font-medium text-sm mb-3 flex items-center gap-2">
-                <span className="w-3 h-3 bg-purple-500 rounded-full"></span>
-                Enterprise Plan
-              </h5>
-              <div className="space-y-3 pl-5">
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Monthly Credits
-                  </label>
-                  <Input
-                    type="number"
-                    value={planLimits.enterprise.monthlyCredits}
-                    onChange={(e) =>
-                      setPlanLimits((prev) => ({
-                        ...prev,
-                        enterprise: {
-                          ...prev.enterprise,
-                          monthlyCredits: parseInt(e.target.value) || 0,
-                        },
-                      }))
-                    }
-                    className="mt-1"
-                    min="0"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Max Leads Per Search
-                  </label>
-                  <Input
-                    type="number"
-                    value={planLimits.enterprise.maxLeadsPerSearch}
-                    onChange={(e) =>
-                      setPlanLimits((prev) => ({
-                        ...prev,
-                        enterprise: {
-                          ...prev.enterprise,
-                          maxLeadsPerSearch: parseInt(e.target.value) || 0,
-                        },
-                      }))
-                    }
-                    className="mt-1"
-                    min="0"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Max Searches (-1 for unlimited)
-                  </label>
-                  <Input
-                    type="number"
-                    value={planLimits.enterprise.maxSearches}
-                    onChange={(e) =>
-                      setPlanLimits((prev) => ({
-                        ...prev,
-                        enterprise: {
-                          ...prev.enterprise,
-                          maxSearches: parseInt(e.target.value) || 0,
-                        },
-                      }))
-                    }
-                    className="mt-1"
-                    min="-1"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Credit Packs Configuration */}
-      <CreditPacksEditor
-        configuration={configuration}
-        onSave={async (packs) => {
-          try {
-            await updateCreditPacks({ creditPacks: packs });
-            toast({
-              title: "Credit Packs Updated",
-              description: `Saved ${packs.length} packs.`,
-            });
-          } catch (e) {
-            toast({
-              title: "Save Failed",
-              description: "Could not save credit packs.",
-              variant: "destructive",
-            });
-          }
-        }}
-      />
-
-      {/* Plan Catalog Configuration */}
-      <PlanCatalogEditor
-        plans={listPlanConfigurations || []}
-        onSave={async (updated) => {
-          try {
-            for (const p of updated) {
-              await upsertPlanConfiguration(p as PlanConfigurationInput);
-            }
-            toast({
-              title: "Plan Catalog Updated",
-              description: `Saved ${updated.length} plan(s).`,
-            });
-          } catch (e) {
-            toast({
-              title: "Save Failed",
-              description: "Could not save plan catalog.",
-              variant: "destructive",
-            });
-          }
-        }}
-      />
-
-      {/* Current Configuration Summary */}
-      <Card className="p-6">
-        <h4 className="text-lg font-semibold mb-4">
-          Current Configuration Summary
-        </h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <h5 className="font-medium mb-2">Credit Costs</h5>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span>Lead Discovery:</span>
-                <span>{creditCosts.leadDiscovery} credits</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Contact Enrichment:</span>
-                <span>{creditCosts.contactEnrichment} credits</span>
-              </div>
-              <div className="flex justify-between">
-                <span>AI Analysis:</span>
-                <span>{creditCosts.aiAnalysis} credits</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Email Generation:</span>
-                <span>{creditCosts.emailGeneration} credits</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Bulk Analysis:</span>
-                <span>{creditCosts.bulkAnalysis} credits</span>
-              </div>
-            </div>
-          </div>
-          <div>
-            <h5 className="font-medium mb-2">Plan Comparison</h5>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span>Free Monthly Credits:</span>
-                <span>{planLimits.free.monthlyCredits}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Pro Monthly Credits:</span>
-                <span>{planLimits.pro.monthlyCredits}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Enterprise Monthly Credits:</span>
-                <span>{planLimits.enterprise.monthlyCredits}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
-
-  // Inline editors for configuration
-  const CreditPacksEditor: React.FC<{
-    configuration: { creditPacks?: CreditPack[] } | null | undefined;
-    onSave: (packs: CreditPack[]) => Promise<void>;
-  }> = ({ configuration, onSave }) => {
-    const [packs, setPacks] = useState<CreditPack[]>(
-      () => configuration?.creditPacks || [],
-    );
-
-    useEffect(() => {
-      if (configuration?.creditPacks) setPacks(configuration.creditPacks);
-    }, [configuration?.creditPacks]);
-
-    const addPack = () => {
-      setPacks((prev) => [
-        ...prev,
-        {
-          id: `pack_${Date.now()}`,
-          credits: 100,
-          priceCents: 1500,
-          bonus: 0,
-          active: true,
-        },
-      ]);
-    };
-
-    const removePack = (idx: number) => {
-      setPacks((prev) => prev.filter((_, i) => i !== idx));
-    };
-
-    const update = (
-      idx: number,
-      field: keyof CreditPack,
-      value: string | number | boolean | undefined,
-    ) => {
-      setPacks((prev) =>
-        prev.map((p, i) => (i === idx ? { ...p, [field]: value } : p)),
-      );
-    };
-
-    return (
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="text-lg font-semibold">Credit Packs</h4>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={addPack} size="sm">
-              <Plus className="h-4 w-4 mr-2" /> Add Pack
-            </Button>
-            <Button size="sm" onClick={() => onSave(packs)}>
-              <Save className="h-4 w-4 mr-2" /> Save Packs
-            </Button>
-          </div>
-        </div>
-
-        {packs.length === 0 ? (
-          <div className="text-sm text-muted-foreground">
-            No packs configured.
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {packs.map((p, idx) => (
-              <div
-                key={p.id}
-                className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end border rounded-md p-3"
-              >
-                <div>
-                  <label className="text-xs text-muted-foreground">ID</label>
-                  <Input
-                    value={p.id}
-                    onChange={(e) => update(idx, "id", e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Credits
-                  </label>
-                  <Input
-                    type="number"
-                    value={p.credits}
-                    onChange={(e) =>
-                      update(idx, "credits", parseInt(e.target.value) || 0)
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Price (USD cents)
-                  </label>
-                  <Input
-                    type="number"
-                    value={p.priceCents}
-                    onChange={(e) =>
-                      update(idx, "priceCents", parseInt(e.target.value) || 0)
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">Bonus</label>
-                  <Input
-                    type="number"
-                    value={p.bonus || 0}
-                    onChange={(e) =>
-                      update(idx, "bonus", parseInt(e.target.value) || 0)
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Stripe Price ID (optional)
-                  </label>
-                  <Input
-                    value={p.stripePriceId || ""}
-                    onChange={(e) =>
-                      update(idx, "stripePriceId", e.target.value)
-                    }
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-muted-foreground">
-                    Active
-                  </label>
-                  <input
-                    type="checkbox"
-                    checked={p.active}
-                    onChange={(e) => update(idx, "active", e.target.checked)}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removePack(idx)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-    );
-  };
-
-  const PlanCatalogEditor: React.FC<{
-    plans: Array<PlanConfigurationInput | Doc<"planConfigurations">>;
-    onSave: (plans: PlanConfigurationInput[]) => Promise<void>;
-  }> = ({ plans, onSave }) => {
-    const [localPlans, setLocalPlans] = useState<PlanConfigurationInput[]>(() =>
-      (plans || []).map((p) => ({
-        planId: p.planId,
-        planName: p.planName,
-        monthlyPrice: p.monthlyPrice,
-        yearlyPrice: p.yearlyPrice,
-        stripePriceIdMonthly: p.stripePriceIdMonthly,
-        stripePriceIdYearly: p.stripePriceIdYearly,
-        limits: p.limits,
-        features: p.features ?? [],
-        isActive: p.isActive,
-        isVisible: p.isVisible,
-        sortOrder: p.sortOrder,
-      })),
-    );
-
-    useEffect(() => {
-      if (plans) {
-        setLocalPlans(
-          plans.map((p) => ({
-            planId: p.planId,
-            planName: p.planName,
-            monthlyPrice: p.monthlyPrice,
-            yearlyPrice: p.yearlyPrice,
-            stripePriceIdMonthly: p.stripePriceIdMonthly,
-            stripePriceIdYearly: p.stripePriceIdYearly,
-            limits: p.limits,
-            features: p.features ?? [],
-            isActive: p.isActive,
-            isVisible: p.isVisible,
-            sortOrder: p.sortOrder,
-          })),
-        );
-      }
-    }, [plans]);
-
-    const addPlan = () => {
-      setLocalPlans((prev) => [
-        ...prev,
-        {
-          planId: "custom",
-          planName: "Custom",
-          monthlyPrice: 0,
-          yearlyPrice: 0,
-          isActive: true,
-          isVisible: true,
-          sortOrder: (prev[prev.length - 1]?.sortOrder || 0) + 1,
-          limits: {
-            monthlySearches: 10,
-            maxLeadsPerSearch: 25,
-            monthlyEnrichments: 500,
-            monthlyExports: 10,
-            emailGeneration: false,
-            bulkOperations: false,
-            apiAccess: false,
-            requiresOwnApiKeys: true,
-            supportLevel: "basic",
-          },
-          features: [],
-        },
-      ]);
-    };
-
-    const update = (
-      idx: number,
-      field: keyof PlanConfigurationInput,
-      value:
-        | string
-        | number
-        | boolean
-        | string[]
-        | PlanConfigurationInput["limits"]
-        | undefined,
-    ) => {
-      setLocalPlans((prev) =>
-        prev.map((p, i) => (i === idx ? { ...p, [field]: value } : p)),
-      );
-    };
-
-    const updateLimit = (
-      idx: number,
-      field: keyof PlanConfigurationInput["limits"],
-      value: string | number | boolean,
-    ) => {
-      setLocalPlans((prev) =>
-        prev.map((p, i) =>
-          i === idx ? { ...p, limits: { ...p.limits, [field]: value } } : p,
-        ),
-      );
-    };
-
-    return (
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="text-lg font-semibold">Plan Catalog</h4>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={addPlan} size="sm">
-              <Plus className="h-4 w-4 mr-2" /> Add Plan
-            </Button>
-            <Button size="sm" onClick={() => onSave(localPlans)}>
-              <Save className="h-4 w-4 mr-2" /> Save Plans
-            </Button>
-          </div>
-        </div>
-
-        {localPlans.length === 0 ? (
-          <div className="text-sm text-muted-foreground">
-            No plans configured.
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {localPlans.map((p, idx) => (
-              <div
-                key={`${p.planId}-${idx}`}
-                className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end border rounded-md p-3"
-              >
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Plan ID
-                  </label>
-                  <Input
-                    value={p.planId}
-                    onChange={(e) => update(idx, "planId", e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">Name</label>
-                  <Input
-                    value={p.planName}
-                    onChange={(e) => update(idx, "planName", e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Monthly Price
-                  </label>
-                  <Input
-                    type="number"
-                    value={p.monthlyPrice}
-                    onChange={(e) =>
-                      update(idx, "monthlyPrice", parseInt(e.target.value) || 0)
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Yearly Price
-                  </label>
-                  <Input
-                    type="number"
-                    value={p.yearlyPrice}
-                    onChange={(e) =>
-                      update(idx, "yearlyPrice", parseInt(e.target.value) || 0)
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Stripe Price ID (Monthly)
-                  </label>
-                  <Input
-                    value={p.stripePriceIdMonthly || ""}
-                    onChange={(e) =>
-                      update(idx, "stripePriceIdMonthly", e.target.value)
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">
-                    Stripe Price ID (Yearly)
-                  </label>
-                  <Input
-                    value={p.stripePriceIdYearly || ""}
-                    onChange={(e) =>
-                      update(idx, "stripePriceIdYearly", e.target.value)
-                    }
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3 md:col-span-2">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-muted-foreground">
-                      Active
-                    </label>
-                    <input
-                      type="checkbox"
-                      checked={p.isActive}
-                      onChange={(e) =>
-                        update(idx, "isActive", e.target.checked)
-                      }
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-muted-foreground">
-                      Visible
-                    </label>
-                    <input
-                      type="checkbox"
-                      checked={p.isVisible}
-                      onChange={(e) =>
-                        update(idx, "isVisible", e.target.checked)
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">
-                      Sort
-                    </label>
-                    <Input
-                      type="number"
-                      value={p.sortOrder || 0}
-                      onChange={(e) =>
-                        update(idx, "sortOrder", parseInt(e.target.value) || 0)
-                      }
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3 md:col-span-3">
-                  <div>
-                    <label className="text-xs text-muted-foreground">
-                      Monthly Searches
-                    </label>
-                    <Input
-                      type="number"
-                      value={p.limits?.monthlySearches || 0}
-                      onChange={(e) =>
-                        updateLimit(
-                          idx,
-                          "monthlySearches",
-                          parseInt(e.target.value) || 0,
-                        )
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">
-                      Max Leads/Search
-                    </label>
-                    <Input
-                      type="number"
-                      value={p.limits?.maxLeadsPerSearch || 0}
-                      onChange={(e) =>
-                        updateLimit(
-                          idx,
-                          "maxLeadsPerSearch",
-                          parseInt(e.target.value) || 0,
-                        )
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">
-                      Monthly Enrichments
-                    </label>
-                    <Input
-                      type="number"
-                      value={p.limits?.monthlyEnrichments || 0}
-                      onChange={(e) =>
-                        updateLimit(
-                          idx,
-                          "monthlyEnrichments",
-                          parseInt(e.target.value) || 0,
-                        )
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-    );
-  };
-
-  // Memoized external services render function for performance
-  const renderExternalServices = React.useMemo(() => {
-    // Bulletproof helper function to get status badge styling
-    const getStatusBadgeColor = (status?: string): string => {
-      try {
-        switch (status) {
-          case "operational":
-            return "bg-green-100 text-green-800 border-green-200";
-          case "degraded":
-            return "bg-yellow-100 text-yellow-800 border-yellow-200";
-          case "down":
-            return "bg-red-100 text-red-800 border-red-200";
-          case "maintenance":
-            return "bg-blue-100 text-blue-800 border-blue-200";
-          default:
-            return "bg-gray-100 text-gray-800 border-gray-200";
-        }
-      } catch (error) {
-        console.error("Error determining status badge color:", error);
-        return "bg-gray-100 text-gray-800 border-gray-200";
-      }
-    };
-
-    // Safe URL opener with error handling
-    const safeOpenUrl = (url: string, serviceName: string) => {
-      try {
-        if (!validateUrl(url)) {
-          toast({
-            title: "Invalid URL",
-            description: `Cannot open ${serviceName}: Invalid URL configuration.`,
-            variant: "destructive",
-          });
-          return;
-        }
-        window.open(url, "_blank", "noopener,noreferrer");
-      } catch (error) {
-        console.error(`Failed to open URL for ${serviceName}:`, error);
-        toast({
-          title: "Error Opening Service",
-          description: `Failed to open ${serviceName}. Please try again.`,
-          variant: "destructive",
-        });
-      }
-    };
-
-    try {
-      // Early return if no services available
-      if (!externalServices || externalServices.length === 0) {
-        return (
-          <div className="space-y-6">
-            <Alert>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                No external services configured. Please contact system
-                administrator.
-              </AlertDescription>
-            </Alert>
-          </div>
-        );
-      }
-
-      // Safe grouping of services by category
-      const servicesByCategory = externalServices.reduce(
-        (acc, service) => {
-          try {
-            if (!service || !service.category) {
-              console.warn("Invalid service configuration:", service);
-              return acc;
-            }
-            if (!acc[service.category]) acc[service.category] = [];
-            acc[service.category].push(service);
-            return acc;
-          } catch (error) {
-            console.error("Error grouping service:", service, error);
-            return acc;
-          }
-        },
-        {} as Record<string, ExternalService[]>,
-      );
-
-      const categoryTitles: Record<string, string> = {
-        infrastructure: "Infrastructure & Deployment",
-        monitoring: "Monitoring & Analytics",
-        api: "APIs & External Services",
-        development: "Development Tools",
-        "ai-research": "AI Research Services (Tiered System)",
-      };
-
-      // Calculate stats safely
-      const operationalServices = externalServices.filter(
-        (s) => s?.status === "operational",
-      ).length;
-      const totalQuickActions = externalServices.reduce((sum, service) => {
-        try {
-          return sum + (service?.quickActions?.length || 0);
-        } catch {
-          return sum;
-        }
-      }, 0);
-
-      return (
-        <div className="space-y-8">
-          {/* Header Section */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-semibold">External Services</h3>
-              <p className="text-sm text-muted-foreground">
-                Quick access to all external service dashboards and management
-                consoles
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge
-                variant="outline"
-                className="bg-green-50 text-green-700 border-green-200"
-              >
-                <CheckCircle className="h-3 w-3 mr-1" />
-                {operationalServices} of {externalServices.length} Operational
-              </Badge>
-            </div>
-          </div>
-
-          {/* Services by Category */}
-          {Object.entries(servicesByCategory).map(([category, services]) => {
-            const categoryTitle = categoryTitles[category] || category;
-
-            return (
-              <div key={category} className="space-y-4">
-                <h4 className="text-md font-medium text-muted-foreground border-b pb-2">
-                  {categoryTitle} ({services.length})
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {services.map((service) => {
-                    try {
-                      const IconComponent = service.icon;
-
-                      return (
-                        <Card
-                          key={service.id}
-                          className="p-6 hover:shadow-lg transition-shadow duration-200 border-2"
-                        >
-                          <div className="space-y-4">
-                            {/* Header */}
-                            <div className="flex items-start justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">
-                                  <IconComponent className="h-6 w-6 text-blue-600" />
-                                </div>
-                                <div>
-                                  <h5 className="font-semibold text-lg">
-                                    {service.name}
-                                  </h5>
-                                  {service.status && (
-                                    <Badge
-                                      variant="outline"
-                                      className={`mt-1 text-xs ${getStatusBadgeColor(service.status)}`}
-                                    >
-                                      {service.status.charAt(0).toUpperCase() +
-                                        service.status.slice(1)}
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Description */}
-                            <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
-                              {service.description}
-                            </p>
-
-                            {/* Actions */}
-                            <div className="space-y-2">
-                              {/* Primary Action */}
-                              <Button
-                                className="w-full"
-                                onClick={() =>
-                                  safeOpenUrl(service.url, service.name)
-                                }
-                                disabled={!validateUrl(service.url)}
-                                aria-label={`Open ${service.name} in new tab`}
-                              >
-                                <ExternalLink
-                                  className="h-4 w-4 mr-2"
-                                  aria-hidden="true"
-                                />
-                                Open {service.name}
-                              </Button>
-
-                              {/* Quick Actions */}
-                              {service.quickActions &&
-                                service.quickActions.length > 0 && (
-                                  <div className="flex flex-wrap gap-1">
-                                    {service.quickActions.map(
-                                      (action, index) => (
-                                        <Button
-                                          key={`${service.id}-${index}`}
-                                          variant="ghost"
-                                          size="sm"
-                                          className="text-xs h-7"
-                                          onClick={() =>
-                                            safeOpenUrl(
-                                              action.url,
-                                              `${service.name} ${action.label}`,
-                                            )
-                                          }
-                                          disabled={!validateUrl(action.url)}
-                                          aria-label={`Open ${service.name} ${action.label} in new tab`}
-                                        >
-                                          {action.icon && (
-                                            <action.icon
-                                              className="h-3 w-3 mr-1"
-                                              aria-hidden="true"
-                                            />
-                                          )}
-                                          {action.label}
-                                        </Button>
-                                      ),
-                                    )}
-                                  </div>
-                                )}
-                            </div>
-                          </div>
-                        </Card>
-                      );
-                    } catch (error) {
-                      console.error(
-                        `Error rendering service ${service?.name}:`,
-                        error,
-                      );
-                      return (
-                        <Card
-                          key={service?.id || `error-${category}`}
-                          className="p-6 bg-red-50 border-red-200"
-                        >
-                          <Alert>
-                            <AlertTriangle className="h-4 w-4" />
-                            <AlertDescription>
-                              Error loading service configuration
-                            </AlertDescription>
-                          </Alert>
-                        </Card>
-                      );
-                    }
-                  })}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Service Summary Stats */}
-          <Card className="p-6 border-2">
-            <h4 className="text-lg font-semibold mb-4">Service Overview</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="text-2xl font-bold text-blue-600">
-                  {externalServices.length}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Total Services
-                </div>
-              </div>
-              <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
-                <div className="text-2xl font-bold text-green-600">
-                  {operationalServices}
-                </div>
-                <div className="text-sm text-muted-foreground">Operational</div>
-              </div>
-              <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
-                <div className="text-2xl font-bold text-purple-600">
-                  {Object.keys(servicesByCategory).length}
-                </div>
-                <div className="text-sm text-muted-foreground">Categories</div>
-              </div>
-              <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-200">
-                <div className="text-2xl font-bold text-orange-600">
-                  {totalQuickActions}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Quick Actions
-                </div>
-              </div>
-            </div>
-          </Card>
-        </div>
-      );
-    } catch (error) {
-      console.error("Critical error in renderExternalServices:", error);
-      return (
-        <div className="p-6">
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              <strong>Error loading external services:</strong>{" "}
-              {error instanceof Error ? error.message : "Unknown error"}
-            </AlertDescription>
-          </Alert>
-        </div>
-      );
-    }
-  }, [toast]); // Dependency on toast for memoization
-
-  // Show loading state
-  if (
-    metricsLoading ||
-    usersLoading ||
-    analyticsLoading ||
-    configLoading ||
-    systemControlLoading
-  ) {
-    return (
-      <div className="p-6 max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-          <p className="text-muted-foreground">
-            Monitor system performance and manage users
-          </p>
-        </div>
-        <Alert>
-          <Clock className="h-4 w-4 animate-spin" />
-          <AlertDescription>Loading admin dashboard data...</AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
-  // Bulletproof render with comprehensive error handling
-  try {
-    return (
-      <div className="p-6 max-w-7xl mx-auto">
-        {/* Global error display */}
-        {renderError && (
-          <Alert className="mb-6">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              <strong>Admin Dashboard Error:</strong> {renderError}
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-4"
-                onClick={() => {
-                  setRenderError(null);
-                  window.location.reload();
-                }}
-              >
-                Refresh Page
+              <Button onClick={handleSavePlanLimits} disabled={savingPlanLimits}>
+                Save plan limits
               </Button>
-            </AlertDescription>
-          </Alert>
-        )}
+            </CardContent>
+          </Card>
 
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-          <p className="text-muted-foreground">
-            Monitor system performance and manage users
-          </p>
-        </div>
-
-        <Tabs
-          value={currentTab}
-          onValueChange={(v) => {
-            if (v === "docs") {
-              navigate("/admin/docs");
-              return;
-            }
-            setCurrentTab(v);
-            // Keep tab in URL for deep-linking
-            navigate(`?tab=${v}`, { replace: true });
-          }}
-        >
-          <TabsList className="grid w-full grid-cols-7">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="users">User Management</TabsTrigger>
-            <TabsTrigger value="credits">Credit Management</TabsTrigger>
-            <TabsTrigger value="services">
-              <Globe className="h-4 w-4 mr-2" />
-              Services
-            </TabsTrigger>
-            <TabsTrigger value="configuration">
-              <Settings className="h-4 w-4 mr-2" />
-              Configuration
-            </TabsTrigger>
-            <TabsTrigger value="system">System Health</TabsTrigger>
-            <TabsTrigger value="docs">
-              <FileText className="h-4 w-4 mr-2" />
-              Documentation
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="overview" className="mt-6">
-            {safeRender(renderOverview, "Overview tab failed to render")}
-          </TabsContent>
-
-          <TabsContent value="users" className="mt-6">
-            {safeRender(
-              renderUserManagement,
-              "User management tab failed to render",
-            )}
-          </TabsContent>
-
-          <TabsContent value="credits" className="mt-6">
-            {safeRender(
-              () => (
-                <CreditManagement />
-              ),
-              "Credit management tab failed to render",
-            )}
-          </TabsContent>
-
-          <TabsContent value="services" className="mt-6">
-            {safeRender(
-              () => renderExternalServices,
-              "External services tab failed to render",
-            )}
-          </TabsContent>
-
-          <TabsContent value="configuration" className="mt-6">
-            {safeRender(
-              renderConfiguration,
-              "Configuration tab failed to render",
-            )}
-          </TabsContent>
-
-          <TabsContent value="system" className="mt-6">
-            {safeRender(
-              () => (
-                <div className="space-y-6">
-                  {/* Emergency Stop Controls */}
-                  <Card className="border-red-500 bg-red-50">
-                    <div className="p-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <AlertTriangle className="h-6 w-6 text-red-600" />
-                        <h3 className="text-lg font-semibold text-red-700">
-                          Emergency Controls
-                        </h3>
-                      </div>
-
-                      <div className="space-y-4">
-                        {systemStatus?.leadGenerationPaused ? (
-                          <div className="space-y-3">
-                            <Alert variant="destructive">
-                              <AlertTriangle className="h-4 w-4" />
-                              <AlertDescription>
-                                <strong>LEAD GENERATION IS PAUSED</strong>
-                                <br />
-                                Reason:{" "}
-                                {systemStatus.orchestrationSettings
-                                  ?.pauseReason || "Administrative stop"}
-                                <br />
-                                Paused:{" "}
-                                {systemStatus.orchestrationSettings?.pausedAt
-                                  ? new Date(
-                                      systemStatus.orchestrationSettings.pausedAt,
-                                    ).toLocaleString()
-                                  : "Unknown"}
-                              </AlertDescription>
-                            </Alert>
-
-                            <Button
-                              onClick={async () => {
-                                try {
-                                  await resumeAllLeadGeneration();
-                                  toast({
-                                    title: "System Resumed",
-                                    description:
-                                      "Lead generation has been resumed successfully.",
-                                  });
-                                } catch (error) {
-                                  toast({
-                                    title: "Resume Failed",
-                                    description:
-                                      "Failed to resume lead generation. Please try again.",
-                                    variant: "destructive",
-                                  });
-                                }
-                              }}
-                              className="bg-green-600 hover:bg-green-700"
-                              disabled={systemControlLoading}
-                            >
-                              <Play className="h-4 w-4 mr-2" />
-                              Resume Lead Generation
-                            </Button>
+          <Card>
+            <CardHeader>
+              <CardTitle>Plan catalog</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {configurationLoading ? (
+                <Skeleton className="h-10 w-full" />
+              ) : Array.isArray(listPlanConfigurations) && listPlanConfigurations.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Plan</TableHead>
+                      <TableHead>Monthly</TableHead>
+                      <TableHead>Yearly</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Features</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(listPlanConfigurations as PlanCatalogEntry[]).map((plan) => (
+                      <TableRow key={plan._id}>
+                        <TableCell>
+                          <div className="font-medium">{plan.planName || plan.planId}</div>
+                          <div className="text-xs text-muted-foreground">ID: {plan.planId}</div>
+                        </TableCell>
+                        <TableCell>{formatCurrency(plan.monthlyPrice)}</TableCell>
+                        <TableCell>{formatCurrency(plan.yearlyPrice)}</TableCell>
+                        <TableCell>
+                          <Badge variant={plan.isActive ? "default" : "outline"}>
+                            {plan.isActive ? "Active" : "Inactive"}
+                          </Badge>
+                          {!plan.isVisible ? (
+                            <div className="text-xs text-muted-foreground">Hidden</div>
+                          ) : null}
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-xs text-muted-foreground max-w-xs">
+                            {(plan.features || []).slice(0, 5).join(", ") || "—"}
                           </div>
-                        ) : (
-                          <div className="space-y-3">
-                            <Alert>
-                              <CheckCircle className="h-4 w-4" />
-                              <AlertDescription>
-                                Lead generation system is{" "}
-                                <strong>ACTIVE</strong> and processing requests
-                                normally.
-                              </AlertDescription>
-                            </Alert>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="text-sm text-muted-foreground">No plan catalog entries available.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-                            <Button
-                              onClick={async () => {
-                                const confirmed = confirm(
-                                  "⚠️ EMERGENCY STOP ⚠️\n\n" +
-                                    "This will immediately halt ALL lead generation operations.\n" +
-                                    "Active searches will be cancelled and users will be notified.\n\n" +
-                                    "Are you sure you want to proceed?",
-                                );
+        <TabsContent value="system" className="space-y-6">
+          <div>
+            <h2 className="text-2xl font-semibold">System status</h2>
+            <p className="text-sm text-muted-foreground">
+              Monitor processing queues, recent failures, and operational activity.
+            </p>
+          </div>
 
-                                if (confirmed) {
-                                  try {
-                                    const result = await pauseAllLeadGeneration(
-                                      {
-                                        reason:
-                                          "Emergency stop initiated by administrator",
-                                      },
-                                    );
-                                    toast({
-                                      title: "🚨 EMERGENCY STOP ACTIVATED",
-                                      description: `Lead generation halted. ${result?.cancelledSearches || 0} searches cancelled.`,
-                                      variant: "destructive",
-                                      duration: 10000,
-                                    });
-                                  } catch (error) {
-                                    toast({
-                                      title: "Emergency Stop Failed",
-                                      description:
-                                        "Failed to stop lead generation. Please try again.",
-                                      variant: "destructive",
-                                    });
-                                  }
-                                }
-                              }}
-                              variant="destructive"
-                              className="bg-red-600 hover:bg-red-700"
-                              disabled={systemControlLoading}
-                            >
-                              <Square className="h-4 w-4 mr-2" />
-                              🚨 EMERGENCY STOP - Halt All Operations
-                            </Button>
-                          </div>
-                        )}
-
-                        <div className="pt-4 border-t">
-                          <h4 className="font-medium mb-2">Quick Actions</h4>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={async () => {
-                                try {
-                                  await clearAllActiveSearches({
-                                    reason: "Admin maintenance",
-                                  });
-                                  toast({
-                                    title: "Active Searches Cleared",
-                                    description:
-                                      "All active searches have been cancelled.",
-                                  });
-                                } catch (error) {
-                                  toast({
-                                    title: "Clear Failed",
-                                    description:
-                                      "Failed to clear active searches.",
-                                    variant: "destructive",
-                                  });
-                                }
-                              }}
-                              disabled={systemControlLoading}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Clear Active Searches
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-
-                  {/* System Status */}
-                  <Card className="p-6">
-                    <h3 className="text-lg font-semibold mb-4">
-                      System Status
-                    </h3>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-blue-600">
-                          {systemStatus?.processingQueue?.processing || 0}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          Processing
-                        </div>
-                      </div>
-
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-yellow-600">
-                          {systemStatus?.processingQueue?.queued || 0}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          Queued
-                        </div>
-                      </div>
-
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-green-600">
-                          {systemStatus?.systemLoad?.activeProcesses || 0}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          Active
-                        </div>
-                      </div>
-
-                      <div className="text-center">
-                        <Badge
-                          variant={
-                            systemStatus?.systemLoad?.status === "high"
-                              ? "destructive"
-                              : systemStatus?.systemLoad?.status === "medium"
-                                ? "default"
-                                : "secondary"
-                          }
-                        >
-                          {systemStatus?.systemLoad?.status || "Normal"} Load
-                        </Badge>
-                      </div>
-                    </div>
-
-                    {/* Recent Activity */}
-                    {systemActivity?.recentSearches &&
-                      systemActivity.recentSearches.length > 0 && (
-                        <div>
-                          <h4 className="font-medium mb-3">Recent Activity</h4>
-                          <div className="space-y-2 max-h-64 overflow-y-auto">
-                            {systemActivity.recentSearches
-                              .slice(0, 10)
-                              .map(
-                                (search: {
-                                  id: string;
-                                  name: string;
-                                  status: string;
-                                  createdAt: number;
-                                }) => (
-                                  <div
-                                    key={search.id}
-                                    className="flex items-center justify-between p-2 bg-muted/20 rounded"
-                                  >
-                                    <div className="flex-1">
-                                      <div className="text-sm font-medium">
-                                        {search.name}
-                                      </div>
-                                      <div className="text-xs text-muted-foreground">
-                                        {new Date(
-                                          search.createdAt,
-                                        ).toLocaleString()}
-                                      </div>
-                                    </div>
-                                    <Badge
-                                      variant={
-                                        search.status === "completed"
-                                          ? "default"
-                                          : search.status === "failed"
-                                            ? "destructive"
-                                            : search.status === "cancelled"
-                                              ? "secondary"
-                                              : "outline"
-                                      }
-                                    >
-                                      {search.status}
-                                    </Badge>
-                                  </div>
-                                ),
-                              )}
-                          </div>
-                        </div>
-                      )}
-                  </Card>
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardHeader>
+                <CardTitle>Processing queue</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-2xl font-bold">
+                  {formatNumber(status.processingQueue?.total)}
                 </div>
-              ),
-              "System health tab failed to render",
-            )}
-          </TabsContent>
-        </Tabs>
-      </div>
-    );
-  } catch (error) {
-    // Ultimate fallback for any unhandled render errors
-    console.error("Critical error in AdminDashboard render:", error);
-    return (
-      <div className="p-6 max-w-7xl mx-auto">
+                <div className="text-xs text-muted-foreground">
+                  Processing: {formatNumber(status.processingQueue?.processing)} • Queued: {" "}
+                  {formatNumber(status.processingQueue?.queued)}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>System load</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-2xl font-bold capitalize">
+                  {status.systemLoad?.status || "unknown"}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Active orchestration processes: {formatNumber(status.systemLoad?.activeProcesses)}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Activity summary</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-2xl font-bold">
+                  {formatNumber(activity.activitySummary?.totalSearches)}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Success rate: {formatPercentage(activity.activitySummary?.successRate)}
+                </div>
+                {activity.activitySummary?.failedSearches ? (
+                  <div className="flex items-center gap-2 text-xs text-red-600">
+                    <AlertTriangle className="h-3 w-3" /> {activity.activitySummary.failedSearches} failures last hour
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent system logs</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {activity.systemLogs && activity.systemLogs.length > 0 ? (
+                activity.systemLogs.slice(0, 10).map((log) => (
+                  <div key={log.id} className="flex items-center justify-between text-sm">
+                    <div>
+                      <div className="font-medium capitalize">{log.action.replace(/_/g, " ")}</div>
+                      <div className="text-xs text-muted-foreground">{log.type}</div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatTimestamp(log.timestamp)}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">No recent log entries.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent searches</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {activity.recentSearches && activity.recentSearches.length > 0 ? (
+                activity.recentSearches.slice(0, 10).map((search) => (
+                  <div key={search.id} className="flex items-center justify-between text-sm">
+                    <div>
+                      <div className="font-medium">{search.name || search.id}</div>
+                      <div className="text-xs text-muted-foreground">Status: {search.status}</div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatTimestamp(search.createdAt)}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">No searches in the last hour.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {configurationSaving ? (
         <Alert>
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            <strong>Critical Admin Dashboard Error:</strong>
-            <br />
-            {error instanceof Error ? error.message : "Unknown error occurred"}
-            <br />
-            <Button
-              variant="outline"
-              className="mt-4"
-              onClick={() => window.location.reload()}
-            >
-              Refresh Page
-            </Button>
-          </AlertDescription>
+          <AlertDescription>Saving configuration changes…</AlertDescription>
         </Alert>
-      </div>
-    );
-  }
+      ) : null}
+    </div>
+  );
 }
