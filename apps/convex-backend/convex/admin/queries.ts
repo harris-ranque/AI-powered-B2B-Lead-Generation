@@ -274,22 +274,94 @@ export const getAnalytics = query({
     const now = Date.now();
     const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
 
-    // Get user growth over time
-    const users = await ctx.db.query("users").collect();
-    const searches = await ctx.db.query("searches").collect();
-    const transactions = await ctx.db.query("creditTransactions").collect();
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+    const countDocuments = async <T>(iterable: AsyncIterable<T>) => {
+      let count = 0;
+      for await (const _ of iterable) {
+        count += 1;
+      }
+      return count;
+    };
+
+    const sumTransactionAmounts = async (
+      iterable: AsyncIterable<{ amount: number }>,
+    ) => {
+      let total = 0;
+      for await (const doc of iterable) {
+        total += doc.amount;
+      }
+      return total;
+    };
+
+    const [
+      activeUsers,
+      userGrowth7d,
+      userGrowth30d,
+      searchGrowth7d,
+      searchGrowth30d,
+      creditUsage7d,
+      creditUsage30d,
+    ] = await Promise.all([
+      countDocuments(
+        ctx.db.query("users").filter((q) => q.eq(q.field("isActive"), true)),
+      ),
+      countDocuments(
+        ctx.db
+          .query("users")
+          .withIndex("by_created", (q) => q.gte("createdAt", sevenDaysAgo)),
+      ),
+      countDocuments(
+        ctx.db
+          .query("users")
+          .withIndex("by_created", (q) => q.gte("createdAt", thirtyDaysAgo)),
+      ),
+      countDocuments(
+        ctx.db
+          .query("searches")
+          .withIndex("by_created", (q) => q.gte("createdAt", sevenDaysAgo)),
+      ),
+      countDocuments(
+        ctx.db
+          .query("searches")
+          .withIndex("by_created", (q) => q.gte("createdAt", thirtyDaysAgo)),
+      ),
+      sumTransactionAmounts(
+        ctx.db
+          .query("creditTransactions")
+          .withIndex("by_type", (q) => q.eq("type", "usage"))
+          .filter((q) => q.gte(q.field("createdAt"), sevenDaysAgo)),
+      ),
+      sumTransactionAmounts(
+        ctx.db
+          .query("creditTransactions")
+          .withIndex("by_type", (q) => q.eq("type", "usage"))
+          .filter((q) => q.gte(q.field("createdAt"), thirtyDaysAgo)),
+      ),
+    ]);
+
+    const averageSearchesPerActiveUser =
+      activeUsers > 0
+        ? Number((searchGrowth30d / activeUsers).toFixed(2))
+        : 0;
 
     return {
-      userGrowth: users.length,
-      searchVolume: searches.length,
-      revenueGrowth: transactions
-        .filter((t) => t.type === "purchase" && t.createdAt > thirtyDaysAgo)
-        .reduce((sum, t) => sum + t.amount, 0),
-      engagement: {
-        activeUsers: users.filter((u) => u.isActive).length,
-        averageSearchesPerUser:
-          users.length > 0 ? searches.length / users.length : 0,
+      growth: {
+        userGrowth7d,
+        userGrowth30d,
+        searchGrowth7d,
+        searchGrowth30d,
+        creditUsage7d,
+        creditUsage30d,
       },
+      engagement: {
+        activeUsers,
+        averageSearchesPerActiveUser,
+      },
+      // Legacy fields preserved for compatibility with older dashboards
+      userGrowth: userGrowth30d,
+      searchVolume: searchGrowth30d,
+      revenueGrowth: creditUsage30d,
     };
   },
 });
