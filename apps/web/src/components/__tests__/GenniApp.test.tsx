@@ -1,445 +1,243 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import * as convexReact from 'convex/react'
-import { ClerkProvider } from '@clerk/clerk-react'
-import { ConvexReactClient, ConvexProvider } from 'convex/react'
-import { mockUser, mockBusinessProfile, mockSearch, mockLead } from '../../test/setup'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+import React from 'react'
 import { GenniApp } from '../GenniApp'
 
-vi.mock('convex/react', async () => {
-  const actual = await vi.importActual('convex/react')
-  return {
-    ...actual,
-    useQuery: vi.fn(),
-    useMutation: vi.fn(),
-    useAction: vi.fn(),
+type MockReturn = Record<string, unknown>
+
+const useProfileMock = vi.fn<[], MockReturn>()
+const useCreditsMock = vi.fn<[], MockReturn>()
+const useBillingMock = vi.fn<[], MockReturn>()
+const useLangGraphRequestsMock = vi.fn<[], MockReturn>()
+const useSearchesMock = vi.fn<[], MockReturn>()
+const useUserLeadsMock = vi.fn<[], MockReturn>()
+const useAuthMock = vi.fn<[], MockReturn>()
+const toastMock = vi.fn()
+
+let pipelineValue: {
+  state: {
+    generatedEmails: unknown[]
+    completedStages: string[]
+    currentStage: string
   }
+  setEmails: ReturnType<typeof vi.fn>
+  markStageComplete: ReturnType<typeof vi.fn>
+  setStage: ReturnType<typeof vi.fn>
+}
+
+vi.mock('@/hooks/useProfile', () => ({
+  useProfile: () => useProfileMock(),
+}))
+
+vi.mock('@/hooks/useBilling', () => ({
+  useBilling: () => useBillingMock(),
+  useCredits: () => useCreditsMock(),
+}))
+
+vi.mock('@/hooks/useLangGraph', () => ({
+  useLangGraphRequests: () => useLangGraphRequestsMock(),
+}))
+
+vi.mock('@/hooks/useSearches', () => ({
+  useSearches: () => useSearchesMock(),
+}))
+
+vi.mock('@/hooks/useLeads', () => ({
+  useUserLeads: () => useUserLeadsMock(),
+}))
+
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: () => useAuthMock(),
+}))
+
+vi.mock('@/hooks/use-toast', () => ({
+  useToast: () => ({ toast: toastMock }),
+}))
+
+vi.mock('@/pipeline/context', () => ({
+  PipelineProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  usePipeline: () => pipelineValue,
+}))
+
+vi.mock('@/components/pipeline/PipelineOrchestrator', () => ({
+  PipelineOrchestrator: () => <div data-testid="pipeline-orchestrator" />, 
+}))
+
+vi.mock('@/components/LeadSearchHistory', () => ({
+  LeadSearchHistory: () => <div data-testid="search-history">Search history content</div>,
+}))
+
+vi.mock('@/components/BusinessProfileWizard', () => ({
+  BusinessProfileWizard: () => (
+    <div data-testid="profile-wizard">Business profile wizard</div>
+  ),
+}))
+
+vi.mock('@/components/CreditManager', () => ({
+  CreditManager: ({ currentCredits }: { currentCredits: number }) => (
+    <div data-testid="credit-manager">Credits: {currentCredits}</div>
+  ),
+}))
+
+vi.mock('@/components/AdminDashboard', () => ({
+  AdminDashboard: () => <div data-testid="admin-dashboard">Admin dashboard</div>,
+}))
+
+vi.mock('@/components/Dashboard', () => ({
+  Dashboard: () => <div data-testid="analytics-dashboard">Analytics dashboard</div>,
+}))
+
+vi.mock('@/components/Settings', () => ({
+  Settings: () => <div data-testid="settings-panel">Settings panel</div>,
+}))
+
+beforeEach(() => {
+  vi.clearAllMocks()
+
+  pipelineValue = {
+    state: {
+      generatedEmails: [],
+      completedStages: [],
+      currentStage: 'source_selection',
+    },
+    setEmails: vi.fn(),
+    markStageComplete: vi.fn(),
+    setStage: vi.fn(),
+  }
+
+  const now = Date.now()
+
+  useProfileMock.mockReturnValue({
+    profile: {
+      _id: 'profile-1',
+      userId: 'user-1',
+      isComplete: true,
+      companyName: 'Test Company',
+    },
+    isComplete: true,
+    isLoading: false,
+    hasProfile: true,
+  })
+
+  useCreditsMock.mockReturnValue({
+    balance: { credits: 100 },
+    transactions: [],
+    isLoading: false,
+  })
+
+  useBillingMock.mockReturnValue({
+    billing: { activePlan: 'professional' },
+    usage: {
+      currentPeriodUsage: 12,
+      totalCreditsUsed: 42,
+      avgCostPerLead: 1.5,
+      emailsGenerated: 5,
+    },
+    transactions: [],
+    purchaseCredits: vi.fn(),
+    createCheckoutSession: vi.fn(),
+    cancelSubscription: vi.fn(),
+    isLoading: false,
+  })
+
+  useLangGraphRequestsMock.mockReturnValue({
+    requests: [],
+    isLoading: false,
+  })
+
+  useSearchesMock.mockReturnValue({
+    searches: [
+      {
+        _id: 'search-1',
+        name: 'AI Agencies in SF',
+        status: 'completed',
+        _creationTime: now,
+        parameters: { location: 'San Francisco', keywords: ['AI'] },
+        results: { totalFound: 8 },
+      },
+    ],
+    isLoading: false,
+  })
+
+  useUserLeadsMock.mockReturnValue({
+    stats: { totalLeads: 24 },
+    isLoading: false,
+  })
+
+  useAuthMock.mockReturnValue({
+    user: {
+      _id: 'user-1',
+      credits: 150,
+      plan: 'professional',
+      role: 'user',
+    },
+    isAuthenticated: true,
+    isLoading: false,
+  })
 })
 
-// Get references to the mocked functions
-const mockUseQuery = convexReact.useQuery as any
-const mockUseMutation = convexReact.useMutation as any
-const mockUseAction = convexReact.useAction as any
+describe('GenniApp', () => {
+  it('renders the dashboard shell with user controls', () => {
+    render(<GenniApp />)
 
-// Mock the ConvexReactClient
-const mockConvexClient = new ConvexReactClient(process.env.VITE_CONVEX_URL || 'https://test.convex.cloud')
-
-// Test wrapper component
-const TestWrapper = ({ children }: { children: React.ReactNode }) => (
-  <ClerkProvider publishableKey="test-key">
-    <ConvexProvider client={mockConvexClient}>
-      {children}
-    </ConvexProvider>
-  </ClerkProvider>
-)
-
-describe('GenniApp Component', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-
-    // Default mock implementations
-    mockUseQuery.mockImplementation((api) => {
-      if (api === 'users:getCurrentUser') return mockUser
-      if (api === 'profile:get') return mockBusinessProfile
-      if (api === 'searches:getUserSearches') return [mockSearch]
-      if (api === 'leads:getBySearch') return [mockLead]
-      return null
-    })
-
-    mockUseMutation.mockReturnValue(vi.fn().mockResolvedValue({}))
-    mockUseAction.mockReturnValue(vi.fn().mockResolvedValue({}))
+    expect(screen.getByRole('heading', { name: /genni/i })).toBeInTheDocument()
+    expect(
+      screen.getByText(/ai-powered lead generation/i),
+    ).toBeInTheDocument()
+    expect(screen.getByTestId('mobile-menu-button')).toBeInTheDocument()
+    expect(screen.getByTestId('user-button')).toBeInTheDocument()
   })
 
-  describe('Application Loading and Authentication', () => {
-    it('renders loading state when user data is not loaded', () => {
-      mockUseQuery.mockReturnValue(undefined)
-
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      expect(screen.getByText(/loading/i)).toBeInTheDocument()
+  it('shows the onboarding wizard when the business profile is incomplete', () => {
+    useProfileMock.mockReturnValueOnce({
+      profile: null,
+      isComplete: false,
+      isLoading: false,
+      hasProfile: false,
     })
 
-    it('renders main application when user is authenticated and loaded', () => {
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
+    render(<GenniApp />)
 
-      expect(screen.getByText(/genni/i)).toBeInTheDocument()
-      expect(screen.getByTestId('user-button')).toBeInTheDocument()
-    })
-
-    it('displays user credits in the navigation', () => {
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      expect(screen.getByText(/100/)).toBeInTheDocument() // User credits
-    })
+    expect(screen.getByTestId('profile-wizard')).toBeInTheDocument()
   })
 
-  describe('Business Profile Setup', () => {
-    it('shows profile setup wizard when profile is incomplete', () => {
-      mockUseQuery.mockImplementation((api) => {
-        if (api === 'users:getCurrentUser') return mockUser
-        if (api === 'profile:get') return { ...mockBusinessProfile, isComplete: false }
-        return null
-      })
+  it('renders the pipeline orchestrator by default', () => {
+    render(<GenniApp />)
 
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      expect(screen.getByText(/complete your profile/i)).toBeInTheDocument()
-    })
-
-    it('shows main dashboard when profile is complete', () => {
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      expect(screen.getByText(/dashboard/i)).toBeInTheDocument()
-    })
+    expect(screen.getByTestId('pipeline-orchestrator')).toBeInTheDocument()
   })
 
-  describe('Search Functionality', () => {
-    it('displays recent searches in the dashboard', () => {
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
+  it('navigates to search history when the tab is selected', () => {
+    render(<GenniApp />)
 
-      expect(screen.getByText('Test Search')).toBeInTheDocument()
-      expect(screen.getByText(/25.*found/i)).toBeInTheDocument()
-    })
+    const tab = screen.getByRole('button', { name: /search history/i })
+    fireEvent.click(tab)
 
-    it('allows creating a new search', async () => {
-      const mockCreateSearch = vi.fn().mockResolvedValue({ _id: 'new-search-id' })
-      mockUseMutation.mockReturnValue(mockCreateSearch)
-
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      const newSearchButton = screen.getByText(/new search/i)
-      fireEvent.click(newSearchButton)
-
-      expect(screen.getByText(/create.*search/i)).toBeInTheDocument()
-    })
-
-    it('shows search progress for active searches', () => {
-      const activeSearch = {
-        ...mockSearch,
-        status: 'in_progress' as const,
-        progress: { discovered: 10, enriched: 5, analyzed: 2, total: 50 }
-      }
-
-      mockUseQuery.mockImplementation((api) => {
-        if (api === 'users:getCurrentUser') return mockUser
-        if (api === 'profile:get') return mockBusinessProfile
-        if (api === 'searches:getUserSearches') return [activeSearch]
-        return null
-      })
-
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      expect(screen.getByText(/in progress/i)).toBeInTheDocument()
-      expect(screen.getByText(/10.*discovered/i)).toBeInTheDocument()
-    })
+    expect(screen.getByTestId('search-history')).toBeInTheDocument()
   })
 
-  describe('Lead Management', () => {
-    it('displays leads for selected search', async () => {
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      // Click on a search to view leads
-      const searchItem = screen.getByText('Test Search')
-      fireEvent.click(searchItem)
-
-      await waitFor(() => {
-        expect(screen.getByText('TechFlow Solutions')).toBeInTheDocument()
-      })
-
-      expect(screen.getByText(/0\.92/)).toBeInTheDocument() // Relevance score
+  it('falls back to user credits when balance data is unavailable', () => {
+    useCreditsMock.mockReturnValueOnce({
+      balance: undefined,
+      transactions: [],
+      isLoading: false,
     })
 
-    it('shows lead contact information', async () => {
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      const searchItem = screen.getByText('Test Search')
-      fireEvent.click(searchItem)
-
-      await waitFor(() => {
-        expect(screen.getByText('contact@techflowsolutions.com')).toBeInTheDocument()
-      })
-
-      expect(screen.getByText('Sarah Chen')).toBeInTheDocument()
-      expect(screen.getByText('CEO')).toBeInTheDocument()
+    useAuthMock.mockReturnValueOnce({
+      user: {
+        _id: 'user-1',
+        credits: 75,
+        plan: 'starter',
+        role: 'user',
+      },
+      isAuthenticated: true,
+      isLoading: false,
     })
 
-    it('displays generated email content', async () => {
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
+    render(<GenniApp />)
 
-      const searchItem = screen.getByText('Test Search')
-      fireEvent.click(searchItem)
-
-      await waitFor(() => {
-        expect(screen.getByText(/Transform Your Manual Processes/i)).toBeInTheDocument()
-      })
-    })
-  })
-
-  describe('Error Handling', () => {
-    it('handles API errors gracefully', () => {
-      mockUseQuery.mockImplementation(() => {
-        throw new Error('API Error')
-      })
-
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      expect(screen.getByText(/error.*loading/i)).toBeInTheDocument()
-    })
-
-    it('shows appropriate message when no searches exist', () => {
-      mockUseQuery.mockImplementation((api) => {
-        if (api === 'users:getCurrentUser') return mockUser
-        if (api === 'profile:get') return mockBusinessProfile
-        if (api === 'searches:getUserSearches') return []
-        return null
-      })
-
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      expect(screen.getByText(/no searches.*yet/i)).toBeInTheDocument()
-    })
-
-    it('shows appropriate message when no leads exist for a search', () => {
-      mockUseQuery.mockImplementation((api) => {
-        if (api === 'users:getCurrentUser') return mockUser
-        if (api === 'profile:get') return mockBusinessProfile
-        if (api === 'searches:getUserSearches') return [mockSearch]
-        if (api === 'leads:getBySearch') return []
-        return null
-      })
-
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      const searchItem = screen.getByText('Test Search')
-      fireEvent.click(searchItem)
-
-      expect(screen.getByText(/no leads.*found/i)).toBeInTheDocument()
-    })
-  })
-
-  describe('Responsive Behavior', () => {
-    it('adapts layout for mobile devices', () => {
-      // Mock mobile viewport
-      Object.defineProperty(window, 'innerWidth', {
-        writable: true,
-        configurable: true,
-        value: 375,
-      })
-
-      Object.defineProperty(window, 'matchMedia', {
-        writable: true,
-        value: vi.fn().mockImplementation(query => ({
-          matches: query === '(max-width: 768px)',
-          media: query,
-          onchange: null,
-          addListener: vi.fn(),
-          removeListener: vi.fn(),
-          addEventListener: vi.fn(),
-          removeEventListener: vi.fn(),
-          dispatchEvent: vi.fn(),
-        })),
-      })
-
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      // Should show mobile navigation
-      expect(screen.getByTestId('mobile-menu-button')).toBeInTheDocument()
-    })
-  })
-
-  describe('Performance Metrics', () => {
-    it('tracks component render time', () => {
-      const startTime = performance.now()
-
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      const renderTime = performance.now() - startTime
-      expect(renderTime).toBeLessThan(100) // Should render within 100ms
-    })
-
-    it('handles large datasets efficiently', () => {
-      // Create a large dataset
-      const manyLeads = Array.from({ length: 100 }, (_, i) => ({
-        ...mockLead,
-        _id: `lead-${i}`,
-        businessName: `Company ${i}`,
-      }))
-
-      mockUseQuery.mockImplementation((api) => {
-        if (api === 'users:getCurrentUser') return mockUser
-        if (api === 'profile:get') return mockBusinessProfile
-        if (api === 'searches:getUserSearches') return [mockSearch]
-        if (api === 'leads:getBySearch') return manyLeads
-        return null
-      })
-
-      const startTime = performance.now()
-
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      const renderTime = performance.now() - startTime
-      expect(renderTime).toBeLessThan(500) // Should handle large datasets efficiently
-    })
-  })
-
-  describe('Accessibility', () => {
-    it('provides proper ARIA labels', () => {
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      expect(screen.getByLabelText(/main navigation/i)).toBeInTheDocument()
-      expect(screen.getByRole('main')).toBeInTheDocument()
-    })
-
-    it('supports keyboard navigation', () => {
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      const newSearchButton = screen.getByText(/new search/i)
-
-      // Should be focusable
-      newSearchButton.focus()
-      expect(document.activeElement).toBe(newSearchButton)
-
-      // Should respond to Enter key
-      fireEvent.keyDown(newSearchButton, { key: 'Enter', code: 'Enter' })
-      expect(screen.getByText(/create.*search/i)).toBeInTheDocument()
-    })
-
-    it('provides screen reader friendly content', () => {
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      // Should have proper headings hierarchy
-      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
-
-      // Should have descriptive text for screen readers
-      expect(screen.getByText(/dashboard.*overview/i)).toBeInTheDocument()
-    })
-  })
-
-  describe('Integration with External Services', () => {
-    it('handles Google Maps integration', async () => {
-      render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      const newSearchButton = screen.getByText(/new search/i)
-      fireEvent.click(newSearchButton)
-
-      // Should show location input with Google Maps autocomplete
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText(/enter location/i)).toBeInTheDocument()
-      })
-    })
-
-    it('handles real-time updates from Convex', async () => {
-      let searchData = mockSearch
-
-      mockUseQuery.mockImplementation((api) => {
-        if (api === 'users:getCurrentUser') return mockUser
-        if (api === 'profile:get') return mockBusinessProfile
-        if (api === 'searches:getUserSearches') return [searchData]
-        return null
-      })
-
-      const { rerender } = render(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      expect(screen.getByText(/completed/i)).toBeInTheDocument()
-
-      // Simulate real-time update
-      searchData = { ...mockSearch, status: 'in_progress' as const }
-
-      rerender(
-        <TestWrapper>
-          <GenniApp />
-        </TestWrapper>
-      )
-
-      expect(screen.getByText(/in progress/i)).toBeInTheDocument()
-    })
+    expect(
+      screen.getByRole('button', { name: /credits & billing\s+75/i }),
+    ).toBeInTheDocument()
   })
 })

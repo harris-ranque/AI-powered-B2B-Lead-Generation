@@ -9,8 +9,14 @@
     "paths": {
       "@/*": ["./src/*"],
       "@shared/*": ["../../packages/shared-types/src/*"],
-      "@genni/convex-types": ["./src/convex/_generated"],
-      "@genni/convex-types/*": ["./src/convex/_generated/*"]
+      "@genni/convex-types": [
+        "./src/convex/_generated",
+        "../../packages/convex-types/src"
+      ],
+      "@genni/convex-types/*": [
+        "./src/convex/_generated/*",
+        "../../packages/convex-types/src/*"
+      ]
     },
     "noImplicitAny": false,
     "noUnusedParameters": false,

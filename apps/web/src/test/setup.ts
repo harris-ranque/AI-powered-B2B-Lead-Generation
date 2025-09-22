@@ -50,23 +50,7 @@ vi.mock('@clerk/clerk-react', () => ({
   UserButton: () => React.createElement('div', { 'data-testid': 'user-button' }, 'User Button')
 }))
 
-// Mock Convex client
-vi.mock('@genni/convex-types', () => ({
-  api: {
-    users: {
-      getCurrentUser: 'users:getCurrentUser',
-      updateCredits: 'users:updateCredits'
-    },
-    searches: {
-      create: 'searches:create',
-      getUserSearches: 'searches:getUserSearches'
-    },
-    leads: {
-      getBySearch: 'leads:getBySearch'
-    }
-  }
-}))
-
+// Convex function references fall back to runtime stubs provided by packages/convex-types.
 // Mock Convex React
 vi.mock('convex/react', () => ({
   useQuery: vi.fn(() => null),

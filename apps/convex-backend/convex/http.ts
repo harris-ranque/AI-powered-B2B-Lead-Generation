@@ -7,6 +7,123 @@ import Stripe from "stripe";
 
 const http = httpRouter();
 
+const encoder = new TextEncoder();
+
+function base64UrlEncode(data: Uint8Array): string {
+  return Buffer.from(data)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function base64UrlEncodeString(data: string): string {
+  return base64UrlEncode(encoder.encode(data));
+}
+
+function base64UrlDecodeToString(data: string): string {
+  const padded = data.padEnd(data.length + ((4 - (data.length % 4)) % 4), "=");
+  const normalized = padded.replace(/-/g, "+").replace(/_/g, "/");
+  return Buffer.from(normalized, "base64").toString("utf8");
+}
+
+function randomNonce(bytes = 16): string {
+  const buffer = new Uint8Array(bytes);
+  globalThis.crypto.getRandomValues(buffer);
+  return Array.from(buffer)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function hmacSha256(secret: string, payload: string): Promise<string> {
+  const key = await globalThis.crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await globalThis.crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(payload),
+  );
+  return base64UrlEncode(new Uint8Array(signature));
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+interface ExportTokenPayload {
+  uid: string;
+  iat: number;
+  exp: number;
+  aud?: string;
+  n?: string;
+  iss?: string;
+  ver?: number;
+  ori?: string;
+}
+
+async function verifyExportToken(
+  token: string,
+  secret: string,
+  expectedAudience: string,
+  requestOrigin?: string,
+): Promise<{ valid: boolean; payload?: ExportTokenPayload } | { valid: false }> {
+  if (!token.startsWith("v2.")) {
+    return { valid: false };
+  }
+
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return { valid: false };
+  }
+
+  const [, payloadB64, signatureB64] = parts;
+  if (!payloadB64 || !signatureB64) {
+    return { valid: false };
+  }
+
+  const expectedSignature = await hmacSha256(secret, payloadB64);
+  if (!timingSafeEqual(signatureB64, expectedSignature)) {
+    return { valid: false };
+  }
+
+  let payload: ExportTokenPayload;
+  try {
+    payload = JSON.parse(base64UrlDecodeToString(payloadB64));
+  } catch {
+    return { valid: false };
+  }
+
+  if (payload.aud && payload.aud !== expectedAudience) {
+    return { valid: false };
+  }
+
+  if (payload.exp && Math.floor(Date.now() / 1000) > payload.exp) {
+    return { valid: false };
+  }
+
+  if (!payload.uid) {
+    return { valid: false };
+  }
+
+  if (payload.ori && requestOrigin && payload.ori !== requestOrigin) {
+    return { valid: false };
+  }
+
+  return { valid: true, payload };
+}
+
 // In-memory cache for public config to avoid hitting queries on every request
 let publicConfigCache: { body: string; etag: string; expiresAt: number } | null =
   null;
@@ -14,13 +131,123 @@ const PUBLIC_CONFIG_TTL_MS = 60 * 1000; // 60s server-side TTL
 
 // SSE endpoints removed - using Convex's native real-time subscriptions instead
 
+const EXPORT_AUDIENCE = "exports";
+
+// Issue signed export token (short-lived) using Clerk auth
+http.route({
+  path: "/api/exports/issue-token",
+  method: "OPTIONS",
+  handler: httpAction(async (_ctx, request) => {
+    const requestOrigin = request.headers.get("origin") || undefined;
+    const allowedOrigin = requestOrigin || process.env.APP_URL || "*";
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": allowedOrigin,
+        Vary: "Origin",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+      },
+    });
+  }),
+});
+
+http.route({
+  path: "/api/exports/issue-token",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const requestOrigin = request.headers.get("origin") || undefined;
+    const allowedOrigin = requestOrigin || process.env.APP_URL || "*";
+    const headersBase = {
+      "Access-Control-Allow-Origin": allowedOrigin,
+      Vary: "Origin",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Content-Type": "application/json",
+    } as Record<string, string>;
+
+    try {
+      const identity = await ctx.auth.getUserIdentity();
+      if (!identity) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: headersBase,
+        });
+      }
+
+      const user = await ctx.runQuery(
+        internal.users.internal.getUserByClerkIdInternal,
+        {
+          clerkId: identity.subject,
+        },
+      );
+
+      if (!user) {
+        return new Response(JSON.stringify({ error: "User not found" }), {
+          status: 401,
+          headers: headersBase,
+        });
+      }
+
+      if (user.isActive === false) {
+        return new Response(JSON.stringify({ error: "User inactive" }), {
+          status: 403,
+          headers: headersBase,
+        });
+      }
+
+      const secret =
+        process.env.EXPORT_TOKEN_SECRET || process.env.SSE_TOKEN_SECRET;
+      if (!secret) {
+        return new Response(
+          JSON.stringify({ error: "Export token secret not configured" }),
+          {
+            status: 500,
+            headers: headersBase,
+          },
+        );
+      }
+
+      const nowSec = Math.floor(Date.now() / 1000);
+      const payload: ExportTokenPayload = {
+        uid: String(user._id),
+        iat: nowSec,
+        exp: nowSec + 10 * 60,
+        aud: EXPORT_AUDIENCE,
+        n: randomNonce(),
+        iss: "convex",
+        ver: 2,
+        ori: requestOrigin || undefined,
+      };
+
+      const payloadB64 = base64UrlEncodeString(JSON.stringify(payload));
+      const signature = await hmacSha256(secret, payloadB64);
+      const token = `v2.${payloadB64}.${signature}`;
+
+      return new Response(
+        JSON.stringify({ token, expiresAt: payload.exp * 1000 }),
+        {
+          status: 200,
+          headers: headersBase,
+        },
+      );
+    } catch (error) {
+      console.error("Failed to issue export token", error);
+      return new Response(JSON.stringify({ error: "Token issuance failed" }), {
+        status: 500,
+        headers: headersBase,
+      });
+    }
+  }),
+});
+
 // Leads export endpoint (CSV) - backend-only export
 http.route({
   path: "/api/exports/leads.csv",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
     const url = new URL(request.url);
-    const userId = (url.searchParams.get("userId") || "").trim();
+    const userIdParam = (url.searchParams.get("userId") || "").trim();
     const token = url.searchParams.get("token");
     const searchIdParam = url.searchParams.get("searchId");
 
@@ -32,34 +259,84 @@ http.route({
       Vary: "Origin",
     } as Record<string, string>;
 
-    if (!userId || !token) {
-      return new Response("Missing userId or token", {
+    if (!token) {
+      return new Response("Missing token", {
         status: 401,
         headers: baseHeaders,
       });
     }
 
-    // Validate auth token (legacy base64 scheme)
-    try {
-      const tokenData = Buffer.from(token, "base64")
-        .toString("utf8")
-        .split(":");
-      if (tokenData.length !== 3 || tokenData[0] !== userId) {
+    let resolvedUserId: string | undefined;
+
+    if (token.startsWith("v2.")) {
+      const secret =
+        process.env.EXPORT_TOKEN_SECRET || process.env.SSE_TOKEN_SECRET;
+      if (!secret) {
+        return new Response("Export token secret not configured", {
+          status: 500,
+          headers: baseHeaders,
+        });
+      }
+
+      const verification = await verifyExportToken(
+        token,
+        secret,
+        EXPORT_AUDIENCE,
+        requestOrigin,
+      );
+
+      if (!verification.valid || !verification.payload) {
         return new Response("Invalid authentication token", {
           status: 401,
           headers: baseHeaders,
         });
       }
-      const tokenTimestamp = parseInt(tokenData[1]!);
-      const tokenAge = Date.now() - tokenTimestamp;
-      if (isNaN(tokenTimestamp) || tokenAge > 60 * 60 * 1000) {
-        return new Response("Authentication token expired", {
+
+      resolvedUserId = verification.payload.uid;
+
+      if (userIdParam && userIdParam !== resolvedUserId) {
+        return new Response("User mismatch", {
+          status: 403,
+          headers: baseHeaders,
+        });
+      }
+    } else {
+      if (!userIdParam) {
+        return new Response("Missing userId", {
           status: 401,
           headers: baseHeaders,
         });
       }
-    } catch (e) {
-      return new Response("Invalid authentication token format", {
+
+      try {
+        const tokenData = Buffer.from(token, "base64")
+          .toString("utf8")
+          .split(":");
+        if (tokenData.length !== 3 || tokenData[0] !== userIdParam) {
+          return new Response("Invalid authentication token", {
+            status: 401,
+            headers: baseHeaders,
+          });
+        }
+        const tokenTimestamp = parseInt(tokenData[1]!);
+        const tokenAge = Date.now() - tokenTimestamp;
+        if (isNaN(tokenTimestamp) || tokenAge > 60 * 60 * 1000) {
+          return new Response("Authentication token expired", {
+            status: 401,
+            headers: baseHeaders,
+          });
+        }
+        resolvedUserId = userIdParam;
+      } catch (e) {
+        return new Response("Invalid authentication token format", {
+          status: 401,
+          headers: baseHeaders,
+        });
+      }
+    }
+
+    if (!resolvedUserId) {
+      return new Response("Unable to resolve user", {
         status: 401,
         headers: baseHeaders,
       });
@@ -67,7 +344,7 @@ http.route({
 
     // Verify user exists
     const user = await ctx.runQuery(internal.users.internal.getUserInternal, {
-      userId: userId as any,
+      userId: resolvedUserId as Id<"users">,
     });
     if (!user) {
       return new Response("User not found", {
@@ -76,19 +353,46 @@ http.route({
       });
     }
 
+    if (user.isActive === false) {
+      return new Response("User inactive", {
+        status: 403,
+        headers: baseHeaders,
+      });
+    }
+
     try {
       // Get leads data
       const searchId = searchIdParam as Id<"searches"> | undefined;
-      let leads = await ctx.runQuery(
-        internal.leads.internal.getUserLeadsInternal,
-        {
-          userId: userId as Id<"users">,
-        },
-      );
-      
-      // Filter by searchId if provided
+      let leads: any[] = [];
+
       if (searchId) {
-        leads = leads.filter(lead => lead.searchId === searchId);
+        const search = await ctx.runQuery(
+          internal.search.internal.getSearchInternal,
+          {
+            searchId: searchId as any,
+          },
+        );
+
+        if (!search || String(search.userId) !== resolvedUserId) {
+          return new Response("Search not found or access denied", {
+            status: 403,
+            headers: baseHeaders,
+          });
+        }
+
+        leads = await ctx.runQuery(
+          internal.leads.internal.getSearchLeadsInternal,
+          {
+            searchId: searchId as any,
+          },
+        );
+      } else {
+        leads = await ctx.runQuery(
+          internal.leads.internal.getUserLeadsInternal,
+          {
+            userId: resolvedUserId as Id<"users">,
+          },
+        );
       }
 
       if (!leads || leads.length === 0) {
