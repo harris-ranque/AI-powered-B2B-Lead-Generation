@@ -36,7 +36,7 @@ const EmailGenerationResult = v.object({
       ),
       // Deep research metadata
       deep_research_used: v.optional(v.boolean()),
-      deep_research_reason: v.optional(v.string()),
+      deep_research_reason: v.optional(v.union(v.string(), v.null())),
       additional_credits_used: v.optional(v.number()),
       missing_data_points: v.optional(v.array(v.string())),
       data_completeness_score: v.optional(v.number()),
@@ -177,7 +177,7 @@ export const handleEmailGenerationCompleted = internalMutation({
           // Update lead with deep research metadata
           await ctx.db.patch(lead._id, {
             deepResearchUsed: true,
-            deepResearchReason: result.deep_research_reason,
+            deepResearchReason: result.deep_research_reason || "Deep research analysis",
             deepResearchTimestamp: Date.now(),
             deepResearchDataPoints: result.missing_data_points || [],
             deepResearchCreditsCharged: result.additional_credits_used || 0,
