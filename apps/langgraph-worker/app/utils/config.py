@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import Optional
 from urllib.parse import urlparse, urlunparse
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -66,7 +67,7 @@ class Settings(BaseSettings):
     tavily_search_depth: str = os.getenv("TAVILY_SEARCH_DEPTH", "basic")  # basic, advanced
     tavily_timeout: float = float(os.getenv("TAVILY_TIMEOUT", "5.0"))
     tavily_include_images: bool = os.getenv("TAVILY_INCLUDE_IMAGES", "false").lower() == "true"
-    tavily_rate_limit_per_minute: int = int(os.getenv("TAVILY_RATE_LIMIT_PER_MINUTE") or "500")
+    tavily_rate_limit_per_minute: int = Field(default=500)
     
     # Convex Configuration
     convex_url: str = os.getenv("CONVEX_URL", "")
@@ -117,6 +118,15 @@ class Settings(BaseSettings):
                 base_url = base_url[:-4]
             constructed = f"{base_url}/webhooks/langgraph/email-completed"
             self.webhook_url = _ensure_convex_webhook_path(constructed)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_tavily_rate_limit(cls, values: dict):
+        """Ensure empty Tavily rate limits fall back to the default."""
+        raw_limit = values.get("tavily_rate_limit_per_minute")
+        if raw_limit in (None, ""):
+            values["tavily_rate_limit_per_minute"] = 500
+        return values
     
     # Server Configuration
     port: int = int(os.getenv("PORT_OPTIONAL", os.getenv("PORT", "8080")))
