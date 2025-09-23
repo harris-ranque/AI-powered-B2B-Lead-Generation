@@ -8,6 +8,8 @@ RUN npm install -g pnpm@latest
 
 # Copy root package files and install all dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY README.md ./
+COPY docs/ docs/
 COPY apps/ apps/
 COPY packages/ packages/
 
