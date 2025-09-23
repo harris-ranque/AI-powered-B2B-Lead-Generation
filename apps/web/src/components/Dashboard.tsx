@@ -34,6 +34,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useUsage } from "@/hooks/useUsage";
 import { UsageWarnings } from "@/components/SubscriptionGuard";
+import { DashboardHelpWidget } from "@/components/DashboardHelpWidget";
 import { useSubscriptionGuard } from "@/hooks/useSubscriptionGuard";
 
 export function Dashboard() {
@@ -180,7 +181,8 @@ export function Dashboard() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-col items-end gap-4">
+                <DashboardHelpWidget />
                 {/* Real-time notification indicator */}
                 {hasUrgent && (
                   <div className="flex items-center gap-2">
