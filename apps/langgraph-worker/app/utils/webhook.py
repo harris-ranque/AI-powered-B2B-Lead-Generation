@@ -17,17 +17,41 @@ class WebhookClient:
     """Client for sending webhook notifications"""
 
     def __init__(self, webhook_url: str, api_key: Optional[str] = None, timeout: int = 30):
-        self.webhook_url = webhook_url
-        self.api_key = api_key
+        self.webhook_url = webhook_url.rstrip("/") if webhook_url else webhook_url
+        self.api_key = (api_key or "").strip()
         self.timeout = timeout
 
         # Log webhook client initialization for debugging
         logger.info(
             f"WebhookClient initialized: "
             f"url={webhook_url}, "
-            f"has_api_key={bool(api_key)}, "
+            f"has_api_key={bool(self.api_key)}, "
             f"timeout={timeout}s"
         )
+
+        if not self.api_key:
+            logger.error(
+                "LangGraph webhook API key is not configured. Webhook delivery will fail until the API key is provided."
+            )
+
+    def _prepare_headers(self, request_id: Optional[str] = None) -> Dict[str, str]:
+        """Construct standard headers for webhook requests."""
+
+        if not self.api_key:
+            raise RuntimeError(
+                "LangGraph webhook API key is not configured; cannot authenticate webhook request"
+            )
+
+        headers: Dict[str, str] = {
+            "Content-Type": "application/json",
+            "User-Agent": "langgraph-worker/2.0",
+            "Authorization": f"Bearer {self.api_key}",
+        }
+
+        if request_id:
+            headers["X-Request-ID"] = request_id
+
+        return headers
         
     async def send_result(
         self,
@@ -130,9 +154,7 @@ class WebhookClient:
             payload["approved"] = approved
 
         # Prepare headers
-        headers = {"Content-Type": "application/json", "User-Agent": "langgraph-worker/2.0"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        headers = self._prepare_headers(request_id)
         
         for attempt in range(retries + 1):
             try:
@@ -243,14 +265,19 @@ class WebhookClient:
             raise RuntimeError("LangGraph webhook URL not configured")
 
         # Construct analysis webhook URL - handle both auto-constructed and explicit URLs
-        if "/webhooks/langgraph/email-completed" in self.webhook_url:
-            analysis_webhook_url = self.webhook_url.replace(
+        base_webhook_url = self.webhook_url or ""
+        if "/webhooks/langgraph/email-completed" in base_webhook_url:
+            analysis_webhook_url = base_webhook_url.replace(
                 "/webhooks/langgraph/email-completed",
                 "/webhooks/langgraph/analysis-completed"
             )
+        elif base_webhook_url.endswith("/webhooks/langgraph/analysis-completed"):
+            analysis_webhook_url = base_webhook_url
+        elif base_webhook_url.endswith("/webhooks/langgraph"):
+            analysis_webhook_url = f"{base_webhook_url}/analysis-completed"
         else:
-            # For base webhook URLs, append the analysis endpoint
-            base_url = self.webhook_url.rstrip('/')
+            # For base webhook URLs, append the full analysis endpoint
+            base_url = base_webhook_url.rstrip('/')
             analysis_webhook_url = f"{base_url}/webhooks/langgraph/analysis-completed"
             
         normalized_status = status.lower()
@@ -280,9 +307,7 @@ class WebhookClient:
             payload["processing_time"] = processing_time
         
         # Prepare headers
-        headers = {"Content-Type": "application/json", "User-Agent": "langgraph-worker/2.0"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        headers = self._prepare_headers(request_id)
         
         for attempt in range(retries + 1):
             try:
@@ -380,13 +405,13 @@ class WebhookClient:
             "timestamp": datetime.utcnow().isoformat(),
             "type": "status_update"
         }
-        
+
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
                 async with session.post(
                     f"{self.webhook_url}/status",
                     json=payload,
-                    headers={"Content-Type": "application/json", "User-Agent": "langgraph-worker/2.0"}
+                    headers=self._prepare_headers(request_id)
                 ) as response:
                     if response.status == 200:
                         return True
