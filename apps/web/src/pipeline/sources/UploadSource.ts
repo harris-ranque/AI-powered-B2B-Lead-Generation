@@ -100,75 +100,85 @@ function parseCSVToLeads(
   const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""));
   const dataLines = lines.slice(1);
 
+  const now = Date.now();
+
   return dataLines
     .map((line, index) => {
       const values = line.split(",").map((v) => v.trim().replace(/"/g, ""));
-      const leadData: Partial<Lead> = {};
+      const leadData: Record<string, string> = {};
 
-      // Map CSV columns to Lead fields based on user's column mapping
       headers.forEach((header, headerIndex) => {
         const mappedField = columnMapping[header];
         if (mappedField && values[headerIndex]) {
-          switch (mappedField) {
-            case "company_name":
-              leadData.company_name = values[headerIndex];
-              break;
-            case "email":
-              leadData.email = values[headerIndex];
-              break;
-            case "phone":
-              leadData.phone = values[headerIndex];
-              break;
-            case "website":
-              leadData.website = values[headerIndex];
-              break;
-            case "address":
-              leadData.address = values[headerIndex];
-              break;
-            case "description":
-              leadData.description = values[headerIndex];
-              break;
-            case "industry":
-              leadData.industry = values[headerIndex];
-              break;
-          }
+          leadData[mappedField] = values[headerIndex];
         }
       });
 
-      // Create Lead object with required fields
-      return {
-        id: `upload_${index}`,
-        company_name: leadData.company_name || "Unknown Company",
-        email: leadData.email || null,
-        phone: leadData.phone || null,
-        website: leadData.website || null,
-        address: leadData.address || null,
-        description: leadData.description || null,
-        industry: leadData.industry || null,
-        status: "discovered" as const,
-        source: "csv_upload" as const,
-        rating: 0,
-        notes: "",
-        place_id: null,
-        latitude: null,
-        longitude: null,
-        opening_hours: null,
-        photos: null,
-        reviews: null,
-        review_count: null,
-        social_profiles: null,
-        employee_count: null,
-        founded_year: null,
-        technologies: null,
-        relevance_score: null,
-        pain_points: null,
-        value_match: null,
-        decision_makers: null,
-        contact_info: null,
-        ai_insights: null,
+      const leadId = `upload_${index}`;
+      const companyName = leadData.company_name?.trim();
+      if (!companyName) {
+        return null;
+      }
+
+      const normalizedEmail = leadData.email?.trim();
+      const contactEmails = normalizedEmail
+        ? [
+            {
+              email: normalizedEmail,
+              type: "work",
+              confidence: 0.5,
+            },
+          ]
+        : [];
+
+      const address = leadData.address?.trim();
+      const industry = leadData.industry?.trim();
+
+      const lead: Lead = {
+        _id: leadId,
+        id: leadId,
+        businessName: companyName,
+        company_name: companyName,
+        industry: industry || null,
+        category: industry || null,
+        website: leadData.website?.trim() || null,
+        phone: leadData.phone?.trim() || null,
+        address: address || null,
+        location: address
+          ? {
+              lat: 0,
+              lng: 0,
+              formattedAddress: address,
+            }
+          : undefined,
+        contactInfo:
+          contactEmails.length > 0
+            ? {
+                emails: contactEmails,
+                contacts: [],
+              }
+            : undefined,
+        contact_info:
+          normalizedEmail || leadData.phone
+            ? {
+                email: normalizedEmail || undefined,
+                phone: leadData.phone?.trim() || undefined,
+              }
+            : undefined,
+        notes: leadData.description?.trim() || "",
+        description: leadData.description?.trim() || null,
+        enrichmentStatus: "pending",
+        status: "new",
+        tags: [],
+        dataSource: "csv_upload",
+        createdAt: now,
+        updatedAt: now,
+        raw_data: {
+          source: "csv_upload",
+        },
       } as Lead;
+
+      return lead;
     })
-    .filter(
-      (lead) => lead.company_name && lead.company_name !== "Unknown Company",
-    );
+    .filter((lead): lead is Lead => Boolean(lead));
 }

@@ -40,6 +40,8 @@ export interface SourceParams {
   radius?: number;
   minEmployees?: number;
   maxEmployees?: number;
+  includeEmails?: boolean;
+  aiAnalysis?: boolean;
   file?: File;
   columns?: Record<string, string>;
 }

@@ -19,10 +19,20 @@ class GlobalErrorHandler {
   private static instance: GlobalErrorHandler;
   private errorQueue: ErrorDetails[] = [];
   private maxErrors = 10;
+  private readonly isBrowser: boolean;
 
   private constructor() {
-    this.setupErrorHandlers();
-    errorLogger.info("Global error handler initialized");
+    this.isBrowser =
+      typeof window !== "undefined" && typeof document !== "undefined";
+
+    if (this.isBrowser) {
+      this.setupErrorHandlers();
+      errorLogger.info("Global error handler initialized");
+    } else {
+      errorLogger.info(
+        "Global error handler initialized in non-browser environment",
+      );
+    }
   }
 
   public static getInstance(): GlobalErrorHandler {
@@ -33,6 +43,13 @@ class GlobalErrorHandler {
   }
 
   private setupErrorHandlers(): void {
+    if (!this.isBrowser) {
+      errorLogger.debug(
+        "Skipping global error handler setup outside browser environment",
+      );
+      return;
+    }
+
     errorLogger.debug("Setting up global error handlers");
 
     // Handle uncaught JavaScript errors
@@ -44,8 +61,8 @@ class GlobalErrorHandler {
         lineNumber: event.lineno,
         columnNumber: event.colno,
         timestamp: Date.now(),
-        userAgent: navigator.userAgent,
-        href: window.location.href,
+        userAgent: this.getUserAgent(),
+        href: this.getLocationHref(),
       };
 
       errorLogger.error("Uncaught error detected", errorDetails);
@@ -58,8 +75,8 @@ class GlobalErrorHandler {
         message: `Unhandled Promise Rejection: ${event.reason}`,
         stack: event.reason?.stack,
         timestamp: Date.now(),
-        userAgent: navigator.userAgent,
-        href: window.location.href,
+        userAgent: this.getUserAgent(),
+        href: this.getLocationHref(),
       };
 
       errorLogger.error("Unhandled promise rejection", {
@@ -179,6 +196,13 @@ class GlobalErrorHandler {
   private showUserFriendlyError(title: string, message: string): void {
     errorLogger.info("Showing user-friendly error", { title, message });
 
+    if (!this.isBrowser) {
+      errorLogger.debug(
+        "Skipping DOM error notification because document is unavailable",
+      );
+      return;
+    }
+
     // Create a user-friendly error notification
     const errorDiv = document.createElement("div");
     errorDiv.className =
@@ -228,6 +252,20 @@ class GlobalErrorHandler {
     const count = this.errorQueue.length;
     this.errorQueue = [];
     errorLogger.info("Error queue cleared", { previousCount: count });
+  }
+
+  private getUserAgent(): string {
+    if (typeof navigator !== "undefined" && navigator.userAgent) {
+      return navigator.userAgent;
+    }
+    return "unknown";
+  }
+
+  private getLocationHref(): string {
+    if (typeof window !== "undefined" && window.location) {
+      return window.location.href;
+    }
+    return "";
   }
 }
 
