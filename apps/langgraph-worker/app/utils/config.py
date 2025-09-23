@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     tavily_search_depth: str = os.getenv("TAVILY_SEARCH_DEPTH", "basic")  # basic, advanced
     tavily_timeout: float = float(os.getenv("TAVILY_TIMEOUT", "5.0"))
     tavily_include_images: bool = os.getenv("TAVILY_INCLUDE_IMAGES", "false").lower() == "true"
-    tavily_rate_limit_per_minute: int = int(os.getenv("TAVILY_RATE_LIMIT_PER_MINUTE", "500"))
+    tavily_rate_limit_per_minute: int = int(os.getenv("TAVILY_RATE_LIMIT_PER_MINUTE") or "500")
     
     # Convex Configuration
     convex_url: str = os.getenv("CONVEX_URL", "")
