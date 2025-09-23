@@ -562,17 +562,43 @@ export const getAdminSettings = query({
   handler: async (ctx) => {
     await requireAdmin(ctx);
 
-    const systemConfig = await ctx.db.query("systemConfiguration").unique();
+    const [settings, systemConfig] = await Promise.all([
+      ctx.db.query("adminSettings").unique(),
+      ctx.db.query("systemConfiguration").unique(),
+    ]);
+
+    const defaults = {
+      maintenanceMode: false,
+      systemNotifications: true,
+      debugMode: false,
+      rateLimitEnabled: true,
+      registrationEnabled: true,
+      maxDailySearches: 100,
+      systemMessage: "",
+    } as const;
+
+    const orchestration = systemConfig?.orchestrationSettings ?? null;
 
     return {
       maintenanceMode:
-        systemConfig?.orchestrationSettings?.maintenanceMode || false,
-      registrationEnabled: true, // Not available in current schema
-      maxDailySearches: 100, // Not available in current schema
-      systemMessage: "", // Not available in current schema
-      creditCosts: systemConfig?.creditCosts || null,
-      planLimits: systemConfig?.planLimits || null,
-      orchestrationSettings: systemConfig?.orchestrationSettings || null,
+        settings?.maintenanceMode ??
+        orchestration?.maintenanceMode ??
+        defaults.maintenanceMode,
+      systemNotifications:
+        settings?.systemNotifications ?? defaults.systemNotifications,
+      debugMode: settings?.debugMode ?? defaults.debugMode,
+      rateLimitEnabled:
+        settings?.rateLimitEnabled ?? defaults.rateLimitEnabled,
+      registrationEnabled:
+        settings?.registrationEnabled ?? defaults.registrationEnabled,
+      maxDailySearches:
+        settings?.maxDailySearches ?? defaults.maxDailySearches,
+      systemMessage: settings?.systemMessage ?? defaults.systemMessage,
+      creditCosts: systemConfig?.creditCosts ?? null,
+      planLimits: systemConfig?.planLimits ?? null,
+      orchestrationSettings: orchestration,
+      updatedAt: settings?.updatedAt ?? systemConfig?.updatedAt ?? null,
+      updatedBy: settings?.updatedBy ?? systemConfig?.updatedBy ?? null,
     };
   },
 });

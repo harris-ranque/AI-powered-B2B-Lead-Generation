@@ -632,6 +632,18 @@ export default defineSchema({
     .index("by_active", ["isActive"]),
 
   // System Configuration - Admin configurable settings
+  adminSettings: defineTable({
+    maintenanceMode: v.boolean(),
+    systemNotifications: v.boolean(),
+    debugMode: v.boolean(),
+    rateLimitEnabled: v.boolean(),
+    registrationEnabled: v.boolean(),
+    maxDailySearches: v.number(),
+    systemMessage: v.optional(v.string()),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  }),
+
   systemConfiguration: defineTable({
     creditCosts: v.object({
       LEAD_DISCOVERY: v.number(),

@@ -315,12 +315,13 @@ export const grantBonusCredits = mutation({
     await ctx.db.insert("notifications", {
       userId: args.userId,
       type: "system_alert",
-      title: "Bonus Credits Awarded",
+      title: "Credits Added",
       message: `You've been awarded ${args.amount} bonus credits! Reason: ${args.reason}`,
       data: {
-        creditsAwarded: args.amount,
+        creditsAdded: args.amount,
         newBalance,
         reason: args.reason,
+        addedBy: currentUser._id,
         awardedBy: currentUser._id,
       },
       read: false,
