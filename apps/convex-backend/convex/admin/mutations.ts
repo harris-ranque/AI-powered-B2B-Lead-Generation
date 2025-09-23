@@ -104,7 +104,7 @@ export const addUserCredits = mutation({
     reason: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const adminUser = await requireAdmin(ctx);
 
     const targetUser = await ctx.db.get(args.userId);
     if (!targetUser) {
@@ -137,12 +137,14 @@ export const addUserCredits = mutation({
     await ctx.db.insert("notifications", {
       userId: args.userId,
       type: "system_alert",
-      title: "Bonus Credits Awarded",
+      title: "Credits Added",
       message: `You've been awarded ${args.amount} bonus credits! Reason: ${args.reason}`,
       data: {
-        creditsAwarded: args.amount,
+        creditsAdded: args.amount,
         newBalance,
         reason: args.reason,
+        addedBy: adminUser._id,
+        awardedBy: adminUser._id,
         timestamp: Date.now(),
       },
       read: false,
@@ -349,10 +351,17 @@ export const runSystemMaintenance = mutation({
   },
 });
 
-// Update admin settings (limited to current schema support)
+// Update admin settings and synchronize key system configuration flags
 export const updateAdminSettings = mutation({
   args: {
     settings: v.object({
+      maintenanceMode: v.optional(v.boolean()),
+      systemNotifications: v.optional(v.boolean()),
+      debugMode: v.optional(v.boolean()),
+      rateLimitEnabled: v.optional(v.boolean()),
+      registrationEnabled: v.optional(v.boolean()),
+      maxDailySearches: v.optional(v.number()),
+      systemMessage: v.optional(v.string()),
       creditCosts: v.optional(
         v.object({
           LEAD_DISCOVERY: v.optional(v.number()),
@@ -400,12 +409,68 @@ export const updateAdminSettings = mutation({
   },
   handler: async (ctx, args) => {
     const adminUser = await requireAdmin(ctx);
+    const now = Date.now();
 
-    // Get or create system configuration
+    const existingSettings = await ctx.db.query("adminSettings").unique();
+    const defaults = {
+      maintenanceMode: false,
+      systemNotifications: true,
+      debugMode: false,
+      rateLimitEnabled: true,
+      registrationEnabled: true,
+      maxDailySearches: 100,
+      systemMessage: "",
+    } as const;
+
+    const maintenanceMode =
+      args.settings.maintenanceMode ??
+      existingSettings?.maintenanceMode ??
+      defaults.maintenanceMode;
+    const systemNotifications =
+      args.settings.systemNotifications ??
+      existingSettings?.systemNotifications ??
+      defaults.systemNotifications;
+    const debugMode =
+      args.settings.debugMode ?? existingSettings?.debugMode ?? defaults.debugMode;
+    const rateLimitEnabled =
+      args.settings.rateLimitEnabled ??
+      existingSettings?.rateLimitEnabled ??
+      defaults.rateLimitEnabled;
+    const registrationEnabled =
+      args.settings.registrationEnabled ??
+      existingSettings?.registrationEnabled ??
+      defaults.registrationEnabled;
+    const maxDailySearches =
+      args.settings.maxDailySearches !== undefined
+        ? args.settings.maxDailySearches
+        : existingSettings?.maxDailySearches ?? defaults.maxDailySearches;
+    const systemMessage =
+      args.settings.systemMessage !== undefined
+        ? args.settings.systemMessage
+        : existingSettings?.systemMessage ?? defaults.systemMessage;
+
+    const settingsToPersist = {
+      maintenanceMode,
+      systemNotifications,
+      debugMode,
+      rateLimitEnabled,
+      registrationEnabled,
+      maxDailySearches,
+      systemMessage,
+      updatedAt: now,
+      updatedBy: adminUser._id,
+    };
+
+    if (existingSettings) {
+      await ctx.db.patch(existingSettings._id, settingsToPersist);
+    } else {
+      await ctx.db.insert("adminSettings", settingsToPersist);
+    }
+
+    // Ensure system configuration exists for dependent settings
     let systemConfig = await ctx.db.query("systemConfiguration").unique();
 
     if (!systemConfig) {
-      // Create initial system configuration
       const configId = await ctx.db.insert("systemConfiguration", {
         creditCosts: {
           LEAD_DISCOVERY: 1,
@@ -442,14 +507,14 @@ export const updateAdminSettings = mutation({
         },
         orchestrationSettings: {
           leadGenerationEnabled: true,
-          maintenanceMode: false,
+          maintenanceMode,
           maxConcurrentSearches: 10,
           pauseReason: undefined,
           pausedAt: undefined,
           pausedBy: undefined,
         },
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+        createdAt: now,
+        updatedAt: now,
         updatedBy: adminUser._id,
       });
 
@@ -457,47 +522,68 @@ export const updateAdminSettings = mutation({
     }
 
     if (!systemConfig) {
-      throw new Error("Failed to create system configuration");
+      throw new Error("Failed to load system configuration");
     }
 
-    // Update configuration with provided settings
-    const updates: any = {
-      updatedAt: Date.now(),
+    const configUpdates: Record<string, any> = {
+      updatedAt: now,
       updatedBy: adminUser._id,
     };
+    let shouldPatchConfig = false;
 
     if (args.settings.creditCosts) {
-      updates.creditCosts = {
+      configUpdates.creditCosts = {
         ...systemConfig.creditCosts,
         ...args.settings.creditCosts,
       };
+      shouldPatchConfig = true;
     }
 
     if (args.settings.planLimits) {
-      updates.planLimits = {
+      configUpdates.planLimits = {
         ...systemConfig.planLimits,
         ...args.settings.planLimits,
       };
+      shouldPatchConfig = true;
     }
 
-    await ctx.db.patch(systemConfig._id, updates);
+    const existingOrchestration =
+      systemConfig.orchestrationSettings ?? {
+        leadGenerationEnabled: true,
+        maintenanceMode: false,
+        maxConcurrentSearches: 10,
+        pauseReason: undefined,
+        pausedAt: undefined,
+        pausedBy: undefined,
+      };
 
-    // Log the settings change
+    if (
+      args.settings.maintenanceMode !== undefined ||
+      !systemConfig.orchestrationSettings ||
+      existingOrchestration.maintenanceMode !== maintenanceMode
+    ) {
+      configUpdates.orchestrationSettings = {
+        ...existingOrchestration,
+        maintenanceMode,
+      };
+      shouldPatchConfig = true;
+    }
+
+    if (shouldPatchConfig) {
+      await ctx.db.patch(systemConfig._id, configUpdates);
+    }
+
     await ctx.db.insert("systemLogs", {
-      type: "admin_action",
-      action: "update_admin_settings",
+      type: "admin_settings",
+      action: "update_settings",
       userId: adminUser._id,
-      timestamp: Date.now(),
+      timestamp: now,
       data: {
-        settingsUpdated: Object.keys(args.settings),
-        oldSettings: {
-          creditCosts: systemConfig.creditCosts,
-          planLimits: systemConfig.planLimits,
-        },
-        newSettings: args.settings,
+        updatedSettings: args.settings,
+        persistedSettings: settingsToPersist,
       },
     });
 
-    return { success: true, message: "Admin settings updated successfully" };
+    return { success: true };
   },
 });
