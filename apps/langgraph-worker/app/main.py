@@ -38,7 +38,14 @@ if settings.sentry_dsn:
     )
     logging.getLogger(__name__).info(f"Sentry initialized for environment: {settings.environment}")
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Security
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    BackgroundTasks,
+    Depends,
+    Security,
+    Request,
+)
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -373,16 +380,21 @@ async def generate_email(
 @app.post("/analyze-lead")
 async def analyze_lead(
     lead: Lead,
+    request: Request,
     authenticated: bool = Depends(verify_api_key)
 ):
     """Quick lead analysis using relevance analyzer node only"""
     start_time = datetime.utcnow()
+
+    request_id_header = request.headers.get("X-Request-ID")
+    request_id = request_id_header or f"analysis_{lead.id}"
     
     # Add Sentry context for this analysis request
     sentry_sdk.set_context("lead_analysis", {
         "lead_id": lead.id,
         "lead_company": lead.company_name,
-        "endpoint": "/analyze-lead"
+        "endpoint": "/analyze-lead",
+        "request_id": request_id,
     })
     
     logger.info(f"[LangGraph] Analyzing lead: {lead.company_name}")
@@ -406,7 +418,7 @@ async def analyze_lead(
         
         # Create minimal state
         state = {
-            "request_id": f"analysis_{lead.id}",
+            "request_id": request_id,
             "lead": lead,
             "business_profile": minimal_profile,
             "requirements": EmailRequirements(call_to_action="Schedule a call"),
@@ -443,7 +455,7 @@ async def analyze_lead(
         logger.debug(f"Webhook client URL: {webhook_client.webhook_url}")
 
         await webhook_client.send_analysis_result(
-            request_id=f"analysis_{lead.id}",
+            request_id=request_id,
             lead_id=lead.id,
             status="completed",
             analysis=analysis_result,
@@ -484,9 +496,9 @@ async def analyze_lead(
             logger.debug(f"Error webhook URL: {webhook_client.webhook_url}")
 
             await webhook_client.send_analysis_result(
-                request_id=f"analysis_{lead.id}",
+                request_id=request_id,
                 lead_id=lead.id,
-                status="failed",
+                status="error",
                 error=str(e),
                 processing_time=duration
             )

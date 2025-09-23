@@ -11,6 +11,8 @@ from ..models.lead_models import WebhookPayload, EmailGenerationResult
 
 logger = logging.getLogger(__name__)
 
+ALLOWED_WEBHOOK_STATUSES = {"completed", "error"}
+
 class WebhookClient:
     """Client for sending webhook notifications"""
 
@@ -60,21 +62,73 @@ class WebhookClient:
                         result_payload = None
 
         # Build payload with only non-None values (Convex v.optional doesn't accept null)
+        normalized_status = status.lower()
+        if normalized_status not in ALLOWED_WEBHOOK_STATUSES:
+            raise ValueError(
+                f"Unsupported webhook status '{status}'. Expected one of {sorted(ALLOWED_WEBHOOK_STATUSES)}"
+            )
+
         payload = {
             "request_id": request_id,
-            "status": status,
+            "status": normalized_status,
+            "timestamp": datetime.utcnow().isoformat(),
         }
 
         # Only include optional fields if they have values
-        if result_payload is not None:
+        include_result = (
+            normalized_status == "completed" and result_payload is not None
+        )
+
+        if include_result and isinstance(result_payload, dict):
+            if isinstance(result_payload, dict):
+                sequence = result_payload.get("follow_up_sequence")
+                follow_up_emails: list[dict[str, Any]] = []
+
+                if isinstance(sequence, dict):
+                    emails = sequence.get("emails")
+                    schedule = sequence.get("timing_schedule")
+
+                    if isinstance(emails, list):
+                        for idx, email in enumerate(emails):
+                            if not isinstance(email, dict):
+                                continue
+
+                            subject = email.get("subject")
+                            body = email.get("body")
+
+                            delay_days = None
+                            if isinstance(schedule, list) and idx < len(schedule):
+                                maybe_delay = schedule[idx]
+                                if isinstance(maybe_delay, (int, float)):
+                                    delay_days = int(round(maybe_delay))
+
+                            follow_up_emails.append(
+                                {
+                                    "subject": subject if isinstance(subject, str) else f"Follow Up {idx + 1}",
+                                    "body": body if isinstance(body, str) else "",
+                                    "delay_days": delay_days if delay_days is not None else (idx + 1) * 3,
+                                }
+                            )
+
+                if follow_up_emails:
+                    result_payload["follow_up_emails"] = follow_up_emails
+
             payload["result"] = result_payload
-        if error is not None:
-            payload["error"] = error
-        if quality_score is not None:
+
+        if normalized_status == "error":
+            payload["error"] = error or "Unknown error"
+        elif error is not None:
+            logger.warning(
+                "Ignoring error payload for completed webhook %s: %s",
+                request_id,
+                error,
+            )
+
+        if normalized_status == "completed" and quality_score is not None:
             payload["quality_score"] = quality_score
-        if approved is not None:
+        if normalized_status == "completed" and approved is not None:
             payload["approved"] = approved
-        
+
         # Prepare headers
         headers = {"Content-Type": "application/json", "User-Agent": "langgraph-worker/2.0"}
         if self.api_key:
@@ -199,15 +253,31 @@ class WebhookClient:
             base_url = self.webhook_url.rstrip('/')
             analysis_webhook_url = f"{base_url}/webhooks/langgraph/analysis-completed"
             
+        normalized_status = status.lower()
+        if normalized_status not in ALLOWED_WEBHOOK_STATUSES:
+            raise ValueError(
+                f"Unsupported webhook status '{status}'. Expected one of {sorted(ALLOWED_WEBHOOK_STATUSES)}"
+            )
+
         payload = {
             "request_id": request_id,
             "lead_id": lead_id,
-            "status": status,
+            "status": normalized_status,
             "timestamp": datetime.utcnow().isoformat(),
-            "analysis": analysis,
-            "error": error,
-            "processing_time": processing_time
         }
+
+        if normalized_status == "completed" and analysis is not None:
+            payload["analysis"] = analysis
+        if normalized_status == "error":
+            payload["error"] = error or "Analysis failed"
+        elif error is not None:
+            logger.warning(
+                "Ignoring error payload for completed analysis webhook %s: %s",
+                request_id,
+                error,
+            )
+        if processing_time is not None:
+            payload["processing_time"] = processing_time
         
         # Prepare headers
         headers = {"Content-Type": "application/json", "User-Agent": "langgraph-worker/2.0"}

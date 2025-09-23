@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import Stripe from "stripe";
+import { createHmac, randomBytes } from "crypto";
 
 const http = httpRouter();
 
@@ -28,27 +29,11 @@ function base64UrlDecodeToString(data: string): string {
 }
 
 function randomNonce(bytes = 16): string {
-  const buffer = new Uint8Array(bytes);
-  globalThis.crypto.getRandomValues(buffer);
-  return Array.from(buffer)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return randomBytes(bytes).toString("hex");
 }
 
-async function hmacSha256(secret: string, payload: string): Promise<string> {
-  const key = await globalThis.crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const signature = await globalThis.crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(payload),
-  );
-  return base64UrlEncode(new Uint8Array(signature));
+function hmacSha256(secret: string, payload: string): string {
+  return createHmac("sha256", secret).update(payload).digest("base64url");
 }
 
 function timingSafeEqual(a: string, b: string): boolean {
@@ -93,7 +78,7 @@ async function verifyExportToken(
     return { valid: false };
   }
 
-  const expectedSignature = await hmacSha256(secret, payloadB64);
+  const expectedSignature = hmacSha256(secret, payloadB64);
   if (!timingSafeEqual(signatureB64, expectedSignature)) {
     return { valid: false };
   }
@@ -122,6 +107,60 @@ async function verifyExportToken(
   }
 
   return { valid: true, payload };
+}
+
+type LanggraphAuthResult = { userAgent: string };
+
+function authorizeLanggraphWebhook(
+  request: Request,
+): LanggraphAuthResult | Response {
+  const expectedKey =
+    process.env.LANGGRAPH_API_KEY ?? process.env.API_KEY ?? undefined;
+
+  if (!expectedKey) {
+    console.error("LangGraph webhook key not configured");
+    return new Response(
+      JSON.stringify({ error: "Webhook authentication not configured" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  }
+
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (authHeader !== `Bearer ${expectedKey}`) {
+    console.error("Invalid LangGraph webhook API key provided");
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const userAgent = request.headers.get("User-Agent") || "";
+  return { userAgent };
+}
+
+function ensureJsonRequest(request: Request): Response | null {
+  const contentType = request.headers.get("Content-Type") || "";
+  if (
+    contentType &&
+    !contentType.toLowerCase().includes("application/json") &&
+    !contentType.toLowerCase().includes("text/json")
+  ) {
+    return new Response(JSON.stringify({ error: "Unsupported content type" }), {
+      status: 415,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  return null;
 }
 
 // In-memory cache for public config to avoid hitting queries on every request
@@ -443,7 +482,7 @@ http.route({
           "Content-Type": "text/csv",
           "Content-Disposition": searchId
             ? `attachment; filename="leads_${searchId}.csv"`
-            : `attachment; filename="leads_${userId}.csv"`,
+            : `attachment; filename="leads_${resolvedUserId}.csv"`,
         },
       });
     } catch (error) {
@@ -573,43 +612,166 @@ http.route({
 
 // Stripe webhook handler
 http.route({
-  path: "/stripe",
+  path: "/webhooks/stripe",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const signature = request.headers.get("stripe-signature");
-    if (!signature) {
-      return new Response("Missing stripe-signature header", { status: 400 });
-    }
-
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    if (!webhookSecret) {
-      console.error("STRIPE_WEBHOOK_SECRET is not set");
-      return new Response("Webhook secret not configured", { status: 500 });
-    }
-
-    let event: Stripe.Event;
     try {
-      const body = await request.text();
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-        apiVersion: "2025-07-30.basil" as any,
-      });
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-    } catch (error) {
-      console.error("Webhook signature verification failed:", error);
-      return new Response("Webhook signature verification failed", {
-        status: 400,
-      });
-    }
+      const signature = request.headers.get("stripe-signature");
+      if (!signature) {
+        console.error("Missing Stripe signature header");
+        return new Response("Missing signature", { status: 400 });
+      }
 
-    try {
-      // Handle Stripe webhook - simplified version
-      // For now, just return success - webhook handling can be implemented later
-      return new Response(JSON.stringify({ received: true, type: event.type }), {
-        headers: { "Content-Type": "application/json" }
+      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+      const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+      if (!webhookSecret || !stripeSecretKey) {
+        console.error("Stripe webhook secret or API key not configured");
+        return new Response("Stripe integration not configured", {
+          status: 500,
+        });
+      }
+
+      const rawBody = await request.text();
+      const stripe = new Stripe(stripeSecretKey, {
+        apiVersion: "2023-10-16" as Stripe.LatestApiVersion,
+      });
+
+      let event: Stripe.Event;
+      try {
+        event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+      } catch (err) {
+        console.error("Stripe signature verification failed", err);
+        return new Response("Invalid signature", { status: 400 });
+      }
+
+      console.log(`Stripe webhook received: ${event.type}`);
+
+      switch (event.type) {
+        case "checkout.session.completed": {
+          const session = event.data.object as Stripe.Checkout.Session;
+          await ctx.runMutation(
+            internal.billing.webhooks.handleCheckoutCompleted,
+            {
+              sessionId: session.id,
+              customerId: String(session.customer || ""),
+              subscriptionId:
+                typeof session.subscription === "string"
+                  ? session.subscription
+                  : session.subscription?.id,
+              mode: session.mode || "",
+              metadata: session.metadata || {},
+            },
+          );
+          break;
+        }
+
+        case "customer.subscription.created": {
+          const sub = event.data.object as Stripe.Subscription;
+          const item = sub.items?.data?.[0];
+          await ctx.runMutation(internal.billing.webhooks.handleSubscriptionCreated, {
+            subscriptionId: sub.id,
+            customerId: String(sub.customer),
+            status: sub.status,
+            priceId: item?.price?.id,
+            currentPeriodStart:
+              ((sub as any).current_period_start || 0) * 1000,
+            currentPeriodEnd: ((sub as any).current_period_end || 0) * 1000,
+            trialStart: (sub as any).trial_start
+              ? (sub as any).trial_start * 1000
+              : undefined,
+            trialEnd: (sub as any).trial_end
+              ? (sub as any).trial_end * 1000
+              : undefined,
+            metadata: (sub as any).metadata || {},
+            interval: item?.price?.recurring?.interval || undefined,
+          } as any);
+          break;
+        }
+
+        case "customer.subscription.updated": {
+          const sub = event.data.object as Stripe.Subscription;
+          const item = sub.items?.data?.[0];
+          await ctx.runMutation(internal.billing.webhooks.handleSubscriptionUpdated, {
+            subscriptionId: sub.id,
+            customerId: String(sub.customer),
+            status: sub.status,
+            priceId: item?.price?.id,
+            currentPeriodStart:
+              ((sub as any).current_period_start || 0) * 1000,
+            currentPeriodEnd: ((sub as any).current_period_end || 0) * 1000,
+            cancelAtPeriodEnd: (sub as any).cancel_at_period_end || false,
+            cancelAt: (sub as any).cancel_at
+              ? (sub as any).cancel_at * 1000
+              : undefined,
+            canceledAt: (sub as any).canceled_at
+              ? (sub as any).canceled_at * 1000
+              : undefined,
+            metadata: (sub as any).metadata || {},
+            interval: item?.price?.recurring?.interval || undefined,
+          } as any);
+          break;
+        }
+
+        case "customer.subscription.deleted": {
+          const sub = event.data.object as Stripe.Subscription;
+          await ctx.runMutation(internal.billing.webhooks.handleSubscriptionDeleted, {
+            subscriptionId: sub.id,
+            customerId: String(sub.customer),
+          });
+          break;
+        }
+
+        case "invoice.payment_succeeded": {
+          const invoice = event.data.object as Stripe.Invoice;
+          await ctx.runMutation(internal.billing.webhooks.handlePaymentSucceeded, {
+            invoiceId: String((invoice as any).id || ""),
+            subscriptionId:
+              typeof (invoice as any).subscription === "string"
+                ? (invoice as any).subscription
+                : (invoice as any).subscription?.id,
+            customerId: String((invoice as any).customer || ""),
+            amount: (invoice as any).amount_paid || 0,
+            currency: (invoice as any).currency || "usd",
+            paidAt: (invoice as any).status_transitions?.paid_at
+              ? (invoice as any).status_transitions.paid_at * 1000
+              : undefined,
+          });
+          break;
+        }
+
+        case "invoice.payment_failed": {
+          const invoice = event.data.object as Stripe.Invoice;
+          await ctx.runMutation(internal.billing.webhooks.handlePaymentFailed, {
+            invoiceId: String((invoice as any).id || ""),
+            subscriptionId:
+              typeof (invoice as any).subscription === "string"
+                ? (invoice as any).subscription
+                : (invoice as any).subscription?.id,
+            customerId: String((invoice as any).customer || ""),
+            amount: (invoice as any).amount_due || 0,
+            currency: (invoice as any).currency || "usd",
+            attemptCount: (invoice as any).attempt_count || 0,
+            nextPaymentAttempt: (invoice as any).next_payment_attempt
+              ? (invoice as any).next_payment_attempt * 1000
+              : undefined,
+          });
+          break;
+        }
+
+        default: {
+          console.log(`Unhandled Stripe event type: ${event.type}`);
+        }
+      }
+
+      return new Response(JSON.stringify({ received: true }), {
+        headers: { "Content-Type": "application/json" },
       });
     } catch (error) {
-      console.error("Webhook processing failed:", error);
-      return new Response("Webhook processing failed", { status: 500 });
+      console.error("Stripe webhook error:", error);
+      return new Response(JSON.stringify({ error: "Webhook handler failed" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
     }
   }),
 });
@@ -648,34 +810,47 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request: Request) => {
     try {
-      const authHeader = request.headers.get("Authorization");
-      const expectedKey =
-        process.env.LANGGRAPH_API_KEY ?? process.env.API_KEY ?? undefined;
-      const userAgent = request.headers.get("User-Agent");
+      const authResult = authorizeLanggraphWebhook(request);
+      if (authResult instanceof Response) {
+        return authResult;
+      }
 
-      if (!authHeader || !expectedKey) {
-        console.error("Missing authorization header or API key not configured");
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
+      if (
+        authResult.userAgent &&
+        !authResult.userAgent.toLowerCase().includes("langgraph-worker")
+      ) {
+        console.warn(
+          "Unexpected user agent for LangGraph webhook:",
+          authResult.userAgent,
+        );
+      }
+
+      const contentTypeError = ensureJsonRequest(request);
+      if (contentTypeError) {
+        return contentTypeError;
+      }
+
+      let payload: unknown;
+      try {
+        payload = await request.json();
+      } catch (error) {
+        console.error("Failed to parse LangGraph email webhook payload", error);
+        return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+          status: 400,
           headers: { "Content-Type": "application/json" },
         });
       }
 
-      if (authHeader !== `Bearer ${expectedKey}`) {
-        console.error("Invalid API key provided");
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
+      if (!payload || typeof payload !== "object") {
+        return new Response(JSON.stringify({ error: "Invalid payload" }), {
+          status: 400,
           headers: { "Content-Type": "application/json" },
         });
       }
 
-      if (userAgent && !userAgent.includes("langgraph-worker")) {
-        console.warn("Unexpected user agent for LangGraph webhook:", userAgent);
-      }
-
-      const payload = (await request.json()) as unknown;
-
-      if (!payload || typeof payload !== "object" || !("request_id" in payload)) {
+      const payloadRecord = payload as Record<string, unknown>;
+      const requestId = payloadRecord.request_id;
+      if (typeof requestId !== "string" || requestId.length === 0) {
         return new Response(
           JSON.stringify({ error: "Missing request_id in payload" }),
           {
@@ -685,10 +860,21 @@ http.route({
         );
       }
 
+      const headerRequestId = request.headers.get("X-Request-ID");
+      if (headerRequestId && headerRequestId !== requestId) {
+        console.warn(
+          "LangGraph webhook request_id mismatch",
+          {
+            headerRequestId,
+            payloadRequestId: requestId,
+          },
+        );
+      }
+
       const result = await ctx.runMutation(
         internal.langgraph.webhooks.handleEmailGenerationCompleted,
         {
-          payload: payload as any,
+          payload: payloadRecord as any,
         },
       );
 
@@ -737,38 +923,48 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request: Request) => {
     try {
-      const authHeader = request.headers.get("Authorization");
-      const expectedKey =
-        process.env.LANGGRAPH_API_KEY ?? process.env.API_KEY ?? undefined;
-      const userAgent = request.headers.get("User-Agent");
-
-      if (!authHeader || !expectedKey) {
-        console.error("Missing authorization header or API key not configured");
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        });
+      const authResult = authorizeLanggraphWebhook(request);
+      if (authResult instanceof Response) {
+        return authResult;
       }
-
-      if (authHeader !== `Bearer ${expectedKey}`) {
-        console.error("Invalid API key provided");
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      if (userAgent && !userAgent.includes("langgraph-worker")) {
-        console.warn("Unexpected user agent for LangGraph webhook:", userAgent);
-      }
-
-      const payload = (await request.json()) as unknown;
 
       if (
-        !payload ||
-        typeof payload !== "object" ||
-        (!("request_id" in payload) && !("lead_id" in payload))
+        authResult.userAgent &&
+        !authResult.userAgent.toLowerCase().includes("langgraph-worker")
       ) {
+        console.warn(
+          "Unexpected user agent for LangGraph analysis webhook:",
+          authResult.userAgent,
+        );
+      }
+
+      const contentTypeError = ensureJsonRequest(request);
+      if (contentTypeError) {
+        return contentTypeError;
+      }
+
+      let payload: unknown;
+      try {
+        payload = await request.json();
+      } catch (error) {
+        console.error("Failed to parse LangGraph analysis webhook payload", error);
+        return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (!payload || typeof payload !== "object") {
+        return new Response(JSON.stringify({ error: "Invalid payload" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const payloadRecord = payload as Record<string, unknown>;
+      const requestId = payloadRecord.request_id;
+      const leadId = payloadRecord.lead_id;
+      if (typeof requestId !== "string" || typeof leadId !== "string") {
         return new Response(
           JSON.stringify({ error: "Missing request_id or lead_id in payload" }),
           {
@@ -778,10 +974,21 @@ http.route({
         );
       }
 
+      const headerRequestId = request.headers.get("X-Request-ID");
+      if (headerRequestId && headerRequestId !== requestId) {
+        console.warn(
+          "LangGraph analysis webhook request_id mismatch",
+          {
+            headerRequestId,
+            payloadRequestId: requestId,
+          },
+        );
+      }
+
       const result = await ctx.runMutation(
         internal.langgraph.webhooks.handleAnalysisCompleted,
         {
-          payload: payload as any,
+          payload: payloadRecord as any,
         },
       );
 

@@ -2,11 +2,19 @@ import { internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { createOperationLogger } from "../lib/logger";
+import { Id } from "../_generated/dataModel";
 
 // Type definitions for LangGraph webhook payloads
+const WebhookStatus = v.union(
+  v.literal("completed"),
+  v.literal("error"),
+  v.literal("failed"),
+);
+
 const EmailGenerationResult = v.object({
   request_id: v.string(),
-  status: v.string(),
+  status: WebhookStatus,
+  timestamp: v.optional(v.string()),
   result: v.optional(
     v.object({
       relevance_score: v.optional(v.number()),
@@ -50,7 +58,8 @@ const EmailGenerationResult = v.object({
 const AnalysisResult = v.object({
   request_id: v.string(),
   lead_id: v.string(),
-  status: v.string(),
+  status: WebhookStatus,
+  timestamp: v.optional(v.string()),
   analysis: v.optional(
     v.object({
       relevance_score: v.number(),
@@ -84,14 +93,13 @@ export const handleEmailGenerationCompleted = internalMutation({
     );
 
     try {
-      // Validate status
-      if (
-        args.payload.status !== "completed" &&
-        args.payload.status !== "error"
-      ) {
-        logger.error(`Invalid status: ${args.payload.status}`, {
+      const rawStatus = args.payload.status;
+      const status = rawStatus === "failed" ? "error" : rawStatus;
+
+      if (status !== "completed" && status !== "error") {
+        logger.error(`Invalid status: ${rawStatus}`, {
           requestId: args.payload.request_id,
-          status: args.payload.status,
+          status: rawStatus,
         });
         return { success: false, error: "Invalid status" };
       }
@@ -108,28 +116,56 @@ export const handleEmailGenerationCompleted = internalMutation({
 
       logger.debug("Webhook validation passed", {
         requestId: args.payload.request_id,
-        status: args.payload.status,
+        status,
       });
 
-      const searchId = requestIdParts[0];
-      const leadId = requestIdParts[1];
+      const [searchIdStr, leadIdStr] = requestIdParts as [
+        string,
+        string,
+        ...string[],
+      ];
+
+      // Validate that the extracted IDs are valid Convex IDs
+      let searchId: Id<"searches">;
+      let leadId: Id<"leads">;
+
+      try {
+        // Try to convert strings to Convex IDs - this will throw if invalid
+        searchId = searchIdStr as Id<"searches">;
+        leadId = leadIdStr as Id<"leads">;
+
+        // Basic validation - Convex IDs should be alphanumeric and of reasonable length
+        if (!/^[a-zA-Z0-9]{16,32}$/.test(searchIdStr) || !/^[a-zA-Z0-9]{16,32}$/.test(leadIdStr)) {
+          throw new Error("Invalid ID format");
+        }
+      } catch (error) {
+        logger.error(`Invalid Convex IDs in request: ${args.payload.request_id}`, {
+          searchIdStr,
+          leadIdStr,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return { success: false, error: "Invalid Convex ID format" };
+      }
 
       // Get search and validate
       const search = await ctx.runQuery(
         internal.search.internal.getSearchInternal,
         {
-          searchId: searchId as any,
+          searchId,
         },
       );
 
       if (!search) {
-        console.error(`Search not found: ${searchId}`);
+        logger.error(`Search not found: ${searchId}`, {
+          requestId: args.payload.request_id,
+          searchId: searchIdStr,
+        });
         return { success: false, error: "Search not found" };
       }
 
       // Get lead and validate
       const lead = await ctx.runQuery(internal.leads.internal.getLeadInternal, {
-        leadId: leadId as any,
+        leadId,
       });
 
       if (!lead) {
@@ -145,28 +181,69 @@ export const handleEmailGenerationCompleted = internalMutation({
         )
         .unique();
 
-      if (args.payload.status === "completed" && args.payload.result) {
+      if (status === "completed") {
+        if (!args.payload.result) {
+          logger.error("Email completion webhook missing result payload", {
+            requestId: args.payload.request_id,
+          });
+          return { success: false, error: "Missing result payload" };
+        }
+
         // Process successful email generation
         const result = args.payload.result;
 
-        const formattedFollowUps = Array.isArray(
-          (result as Record<string, unknown>).follow_up_emails,
-        )
-          ? ((result as Record<string, unknown>).follow_up_emails as Array<
-              Record<string, unknown>
-            >).map((followUp, index) => ({
-              subject:
-                typeof followUp.subject === "string"
-                  ? followUp.subject
-                  : `Follow Up ${index + 1}`,
-              body:
-                typeof followUp.body === "string" ? followUp.body : "",
-              delay_days:
-                typeof followUp.delay_days === "number"
-                  ? followUp.delay_days
-                  : (index + 1) * 3,
-            }))
-          : [];
+        const resultRecord = result as Record<string, unknown>;
+        const followUpSequenceRaw =
+          resultRecord["follow_up_sequence"] &&
+          typeof resultRecord["follow_up_sequence"] === "object"
+            ? (resultRecord["follow_up_sequence"] as Record<string, unknown>)
+            : undefined;
+
+        const followUpEmailsRaw: Array<Record<string, unknown>> = (() => {
+          const direct = resultRecord["follow_up_emails"];
+          if (Array.isArray(direct)) {
+            return direct as Array<Record<string, unknown>>;
+          }
+
+          if (followUpSequenceRaw) {
+            const emails = Array.isArray(followUpSequenceRaw["emails"])
+              ? (followUpSequenceRaw["emails"] as Array<Record<string, unknown>>)
+              : [];
+            const timing = Array.isArray(followUpSequenceRaw["timing_schedule"])
+              ? (followUpSequenceRaw["timing_schedule"] as Array<number>)
+              : [];
+
+            return emails.map((email, index) => {
+              const delayFromSchedule =
+                typeof timing[index] === "number" ? timing[index] : undefined;
+              return {
+                ...email,
+                delay_days: delayFromSchedule,
+              };
+            });
+          }
+
+          return [];
+        })();
+
+        const formattedFollowUps = followUpEmailsRaw.map((followUp, index) => {
+          const subjectRaw = followUp["subject"];
+          const bodyRaw = followUp["body"];
+          const delayRawCandidate = followUp["delay_days"] ?? followUp["delayDays"];
+          const delayRaw =
+            typeof delayRawCandidate === "number"
+              ? delayRawCandidate
+              : undefined;
+
+          return {
+            subject:
+              typeof subjectRaw === "string"
+                ? subjectRaw
+                : `Follow Up ${index + 1}`,
+            body: typeof bodyRaw === "string" ? bodyRaw : "",
+            delay_days: delayRaw ?? (index + 1) * 3,
+          };
+        });
 
         const formattedOutput = result.primary_email
           ? {
@@ -200,13 +277,20 @@ export const handleEmailGenerationCompleted = internalMutation({
           await ctx.db.patch(requestDoc._id, {
             status: "completed",
             completedAt: Date.now(),
-            processingTime: result.processing_time || requestDoc.processingTime,
+            processingTime:
+              typeof result.processing_time === "number"
+                ? result.processing_time
+                : requestDoc.processingTime,
             creditsUsed: (requestDoc.creditsUsed || 0) + additionalCredits,
             outputData: {
               raw: result,
               formatted: formattedOutput,
               qualityScore: args.payload.quality_score,
               approved: args.payload.approved,
+              followUpEmails: formattedFollowUps,
+              followUpSequence: followUpSequenceRaw,
+              status,
+              timestamp: args.payload.timestamp,
             },
           });
         }
@@ -361,6 +445,12 @@ export const handleEmailGenerationCompleted = internalMutation({
             status: "failed",
             completedAt: Date.now(),
             error: errorMessage,
+            outputData: {
+              status: "error",
+              error: errorMessage,
+              timestamp: args.payload.timestamp,
+            },
+            processingTime: requestDoc.processingTime,
           });
         }
 
@@ -442,9 +532,25 @@ export const handleAnalysisCompleted = internalMutation({
         return { success: false, error: "Missing lead_id" };
       }
 
+      const rawStatus = args.payload.status;
+      const status = rawStatus === "failed" ? "error" : rawStatus;
+
+      if (status !== "completed" && status !== "error") {
+        console.error(`Invalid analysis status: ${rawStatus}`);
+        return { success: false, error: "Invalid status" };
+      }
+
+      const leadIdStr = args.payload.lead_id;
+      if (!/^[a-zA-Z0-9]{16,32}$/.test(leadIdStr)) {
+        console.error(`Invalid lead_id format: ${leadIdStr}`);
+        return { success: false, error: "Invalid lead_id format" };
+      }
+
+      const leadId = leadIdStr as Id<"leads">;
+
       // Get lead and validate
       const lead = await ctx.runQuery(internal.leads.internal.getLeadInternal, {
-        leadId: args.payload.lead_id as any,
+        leadId: leadId as any,
       });
 
       if (!lead) {
@@ -465,13 +571,25 @@ export const handleAnalysisCompleted = internalMutation({
         return { success: false, error: "Search not found" };
       }
 
-      if (args.payload.status === "completed" && args.payload.analysis) {
+      const requestDoc = await ctx.db
+        .query("langgraphRequests")
+        .withIndex("by_request_id", (q) =>
+          q.eq("requestId", args.payload.request_id),
+        )
+        .unique();
+
+      if (status === "completed") {
+        if (!args.payload.analysis) {
+          console.error("Analysis webhook missing analysis payload");
+          return { success: false, error: "Missing analysis payload" };
+        }
+
         // Process successful analysis
         const analysis = args.payload.analysis;
 
         // Update lead with analysis results
         await ctx.runMutation(internal.leads.internal.updateLeadAnalysis, {
-          leadId: args.payload.lead_id as any,
+          leadId: leadId as any,
           aiAnalysis: {
             relevanceScore: analysis.relevance_score,
             painPoints: analysis.pain_points,
@@ -491,6 +609,20 @@ export const handleAnalysisCompleted = internalMutation({
           },
           emailContent: undefined, // Analysis only, no email
         });
+
+        if (requestDoc) {
+          await ctx.db.patch(requestDoc._id, {
+            status: "completed",
+            completedAt: Date.now(),
+            processingTime:
+              args.payload.processing_time ?? requestDoc.processingTime ?? 0,
+            outputData: {
+              analysis,
+              status,
+              timestamp: args.payload.timestamp,
+            },
+          });
+        }
 
         // Broadcast success update via real-time status broadcast
         await ctx.runMutation(
@@ -528,7 +660,7 @@ export const handleAnalysisCompleted = internalMutation({
 
         // Update lead with error state
         await ctx.runMutation(internal.leads.internal.updateLeadAnalysis, {
-          leadId: args.payload.lead_id as any,
+          leadId: leadId as any,
           aiAnalysis: {
             relevanceScore: 0,
             painPoints: [],
@@ -540,6 +672,20 @@ export const handleAnalysisCompleted = internalMutation({
           },
           emailContent: undefined,
         });
+
+        if (requestDoc) {
+          await ctx.db.patch(requestDoc._id, {
+            status: "failed",
+            completedAt: Date.now(),
+            processingTime: requestDoc.processingTime ?? 0,
+            error: errorMessage,
+            outputData: {
+              status: "error",
+              error: errorMessage,
+              timestamp: args.payload.timestamp,
+            },
+          });
+        }
 
         // Broadcast error via real-time status broadcast
         await ctx.runMutation(

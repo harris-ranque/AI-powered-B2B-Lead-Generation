@@ -274,3 +274,25 @@ export const getCreditUsage = query({
     };
   },
 });
+
+// Get subscription status - returns subscription details and billing info
+export const getSubscriptionStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    // For now, return basic subscription info based on user plan
+    // This can be extended to integrate with Stripe subscription data
+    const plan = user.plan || "starter";
+
+    return {
+      plan: plan,
+      hasActiveSubscription: plan !== "starter",
+      isTrialing: false, // This would come from Stripe data
+      billing: null, // This would contain Stripe subscription details
+    };
+  },
+});
