@@ -7,6 +7,16 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
 import { usePipeline } from "@/pipeline/context";
 import { SourceRegistry } from "@/pipeline/sources/SourceRegistry";
@@ -48,6 +58,7 @@ export function LeadDiscoveryStage({
   const { createSearch } = useSearches();
   const { searchGoogleMaps } = useGoogleMapsSearch();
   const { toast } = useToast();
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
   // Google Maps form state
   const [location, setLocation] = useState("");
@@ -93,6 +104,12 @@ export function LeadDiscoveryStage({
   };
 
   const validation = validateAndEstimateCost();
+  const estimatedCost = validation.estimatedCost || 0;
+  const isStartDisabled =
+    !validation.isValid ||
+    state.isProcessing ||
+    estimatedCost > userCredits ||
+    state.selectedSource === "csv_upload";
 
   const handleStartDiscovery = async () => {
     if (!validation.isValid) return;
@@ -158,6 +175,16 @@ export function LeadDiscoveryStage({
     } finally {
       setProcessing(false);
     }
+  };
+
+  const handleRequestStart = () => {
+    if (isStartDisabled) return;
+    setIsConfirmOpen(true);
+  };
+
+  const handleConfirmStart = async () => {
+    setIsConfirmOpen(false);
+    await handleStartDiscovery();
   };
 
   if (!selectedSource) {
@@ -402,13 +429,8 @@ export function LeadDiscoveryStage({
             </div>
 
             <Button
-              onClick={handleStartDiscovery}
-              disabled={
-                !validation.isValid ||
-                state.isProcessing ||
-                (validation.estimatedCost || 0) > userCredits ||
-                state.selectedSource === "csv_upload"
-              }
+              onClick={handleRequestStart}
+              disabled={isStartDisabled}
               className="min-w-40"
               size="lg"
             >
@@ -428,6 +450,40 @@ export function LeadDiscoveryStage({
           </div>
         </CardContent>
       </Card>
+
+      <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm credit usage</AlertDialogTitle>
+            <AlertDialogDescription>
+              {estimatedCost > 0 ? (
+                <>
+                  This search may use up to{" "}
+                  <span className="font-semibold text-foreground">
+                    {estimatedCost} credits
+                  </span>
+                  . You currently have {userCredits} credits available.
+                </>
+              ) : (
+                "This search will use credits from your balance."
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setIsConfirmOpen(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmStart}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {estimatedCost > 0
+                ? `Yes, use up to ${estimatedCost} credits`
+                : "Yes, start the search"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
