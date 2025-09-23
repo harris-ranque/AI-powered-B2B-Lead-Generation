@@ -5,7 +5,8 @@ Provides async wrapper around the official LangChain Tavily tool.
 
 import asyncio
 import time
-from typing import Dict, Any, List, Optional, Literal
+from collections import deque
+from typing import Deque, Dict, Any, List, Optional, Literal
 from pydantic import BaseModel, Field
 from langchain_tavily import TavilySearch
 from .config import get_settings
@@ -13,6 +14,40 @@ from .logger import setup_logger
 
 logger = setup_logger(__name__)
 settings = get_settings()
+
+_rate_limit_lock: Optional[asyncio.Lock] = None
+_request_timestamps: Deque[float] = deque()
+_RATE_LIMIT_PER_MINUTE = getattr(settings, "tavily_rate_limit_per_minute", 500)
+
+
+async def _acquire_rate_limit() -> None:
+    """Ensure Tavily requests respect the configured per-minute rate limit."""
+    if _RATE_LIMIT_PER_MINUTE <= 0:
+        return
+
+    global _rate_limit_lock
+    if _rate_limit_lock is None:
+        _rate_limit_lock = asyncio.Lock()
+
+    lock = _rate_limit_lock
+
+    while True:
+        async with lock:
+            now = time.monotonic()
+            window_start = now - 60
+
+            while _request_timestamps and _request_timestamps[0] < window_start:
+                _request_timestamps.popleft()
+
+            if len(_request_timestamps) < _RATE_LIMIT_PER_MINUTE:
+                _request_timestamps.append(now)
+                return
+
+            oldest = _request_timestamps[0]
+            wait_time = max(0.0, 60 - (now - oldest))
+
+        if wait_time > 0:
+            await asyncio.sleep(wait_time)
 
 class TavilySearchResult(BaseModel):
     """Standardized Tavily search result"""
@@ -131,7 +166,7 @@ class TavilySearchTool:
         try:
             # Build search parameters
             search_params = {"query": query}
-            
+
             # Add runtime parameter overrides if provided
             if include_images is not None:
                 search_params["include_images"] = include_images
@@ -143,9 +178,13 @@ class TavilySearchTool:
                 search_params["include_domains"] = include_domains
             if exclude_domains is not None:
                 search_params["exclude_domains"] = exclude_domains
-            
+
             logger.info(f"Tavily search: {query} with params: {search_params}")
-            
+
+            # Respect Tavily API rate limits
+            # TODO: Implement batching of Tavily requests to minimize latency while sharing rate limits efficiently.
+            await _acquire_rate_limit()
+
             # Execute search with timeout
             result = await asyncio.wait_for(
                 self._run_tool_async(search_params),
