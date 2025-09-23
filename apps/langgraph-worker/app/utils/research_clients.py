@@ -19,6 +19,7 @@ settings = get_settings()
 
 class ResearchTier(str, Enum):
     TAVILY = "tavily"
+    EXA = "exa"
     PERPLEXITY = "perplexity"
 
 class ResearchResult(BaseModel):
@@ -207,6 +208,178 @@ class TavilyClient:
         elif total_content_length > 300:
             score += 0.15
             
+        return min(1.0, score)
+
+
+class ExaClient:
+    """
+    Tier 2 research client using Exa for semantic search and competitor analysis.
+    Target: 3-4 seconds response time, focused on competitive landscape and industry insights.
+    """
+
+    def __init__(self):
+        self.api_key = getattr(settings, 'exa_api_key', None)
+        self.base_url = "https://api.exa.ai"
+        self.timeout = 12.0
+
+        if not self.api_key:
+            logger.warning("Exa API key not configured")
+
+    async def deep_search(self,
+                          company_name: str,
+                          domain: str = "",
+                          previous_context: str = "") -> ResearchResult:
+        """
+        Perform semantic research using Exa to identify competitors and industry signals.
+
+        Args:
+            company_name: Company to research
+            domain: Company website domain
+            previous_context: Context from earlier tiers
+
+        Returns:
+            ResearchResult enriched with competitor and industry insight data
+        """
+        start_time = time.time()
+
+        if not self.api_key:
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.EXA,
+                confidence_score=0.0,
+                error="Exa API key not configured",
+            )
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        competitor_payload = {
+            "query": company_name,
+            "type": "semantic",
+            "size": 5,
+        }
+        if domain:
+            competitor_payload["domain"] = domain
+
+        insights_payload = {
+            "query": f"{company_name} industry analysis market trends",
+            "type": "research",
+            "size": 5,
+        }
+        if previous_context:
+            insights_payload["context"] = previous_context[:500]
+
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
+                competitor_data = await self._post_json(
+                    session,
+                    f"{self.base_url}/findSimilar",
+                    competitor_payload,
+                    headers,
+                )
+                insights_data = await self._post_json(
+                    session,
+                    f"{self.base_url}/search",
+                    insights_payload,
+                    headers,
+                )
+        except asyncio.TimeoutError as exc:
+            logger.error(f"Exa timeout for {company_name}: {exc}")
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.EXA,
+                confidence_score=0.1,
+                response_time=time.time() - start_time,
+                error="Exa request timed out",
+            )
+        except aiohttp.ClientError as exc:
+            logger.error(f"Exa client error for {company_name}: {exc}")
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.EXA,
+                confidence_score=0.1,
+                response_time=time.time() - start_time,
+                error=f"Exa client error: {exc}",
+            )
+        except Exception as exc:
+            logger.exception(f"Unexpected Exa error for {company_name}")
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.EXA,
+                confidence_score=0.1,
+                response_time=time.time() - start_time,
+                error=f"Unexpected Exa error: {exc}",
+            )
+
+        competitors = self._extract_competitors(competitor_data.get("results", []))
+        industry_insights = self._extract_industry_insights(insights_data.get("results", []))
+
+        response_time = time.time() - start_time
+        confidence = self._calculate_confidence(competitors, industry_insights)
+        sources_analyzed = len(competitors) + len(insights_data.get("results", []))
+        data_points = len(competitors) + (1 if industry_insights else 0)
+
+        return ResearchResult(
+            query=company_name,
+            tier=ResearchTier.EXA,
+            confidence_score=confidence,
+            data_points=data_points,
+            sources_analyzed=sources_analyzed,
+            response_time=response_time,
+            industry_insights=industry_insights,
+            competitors=competitors,
+            raw_data={
+                "competitors": competitor_data,
+                "insights": insights_data,
+            },
+        )
+
+    async def _post_json(self,
+                         session: aiohttp.ClientSession,
+                         url: str,
+                         payload: Dict[str, Any],
+                         headers: Dict[str, str]) -> Dict[str, Any]:
+        """Helper to POST JSON data to Exa APIs with error handling."""
+        async with session.post(url, json=payload, headers=headers) as response:
+            if response.status >= 400:
+                text = await response.text()
+                raise RuntimeError(f"Exa API error {response.status}: {text}")
+            return await response.json()
+
+    def _extract_competitors(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        competitors: List[Dict[str, Any]] = []
+
+        for result in results:
+            title = result.get("title") or ""
+            name = title.split(" - ")[0] if title else (result.get("url") or "Unknown competitor")
+            competitors.append({
+                "name": name,
+                "url": result.get("url"),
+                "description": result.get("text", ""),
+                "relevance_score": float(result.get("score", 0.0) or 0.0),
+            })
+
+        return competitors
+
+    def _extract_industry_insights(self, results: List[Dict[str, Any]]) -> str:
+        insights = [r.get("text", "") for r in results if r.get("text")]
+        return " ".join(insights).strip()
+
+    def _calculate_confidence(self, competitors: List[Dict[str, Any]], insights: str) -> float:
+        score = 0.0
+
+        if competitors:
+            score += 0.4
+            avg_relevance = sum(c.get("relevance_score", 0.0) for c in competitors) / len(competitors)
+            score += min(0.3, avg_relevance * 0.3)
+
+        if insights:
+            score += 0.2
+            if len(insights.split()) > 40:
+                score += 0.1
+
         return min(1.0, score)
 
 
@@ -416,12 +589,13 @@ class PerplexityClient:
 
 class ResearchOrchestrator:
     """
-    Orchestrates the two-tier research system with intelligent escalation.
-    Tavily (fast basic research) → Perplexity (comprehensive deep research)
+    Orchestrates the three-tier research system with intelligent escalation.
+    Tavily (fast basic research) → Exa (semantic deepening) → Perplexity (comprehensive analysis)
     """
-    
+
     def __init__(self):
         self.tavily = TavilyClient()
+        self.exa = ExaClient()
         self.perplexity = PerplexityClient()
         self.data_validator = BaseDataValidator()
         
@@ -430,73 +604,129 @@ class ResearchOrchestrator:
         self.deep_research_confidence_threshold = DEEP_RESEARCH_CONFIG['CONFIDENCE_THRESHOLD']
         self.premium_lead_value_threshold = DEEP_RESEARCH_CONFIG['HIGH_VALUE_THRESHOLD']
         
-    async def research_company(self, 
+    async def research_company(self,
                              company_name: str,
                              domain: str = "",
                              user_tier: str = "free",
                              lead_value: float = 0.0,
                              force_tier: Optional[ResearchTier] = None) -> ResearchResult:
         """
-        Orchestrate 2-tier research with intelligent escalation.
-        Tavily (basic research) → Perplexity (deep research when needed)
-        
+        Orchestrate 3-tier research with intelligent escalation.
+        Tavily (basic research) → Exa (semantic research) → Perplexity (deep research when needed)
+
         Args:
             company_name: Company to research
             domain: Company website domain
             user_tier: User subscription tier (free, pro, enterprise)
             lead_value: Estimated lead value for premium research decisions
             force_tier: Force specific research tier (for testing)
-            
+
         Returns:
             Final research result with all relevant data
         """
-        logger.info(f"Starting 2-tier research for {company_name}")
-        
+        logger.info(f"Starting 3-tier research for {company_name}")
+
         # TIER 1: Always start with Tavily (fast basic research)
         tier1_result = await self.tavily.search(company_name, domain)
-        
+
         if force_tier == ResearchTier.TAVILY:
             return tier1_result
-            
+
         if tier1_result.error:
             logger.warning(f"Tier 1 failed for {company_name}: {tier1_result.error}")
-            
+
         # Validate data completeness of Tavily results
         validation_result = self.data_validator.validate_research_result(tier1_result)
-        logger.info(f"Data validation: {len(validation_result.data_point_scores) - len(validation_result.missing_data_points)}/5 data points present, score: {validation_result.validation_score:.2f}")
-        
-        # Use data validation to determine if deep research is needed
-        should_escalate_deep_research, validation_reason = self.data_validator.should_trigger_deep_research(
+        logger.info(
+            f"Data validation: {len(validation_result.data_point_scores) - len(validation_result.missing_data_points)}/5 data points present, score: {validation_result.validation_score:.2f}"
+        )
+
+        # Determine if we should escalate beyond Tavily
+        should_escalate, validation_reason = self.data_validator.should_trigger_deep_research(
             validation_result=validation_result,
             user_tier=user_tier,
             confidence_score=tier1_result.confidence_score,
-            lead_value=lead_value
+            lead_value=lead_value,
         )
-        
-        # Override for forced tier testing
-        if force_tier == ResearchTier.PERPLEXITY:
-            should_escalate_deep_research = True
+
+        if force_tier == ResearchTier.EXA:
+            should_escalate = True
+            validation_reason = "Forced semantic research for testing"
+        elif force_tier == ResearchTier.PERPLEXITY:
+            should_escalate = True
             validation_reason = "Forced deep research for testing"
-        
-        if not should_escalate_deep_research:
-            logger.info(f"Basic research sufficient for {company_name} (confidence: {tier1_result.confidence_score:.2f})")
+
+        if not should_escalate:
+            logger.info(
+                f"Basic research sufficient for {company_name} (confidence: {tier1_result.confidence_score:.2f})"
+            )
             return tier1_result
-        
-        # DEEP RESEARCH: Escalate to Perplexity for comprehensive analysis
-        escalation_reason = validation_reason  # Use validation-based reason
-        logger.info(f"Escalating to deep research for {company_name}: {escalation_reason}")
-        
+
+        # TIER 2: Exa semantic search for competitor and industry insights
+        logger.info(
+            f"Escalating to semantic research for {company_name}: {validation_reason}"
+        )
+        tier2_result = await self.exa.deep_search(
+            company_name,
+            domain,
+            tier1_result.company_overview,
+        )
+
+        combined_result = self._merge_research_results(tier1_result, tier2_result)
+        combined_result.escalation_reason = validation_reason
+
+        if force_tier == ResearchTier.EXA:
+            return combined_result
+
+        # Determine if we need to escalate again to Perplexity
+        escalate_to_tier3 = False
+        tier3_reason: Optional[str] = None
+
+        if tier2_result.error:
+            escalate_to_tier3 = True
+            tier3_reason = f"Tier 2 error: {tier2_result.error}"
+        else:
+            tier2_validation = self.data_validator.validate_research_result(
+                combined_result
+            )
+            logger.info(
+                f"Post-Exa validation score: {tier2_validation.validation_score:.2f}"
+            )
+            escalate_to_tier3, tier3_reason = self.data_validator.should_trigger_deep_research(
+                validation_result=tier2_validation,
+                user_tier=user_tier,
+                confidence_score=combined_result.confidence_score,
+                lead_value=lead_value,
+            )
+
+        if force_tier == ResearchTier.PERPLEXITY:
+            escalate_to_tier3 = True
+            tier3_reason = "Forced deep research for testing"
+
+        if not escalate_to_tier3:
+            logger.info(
+                f"Semantic research sufficient for {company_name} (confidence: {combined_result.confidence_score:.2f})"
+            )
+            return combined_result
+
+        # TIER 3: Escalate to Perplexity for comprehensive analysis
+        escalation_reason = tier3_reason or validation_reason
+        logger.info(
+            f"Escalating to deep research for {company_name}: {escalation_reason}"
+        )
+
         deep_research_result = await self.perplexity.comprehensive_research(
             company_name,
-            domain, 
-            tier1_result.company_overview
+            domain,
+            combined_result.company_overview,
         )
-        
-        # Merge Tavily and Perplexity results
-        final_result = self._merge_research_results(tier1_result, deep_research_result)
+
+        final_result = self._merge_research_results(combined_result, deep_research_result)
         final_result.escalation_reason = escalation_reason
-        
-        logger.info(f"Completed deep research for {company_name} - Final confidence: {final_result.confidence_score:.2f}")
+
+        logger.info(
+            f"Completed deep research for {company_name} - Final confidence: {final_result.confidence_score:.2f}"
+        )
         return final_result
     
     def _determine_escalation_reason(self, tier1_result: ResearchResult, lead_value: float) -> str:
