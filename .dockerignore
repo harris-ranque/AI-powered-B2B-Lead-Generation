@@ -56,7 +56,10 @@ convex/_generated/
 
 # Documentation
 *.md
+!README.md
 docs/
+!docs/
+!docs/**
 
 # Railway
 railway.json
