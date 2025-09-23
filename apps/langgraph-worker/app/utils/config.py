@@ -1,13 +1,13 @@
 """
 Configuration management for Genni LangGraph Worker
 """
+import logging
 import os
 from functools import lru_cache
 from typing import Optional
 from urllib.parse import urlparse, urlunparse
 
 from pydantic_settings import BaseSettings
-from pydantic import Field, field_validator
 
 
 def _ensure_convex_webhook_path(url: str) -> str:
@@ -42,12 +42,15 @@ def _ensure_convex_webhook_path(url: str) -> str:
     normalized = parsed._replace(path=path)
     return urlunparse(normalized)
 
+DEFAULT_PLACEHOLDER_API_KEY = "default-secure-key-change-in-production"
+
+
 class Settings(BaseSettings):
     """Application settings"""
-    
+
     # API Configuration
-    # Prefer LANGGRAPH_API_KEY to align with Convex backend, fall back to API_KEY
-    api_key: str = os.getenv("LANGGRAPH_API_KEY") or os.getenv("API_KEY", "default-secure-key-change-in-production")
+    # Prefer LANGGRAPH_WEBHOOK_SECRET/LANGGRAPH_API_KEY to align with Convex backend, fall back to API_KEY
+    api_key: str = ""
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     
     # Research API Configuration
@@ -70,8 +73,35 @@ class Settings(BaseSettings):
     # Webhook Configuration (auto-constructed from Convex URL if not provided)
     webhook_url: str = ""
     
+    # Track whether we loaded a placeholder API key so other components can surface better errors
+    api_key_placeholder_used: bool = False
+
     def __init__(self, **kwargs):
+        # Resolve API key precedence before settings initialization so BaseSettings picks up overrides
+        resolved_api_key = kwargs.get("api_key")
+        if not resolved_api_key:
+            resolved_api_key = (
+                os.getenv("LANGGRAPH_WEBHOOK_SECRET")
+                or os.getenv("LANGGRAPH_API_KEY")
+                or os.getenv("API_KEY")
+                or DEFAULT_PLACEHOLDER_API_KEY
+            )
+        kwargs["api_key"] = resolved_api_key
+
         super().__init__(**kwargs)
+
+        # Normalize API key once for downstream consumers
+        raw_api_key = (self.api_key or "").strip()
+        self.api_key_placeholder_used = raw_api_key == DEFAULT_PLACEHOLDER_API_KEY
+        if self.api_key_placeholder_used:
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "LangGraph webhook API key is using the placeholder value; webhook authentication will fail until it is updated."
+            )
+            # Prevent accidentally sending placeholder credentials over the wire
+            self.api_key = ""
+        else:
+            self.api_key = raw_api_key
         # Normalize explicit webhook value first to ensure correct path format
         if self.webhook_url:
             self.webhook_url = _ensure_convex_webhook_path(self.webhook_url.rstrip('/'))
@@ -149,14 +179,19 @@ def validate_required_settings():
     settings = get_settings()
     
     required_fields = {
-        "openai_api_key": "OpenAI API key is required"
+        "openai_api_key": "OpenAI API key is required",
+        "api_key": "LANGGRAPH_WEBHOOK_SECRET or LANGGRAPH_API_KEY/API_KEY is required for webhook authentication",
     }
     
     missing = []
     for field, message in required_fields.items():
-        if not getattr(settings, field):
+        value = getattr(settings, field)
+        if not value:
             missing.append(message)
-    
+
+    if getattr(settings, "api_key_placeholder_used", False):
+        missing.append("Replace the placeholder LangGraph webhook API key with a real secret")
+
     # Check that either webhook_url or convex_url is provided
     if not settings.webhook_url and not settings.convex_url:
         missing.append("Either WEBHOOK_URL or CONVEX_URL is required for result callbacks")

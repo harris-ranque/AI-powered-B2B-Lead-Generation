@@ -187,7 +187,9 @@ async def health_check():
         # Quick validation without full startup check
         if not settings.openai_api_key or settings.openai_api_key == "test-openai-key":
             validation_errors.append("OpenAI API key not configured")
-        if not settings.api_key or settings.api_key == "default-secure-key-change-in-production":
+        if getattr(settings, "api_key_placeholder_used", False):
+            validation_errors.append("Convex API key is using a placeholder value")
+        elif not settings.api_key:
             validation_errors.append("Convex API key not configured")
         if not settings.webhook_url:
             validation_errors.append("Webhook URL not configured")

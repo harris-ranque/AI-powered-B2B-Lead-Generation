@@ -114,8 +114,12 @@ type LanggraphAuthResult = { userAgent: string };
 function authorizeLanggraphWebhook(
   request: Request,
 ): LanggraphAuthResult | Response {
-  const expectedKey =
-    process.env.LANGGRAPH_API_KEY ?? process.env.API_KEY ?? undefined;
+  const expectedKeyRaw =
+    process.env.LANGGRAPH_WEBHOOK_SECRET ??
+    process.env.LANGGRAPH_API_KEY ??
+    process.env.API_KEY ??
+    undefined;
+  const expectedKey = expectedKeyRaw?.trim();
 
   if (!expectedKey) {
     console.error("LangGraph webhook key not configured");
@@ -130,18 +134,61 @@ function authorizeLanggraphWebhook(
 
   const authHeader = request.headers.get("Authorization");
   if (!authHeader) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: "Unauthorized", message: "Missing Authorization header" }),
+      {
+        status: 401,
+        headers: {
+          "Content-Type": "application/json",
+          "WWW-Authenticate": "Bearer",
+        },
+      },
+    );
   }
 
-  if (authHeader !== `Bearer ${expectedKey}`) {
+  const [scheme, token] = authHeader.trim().split(/\s+/, 2);
+  if (!token || scheme.toLowerCase() !== "bearer") {
+    return new Response(
+      JSON.stringify({
+        error: "Unauthorized",
+        message: "Invalid authorization scheme",
+      }),
+      {
+        status: 401,
+        headers: {
+          "Content-Type": "application/json",
+          "WWW-Authenticate": "Bearer",
+        },
+      },
+    );
+  }
+
+  const providedKey = token.trim();
+  if (!providedKey) {
+    return new Response(
+      JSON.stringify({ error: "Unauthorized", message: "Missing bearer token" }),
+      {
+        status: 401,
+        headers: {
+          "Content-Type": "application/json",
+          "WWW-Authenticate": "Bearer",
+        },
+      },
+    );
+  }
+
+  if (!timingSafeEqual(providedKey, expectedKey)) {
     console.error("Invalid LangGraph webhook API key provided");
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: "Forbidden", message: "Invalid webhook credentials" }),
+      {
+        status: 403,
+        headers: {
+          "Content-Type": "application/json",
+          "WWW-Authenticate": "Bearer",
+        },
+      },
+    );
   }
 
   const userAgent = request.headers.get("User-Agent") || "";
