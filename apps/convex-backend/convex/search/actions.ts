@@ -203,7 +203,9 @@ export const searchGoogleMaps = action({
       const location = params.location;
       const radiusMiles = params.radius;
       const requestedRadiusMeters = Math.max(radiusMiles, 0) * METERS_PER_MILE;
-      const radius = Math.min(requestedRadiusMeters, MAX_PLACES_RADIUS_METERS);
+      const radius = Math.round(
+        Math.min(requestedRadiusMeters, MAX_PLACES_RADIUS_METERS),
+      );
 
       if (requestedRadiusMeters > MAX_PLACES_RADIUS_METERS) {
         logWithCorrelation(
