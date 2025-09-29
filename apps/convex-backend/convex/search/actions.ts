@@ -12,6 +12,9 @@ import {
 } from "../lib/correlation";
 // Note: This action can be scheduled by the orchestrator (no user auth).
 
+const METERS_PER_MILE = 1609.34;
+const MAX_PLACES_RADIUS_METERS = 50000;
+
 // Google Maps search action
 export const searchGoogleMaps = action({
   args: {
@@ -198,7 +201,21 @@ export const searchGoogleMaps = action({
       const params = search.parameters;
       const query = params.keywords.join(" ");
       const location = params.location;
-      const radius = params.radius * 1000; // Convert km to meters
+      const radiusMiles = params.radius;
+      const requestedRadiusMeters = Math.max(radiusMiles, 0) * METERS_PER_MILE;
+      const radius = Math.min(requestedRadiusMeters, MAX_PLACES_RADIUS_METERS);
+
+      if (requestedRadiusMeters > MAX_PLACES_RADIUS_METERS) {
+        logWithCorrelation(
+          "warn",
+          discoveryCorrelation,
+          "Requested radius exceeds Google Places API limit. Clamping to 50km (~31 miles).",
+          {
+            requestedRadiusMiles: radiusMiles,
+            appliedRadiusMeters: radius,
+          },
+        );
+      }
 
       // First geocode the location to get lat,lng coordinates
       let lat: number, lng: number;
@@ -254,7 +271,7 @@ export const searchGoogleMaps = action({
         "https://maps.googleapis.com/maps/api/place/textsearch/json",
       );
       placesUrl.searchParams.set("query", query);
-      if (lat !== 0 && lng !== 0) {
+      if (lat !== 0 && lng !== 0 && radius > 0) {
         placesUrl.searchParams.set("location", `${lat},${lng}`);
         placesUrl.searchParams.set("radius", radius.toString());
       }

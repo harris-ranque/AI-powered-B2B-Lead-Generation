@@ -43,6 +43,9 @@ export type SearchStatus =
 
 export interface SearchParams {
   location: string;
+  /**
+   * Search radius in miles. Converted to meters to satisfy Google Places API requirements.
+   */
   radius: number;
   keywords: string[];
   industries?: string[];
