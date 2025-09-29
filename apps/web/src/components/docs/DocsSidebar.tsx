@@ -23,6 +23,8 @@ export type DocsNode = {
 
 interface DocsSidebarProps {
   root: DocsNode;
+  onSelect?: (path: string) => void;
+  activePath?: string;
 }
 
 function flattenFiles(node: DocsNode, acc: DocsNode[] = []): DocsNode[] {
@@ -31,9 +33,19 @@ function flattenFiles(node: DocsNode, acc: DocsNode[] = []): DocsNode[] {
   return acc;
 }
 
-export const DocsSidebar: React.FC<DocsSidebarProps> = ({ root }) => {
+export const DocsSidebar: React.FC<DocsSidebarProps> = ({
+  root,
+  onSelect,
+  activePath,
+}) => {
   const [query, setQuery] = React.useState("");
   const location = useLocation();
+  const resolvedActivePath = React.useMemo(() => {
+    if (activePath) return activePath;
+    const pathname = decodeURIComponent(location.pathname);
+    const match = pathname.match(/\/admin\/docs\/(.+)$/);
+    return match ? match[1] : "";
+  }, [activePath, location.pathname]);
 
   const files = React.useMemo(() => flattenFiles(root), [root]);
   const filtered = React.useMemo(() => {
@@ -48,15 +60,31 @@ export const DocsSidebar: React.FC<DocsSidebarProps> = ({ root }) => {
   const renderTree = (node: DocsNode) => {
     if (node.type === "file") {
       const href = `/admin/docs/${node.path}`;
-      const active = decodeURIComponent(location.pathname).endsWith(node.path);
+      const isActive = onSelect
+        ? resolvedActivePath === node.path
+        : decodeURIComponent(location.pathname).endsWith(node.path);
+      const itemClass = cn(
+        "block rounded px-2 py-1 text-sm hover:bg-muted",
+        isActive && "bg-muted font-medium",
+      );
+      if (onSelect) {
+        return (
+          <li key={node.path}>
+            <button
+              type="button"
+              onClick={() => onSelect(node.path)}
+              className={cn(itemClass, "w-full text-left")}
+            >
+              {node.title || node.name}
+            </button>
+          </li>
+        );
+      }
       return (
         <li key={node.path}>
           <Link
             to={href}
-            className={cn(
-              "block rounded px-2 py-1 text-sm hover:bg-muted",
-              active && "bg-muted font-medium",
-            )}
+            className={itemClass}
           >
             {node.title || node.name}
           </Link>
@@ -153,16 +181,29 @@ export const DocsSidebar: React.FC<DocsSidebarProps> = ({ root }) => {
             <ul className="space-y-1">
               {filtered.map((f) => (
                 <li key={f.path}>
-                  <Link
-                    to={`/admin/docs/${f.path}`}
-                    className={cn(
-                      "block rounded px-2 py-1 text-sm hover:bg-muted",
-                      decodeURIComponent(location.pathname).endsWith(f.path) &&
-                        "bg-muted font-medium",
-                    )}
-                  >
-                    {f.title || f.name}
-                  </Link>
+                  {onSelect ? (
+                    <button
+                      type="button"
+                      onClick={() => onSelect(f.path)}
+                      className={cn(
+                        "block w-full rounded px-2 py-1 text-left text-sm hover:bg-muted",
+                        resolvedActivePath === f.path && "bg-muted font-medium",
+                      )}
+                    >
+                      {f.title || f.name}
+                    </button>
+                  ) : (
+                    <Link
+                      to={`/admin/docs/${f.path}`}
+                      className={cn(
+                        "block rounded px-2 py-1 text-sm hover:bg-muted",
+                        decodeURIComponent(location.pathname).endsWith(f.path) &&
+                          "bg-muted font-medium",
+                      )}
+                    >
+                      {f.title || f.name}
+                    </Link>
+                  )}
                 </li>
               ))}
             </ul>
