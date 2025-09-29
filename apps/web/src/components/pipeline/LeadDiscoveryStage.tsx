@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,9 +34,15 @@ import {
   Upload,
   FileText,
   Mail,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Collapsible,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
 
 interface LeadDiscoveryStageProps {
   userCredits: number;
@@ -81,6 +87,14 @@ export function LeadDiscoveryStage({
   );
 
   const selectedSource = SourceRegistry.getSource(state.selectedSource!);
+  const hasActiveSearch = Boolean(state.searchId);
+  const [showConfiguration, setShowConfiguration] = useState(!hasActiveSearch);
+
+  useEffect(() => {
+    if (hasActiveSearch) {
+      setShowConfiguration(false);
+    }
+  }, [hasActiveSearch]);
 
   const validateAndEstimateCost = () => {
     if (!selectedSource) return { isValid: false, estimatedCost: 0 };
@@ -202,9 +216,9 @@ export function LeadDiscoveryStage({
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-5xl mx-auto w-full">
       {/* Header */}
-      <div className="text-center space-y-2">
+      <div className="space-y-2 text-center">
         <h3 className="text-xl font-semibold flex items-center justify-center gap-2">
           <selectedSource.icon className="h-5 w-5" />
           {selectedSource.name} Discovery
@@ -212,49 +226,85 @@ export function LeadDiscoveryStage({
         <p className="text-muted-foreground">{selectedSource.description}</p>
       </div>
 
-      {/* Credits Summary */}
-      <div className="flex items-center justify-center">
-        <div
-          className={cn(
-            "w-full max-w-2xl rounded-md border px-4 py-3 text-sm",
-            (validation.estimatedCost || 0) > userCredits
-              ? "border-destructive/40 bg-destructive/5 text-destructive"
-              : "border-border/50 bg-muted/30 text-muted-foreground",
-          )}
-          role="status"
-          aria-live="polite"
-        >
-          <div className="flex items-center justify-between">
-            <div className="font-medium">Credits</div>
-            <div className="flex items-center gap-3">
-              <span>
-                Estimated:{" "}
-                <span className="font-semibold">
-                  {validation.estimatedCost ?? 0}
-                </span>
-              </span>
-              <span>
-                Available: <span className="font-semibold">{userCredits}</span>
-              </span>
-              <span className="hidden sm:inline">
-                After search:{" "}
-                <span className="font-semibold">
-                  {Math.max(userCredits - (validation.estimatedCost ?? 0), 0)}
-                </span>
-              </span>
+      {hasActiveSearch && !showConfiguration && (
+        <Card className="glass-card border-dashed">
+          <CardContent className="flex flex-col items-start gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1 text-left">
+              <h4 className="font-semibold text-base">Discovery running</h4>
+              <p className="text-sm text-muted-foreground">
+                We kicked off your Google Maps search. Monitor the live progress
+                below or reopen the setup to adjust parameters.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowConfiguration(true)}
+              className="self-stretch sm:self-auto"
+            >
+              <ChevronUp className="mr-2 h-4 w-4" />
+              Adjust search
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      <Collapsible open={showConfiguration}>
+        <CollapsibleContent className="space-y-6">
+          {/* Credits Summary */}
+          <div className="flex items-center justify-center">
+            <div
+              className={cn(
+                "w-full max-w-2xl rounded-md border px-4 py-3 text-sm",
+                (validation.estimatedCost || 0) > userCredits
+                  ? "border-destructive/40 bg-destructive/5 text-destructive"
+                  : "border-border/50 bg-muted/30 text-muted-foreground",
+              )}
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex items-center justify-between">
+                <div className="font-medium">Credits</div>
+                <div className="flex items-center gap-3">
+                  <span>
+                    Estimated:{" "}
+                    <span className="font-semibold">
+                      {validation.estimatedCost ?? 0}
+                    </span>
+                  </span>
+                  <span>
+                    Available: <span className="font-semibold">{userCredits}</span>
+                  </span>
+                  <span className="hidden sm:inline">
+                    After search:{" "}
+                    <span className="font-semibold">
+                      {Math.max(userCredits - (validation.estimatedCost ?? 0), 0)}
+                    </span>
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Source-specific form */}
-      <Card className="glass-card">
-        <CardHeader>
-          <CardTitle className="text-lg">Configure Your Search</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {state.selectedSource === "google_maps" && (
-            <>
+          {/* Source-specific form */}
+          <Card className="glass-card">
+            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="text-lg">Configure Your Search</CardTitle>
+              {hasActiveSearch && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowConfiguration(false)}
+                  className="text-muted-foreground"
+                >
+                  <ChevronDown className="mr-1 h-4 w-4" />
+                  Hide setup
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {state.selectedSource === "google_maps" && (
+                <>
               {/* Location & Industry */}
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -379,90 +429,90 @@ export function LeadDiscoveryStage({
                   />
                 </div>
               </div>
-            </>
-          )}
+                </>
+              )}
 
-          {state.selectedSource === "csv_upload" && (
-            <Alert>
+              {state.selectedSource === "csv_upload" && (
+                <Alert>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    CSV Upload is temporarily disabled while we roll out
+                    improved authentication for file-based imports. Please use
+                    Google Maps discovery for now.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Validation & Cost */}
+          {validation.errors.length > 0 && (
+            <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
-                CSV Upload is temporarily disabled while we roll out improved
-                authentication for file-based imports. Please use Google Maps
-                discovery for now.
+                <div className="space-y-1">
+                  {validation.errors.map((error, index) => (
+                    <div key={index}>{error}</div>
+                  ))}
+                </div>
               </AlertDescription>
             </Alert>
           )}
-        </CardContent>
-      </Card>
 
-      {/* Validation & Cost */}
-      {validation.errors.length > 0 && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            <div className="space-y-1">
-              {validation.errors.map((error, index) => (
-                <div key={index}>{error}</div>
-              ))}
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
+          {validation.warnings.length > 0 && (
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                <div className="space-y-1">
+                  {validation.warnings.map((warning, index) => (
+                    <div key={index}>{warning}</div>
+                  ))}
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
 
-      {validation.warnings.length > 0 && (
-        <Alert>
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            <div className="space-y-1">
-              {validation.warnings.map((warning, index) => (
-                <div key={index}>{warning}</div>
-              ))}
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Cost Summary & Action */}
-      <Card className="glass-card">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <CreditCard className="h-4 w-4" />
-                <span className="font-medium">Estimated Cost</span>
-                {validation.estimatedCost && (
-                  <Badge variant="secondary">
-                    {validation.estimatedCost} credits
-                  </Badge>
-                )}
+          {/* Cost Summary & Action */}
+          <Card className="glass-card">
+            <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  <span className="font-medium">Estimated Cost</span>
+                  {validation.estimatedCost && (
+                    <Badge variant="secondary">
+                      {validation.estimatedCost} credits
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  You have {userCredits} credits available
+                </p>
               </div>
-              <p className="text-sm text-muted-foreground">
-                You have {userCredits} credits available
-              </p>
-            </div>
 
-            <Button
-              onClick={handleRequestStart}
-              disabled={isStartDisabled}
-              className="min-w-40"
-              size="lg"
-            >
-              {state.isProcessing ? (
-                <>
-                  <Search className="h-4 w-4 mr-2 animate-spin" />
-                  Discovering...
-                </>
-              ) : (
-                <>
-                  <Search className="h-4 w-4 mr-2" />
-                  Start Discovery
-                  <ArrowRight className="h-4 w-4 ml-2" />
-                </>
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+              <Button
+                onClick={handleRequestStart}
+                disabled={isStartDisabled}
+                className="min-w-40"
+                size="lg"
+              >
+                {state.isProcessing ? (
+                  <>
+                    <Search className="h-4 w-4 mr-2 animate-spin" />
+                    Discovering...
+                  </>
+                ) : (
+                  <>
+                    <Search className="h-4 w-4 mr-2" />
+                    Start Discovery
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        </CollapsibleContent>
+      </Collapsible>
 
       <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
         <AlertDialogContent>

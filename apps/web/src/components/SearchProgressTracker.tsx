@@ -22,15 +22,12 @@ import {
   Mail,
   Bot,
   Loader2,
-  Play,
-  Pause,
   X,
   Eye,
   Zap,
   Microscope,
   FileText,
   TrendingUp,
-  Users,
   Brain,
 } from "lucide-react";
 import {
@@ -192,62 +189,118 @@ export function SearchProgressTracker({
   );
   const ResearchTierIcon = researchTierDisplay.icon;
 
-  // Enhanced pipeline stages with research tier
-  const pipelineStages = [
+  const discoveredCount = search.progress?.discovered ?? 0;
+  const enrichedCount = search.progress?.enriched ?? 0;
+  const analyzedCount = search.progress?.analyzed ?? 0;
+  const totalCount =
+    search.progress?.total ??
+    search.results?.totalFound ??
+    Math.max(discoveredCount, enrichedCount, analyzedCount);
+
+  const discoveryStarted =
+    search.status !== "pending" || discoveredCount > 0 || currentStep > 0;
+  const discoveryCompleted =
+    (search.progress?.total &&
+      search.progress.total > 0 &&
+      discoveredCount >= search.progress.total) ||
+    search.researchStage === "research_started" ||
+    search.researchStage === "research_completed" ||
+    currentStep > 1;
+
+  const researchStageStatus = search.researchStage;
+  const researchStarted =
+    researchStageStatus === "research_started" ||
+    researchStageStatus === "research_completed";
+  const researchCompleted = researchStageStatus === "research_completed";
+
+  const enrichmentStarted =
+    enrichedCount > 0 ||
+    researchCompleted ||
+    currentStep >= 2 ||
+    search.status === "processing" ||
+    search.status === "completed";
+  const enrichmentCompleted =
+    (totalCount > 0 && enrichedCount >= totalCount) ||
+    analyzedCount > 0 ||
+    currentStep >= 3 ||
+    search.status === "completed";
+
+  const analysisStarted =
+    analyzedCount > 0 ||
+    currentStep >= 3 ||
+    search.status === "processing" ||
+    search.status === "completed";
+  const analysisCompleted =
+    (totalCount > 0 && analyzedCount >= totalCount) ||
+    currentStep >= 4 ||
+    search.status === "completed";
+
+  const completionStarted =
+    search.status === "processing" || search.status === "completed";
+  const completionCompleted = search.status === "completed";
+
+  const stageBlueprint = [
     {
       name: "Discovery",
       icon: Search,
-      status: currentStep >= 1 ? "completed" : "pending",
       description: "Finding leads via Google Maps",
-      count: search.progress?.discovered || 0,
+      count: discoveredCount,
+      started: discoveryStarted,
+      completed: discoveryCompleted,
     },
     {
       name: "Research",
       icon: ResearchTierIcon,
-      status:
-        search.researchStage === "research_completed"
-          ? "completed"
-          : search.researchStage && search.researchStage !== "research_started"
-            ? "in_progress"
-            : "pending",
       description: researchTierDisplay.description,
       count: search.researchSourcesAnalyzed || 0,
       tier: search.researchTier,
       confidence: search.researchConfidence,
       escalation: search.researchEscalationReason,
+      started: researchStarted || discoveryCompleted,
+      completed: researchCompleted,
     },
     {
       name: "Enrichment",
       icon: Mail,
-      status:
-        currentStep >= 2
-          ? "completed"
-          : currentStep === 1
-            ? "in_progress"
-            : "pending",
       description: "Enriching with contact information",
-      count: search.progress?.enriched || 0,
+      count: enrichedCount,
+      started: enrichmentStarted,
+      completed: enrichmentCompleted,
     },
     {
       name: "Analysis",
       icon: Bot,
-      status:
-        currentStep >= 3
-          ? "completed"
-          : currentStep === 2
-            ? "in_progress"
-            : "pending",
       description: "AI analysis and email generation",
-      count: search.progress?.analyzed || 0,
+      count: analyzedCount,
+      started: analysisStarted,
+      completed: analysisCompleted,
     },
     {
       name: "Completion",
       icon: CheckCircle,
-      status: currentStep >= 4 ? "completed" : "pending",
       description: "Finalizing results and notifications",
-      count: search.results?.totalFound || 0,
+      count: search.results?.totalFound || totalCount,
+      started: completionStarted,
+      completed: completionCompleted,
     },
   ];
+
+  let activeStageAssigned = false;
+  const pipelineStages = stageBlueprint.map((stage, index) => {
+    let status: "pending" | "in_progress" | "completed" = "pending";
+
+    if (stage.completed) {
+      status = "completed";
+    } else if (!activeStageAssigned) {
+      activeStageAssigned = true;
+      status =
+        stage.started || index === 0 || search.status === "pending"
+          ? "in_progress"
+          : "pending";
+    }
+
+    return { ...stage, status };
+  });
 
   if (compact) {
     return (
@@ -370,343 +423,388 @@ export function SearchProgressTracker({
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-6">
-        {/* Progress Bar */}
-        {search.status === "in_progress" && (
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Overall Progress</span>
-              <span>{Math.round(progressPercent)}%</span>
+      <CardContent className="space-y-8 p-6">
+        {(search.status === "in_progress" || search.status === "processing") && (
+          <div className="rounded-xl border border-border/60 bg-background/70 p-4 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium">Overall Progress</p>
+                <p className="text-xs text-muted-foreground">
+                  Tracking the live status of your pipeline.
+                </p>
+              </div>
+              <Badge variant="outline" className="text-xs">
+                {Math.round(progressPercent)}% complete
+              </Badge>
             </div>
-            <Progress value={progressPercent} className="h-3" />
+            <Progress value={progressPercent} className="mt-3 h-2.5" />
           </div>
         )}
 
-        {/* Pipeline Stages */}
-        <div className="space-y-3">
-          <h4 className="font-medium text-sm">Pipeline Stages</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-            {pipelineStages.map((stage, index) => {
-              const StageIcon = stage.icon;
-              const stageDisplay = getStatusDisplay(stage.status);
-              const StageStatusIcon = stageDisplay.icon;
-
-              return (
-                <Card
-                  key={stage.name}
-                  className={cn(
-                    "p-3 transition-all duration-200",
-                    stage.status === "completed" &&
-                      "border-green-200 bg-green-50",
-                    stage.status === "in_progress" &&
-                      "border-blue-200 bg-blue-50",
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1">
-                      <StageIcon className="h-4 w-4 text-muted-foreground" />
-                      <StageStatusIcon
-                        className={cn(
-                          "h-3 w-3",
-                          stageDisplay.color,
-                          stage.status === "in_progress" && "animate-spin",
-                        )}
-                      />
-                    </div>
-                    <span className="font-medium text-sm">{stage.name}</span>
-                    {stage.tier && (
-                      <Badge variant="outline" className="text-xs px-1 py-0">
-                        {stage.tier}
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {stage.description}
-                  </p>
-                  {stage.count > 0 && (
-                    <p className="text-xs font-medium mt-1">
-                      {stage.name === "Research" ? "Sources: " : "Count: "}
-                      {stage.count}
-                    </p>
-                  )}
-                  {stage.confidence && (
-                    <p className="text-xs font-medium mt-1">
-                      Confidence: {Math.round(stage.confidence * 100)}%
-                    </p>
-                  )}
-                  {stage.escalation && (
-                    <p className="text-xs text-amber-600 mt-1">
-                      Escalated: {stage.escalation}
-                    </p>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Research Intelligence Section */}
-        {search.researchTier && (
-          <div className="space-y-3">
-            <h4 className="font-medium text-sm flex items-center gap-2">
-              <Brain className="h-4 w-4" />
-              Research Intelligence
-            </h4>
-            <Card className={cn("p-4", researchTierDisplay.bg)}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <ResearchTierIcon
-                    className={cn("h-5 w-5", researchTierDisplay.color)}
-                  />
-                  <span className="font-semibold">
-                    {researchTierDisplay.label} Research Tier
-                  </span>
-                </div>
-                <Badge variant={researchTierDisplay.variant}>
-                  {search.researchStage?.replace("_", " ") || "In Progress"}
+        <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
+          <div className="space-y-6">
+            <div className="space-y-4 rounded-xl border border-border/60 bg-background/70 p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Pipeline Stages
+                </h4>
+                <Badge variant="secondary" className="bg-primary/10 text-primary">
+                  {pipelineStages.filter((stage) => stage.status === "completed").length}
+                  /{pipelineStages.length} complete
                 </Badge>
               </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                {search.researchConfidence && (
-                  <div className="text-center">
-                    <div className="font-semibold text-lg">
-                      {Math.round(search.researchConfidence * 100)}%
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Confidence
-                    </div>
-                  </div>
-                )}
-                {search.researchDataPoints && (
-                  <div className="text-center">
-                    <div className="font-semibold text-lg">
-                      {search.researchDataPoints}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Data Points
-                    </div>
-                  </div>
-                )}
-                {search.researchSourcesAnalyzed && (
-                  <div className="text-center">
-                    <div className="font-semibold text-lg">
-                      {search.researchSourcesAnalyzed}
-                    </div>
-                    <div className="text-xs text-muted-foreground">Sources</div>
-                  </div>
-                )}
-                {search.researchResults?.competitors?.length && (
-                  <div className="text-center">
-                    <div className="font-semibold text-lg">
-                      {search.researchResults.competitors.length}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Competitors
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <p className="text-sm text-muted-foreground">
-                {researchTierDisplay.description}
-              </p>
-
-              {search.researchEscalationReason && (
-                <Alert className="mt-3">
-                  <TrendingUp className="h-4 w-4" />
-                  <AlertDescription>
-                    <strong>Research Enhanced:</strong>{" "}
-                    {search.researchEscalationReason}
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {search.researchResults?.competitors?.length > 0 && (
-                <div className="mt-3">
-                  <div className="text-sm font-medium mb-2 flex items-center gap-1">
-                    <Users className="h-3 w-3" />
-                    Discovered Competitors
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {search.researchResults.competitors
-                      .slice(0, 5)
-                      .map(
-                        (
-                          competitor: Record<string, unknown>,
-                          index: number,
-                        ) => (
-                          <Badge
-                            key={index}
-                            variant="outline"
-                            className="text-xs"
-                          >
-                            {(competitor.name as string) ||
-                              (competitor.title as string) ||
-                              "Competitor"}
-                          </Badge>
-                        ),
-                      )}
-                    {search.researchResults.competitors.length > 5 && (
-                      <Badge variant="outline" className="text-xs">
-                        +{search.researchResults.competitors.length - 5} more
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              )}
-            </Card>
-          </div>
-        )}
-
-        {/* Latest Status Broadcast */}
-        {latestStatus && (
-          <div className="space-y-2">
-            <h4 className="font-medium text-sm">Latest Update</h4>
-            <Alert
-              className={getPriorityDisplay(latestStatus.priority).bgColor}
-            >
-              <div className="flex items-start gap-2">
-                <span className="text-lg">
-                  {getPriorityDisplay(latestStatus.priority).icon}
-                </span>
-                <div className="flex-1">
-                  <h5 className="font-medium text-sm">{latestStatus.title}</h5>
-                  <p className="text-sm">{latestStatus.message}</p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-xs text-muted-foreground">
-                      {formatBroadcastTime(latestStatus.createdAt)}
-                    </span>
-                    {latestStatus.requiresAck && !latestStatus.acknowledged && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => acknowledgeBroadcast(latestStatus._id)}
-                      >
-                        Acknowledge
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </Alert>
-          </div>
-        )}
-
-        {/* Real-time Broadcasts History */}
-        {showHistory && hasUpdates && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium text-sm">Status Updates</h4>
-              {broadcasts.length > 3 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowAllBroadcasts(!showAllBroadcasts)}
-                >
-                  <Eye className="h-4 w-4 mr-1" />
-                  {showAllBroadcasts
-                    ? "Show Less"
-                    : `Show All (${broadcasts.length})`}
-                </Button>
-              )}
-            </div>
-
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {(showAllBroadcasts ? broadcasts : broadcasts.slice(0, 3)).map(
-                (broadcast) => {
-                  const priorityDisplay = getPriorityDisplay(
-                    broadcast.priority,
-                  );
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                {pipelineStages.map((stage) => {
+                  const StageIcon = stage.icon;
+                  const stageDisplay = getStatusDisplay(stage.status);
+                  const StageStatusIcon = stageDisplay.icon;
 
                   return (
                     <div
-                      key={broadcast._id}
-                      className="flex items-start gap-2 p-2 rounded-lg border bg-card"
+                      key={stage.name}
+                      className={cn(
+                        "flex h-full flex-col justify-between rounded-lg border bg-background p-4 shadow-sm transition-all duration-200",
+                        stage.status === "completed" &&
+                          "border-emerald-200 bg-emerald-50/80",
+                        stage.status === "in_progress" &&
+                          "border-primary/40 bg-primary/5 ring-1 ring-primary/20",
+                      )}
                     >
-                      <span className="text-sm">{priorityDisplay.icon}</span>
-                      <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-2">
-                          <Badge
-                            variant={priorityDisplay.variant}
-                            className="text-xs"
-                          >
-                            {priorityDisplay.label}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {formatBroadcastTime(broadcast.createdAt)}
-                          </span>
+                          <StageIcon className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-semibold">{stage.name}</span>
                         </div>
-                        <h5 className="font-medium text-sm mt-1">
-                          {broadcast.title}
-                        </h5>
-                        <p className="text-xs text-muted-foreground">
-                          {broadcast.message}
-                        </p>
-
-                        {/* Show progress data if available */}
-                        {broadcast.data?.progress && (
-                          <div className="mt-2 p-2 bg-muted/50 rounded text-xs">
-                            <div className="grid grid-cols-2 gap-2">
-                              <span>
-                                Discovered: {broadcast.data.progress.discovered}
-                              </span>
-                              <span>
-                                Enriched: {broadcast.data.progress.enriched}
-                              </span>
-                              <span>
-                                Analyzed: {broadcast.data.progress.analyzed}
-                              </span>
-                              <span>
-                                Total: {broadcast.data.progress.total}
-                              </span>
-                            </div>
+                        <StageStatusIcon
+                          className={cn(
+                            "h-4 w-4",
+                            stageDisplay.color,
+                            stage.status === "in_progress" && stageDisplay.icon === Loader2 && "animate-spin",
+                          )}
+                        />
+                      </div>
+                      <p className="mt-3 text-xs text-muted-foreground">
+                        {stage.description}
+                      </p>
+                      <div className="mt-4 space-y-2 text-xs font-medium text-muted-foreground">
+                        {stage.count > 0 && (
+                          <div className="flex items-center justify-between">
+                            <span>{stage.name === "Research" ? "Sources" : "Leads"}</span>
+                            <span className="text-foreground">{stage.count}</span>
                           </div>
                         )}
-
-                        {broadcast.requiresAck && !broadcast.acknowledged && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="mt-2"
-                            onClick={() => acknowledgeBroadcast(broadcast._id)}
-                          >
-                            Acknowledge
-                          </Button>
+                        {stage.confidence && (
+                          <div className="flex items-center justify-between">
+                            <span>Confidence</span>
+                            <span className="text-foreground">
+                              {Math.round(stage.confidence * 100)}%
+                            </span>
+                          </div>
+                        )}
+                        {stage.tier && (
+                          <Badge variant="outline" className="w-fit text-[10px] uppercase tracking-wide">
+                            {stage.tier}
+                          </Badge>
+                        )}
+                        {stage.escalation && (
+                          <span className="block text-amber-600">
+                            Escalated: {stage.escalation}
+                          </span>
                         )}
                       </div>
                     </div>
                   );
-                },
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-4 rounded-xl border border-border/60 bg-background/70 p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Latest Update
+                </h4>
+                {latestStatus && (
+                  <Badge
+                    variant={getPriorityDisplay(latestStatus.priority).variant}
+                    className="text-xs"
+                  >
+                    {formatBroadcastTime(latestStatus.createdAt)}
+                  </Badge>
+                )}
+              </div>
+              {latestStatus ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-foreground">
+                    {latestStatus.title}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {latestStatus.message}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No updates yet. Progress notifications will appear here.
+                </p>
               )}
             </div>
-          </div>
-        )}
 
-        {/* Search Details */}
-        <div className="pt-4 border-t space-y-2">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            {showHistory && hasUpdates && (
+              <div className="space-y-4 rounded-xl border border-border/60 bg-background/70 p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    Status Updates
+                  </h4>
+                  {broadcasts.length > 3 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowAllBroadcasts(!showAllBroadcasts)}
+                    >
+                      <Eye className="mr-1 h-4 w-4" />
+                      {showAllBroadcasts
+                        ? "Show less"
+                        : `Show all (${broadcasts.length})`}
+                    </Button>
+                  )}
+                </div>
+
+                <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                  {(showAllBroadcasts ? broadcasts : broadcasts.slice(0, 3)).map(
+                    (broadcast) => {
+                      const priorityDisplay = getPriorityDisplay(
+                        broadcast.priority,
+                      );
+
+                      return (
+                        <div
+                          key={broadcast._id}
+                          className="flex items-start gap-3 rounded-lg border border-border/50 bg-background/80 p-3 shadow-sm"
+                        >
+                          <span className="text-sm">{priorityDisplay.icon}</span>
+                          <div className="flex-1 min-w-0 space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge
+                                variant={priorityDisplay.variant}
+                                className="text-xs"
+                              >
+                                {priorityDisplay.label}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {formatBroadcastTime(broadcast.createdAt)}
+                              </span>
+                            </div>
+                            <div>
+                              <h5 className="text-sm font-semibold text-foreground">
+                                {broadcast.title}
+                              </h5>
+                              <p className="text-xs text-muted-foreground">
+                                {broadcast.message}
+                              </p>
+                            </div>
+
+                            {broadcast.data?.progress && (
+                              <div className="grid grid-cols-2 gap-2 rounded-md bg-muted/50 p-2 text-xs">
+                                <span>
+                                  Discovered: {broadcast.data.progress.discovered}
+                                </span>
+                                <span>
+                                  Enriched: {broadcast.data.progress.enriched}
+                                </span>
+                                <span>
+                                  Analyzed: {broadcast.data.progress.analyzed}
+                                </span>
+                                <span>Total: {broadcast.data.progress.total}</span>
+                              </div>
+                            )}
+
+                            {broadcast.requiresAck && !broadcast.acknowledged && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="mt-1"
+                                onClick={() => acknowledgeBroadcast(broadcast._id)}
+                              >
+                                Acknowledge
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    },
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-6">
+            <div className="space-y-4 rounded-xl border border-border/60 bg-background/70 p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Pipeline Metrics
+                </h4>
+                {totalCount > 0 && (
+                  <Badge variant="outline" className="text-xs">
+                    Target {totalCount}
+                  </Badge>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  {
+                    label: "Discovered",
+                    value: discoveredCount,
+                    icon: Search,
+                  },
+                  {
+                    label: "Enriched",
+                    value: enrichedCount,
+                    icon: Mail,
+                  },
+                  {
+                    label: "Analyzed",
+                    value: analyzedCount,
+                    icon: Bot,
+                  },
+                  {
+                    label: "Completed",
+                    value: search.results?.totalFound || totalCount,
+                    icon: CheckCircle,
+                  },
+                ].map((metric) => {
+                  const MetricIcon = metric.icon;
+                  return (
+                    <div
+                      key={metric.label}
+                      className="flex items-center gap-3 rounded-lg border border-border/40 bg-background/90 p-3"
+                    >
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <MetricIcon className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="text-lg font-semibold text-foreground">
+                          {metric.value}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {metric.label}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {search.researchTier && (
+              <div className="space-y-4 rounded-xl border border-border/60 bg-background/70 p-4 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <ResearchTierIcon
+                      className={cn("h-5 w-5", researchTierDisplay.color)}
+                    />
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        Research Intelligence
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {researchTierDisplay.label} tier insights
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant={researchTierDisplay.variant} className="w-fit">
+                    {search.researchStage?.replace("_", " ") || "In progress"}
+                  </Badge>
+                </div>
+
+                <p className="text-sm text-muted-foreground">
+                  {researchTierDisplay.description}
+                </p>
+
+                <div className="grid grid-cols-2 gap-3 text-center text-sm">
+                  {search.researchConfidence && (
+                    <div className="rounded-lg border border-border/40 bg-background/80 p-3">
+                      <div className="text-lg font-semibold">
+                        {Math.round(search.researchConfidence * 100)}%
+                      </div>
+                      <div className="text-xs text-muted-foreground">Confidence</div>
+                    </div>
+                  )}
+                  {search.researchDataPoints && (
+                    <div className="rounded-lg border border-border/40 bg-background/80 p-3">
+                      <div className="text-lg font-semibold">
+                        {search.researchDataPoints}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Data Points</div>
+                    </div>
+                  )}
+                  {search.researchSourcesAnalyzed && (
+                    <div className="rounded-lg border border-border/40 bg-background/80 p-3">
+                      <div className="text-lg font-semibold">
+                        {search.researchSourcesAnalyzed}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Sources</div>
+                    </div>
+                  )}
+                  {search.researchResults?.competitors?.length && (
+                    <div className="rounded-lg border border-border/40 bg-background/80 p-3">
+                      <div className="text-lg font-semibold">
+                        {search.researchResults.competitors.length}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Competitors</div>
+                    </div>
+                  )}
+                </div>
+
+                {search.researchEscalationReason && (
+                  <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+                    <TrendingUp className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Research Enhanced:</strong>{" "}
+                      {search.researchEscalationReason}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border/60 bg-background/70 p-4 shadow-sm">
+          <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Search Details
+          </h4>
+          <div className="mt-4 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <span className="text-muted-foreground">Started:</span>
-              <p className="font-medium">
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                Started
+              </span>
+              <p className="mt-1 font-medium text-foreground">
                 {new Date(search.createdAt).toLocaleString()}
               </p>
             </div>
             {search.completedAt && (
               <div>
-                <span className="text-muted-foreground">Completed:</span>
-                <p className="font-medium">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Completed
+                </span>
+                <p className="mt-1 font-medium text-foreground">
                   {new Date(search.completedAt).toLocaleString()}
                 </p>
               </div>
             )}
             <div>
-              <span className="text-muted-foreground">Credits Used:</span>
-              <p className="font-medium">{search.creditsUsed || 0}</p>
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                Credits Used
+              </span>
+              <p className="mt-1 font-medium text-foreground">
+                {search.creditsUsed || 0}
+              </p>
             </div>
             <div>
-              <span className="text-muted-foreground">Results:</span>
-              <p className="font-medium">
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                Results
+              </span>
+              <p className="mt-1 font-medium text-foreground">
                 {search.results?.totalFound || 0} leads
               </p>
             </div>
