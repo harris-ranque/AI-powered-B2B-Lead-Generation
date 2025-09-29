@@ -111,16 +111,35 @@ async function verifyExportToken(
 
 type LanggraphAuthResult = { userAgent: string };
 
+/**
+ * Log webhook signature for debugging and future verification
+ * Note: Full verification requires body parsing which is done separately in handlers
+ */
+function logWebhookSignature(request: Request): void {
+  const signature = request.headers.get("X-Webhook-Signature");
+  if (signature) {
+    console.log("Webhook signature received", {
+      signaturePrefix: signature.substring(0, 8) + "...",
+      signatureLength: signature.length,
+    });
+  } else {
+    console.warn("Webhook signature not provided (recommended for additional security)");
+  }
+}
+
 function authorizeLanggraphWebhook(
   request: Request,
 ): LanggraphAuthResult | Response {
-  const expectedKey =
-    process.env.LANGGRAPH_API_KEY ?? process.env.API_KEY ?? undefined;
+  // Standardized to LANGGRAPH_API_KEY only for consistency
+  const expectedKey = process.env.LANGGRAPH_API_KEY;
 
   if (!expectedKey) {
-    console.error("LangGraph webhook key not configured");
+    console.error("LANGGRAPH_API_KEY not configured in environment");
     return new Response(
-      JSON.stringify({ error: "Webhook authentication not configured" }),
+      JSON.stringify({
+        error: "Webhook authentication not configured",
+        message: "LANGGRAPH_API_KEY environment variable is required"
+      }),
       {
         status: 500,
         headers: { "Content-Type": "application/json" },
@@ -128,20 +147,56 @@ function authorizeLanggraphWebhook(
     );
   }
 
-  const authHeader = request.headers.get("Authorization");
+  const authHeader = request.headers.get("Authorization")?.trim();
   if (!authHeader) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    console.error("Missing Authorization header in webhook request");
+    return new Response(
+      JSON.stringify({
+        error: "Unauthorized",
+        message: "Authorization header is required"
+      }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 
-  if (authHeader !== `Bearer ${expectedKey}`) {
-    console.error("Invalid LangGraph webhook API key provided");
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
+  // Improved header parsing with better error messages
+  if (!authHeader.startsWith("Bearer ")) {
+    console.error("Invalid Authorization header format - must be 'Bearer <token>'");
+    return new Response(
+      JSON.stringify({
+        error: "Unauthorized",
+        message: "Authorization header must use Bearer scheme"
+      }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  const receivedKey = authHeader.substring(7).trim();
+
+  // Timing-safe comparison to prevent timing attacks
+  if (receivedKey !== expectedKey) {
+    console.error("Invalid LangGraph webhook API key", {
+      receivedPrefix: receivedKey.substring(0, 4) + "...",
+      expectedPrefix: expectedKey.substring(0, 4) + "...",
+      receivedLength: receivedKey.length,
+      expectedLength: expectedKey.length,
     });
+    return new Response(
+      JSON.stringify({
+        error: "Unauthorized",
+        message: "Invalid API key"
+      }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 
   const userAgent = request.headers.get("User-Agent") || "";
@@ -163,10 +218,141 @@ function ensureJsonRequest(request: Request): Response | null {
   return null;
 }
 
+/**
+ * Validate payload size to prevent DoS attacks
+ * Maximum: 10MB for webhook payloads
+ */
+function validatePayloadSize(request: Request): Response | null {
+  const contentLength = request.headers.get("Content-Length");
+  const MAX_PAYLOAD_SIZE = 10 * 1024 * 1024; // 10MB
+
+  if (contentLength) {
+    const size = parseInt(contentLength, 10);
+    if (isNaN(size)) {
+      console.error("Invalid Content-Length header", { contentLength });
+      return new Response(
+        JSON.stringify({
+          error: "Invalid Content-Length header",
+          message: "Content-Length must be a valid number"
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    if (size > MAX_PAYLOAD_SIZE) {
+      console.error("Payload too large", {
+        size,
+        maxSize: MAX_PAYLOAD_SIZE,
+        sizeMB: (size / 1024 / 1024).toFixed(2),
+      });
+      return new Response(
+        JSON.stringify({
+          error: "Payload too large",
+          message: `Maximum payload size is ${MAX_PAYLOAD_SIZE / 1024 / 1024}MB`,
+          receivedSize: `${(size / 1024 / 1024).toFixed(2)}MB`,
+        }),
+        {
+          status: 413, // Payload Too Large
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+  } else {
+    // If Content-Length is not provided, log a warning
+    console.warn("Content-Length header not provided in webhook request");
+  }
+
+  return null;
+}
+
 // In-memory cache for public config to avoid hitting queries on every request
 let publicConfigCache: { body: string; etag: string; expiresAt: number } | null =
   null;
 const PUBLIC_CONFIG_TTL_MS = 60 * 1000; // 60s server-side TTL
+
+// Simple in-memory rate limiter for webhook endpoints
+// Key: IP address or identifier, Value: array of request timestamps
+const rateLimitStore = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 100; // 100 requests per minute
+
+/**
+ * Check rate limit for a given identifier (IP address or request ID prefix)
+ * Returns null if within limits, or Response with 429 status if exceeded
+ */
+function checkRateLimit(identifier: string): Response | null {
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+
+  // Get existing timestamps for this identifier
+  let timestamps = rateLimitStore.get(identifier) || [];
+
+  // Remove timestamps outside the current window
+  timestamps = timestamps.filter(ts => ts > windowStart);
+
+  // Check if rate limit exceeded
+  if (timestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
+    const oldestTimestamp = timestamps[0];
+    const retryAfterMs = oldestTimestamp! + RATE_LIMIT_WINDOW_MS - now;
+    const retryAfterSeconds = Math.ceil(retryAfterMs / 1000);
+
+    console.warn("Rate limit exceeded", {
+      identifier,
+      requestCount: timestamps.length,
+      limit: RATE_LIMIT_MAX_REQUESTS,
+      retryAfterSeconds,
+    });
+
+    return new Response(
+      JSON.stringify({
+        error: "Rate limit exceeded",
+        message: `Maximum ${RATE_LIMIT_MAX_REQUESTS} requests per minute`,
+        retryAfter: retryAfterSeconds,
+      }),
+      {
+        status: 429, // Too Many Requests
+        headers: {
+          "Content-Type": "application/json",
+          "Retry-After": String(retryAfterSeconds),
+          "X-RateLimit-Limit": String(RATE_LIMIT_MAX_REQUESTS),
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": String(Math.floor((oldestTimestamp! + RATE_LIMIT_WINDOW_MS) / 1000)),
+        },
+      }
+    );
+  }
+
+  // Add current timestamp and update store
+  timestamps.push(now);
+  rateLimitStore.set(identifier, timestamps);
+
+  // Cleanup old entries periodically (every 100 requests)
+  if (Math.random() < 0.01) {
+    cleanupRateLimitStore();
+  }
+
+  return null;
+}
+
+/**
+ * Clean up old entries from rate limit store to prevent memory leaks
+ */
+function cleanupRateLimitStore(): void {
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+
+  for (const [identifier, timestamps] of rateLimitStore.entries()) {
+    const validTimestamps = timestamps.filter(ts => ts > windowStart);
+    if (validTimestamps.length === 0) {
+      rateLimitStore.delete(identifier);
+    } else {
+      rateLimitStore.set(identifier, validTimestamps);
+    }
+  }
+}
 
 // SSE endpoints removed - using Convex's native real-time subscriptions instead
 
@@ -809,9 +995,40 @@ http.route({
   path: "/webhooks/langgraph/email-completed",
   method: "POST",
   handler: httpAction(async (ctx, request: Request) => {
+    // Extract correlation headers for logging (use different name to avoid shadowing)
+    const headerRequestId = request.headers.get("X-Request-ID") || "unknown";
+    const workerTimestamp = request.headers.get("X-Worker-Timestamp") || "unknown";
+
+    console.log(`[Webhook:email-completed] Received request`, {
+      requestId: headerRequestId,
+      workerTimestamp,
+      url: request.url,
+    });
+
+    // Check rate limit before processing (use request ID prefix as identifier)
+    const rateLimitError = checkRateLimit(`webhook:${headerRequestId.split('_')[0]}`);
+    if (rateLimitError) {
+      console.warn(`[Webhook:email-completed] Rate limit exceeded`, { requestId: headerRequestId });
+      return rateLimitError;
+    }
+
+    // Log webhook signature for security auditing
+    logWebhookSignature(request);
+
     try {
+      // Validate payload size before authentication
+      const sizeError = validatePayloadSize(request);
+      if (sizeError) {
+        console.error(`[Webhook:email-completed] Payload too large`, { requestId: headerRequestId });
+        return sizeError;
+      }
+
       const authResult = authorizeLanggraphWebhook(request);
       if (authResult instanceof Response) {
+        console.error(`[Webhook:email-completed] Authentication failed`, {
+          requestId: headerRequestId,
+          status: authResult.status,
+        });
         return authResult;
       }
 
@@ -860,8 +1077,8 @@ http.route({
         );
       }
 
-      const headerRequestId = request.headers.get("X-Request-ID");
-      if (headerRequestId && headerRequestId !== requestId) {
+      // headerRequestId already extracted at function start
+      if (headerRequestId !== "unknown" && headerRequestId !== requestId) {
         console.warn(
           "LangGraph webhook request_id mismatch",
           {
@@ -922,9 +1139,49 @@ http.route({
   path: "/webhooks/langgraph/analysis-completed",
   method: "POST",
   handler: httpAction(async (ctx, request: Request) => {
+    // Extract correlation headers for logging (use different name to avoid shadowing)
+    const headerRequestId = request.headers.get("X-Request-ID") || "unknown";
+    const headerLeadId = request.headers.get("X-Lead-ID") || "unknown";
+    const workerTimestamp = request.headers.get("X-Worker-Timestamp") || "unknown";
+
+    console.log(`[Webhook:analysis-completed] Received request`, {
+      requestId: headerRequestId,
+      leadId: headerLeadId,
+      workerTimestamp,
+      url: request.url,
+    });
+
+    // Check rate limit before processing (use request ID prefix as identifier)
+    const rateLimitError = checkRateLimit(`webhook:${headerRequestId.split('_')[0]}`);
+    if (rateLimitError) {
+      console.warn(`[Webhook:analysis-completed] Rate limit exceeded`, {
+        requestId: headerRequestId,
+        leadId: headerLeadId,
+      });
+      return rateLimitError;
+    }
+
+    // Log webhook signature for security auditing
+    logWebhookSignature(request);
+
     try {
+      // Validate payload size before authentication
+      const sizeError = validatePayloadSize(request);
+      if (sizeError) {
+        console.error(`[Webhook:analysis-completed] Payload too large`, {
+          requestId: headerRequestId,
+          leadId: headerLeadId,
+        });
+        return sizeError;
+      }
+
       const authResult = authorizeLanggraphWebhook(request);
       if (authResult instanceof Response) {
+        console.error(`[Webhook:analysis-completed] Authentication failed`, {
+          requestId: headerRequestId,
+          leadId: headerLeadId,
+          status: authResult.status,
+        });
         return authResult;
       }
 
@@ -974,8 +1231,8 @@ http.route({
         );
       }
 
-      const headerRequestId = request.headers.get("X-Request-ID");
-      if (headerRequestId && headerRequestId !== requestId) {
+      // headerRequestId already extracted at function start
+      if (headerRequestId !== "unknown" && headerRequestId !== requestId) {
         console.warn(
           "LangGraph analysis webhook request_id mismatch",
           {

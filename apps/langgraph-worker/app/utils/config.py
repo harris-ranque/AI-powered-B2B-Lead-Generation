@@ -7,7 +7,7 @@ from typing import Optional
 from urllib.parse import urlparse, urlunparse
 
 from pydantic_settings import BaseSettings
-from pydantic import Field, field_validator
+from pydantic import Field
 
 
 def _ensure_convex_webhook_path(url: str) -> str:
@@ -44,11 +44,11 @@ def _ensure_convex_webhook_path(url: str) -> str:
 
 class Settings(BaseSettings):
     """Application settings"""
-    
+
     # API Configuration
-    # Prefer LANGGRAPH_API_KEY to align with Convex backend, fall back to API_KEY
-    api_key: str = os.getenv("LANGGRAPH_API_KEY") or os.getenv("API_KEY", "default-secure-key-change-in-production")
-    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    # Standardized to LANGGRAPH_API_KEY for consistency with Convex backend
+    api_key: str = Field(default="")
+    openai_api_key: str = Field(default="")
     
     # Research API Configuration
     tavily_api_key: Optional[str] = os.getenv("TAVILY_API_KEY", None)
@@ -72,6 +72,15 @@ class Settings(BaseSettings):
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
+        # Load API key from environment - LANGGRAPH_API_KEY only (standardized)
+        if not self.api_key:
+            self.api_key = os.getenv("LANGGRAPH_API_KEY", "")
+
+        # Load OpenAI API key from environment
+        if not self.openai_api_key:
+            self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
+
         # Normalize explicit webhook value first to ensure correct path format
         if self.webhook_url:
             self.webhook_url = _ensure_convex_webhook_path(self.webhook_url.rstrip('/'))
@@ -145,23 +154,39 @@ def get_settings() -> Settings:
     return Settings()
 
 def validate_required_settings():
-    """Validate that required settings are present"""
+    """Validate that required settings are present and secure"""
     settings = get_settings()
-    
-    required_fields = {
-        "openai_api_key": "OpenAI API key is required"
-    }
-    
+
     missing = []
-    for field, message in required_fields.items():
-        if not getattr(settings, field):
-            missing.append(message)
-    
+
+    # Validate API key (LANGGRAPH_API_KEY)
+    if not settings.api_key:
+        missing.append("LANGGRAPH_API_KEY is required for webhook authentication")
+    elif settings.api_key == "default-secure-key-change-in-production":
+        raise ValueError(
+            "LANGGRAPH_API_KEY is still set to the default insecure value. "
+            "Please set a secure API key in your environment."
+        )
+    elif len(settings.api_key) < 32:
+        raise ValueError(
+            f"LANGGRAPH_API_KEY is too short ({len(settings.api_key)} chars). "
+            "For security, please use at least 32 characters."
+        )
+
+    # Validate OpenAI API key
+    if not settings.openai_api_key:
+        missing.append("OPENAI_API_KEY is required for AI operations")
+    elif settings.openai_api_key == "test-openai-key":
+        raise ValueError(
+            "OPENAI_API_KEY is still set to a test value. "
+            "Please set your actual OpenAI API key."
+        )
+
     # Check that either webhook_url or convex_url is provided
     if not settings.webhook_url and not settings.convex_url:
         missing.append("Either WEBHOOK_URL or CONVEX_URL is required for result callbacks")
-    
+
     if missing:
         raise ValueError(f"Missing required configuration: {', '.join(missing)}")
-    
+
     return settings

@@ -79,13 +79,13 @@ class StartupValidator:
         elif not self.settings.openai_api_key.startswith(("sk-", "sk-proj-")):
             invalid_keys.append("OPENAI_API_KEY (invalid format)")
 
-        # Check Convex API Key
+        # Check LangGraph API Key (standardized to LANGGRAPH_API_KEY)
         if not self.settings.api_key:
-            missing_keys.append("API_KEY")
+            missing_keys.append("LANGGRAPH_API_KEY")
         elif self.settings.api_key == "default-secure-key-change-in-production":
-            invalid_keys.append("API_KEY (using default placeholder)")
+            invalid_keys.append("LANGGRAPH_API_KEY (using default placeholder)")
         elif len(self.settings.api_key) < 32:
-            invalid_keys.append("API_KEY (too short, likely invalid)")
+            invalid_keys.append("LANGGRAPH_API_KEY (too short, likely invalid)")
 
         # Check optional research API keys (warn but don't fail)
         optional_keys = {
@@ -139,8 +139,9 @@ class StartupValidator:
 
                     if response.status == 401:
                         raise StartupValidationError(
-                            f"Webhook authentication failed (401). Check API_KEY configuration. "
-                            f"Response: {response_text}"
+                            f"Webhook authentication failed (401). Check LANGGRAPH_API_KEY configuration. "
+                            f"Ensure the key matches between worker and Convex backend. "
+                            f"Response: {response_text[:200]}"
                         )
                     elif response.status == 404:
                         raise StartupValidationError(
