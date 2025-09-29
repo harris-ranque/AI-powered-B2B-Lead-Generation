@@ -76,35 +76,45 @@ export const DocsViewer: React.FC<DocsViewerProps> = ({
           a: (props) => {
             const href = props.href || "";
             const isExternal = /^(https?:)?\/\//.test(href);
-          if (!isExternal && href.endsWith(".md")) {
-            // Convert relative doc links to /admin/docs routes or handle inline navigation
-            const normalized = href.replace(/^\.\//, "");
-            const targetHref = `/admin/docs/${normalized}`;
-            const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
-              if (!onNavigateDoc) return;
-              event.preventDefault();
-              onNavigateDoc(normalized);
-            };
-            return (
+            const hrefWithoutHash = href.replace(/[#?].*$/, "");
+            const renderDefaultLink = () => (
               <a
-                {...props}
-                href={targetHref}
-                onClick={(event) => {
-                  props.onClick?.(event);
-                  if (!event.defaultPrevented) {
-                    handleClick(event);
-                  }
-                }}
-              />
-            );
-          }
-          return (
-            <a
                 {...props}
                 target={isExternal ? "_blank" : undefined}
                 rel={isExternal ? "noreferrer" : undefined}
               />
             );
+            if (!isExternal && hrefWithoutHash.endsWith(".md")) {
+              // Convert relative doc links to /admin/docs routes or handle inline navigation
+              const baseUrl = new URL(path, "https://example.com/docs/");
+              const resolvedUrl = new URL(href, baseUrl);
+              if (!resolvedUrl.pathname.startsWith("/docs/")) {
+                return renderDefaultLink();
+              }
+              const normalizedPathname = resolvedUrl.pathname
+                .replace(/^\/docs\//, "")
+                .replace(/^\//, "");
+              const normalized = `${normalizedPathname}${resolvedUrl.search}${resolvedUrl.hash}`;
+              const targetHref = `/admin/docs/${normalized}`;
+              const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+                if (!onNavigateDoc) return;
+                event.preventDefault();
+                onNavigateDoc(normalized);
+              };
+              return (
+                <a
+                  {...props}
+                  href={targetHref}
+                  onClick={(event) => {
+                    props.onClick?.(event);
+                    if (!event.defaultPrevented) {
+                      handleClick(event);
+                    }
+                  }}
+                />
+              );
+            }
+            return renderDefaultLink();
           },
           img: (props) => {
             const src = props.src || "";
