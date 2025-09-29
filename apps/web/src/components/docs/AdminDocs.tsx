@@ -4,37 +4,16 @@ import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { DocsSidebar, DocsNode } from "./DocsSidebar";
 import { DocsViewer } from "./DocsViewer";
-
-interface Manifest {
-  generatedAt: number;
-  root: DocsNode;
-}
+import { useDocsManifest } from "./useDocsManifest";
+import type { DocHeading } from "./types";
 
 export const AdminDocs: React.FC = () => {
   const params = useParams();
   const navigate = useNavigate();
-  const [manifest, setManifest] = React.useState<Manifest | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-  const [headings, setHeadings] = React.useState<
-    { depth: number; text: string; id: string }[]
-  >([]);
+  const { manifest, error, isLoading } = useDocsManifest();
+  const [headings, setHeadings] = React.useState<DocHeading[]>([]);
 
   const slug = params["*"] || "README.md";
-
-  React.useEffect(() => {
-    let cancelled = false;
-    fetch("/docs/manifest.json")
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`Manifest not found (${res.status})`);
-        const text = await res.text();
-        const data = JSON.parse(text) as Manifest;
-        if (!cancelled) setManifest(data);
-      })
-      .catch((e) => !cancelled && setError(e.message || "Failed to load docs"));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   React.useEffect(() => {
     // If slug is missing, default to first README if exists
@@ -75,7 +54,7 @@ export const AdminDocs: React.FC = () => {
     );
   }
 
-  if (!manifest) {
+  if (isLoading || !manifest) {
     return (
       <div className="p-6 text-sm text-muted-foreground">
         Loading documentation…

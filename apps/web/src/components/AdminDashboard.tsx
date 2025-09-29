@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,6 +51,7 @@ import {
 } from "@/hooks/useAdmin";
 import type { Id, Doc } from "@genni/convex-types/dataModel";
 import { CreditManagement } from "./admin/CreditManagement";
+import { AdminDocsPanel } from "./admin/AdminDocsPanel";
 
 type CreditCostForm = {
   leadDiscovery: number;
@@ -148,7 +149,14 @@ type SystemHealth = {
   processing?: { activeSearches?: number; stuckSearches?: number };
 };
 
-const TAB_KEYS = ["overview", "users", "credits", "configuration", "system"] as const;
+const TAB_KEYS = [
+  "overview",
+  "users",
+  "credits",
+  "configuration",
+  "system",
+  "docs",
+] as const;
 
 const DEFAULT_CREDIT_COSTS: CreditCostForm = {
   leadDiscovery: 1,
@@ -243,6 +251,8 @@ export function AdminDashboard() {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const historySyncDisabledRef = useRef(false);
+  const lastSyncedSearchRef = useRef<string | null>(null);
 
   const {
     metrics,
@@ -301,9 +311,40 @@ export function AdminDashboard() {
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    if (params.get("tab") !== currentTab) {
-      params.set("tab", currentTab);
-      navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
+    if (params.get("tab") === currentTab) {
+      lastSyncedSearchRef.current = params.toString();
+      return;
+    }
+
+    if (historySyncDisabledRef.current) {
+      return;
+    }
+
+    params.set("tab", currentTab);
+    const nextSearch = params.toString();
+    if (lastSyncedSearchRef.current === nextSearch) {
+      return;
+    }
+
+    try {
+      navigate(
+        {
+          pathname: location.pathname,
+          search: nextSearch ? `?${nextSearch}` : "",
+        },
+        { replace: true },
+      );
+      lastSyncedSearchRef.current = nextSearch;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "SecurityError") {
+        historySyncDisabledRef.current = true;
+        console.warn(
+          "Failed to sync admin tab to URL due to browser security restrictions.",
+          error,
+        );
+      } else {
+        throw error;
+      }
     }
   }, [currentTab, location.pathname, location.search, navigate]);
 
@@ -643,13 +684,14 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      <Tabs value={currentTab} onValueChange={(value) => setCurrentTab(value as typeof TAB_KEYS[number])}>
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5">
+      <Tabs value={currentTab} onValueChange={(value) => setCurrentTab(value as (typeof TAB_KEYS)[number])}>
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="credits">Credits</TabsTrigger>
           <TabsTrigger value="configuration">Configuration</TabsTrigger>
           <TabsTrigger value="system">System</TabsTrigger>
+          <TabsTrigger value="docs">Docs</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -1282,6 +1324,9 @@ export function AdminDashboard() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+        <TabsContent value="docs" className="space-y-4">
+          <AdminDocsPanel />
         </TabsContent>
       </Tabs>
 

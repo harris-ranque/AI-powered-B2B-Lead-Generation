@@ -5,13 +5,19 @@ import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github.css";
+import type { DocHeading } from "./types";
 
 interface DocsViewerProps {
   path: string; // relative path under /docs
-  onHeadings?: (h: { depth: number; text: string; id: string }[]) => void;
+  onHeadings?: (h: DocHeading[]) => void;
+  onNavigateDoc?: (path: string) => void;
 }
 
-export const DocsViewer: React.FC<DocsViewerProps> = ({ path, onHeadings }) => {
+export const DocsViewer: React.FC<DocsViewerProps> = ({
+  path,
+  onHeadings,
+  onNavigateDoc,
+}) => {
   const [content, setContent] = React.useState<string>("Loading...");
   const [error, setError] = React.useState<string | null>(null);
 
@@ -25,7 +31,7 @@ export const DocsViewer: React.FC<DocsViewerProps> = ({ path, onHeadings }) => {
         if (cancelled) return;
         setContent(text);
         // Extract headings for ToC
-        const headings: { depth: number; text: string; id: string }[] = [];
+        const headings: DocHeading[] = [];
         const lines = text.split(/\r?\n/);
         for (const line of lines) {
           const m = /^(#{1,6})\s+(.+)$/.exec(line);
@@ -70,18 +76,45 @@ export const DocsViewer: React.FC<DocsViewerProps> = ({ path, onHeadings }) => {
           a: (props) => {
             const href = props.href || "";
             const isExternal = /^(https?:)?\/\//.test(href);
-            if (!isExternal && href.endsWith(".md")) {
-              // Convert relative doc links to /admin/docs routes
-              const normalized = href.replace(/^\.\//, "");
-              return <a {...props} href={`/admin/docs/${normalized}`} />;
-            }
-            return (
+            const hrefWithoutHash = href.replace(/[#?].*$/, "");
+            const renderDefaultLink = () => (
               <a
                 {...props}
                 target={isExternal ? "_blank" : undefined}
                 rel={isExternal ? "noreferrer" : undefined}
               />
             );
+            if (!isExternal && hrefWithoutHash.endsWith(".md")) {
+              // Convert relative doc links to /admin/docs routes or handle inline navigation
+              const baseUrl = new URL(path, "https://example.com/docs/");
+              const resolvedUrl = new URL(href, baseUrl);
+              if (!resolvedUrl.pathname.startsWith("/docs/")) {
+                return renderDefaultLink();
+              }
+              const normalizedPathname = resolvedUrl.pathname
+                .replace(/^\/docs\//, "")
+                .replace(/^\//, "");
+              const normalized = `${normalizedPathname}${resolvedUrl.search}${resolvedUrl.hash}`;
+              const targetHref = `/admin/docs/${normalized}`;
+              const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+                if (!onNavigateDoc) return;
+                event.preventDefault();
+                onNavigateDoc(normalized);
+              };
+              return (
+                <a
+                  {...props}
+                  href={targetHref}
+                  onClick={(event) => {
+                    props.onClick?.(event);
+                    if (!event.defaultPrevented) {
+                      handleClick(event);
+                    }
+                  }}
+                />
+              );
+            }
+            return renderDefaultLink();
           },
           img: (props) => {
             const src = props.src || "";
