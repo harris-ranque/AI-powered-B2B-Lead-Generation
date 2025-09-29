@@ -31,8 +31,10 @@ export const GoogleMapsSource: LeadSource = {
       errors.push("Leads count must be between 10 and 500");
     }
 
-    if (params.radius && (params.radius < 1 || params.radius > 100)) {
-      errors.push("Search radius must be between 1 and 100 miles");
+    if (params.radius && (params.radius < 1 || params.radius > 31)) {
+      errors.push(
+        "Search radius must be between 1 and 31 miles (Google Places API limit)",
+      );
     }
 
     // Cost estimation (rough)

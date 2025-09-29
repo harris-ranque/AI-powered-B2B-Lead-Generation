@@ -2,6 +2,8 @@ import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 
+const MAX_AUTOCOMPLETE_RADIUS_METERS = 50000;
+
 // Google Places API types
 interface PlacePrediction {
   description: string;
@@ -65,8 +67,12 @@ export const getPlacePredictions = action({
 
       // Add location bias if provided
       if (args.location && args.radius) {
+        const clampedRadius = Math.min(
+          Math.max(args.radius, 0),
+          MAX_AUTOCOMPLETE_RADIUS_METERS,
+        );
         placesUrl.searchParams.set("location", args.location);
-        placesUrl.searchParams.set("radius", args.radius.toString());
+        placesUrl.searchParams.set("radius", clampedRadius.toString());
       }
 
       // Make request to Google Places API

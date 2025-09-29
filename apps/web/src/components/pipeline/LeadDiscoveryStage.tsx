@@ -43,6 +43,11 @@ interface LeadDiscoveryStageProps {
   userPlan: "free" | "pro" | "enterprise";
 }
 
+const MIN_RADIUS_MILES = 1;
+const MAX_RADIUS_MILES = 31;
+const DEFAULT_RADIUS_MILES = 15;
+const RADIUS_STEP_MILES = 1;
+
 export function LeadDiscoveryStage({
   userCredits,
   userPlan,
@@ -64,7 +69,7 @@ export function LeadDiscoveryStage({
   const [location, setLocation] = useState("");
   const [industry, setIndustry] = useState("");
   const [leadsCount, setLeadsCount] = useState([50]);
-  const [radius, setRadius] = useState([25]);
+  const [radius, setRadius] = useState([DEFAULT_RADIUS_MILES]);
   const [employeeRange, setEmployeeRange] = useState([10, 1000]);
   const [includeEmails, setIncludeEmails] = useState(true);
   const [aiAnalysis, setAiAnalysis] = useState(true);
@@ -298,18 +303,26 @@ export function LeadDiscoveryStage({
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Search Radius: {radius[0]} km</Label>
+                  <Label>
+                    Search Radius: {radius[0]} mile
+                    {radius[0] === 1 ? "" : "s"}
+                  </Label>
                   <Slider
                     value={radius}
                     onValueChange={setRadius}
-                    max={100}
-                    min={1}
-                    step={5}
+                    max={MAX_RADIUS_MILES}
+                    min={MIN_RADIUS_MILES}
+                    step={RADIUS_STEP_MILES}
                     className="transition-neo"
                   />
                   <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>1 km</span>
-                    <span>100 km</span>
+                    <span>
+                      {MIN_RADIUS_MILES} mile
+                      {MIN_RADIUS_MILES === 1 ? "" : "s"}
+                    </span>
+                    <span>
+                      {MAX_RADIUS_MILES} miles
+                    </span>
                   </div>
                 </div>
 

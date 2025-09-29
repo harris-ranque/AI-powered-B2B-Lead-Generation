@@ -90,7 +90,7 @@ class ApiClient {
   createSearchParams(partial: Partial<SearchParams>): SearchParams {
     return {
       location: "",
-      radius: 10,
+      radius: 10, // miles
       keywords: [],
       maxResults: 25,
       ...partial,
