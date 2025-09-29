@@ -146,8 +146,9 @@ function authorizeLanggraphWebhook(
     );
   }
 
-  const [scheme, token] = authHeader.trim().split(/\s+/, 2);
-  if (!token || scheme.toLowerCase() !== "bearer") {
+  const [schemeRaw, token] = authHeader.trim().split(/\s+/, 2);
+  const scheme = schemeRaw?.toLowerCase();
+  if (!token || scheme !== "bearer") {
     return new Response(
       JSON.stringify({
         error: "Unauthorized",
