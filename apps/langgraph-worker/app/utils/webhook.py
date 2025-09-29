@@ -4,6 +4,9 @@ Webhook client for sending results back to the main application
 import asyncio
 import aiohttp
 import logging
+import hmac
+import hashlib
+import json
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -17,41 +20,37 @@ class WebhookClient:
     """Client for sending webhook notifications"""
 
     def __init__(self, webhook_url: str, api_key: Optional[str] = None, timeout: int = 30):
-        self.webhook_url = webhook_url.rstrip("/") if webhook_url else webhook_url
-        self.api_key = (api_key or "").strip()
+        self.webhook_url = webhook_url
+        self.api_key = api_key
         self.timeout = timeout
 
         # Log webhook client initialization for debugging
         logger.info(
             f"WebhookClient initialized: "
             f"url={webhook_url}, "
-            f"has_api_key={bool(self.api_key)}, "
+            f"has_api_key={bool(api_key)}, "
             f"timeout={timeout}s"
         )
 
+    def _compute_signature(self, payload: Dict[str, Any]) -> str:
+        """
+        Compute HMAC-SHA256 signature for webhook payload
+        This provides additional security beyond Bearer token authentication
+        """
         if not self.api_key:
-            logger.error(
-                "LangGraph webhook API key is not configured. Webhook delivery will fail until the API key is provided."
-            )
+            raise RuntimeError("Cannot compute signature without API key")
 
-    def _prepare_headers(self, request_id: Optional[str] = None) -> Dict[str, str]:
-        """Construct standard headers for webhook requests."""
+        # Serialize payload to canonical JSON (sorted keys for consistency)
+        payload_bytes = json.dumps(payload, sort_keys=True, separators=(',', ':')).encode('utf-8')
 
-        if not self.api_key:
-            raise RuntimeError(
-                "LangGraph webhook API key is not configured; cannot authenticate webhook request"
-            )
+        # Compute HMAC-SHA256 signature
+        signature = hmac.new(
+            self.api_key.encode('utf-8'),
+            payload_bytes,
+            hashlib.sha256
+        ).hexdigest()
 
-        headers: Dict[str, str] = {
-            "Content-Type": "application/json",
-            "User-Agent": "langgraph-worker/2.0",
-            "Authorization": f"Bearer {self.api_key}",
-        }
-
-        if request_id:
-            headers["X-Request-ID"] = request_id
-
-        return headers
+        return signature
         
     async def send_result(
         self,
@@ -153,12 +152,29 @@ class WebhookClient:
         if normalized_status == "completed" and approved is not None:
             payload["approved"] = approved
 
-        # Prepare headers
-        headers = self._prepare_headers(request_id)
-        
+        # Compute HMAC signature for additional security
+        signature = self._compute_signature(payload)
+
+        # Prepare headers with request ID correlation and signature
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "langgraph-worker/2.0",
+            "X-Request-ID": request_id,  # Correlation tracking
+            "X-Worker-Timestamp": datetime.utcnow().isoformat(),
+            "X-Webhook-Signature": signature,  # HMAC-SHA256 signature
+        }
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        else:
+            logger.error(f"No API key configured for webhook request {request_id}")
+            raise RuntimeError("API key not configured for webhook authentication")
+
         for attempt in range(retries + 1):
             try:
-                logger.info(f"Sending webhook (attempt {attempt + 1}/{retries + 1}) to {self.webhook_url[:50]}...")
+                logger.info(
+                    f"Sending webhook (attempt {attempt + 1}/{retries + 1}) to {self.webhook_url[:50]}... "
+                    f"[signature: {signature[:8]}...]"
+                )
 
                 async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
                     async with session.post(
@@ -265,19 +281,14 @@ class WebhookClient:
             raise RuntimeError("LangGraph webhook URL not configured")
 
         # Construct analysis webhook URL - handle both auto-constructed and explicit URLs
-        base_webhook_url = self.webhook_url or ""
-        if "/webhooks/langgraph/email-completed" in base_webhook_url:
-            analysis_webhook_url = base_webhook_url.replace(
+        if "/webhooks/langgraph/email-completed" in self.webhook_url:
+            analysis_webhook_url = self.webhook_url.replace(
                 "/webhooks/langgraph/email-completed",
                 "/webhooks/langgraph/analysis-completed"
             )
-        elif base_webhook_url.endswith("/webhooks/langgraph/analysis-completed"):
-            analysis_webhook_url = base_webhook_url
-        elif base_webhook_url.endswith("/webhooks/langgraph"):
-            analysis_webhook_url = f"{base_webhook_url}/analysis-completed"
         else:
-            # For base webhook URLs, append the full analysis endpoint
-            base_url = base_webhook_url.rstrip('/')
+            # For base webhook URLs, append the analysis endpoint
+            base_url = self.webhook_url.rstrip('/')
             analysis_webhook_url = f"{base_url}/webhooks/langgraph/analysis-completed"
             
         normalized_status = status.lower()
@@ -305,15 +316,30 @@ class WebhookClient:
             )
         if processing_time is not None:
             payload["processing_time"] = processing_time
-        
-        # Prepare headers
-        headers = self._prepare_headers(request_id)
-        
+
+        # Compute HMAC signature for additional security
+        signature = self._compute_signature(payload)
+
+        # Prepare headers with request ID correlation and signature
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "langgraph-worker/2.0",
+            "X-Request-ID": request_id,  # Correlation tracking
+            "X-Lead-ID": lead_id,  # Additional correlation for analysis
+            "X-Worker-Timestamp": datetime.utcnow().isoformat(),
+            "X-Webhook-Signature": signature,  # HMAC-SHA256 signature
+        }
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        else:
+            logger.error(f"No API key configured for analysis webhook request {request_id}")
+            raise RuntimeError("API key not configured for webhook authentication")
+
         for attempt in range(retries + 1):
             try:
                 logger.info(
                     f"Sending analysis webhook (attempt {attempt + 1}/{retries + 1}) to {analysis_webhook_url[:50]}... "
-                    f"for lead_id={lead_id}, request_id={request_id}"
+                    f"for lead_id={lead_id}, request_id={request_id} [signature: {signature[:8]}...]"
                 )
 
                 async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
@@ -405,13 +431,13 @@ class WebhookClient:
             "timestamp": datetime.utcnow().isoformat(),
             "type": "status_update"
         }
-
+        
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
                 async with session.post(
                     f"{self.webhook_url}/status",
                     json=payload,
-                    headers=self._prepare_headers(request_id)
+                    headers={"Content-Type": "application/json", "User-Agent": "langgraph-worker/2.0"}
                 ) as response:
                     if response.status == 200:
                         return True
