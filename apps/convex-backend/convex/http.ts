@@ -4,110 +4,19 @@ import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import Stripe from "stripe";
-import { createHmac, randomBytes } from "crypto";
+import {
+  base64UrlEncodeString,
+  base64UrlDecodeToString,
+  randomNonce,
+  hmacSha256,
+  timingSafeEqual,
+  verifyExportToken,
+  bufferFromString,
+  bufferFromBase64,
+  type ExportTokenPayload,
+} from "./lib/cryptoHelpers";
 
 const http = httpRouter();
-
-const encoder = new TextEncoder();
-
-function base64UrlEncode(data: Uint8Array): string {
-  return Buffer.from(data)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-function base64UrlEncodeString(data: string): string {
-  return base64UrlEncode(encoder.encode(data));
-}
-
-function base64UrlDecodeToString(data: string): string {
-  const padded = data.padEnd(data.length + ((4 - (data.length % 4)) % 4), "=");
-  const normalized = padded.replace(/-/g, "+").replace(/_/g, "/");
-  return Buffer.from(normalized, "base64").toString("utf8");
-}
-
-function randomNonce(bytes = 16): string {
-  return randomBytes(bytes).toString("hex");
-}
-
-function hmacSha256(secret: string, payload: string): string {
-  return createHmac("sha256", secret).update(payload).digest("base64url");
-}
-
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return result === 0;
-}
-
-interface ExportTokenPayload {
-  uid: string;
-  iat: number;
-  exp: number;
-  aud?: string;
-  n?: string;
-  iss?: string;
-  ver?: number;
-  ori?: string;
-}
-
-async function verifyExportToken(
-  token: string,
-  secret: string,
-  expectedAudience: string,
-  requestOrigin?: string,
-): Promise<{ valid: boolean; payload?: ExportTokenPayload } | { valid: false }> {
-  if (!token.startsWith("v2.")) {
-    return { valid: false };
-  }
-
-  const parts = token.split(".");
-  if (parts.length !== 3) {
-    return { valid: false };
-  }
-
-  const [, payloadB64, signatureB64] = parts;
-  if (!payloadB64 || !signatureB64) {
-    return { valid: false };
-  }
-
-  const expectedSignature = hmacSha256(secret, payloadB64);
-  if (!timingSafeEqual(signatureB64, expectedSignature)) {
-    return { valid: false };
-  }
-
-  let payload: ExportTokenPayload;
-  try {
-    payload = JSON.parse(base64UrlDecodeToString(payloadB64));
-  } catch {
-    return { valid: false };
-  }
-
-  if (payload.aud && payload.aud !== expectedAudience) {
-    return { valid: false };
-  }
-
-  if (payload.exp && Math.floor(Date.now() / 1000) > payload.exp) {
-    return { valid: false };
-  }
-
-  if (!payload.uid) {
-    return { valid: false };
-  }
-
-  if (payload.ori && requestOrigin && payload.ori !== requestOrigin) {
-    return { valid: false };
-  }
-
-  return { valid: true, payload };
-}
 
 type LanggraphAuthResult = { userAgent: string };
 
@@ -562,7 +471,7 @@ http.route({
       }
 
       try {
-        const tokenData = Buffer.from(token, "base64")
+        const tokenData = bufferFromBase64(token)
           .toString("utf8")
           .split(":");
         if (tokenData.length !== 3 || tokenData[0] !== userIdParam) {
@@ -775,7 +684,7 @@ http.route({
       const config = await ctx.runQuery(api.admin.queries.getSystemConfiguration, {});
 
       const responseBody = JSON.stringify(config);
-      const etag = `"${Buffer.from(responseBody).toString("base64").slice(0, 12)}"`;
+      const etag = `"${bufferFromString(responseBody).toString("base64").slice(0, 12)}"`;
 
       // Update cache
       publicConfigCache = {
