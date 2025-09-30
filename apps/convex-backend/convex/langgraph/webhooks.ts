@@ -9,6 +9,7 @@ const WebhookStatus = v.union(
   v.literal("completed"),
   v.literal("error"),
   v.literal("failed"),
+  v.literal("test"),
 );
 
 const EmailGenerationResult = v.object({
@@ -98,6 +99,14 @@ export const handleEmailGenerationCompleted = internalMutation({
     try {
       const rawStatus = args.payload.status;
       const status = rawStatus === "failed" ? "error" : rawStatus;
+
+      // Handle test webhook
+      if (status === "test") {
+        logger.info("Test webhook received", {
+          requestId: args.payload.request_id,
+        });
+        return { success: true, message: "Test webhook processed" };
+      }
 
       if (status !== "completed" && status !== "error") {
         logger.error(`Invalid status: ${rawStatus}`, {

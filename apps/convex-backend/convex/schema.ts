@@ -698,6 +698,38 @@ export default defineSchema({
         pauseReason: v.optional(v.string()),
         pausedAt: v.optional(v.number()),
         pausedBy: v.optional(v.id("users")),
+        langGraphHealth: v.optional(
+          v.object({
+            status: v.union(
+              v.literal("healthy"),
+              v.literal("degraded"),
+              v.literal("unavailable"),
+              v.literal("unknown"),
+            ),
+            lastCheckedAt: v.number(),
+            lastSuccessAt: v.number(),
+            consecutiveFailures: v.number(),
+            lastError: v.union(v.string(), v.null()),
+            services: v.union(
+              v.object({
+                fastapi: v.string(),
+                langgraph: v.string(),
+                openai: v.string(),
+                convex: v.string(),
+              }),
+              v.null(),
+            ),
+            performance: v.union(
+              v.object({
+                activeTasksCount: v.number(),
+                queueSize: v.number(),
+                memoryUsageMb: v.number(),
+                memoryPercent: v.number(),
+              }),
+              v.null(),
+            ),
+          }),
+        ),
       }),
     ),
     createdAt: v.number(),

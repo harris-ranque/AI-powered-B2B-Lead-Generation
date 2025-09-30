@@ -313,3 +313,34 @@ export const clearAllActiveSearches = mutation({
     };
   },
 });
+
+// Manually trigger LangGraph health check
+export const triggerLangGraphHealthCheck = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const adminUser = await requireAdmin(ctx);
+
+    // Trigger health check immediately
+    await ctx.scheduler.runAfter(
+      0,
+      internal.langgraph.health.checkLangGraphHealth,
+    );
+
+    // Log the action
+    await ctx.db.insert("systemLogs", {
+      type: "system_control",
+      action: "trigger_health_check",
+      userId: adminUser._id,
+      timestamp: Date.now(),
+      data: {
+        message: "Manual LangGraph health check triggered",
+        adminName: adminUser.name || adminUser.email,
+      },
+    });
+
+    return {
+      success: true,
+      message: "Health check triggered successfully. Results will be available shortly.",
+    };
+  },
+});

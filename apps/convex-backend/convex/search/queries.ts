@@ -23,7 +23,7 @@ export const getUserSearches = query({
       .order("desc")
       .take(limit + offset);
 
-    return searches.slice(offset);
+    return { searches: searches.slice(offset) };
   },
 });
 
