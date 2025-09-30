@@ -171,10 +171,12 @@ class StartupValidator:
         """Test OpenAI API connectivity and model availability"""
         try:
             # Test basic OpenAI connection with a minimal request
+            # gpt-5-nano uses max_completion_tokens instead of max_tokens
             llm = ChatOpenAI(
                 model=self.settings.default_model,
                 temperature=0,
-                max_tokens=min(50, self.settings.max_tokens or 50),
+                max_completion_tokens=min(50, self.settings.max_tokens or 50),
+                model_kwargs={"reasoning_effort": "minimal"},  # Optimize for speed with gpt-5-nano
                 openai_api_key=self.settings.openai_api_key
             )
 

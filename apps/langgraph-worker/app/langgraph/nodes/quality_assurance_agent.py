@@ -100,10 +100,12 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
                    f"Body length={len(email_body)} chars")
         
         # Initialize LLM for quality assessment
+        # gpt-5-nano uses max_completion_tokens instead of max_tokens
         llm = ChatOpenAI(
             model=settings.default_model,
             temperature=0.2,  # Low temperature for consistent assessment
-            max_tokens=settings.max_tokens,
+            max_completion_tokens=settings.max_tokens,
+            model_kwargs={"reasoning_effort": "minimal"},  # Optimize for speed with gpt-5-nano
             openai_api_key=settings.openai_api_key
         ).with_structured_output(QualityAssessment)
         

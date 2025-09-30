@@ -114,12 +114,12 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
                    f"{len(value_matches)} value matches, relevance {relevance_score:.2f}")
         
         # Initialize LLM for email generation
-        # For o1 models: use max_completion_tokens instead of max_tokens
-        # o1-preview supports up to 32,768, o1-mini supports up to 65,536
+        # gpt-5-nano uses max_completion_tokens instead of max_tokens
         llm = ChatOpenAI(
             model=settings.default_model,
             temperature=0.4,  # Slightly higher for creative email writing
-            max_completion_tokens=16000,  # Increased for o1 reasoning models (was 4000)
+            max_completion_tokens=settings.max_tokens,  # Use Railway MAX_TOKENS_OPTIONAL config (10000)
+            model_kwargs={"reasoning_effort": "minimal"},  # Optimize for speed with gpt-5-nano
             openai_api_key=settings.openai_api_key
         ).with_structured_output(EmailSequence)
         

@@ -144,10 +144,12 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         analysis_start = time.time()
         
         # Initialize LLM for comprehensive analysis
+        # gpt-5-nano uses max_completion_tokens instead of max_tokens
         llm = ChatOpenAI(
             model=settings.default_model,
             temperature=0.3,
-            max_tokens=settings.max_tokens,
+            max_completion_tokens=settings.max_tokens,
+            model_kwargs={"reasoning_effort": "minimal"},  # Optimize for speed with gpt-5-nano
             openai_api_key=settings.openai_api_key
         ).with_structured_output(BusinessIntelligence)
         
