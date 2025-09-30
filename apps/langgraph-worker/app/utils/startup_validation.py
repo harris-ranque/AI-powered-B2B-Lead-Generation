@@ -82,7 +82,7 @@ class StartupValidator:
         # Check LangGraph API Key (standardized to LANGGRAPH_API_KEY)
         if not self.settings.api_key:
             missing_keys.append("LANGGRAPH_API_KEY")
-        elif self.settings.api_key == "default-secure-key-change-in-production":
+        elif getattr(self.settings, "api_key_placeholder_used", False):
             invalid_keys.append("LANGGRAPH_API_KEY (using default placeholder)")
         elif len(self.settings.api_key) < 32:
             invalid_keys.append("LANGGRAPH_API_KEY (too short, likely invalid)")

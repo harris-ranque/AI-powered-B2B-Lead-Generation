@@ -130,15 +130,20 @@ function logWebhookSignature(request: Request): void {
 function authorizeLanggraphWebhook(
   request: Request,
 ): LanggraphAuthResult | Response {
-  // Standardized to LANGGRAPH_API_KEY only for consistency
-  const expectedKey = process.env.LANGGRAPH_API_KEY;
+  const expectedKeyRaw =
+    process.env.LANGGRAPH_WEBHOOK_SECRET ??
+    process.env.LANGGRAPH_API_KEY ??
+    process.env.API_KEY ??
+    "";
+  const expectedKey = expectedKeyRaw.trim();
 
   if (!expectedKey) {
-    console.error("LANGGRAPH_API_KEY not configured in environment");
+    console.error("LangGraph webhook key not configured in environment");
     return new Response(
       JSON.stringify({
         error: "Webhook authentication not configured",
-        message: "LANGGRAPH_API_KEY environment variable is required"
+        message:
+          "LANGGRAPH_WEBHOOK_SECRET or LANGGRAPH_API_KEY environment variable is required",
       }),
       {
         status: 500,
@@ -147,55 +152,78 @@ function authorizeLanggraphWebhook(
     );
   }
 
-  const authHeader = request.headers.get("Authorization")?.trim();
-  if (!authHeader) {
+  const rawAuthHeader = request.headers.get("Authorization");
+  if (!rawAuthHeader) {
     console.error("Missing Authorization header in webhook request");
     return new Response(
       JSON.stringify({
         error: "Unauthorized",
-        message: "Authorization header is required"
+        message: "Authorization header is required",
       }),
       {
         status: 401,
-        headers: { "Content-Type": "application/json" },
-      }
+        headers: {
+          "Content-Type": "application/json",
+          "WWW-Authenticate": "Bearer",
+        },
+      },
     );
   }
 
-  // Improved header parsing with better error messages
-  if (!authHeader.startsWith("Bearer ")) {
+  const authHeader = rawAuthHeader.trim();
+  if (!authHeader.toLowerCase().startsWith("bearer ")) {
     console.error("Invalid Authorization header format - must be 'Bearer <token>'");
     return new Response(
       JSON.stringify({
         error: "Unauthorized",
-        message: "Authorization header must use Bearer scheme"
+        message: "Authorization header must use Bearer scheme",
       }),
       {
         status: 401,
-        headers: { "Content-Type": "application/json" },
-      }
+        headers: {
+          "Content-Type": "application/json",
+          "WWW-Authenticate": "Bearer",
+        },
+      },
     );
   }
 
-  const receivedKey = authHeader.substring(7).trim();
+  const providedKey = authHeader.slice(7).trim();
+  if (!providedKey) {
+    return new Response(
+      JSON.stringify({
+        error: "Unauthorized",
+        message: "Missing bearer token",
+      }),
+      {
+        status: 401,
+        headers: {
+          "Content-Type": "application/json",
+          "WWW-Authenticate": "Bearer",
+        },
+      },
+    );
+  }
 
-  // Timing-safe comparison to prevent timing attacks
-  if (receivedKey !== expectedKey) {
-    console.error("Invalid LangGraph webhook API key", {
-      receivedPrefix: receivedKey.substring(0, 4) + "...",
+  if (!timingSafeEqual(providedKey, expectedKey)) {
+    console.error("Invalid LangGraph webhook API key provided", {
+      receivedPrefix: providedKey.substring(0, 4) + "...",
       expectedPrefix: expectedKey.substring(0, 4) + "...",
-      receivedLength: receivedKey.length,
+      receivedLength: providedKey.length,
       expectedLength: expectedKey.length,
     });
     return new Response(
       JSON.stringify({
         error: "Unauthorized",
-        message: "Invalid API key"
+        message: "Invalid API key",
       }),
       {
         status: 401,
-        headers: { "Content-Type": "application/json" },
-      }
+        headers: {
+          "Content-Type": "application/json",
+          "WWW-Authenticate": "Bearer",
+        },
+      },
     );
   }
 

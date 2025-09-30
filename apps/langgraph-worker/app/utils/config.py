@@ -1,13 +1,14 @@
 """
 Configuration management for Genni LangGraph Worker
 """
+import logging
 import os
 from functools import lru_cache
 from typing import Optional
 from urllib.parse import urlparse, urlunparse
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
-from pydantic import Field
 
 
 def _ensure_convex_webhook_path(url: str) -> str:
@@ -42,11 +43,14 @@ def _ensure_convex_webhook_path(url: str) -> str:
     normalized = parsed._replace(path=path)
     return urlunparse(normalized)
 
+DEFAULT_PLACEHOLDER_API_KEY = "default-secure-key-change-in-production"
+
+
 class Settings(BaseSettings):
     """Application settings"""
 
     # API Configuration
-    # Standardized to LANGGRAPH_API_KEY for consistency with Convex backend
+    # Prefer LANGGRAPH_WEBHOOK_SECRET/LANGGRAPH_API_KEY to align with Convex backend, fall back to API_KEY
     api_key: str = Field(default="")
     openai_api_key: str = Field(default="")
     
@@ -63,6 +67,7 @@ class Settings(BaseSettings):
     tavily_search_depth: str = os.getenv("TAVILY_SEARCH_DEPTH", "basic")  # basic, advanced
     tavily_timeout: float = float(os.getenv("TAVILY_TIMEOUT", "5.0"))
     tavily_include_images: bool = os.getenv("TAVILY_INCLUDE_IMAGES", "false").lower() == "true"
+    tavily_rate_limit_per_minute: int = Field(default=500)
     
     # Convex Configuration
     convex_url: str = os.getenv("CONVEX_URL", "")
@@ -70,17 +75,39 @@ class Settings(BaseSettings):
     # Webhook Configuration (auto-constructed from Convex URL if not provided)
     webhook_url: str = ""
     
+    # Track whether we loaded a placeholder API key so other components can surface better errors
+    api_key_placeholder_used: bool = False
+
     def __init__(self, **kwargs):
+        # Resolve API key precedence before settings initialization so BaseSettings picks up overrides
+        resolved_api_key = kwargs.get("api_key")
+        if not resolved_api_key:
+            resolved_api_key = (
+                os.getenv("LANGGRAPH_WEBHOOK_SECRET")
+                or os.getenv("LANGGRAPH_API_KEY")
+                or os.getenv("API_KEY")
+                or DEFAULT_PLACEHOLDER_API_KEY
+            )
+        kwargs["api_key"] = resolved_api_key
+
         super().__init__(**kwargs)
 
-        # Load API key from environment - LANGGRAPH_API_KEY only (standardized)
-        if not self.api_key:
-            self.api_key = os.getenv("LANGGRAPH_API_KEY", "")
+        # Normalize API key once for downstream consumers
+        raw_api_key = (self.api_key or "").strip()
+        self.api_key_placeholder_used = raw_api_key == DEFAULT_PLACEHOLDER_API_KEY
+        if self.api_key_placeholder_used:
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "LangGraph webhook API key is using the placeholder value; webhook authentication will fail until it is updated."
+            )
+            # Prevent accidentally sending placeholder credentials over the wire
+            self.api_key = ""
+        else:
+            self.api_key = raw_api_key
 
-        # Load OpenAI API key from environment
+        # Load OpenAI API key from environment if not provided
         if not self.openai_api_key:
             self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
-
         # Normalize explicit webhook value first to ensure correct path format
         if self.webhook_url:
             self.webhook_url = _ensure_convex_webhook_path(self.webhook_url.rstrip('/'))
@@ -95,6 +122,15 @@ class Settings(BaseSettings):
                 base_url = base_url[:-4]
             constructed = f"{base_url}/webhooks/langgraph/email-completed"
             self.webhook_url = _ensure_convex_webhook_path(constructed)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_tavily_rate_limit(cls, values: dict):
+        """Ensure empty Tavily rate limits fall back to the default."""
+        raw_limit = values.get("tavily_rate_limit_per_minute")
+        if raw_limit in (None, ""):
+            values["tavily_rate_limit_per_minute"] = 500
+        return values
     
     # Server Configuration
     port: int = int(os.getenv("PORT_OPTIONAL", os.getenv("PORT", "8080")))
@@ -156,16 +192,18 @@ def get_settings() -> Settings:
 def validate_required_settings():
     """Validate that required settings are present and secure"""
     settings = get_settings()
-
     missing = []
 
     # Validate API key (LANGGRAPH_API_KEY)
-    if not settings.api_key:
-        missing.append("LANGGRAPH_API_KEY is required for webhook authentication")
-    elif settings.api_key == "default-secure-key-change-in-production":
+    if getattr(settings, "api_key_placeholder_used", False):
         raise ValueError(
             "LANGGRAPH_API_KEY is still set to the default insecure value. "
             "Please set a secure API key in your environment."
+        )
+
+    if not settings.api_key:
+        missing.append(
+            "LANGGRAPH_WEBHOOK_SECRET or LANGGRAPH_API_KEY is required for webhook authentication"
         )
     elif len(settings.api_key) < 32:
         raise ValueError(
@@ -173,7 +211,6 @@ def validate_required_settings():
             "For security, please use at least 32 characters."
         )
 
-    # Validate OpenAI API key
     if not settings.openai_api_key:
         missing.append("OPENAI_API_KEY is required for AI operations")
     elif settings.openai_api_key == "test-openai-key":
