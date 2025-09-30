@@ -18,6 +18,13 @@ export function LeadSearchHistory() {
 
   const items = useMemo<Doc<"searches">[]>(() => searches ?? [], [searches]);
 
+  const formatStatus = (status: string) => {
+    return status
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+  };
+
   const startCsvDownload = async (searchId: string) => {
     try {
       if (!user?._id) throw new Error("Not authenticated");
@@ -119,8 +126,8 @@ export function LeadSearchHistory() {
                   <div className="text-base font-medium">
                     {s.name || "Lead Search"}
                   </div>
-                  <Badge variant="outline" className="text-xs capitalize">
-                    {s.status}
+                  <Badge variant="outline" className="text-xs">
+                    {formatStatus(s.status)}
                   </Badge>
                 </div>
 

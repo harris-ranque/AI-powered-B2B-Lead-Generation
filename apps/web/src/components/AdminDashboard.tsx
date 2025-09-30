@@ -283,9 +283,11 @@ export function AdminDashboard() {
   const {
     systemStatus,
     systemActivity,
+    systemConfiguration,
     pauseAllLeadGeneration,
     resumeAllLeadGeneration,
     clearAllActiveSearches,
+    triggerLangGraphHealthCheck,
     isLoading: systemLoading,
   } = useAdminSystemControl();
 
@@ -298,6 +300,7 @@ export function AdminDashboard() {
   const [updatingUserId, setUpdatingUserId] = useState<Id<"users"> | null>(null);
   const [processingUserId, setProcessingUserId] = useState<Id<"users"> | null>(null);
   const [systemActionPending, setSystemActionPending] = useState(false);
+  const [healthCheckPending, setHealthCheckPending] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -644,6 +647,22 @@ export function AdminDashboard() {
       toast({ title: "Action failed", description: message, variant: "destructive" });
     } finally {
       setSystemActionPending(false);
+    }
+  };
+
+  const handleTriggerHealthCheck = async () => {
+    setHealthCheckPending(true);
+    try {
+      const result = await triggerLangGraphHealthCheck();
+      toast({
+        title: "Health check triggered",
+        description: result?.message || "Health check initiated successfully.",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to trigger health check";
+      toast({ title: "Action failed", description: message, variant: "destructive" });
+    } finally {
+      setHealthCheckPending(false);
     }
   };
 
@@ -1228,6 +1247,166 @@ export function AdminDashboard() {
               Monitor processing queues, recent failures, and operational activity.
             </p>
           </div>
+
+          {/* LangGraph Worker Health Status */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle>LangGraph Worker Health</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Real-time monitoring of AI worker service connectivity and performance
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleTriggerHealthCheck}
+                disabled={healthCheckPending}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${healthCheckPending ? "animate-spin" : ""}`} />
+                {healthCheckPending ? "Checking..." : "Check Now"}
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {systemConfiguration?.orchestrationSettings?.langGraphHealth ? (
+                <>
+                  {/* Health Status Badge */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Status</span>
+                    <Badge
+                      variant={
+                        systemConfiguration.orchestrationSettings.langGraphHealth.status === "healthy"
+                          ? "default"
+                          : systemConfiguration.orchestrationSettings.langGraphHealth.status === "degraded"
+                          ? "outline"
+                          : "destructive"
+                      }
+                      className={
+                        systemConfiguration.orchestrationSettings.langGraphHealth.status === "healthy"
+                          ? "bg-green-500"
+                          : systemConfiguration.orchestrationSettings.langGraphHealth.status === "degraded"
+                          ? "bg-yellow-500 text-white"
+                          : ""
+                      }
+                    >
+                      {systemConfiguration.orchestrationSettings.langGraphHealth.status.toUpperCase()}
+                    </Badge>
+                  </div>
+
+                  {/* Last Checked / Last Success */}
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Last Checked</span>
+                      <div className="font-medium">
+                        {formatTimestamp(systemConfiguration.orchestrationSettings.langGraphHealth.lastCheckedAt)}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Last Success</span>
+                      <div className="font-medium">
+                        {formatTimestamp(systemConfiguration.orchestrationSettings.langGraphHealth.lastSuccessAt)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Consecutive Failures */}
+                  {systemConfiguration.orchestrationSettings.langGraphHealth.consecutiveFailures > 0 && (
+                    <Alert variant="destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        {systemConfiguration.orchestrationSettings.langGraphHealth.consecutiveFailures} consecutive failures detected
+                        {systemConfiguration.orchestrationSettings.langGraphHealth.lastError && (
+                          <div className="mt-1 text-xs">Error: {systemConfiguration.orchestrationSettings.langGraphHealth.lastError}</div>
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {/* Service Statuses */}
+                  {systemConfiguration.orchestrationSettings.langGraphHealth.services && (
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">Service Status</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="flex items-center gap-2 text-sm">
+                          <div
+                            className={`w-2 h-2 rounded-full ${
+                              systemConfiguration.orchestrationSettings.langGraphHealth.services.fastapi
+                                ? "bg-green-500"
+                                : "bg-red-500"
+                            }`}
+                          />
+                          <span>FastAPI</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <div
+                            className={`w-2 h-2 rounded-full ${
+                              systemConfiguration.orchestrationSettings.langGraphHealth.services.langgraph
+                                ? "bg-green-500"
+                                : "bg-red-500"
+                            }`}
+                          />
+                          <span>LangGraph</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <div
+                            className={`w-2 h-2 rounded-full ${
+                              systemConfiguration.orchestrationSettings.langGraphHealth.services.openai
+                                ? "bg-green-500"
+                                : "bg-red-500"
+                            }`}
+                          />
+                          <span>OpenAI</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <div
+                            className={`w-2 h-2 rounded-full ${
+                              systemConfiguration.orchestrationSettings.langGraphHealth.services.convex
+                                ? "bg-green-500"
+                                : "bg-red-500"
+                            }`}
+                          />
+                          <span>Convex</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Performance Metrics */}
+                  {systemConfiguration.orchestrationSettings.langGraphHealth.performance && (
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">Performance Metrics</h4>
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Active Tasks</span>
+                          <div className="font-medium">
+                            {systemConfiguration.orchestrationSettings.langGraphHealth.performance.activeTasks || 0}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Queue Size</span>
+                          <div className="font-medium">
+                            {systemConfiguration.orchestrationSettings.langGraphHealth.performance.queueSize || 0}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Memory Usage</span>
+                          <div className="font-medium">
+                            {systemConfiguration.orchestrationSettings.langGraphHealth.performance.memoryUsage
+                              ? `${Math.round(systemConfiguration.orchestrationSettings.langGraphHealth.performance.memoryUsage)}%`
+                              : "N/A"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  No health data available. Health checks run every 2 minutes.
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           <div className="grid gap-4 md:grid-cols-3">
             <Card>

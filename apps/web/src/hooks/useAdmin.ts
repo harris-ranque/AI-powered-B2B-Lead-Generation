@@ -94,6 +94,7 @@ export function useAdminConfiguration() {
 export function useAdminSystemControl() {
   const systemStatus = useQuery(api.admin.queries.getSystemControlStatus);
   const systemActivity = useQuery(api.admin.queries.getSystemActivity);
+  const systemConfiguration = useQuery(api.admin.queries.getSystemConfiguration);
   // Use functions from admin/systemControl module (correct paths)
   const pauseAllLeadGeneration = useMutation(
     api.admin.systemControl.pauseAllLeadGeneration,
@@ -104,13 +105,18 @@ export function useAdminSystemControl() {
   const clearAllActiveSearches = useMutation(
     api.admin.systemControl.clearAllActiveSearches,
   );
+  const triggerLangGraphHealthCheck = useMutation(
+    api.admin.systemControl.triggerLangGraphHealthCheck,
+  );
 
   return {
     systemStatus,
     systemActivity,
+    systemConfiguration,
     pauseAllLeadGeneration,
     resumeAllLeadGeneration,
     clearAllActiveSearches,
+    triggerLangGraphHealthCheck,
     isLoading: systemStatus === undefined || systemActivity === undefined,
   };
 }

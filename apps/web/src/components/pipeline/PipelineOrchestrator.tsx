@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { usePipeline } from "@/pipeline/context";
 import type { Lead } from "@/lib/api-client";
@@ -23,6 +24,8 @@ import {
   Brain,
   Zap,
   AlertTriangle,
+  PlayCircle,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSearch } from "@/hooks/useSearches";
@@ -41,6 +44,7 @@ export function PipelineOrchestrator({
   onGenerateEmail,
 }: PipelineOrchestratorProps) {
   const { state, setStage } = usePipeline();
+  const [isPipelineCollapsed, setIsPipelineCollapsed] = useState(false);
 
   // Get search data and real-time updates
   const { search } = useSearch(state.searchId || undefined);
@@ -48,8 +52,11 @@ export function PipelineOrchestrator({
     state.searchId || undefined,
   );
 
-  // Get system status for emergency stop check
-  const { systemStatus } = useAdminSystemControl();
+  // Get system status and configuration for health checks
+  const { systemStatus, systemConfiguration } = useAdminSystemControl();
+
+  // Check if search is completed
+  const isSearchCompleted = search?.status === "completed";
 
   const currentStageIndex = STAGE_ORDER.indexOf(state.currentStage);
   const progressPercentage =
@@ -168,6 +175,56 @@ export function PipelineOrchestrator({
             </div>
           </CardContent>
         </Card>
+
+        {/* Completion UI */}
+        {isSearchCompleted && (
+          <Card className="glass-card border-green-200 bg-green-50">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center">
+                    <CheckCircle className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-green-900">
+                      Search Completed!
+                    </h3>
+                    <p className="text-sm text-green-700">
+                      Found {search.results?.totalFound || 0} leads, enriched{" "}
+                      {search.results?.enrichedCount || 0}, analyzed{" "}
+                      {search.results?.analyzedCount || 0}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={() => {
+                      setStage("source_selection");
+                      setIsPipelineCollapsed(false);
+                    }}
+                    className="gap-2"
+                  >
+                    <PlayCircle className="h-4 w-4" />
+                    New Search
+                  </Button>
+                  <Button
+                    size="lg"
+                    onClick={() => {
+                      window.location.hash = "#lead-history";
+                      setIsPipelineCollapsed(true);
+                    }}
+                    className="gap-2"
+                  >
+                    <FileText className="h-4 w-4" />
+                    View Results
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* System Status Warning */}
@@ -193,22 +250,68 @@ export function PipelineOrchestrator({
         </Alert>
       )}
 
-      {/* Pipeline Stepper */}
-      <PipelineStepper />
+      {/* LangGraph Worker Health Warning */}
+      {systemConfiguration?.orchestrationSettings?.langGraphHealth?.status === "unavailable" && (
+        <Alert variant="destructive" className="border-red-500 bg-red-50">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <div className="space-y-1">
+              <div className="font-semibold">
+                AI Analysis Service Unavailable
+              </div>
+              <div className="text-sm">
+                The LangGraph worker service is currently unavailable. AI analysis and email generation will be blocked until the service is restored.
+              </div>
+              {systemConfiguration.orchestrationSettings.langGraphHealth.lastError && (
+                <div className="text-xs text-muted-foreground mt-2">
+                  Error: {systemConfiguration.orchestrationSettings.langGraphHealth.lastError}
+                </div>
+              )}
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
 
-      {/* Current Stage Content */}
-      <div
-        className={cn(
-          "transition-all duration-500 ease-in-out",
-          (isBusy || systemStatus?.leadGenerationPaused) &&
-            "opacity-75 pointer-events-none",
-        )}
-      >
-        {renderStageContent()}
-      </div>
+      {systemConfiguration?.orchestrationSettings?.langGraphHealth?.status === "degraded" && (
+        <Alert className="border-yellow-500 bg-yellow-50">
+          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+          <AlertDescription>
+            <div className="space-y-1">
+              <div className="font-semibold text-yellow-900">
+                AI Analysis Service Degraded
+              </div>
+              <div className="text-sm text-yellow-800">
+                The LangGraph worker is experiencing issues. AI analysis may be slower than usual or encounter errors.
+              </div>
+              <div className="text-xs text-yellow-700 mt-1">
+                {systemConfiguration.orchestrationSettings.langGraphHealth.consecutiveFailures} consecutive failures detected
+              </div>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
 
-      {/* Real-Time Research Progress */}
-      {state.searchId && search && (
+      {/* Pipeline Content - Hide when collapsed */}
+      {!(isSearchCompleted && isPipelineCollapsed) && (
+        <>
+          {/* Pipeline Stepper */}
+          <PipelineStepper />
+
+          {/* Current Stage Content */}
+          <div
+            className={cn(
+              "transition-all duration-500 ease-in-out",
+              (isBusy || systemStatus?.leadGenerationPaused) &&
+                "opacity-75 pointer-events-none",
+            )}
+          >
+            {renderStageContent()}
+          </div>
+        </>
+      )}
+
+      {/* Real-Time Research Progress - Hide when collapsed */}
+      {state.searchId && search && !(isSearchCompleted && isPipelineCollapsed) && (
         <SearchProgressTracker
           searchId={state.searchId}
           compact={false}
@@ -217,8 +320,9 @@ export function PipelineOrchestrator({
         />
       )}
 
-      {/* Enhanced Pipeline Status */}
-      <Card className="glass-card">
+      {/* Enhanced Pipeline Status - Hide when collapsed */}
+      {!(isSearchCompleted && isPipelineCollapsed) && (
+        <Card className="glass-card">
         <CardContent className="p-4">
           <div className="space-y-4">
             {/* Status Header */}
@@ -339,6 +443,7 @@ export function PipelineOrchestrator({
           </div>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }
