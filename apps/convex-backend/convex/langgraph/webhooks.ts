@@ -24,12 +24,15 @@ const EmailGenerationResult = v.object({
       lead_analysis: v.optional(v.any()),
       processing_time: v.optional(v.number()),
       primary_email: v.optional(
-        v.object({
-          subject: v.string(),
-          body: v.string(),
-          personalization_notes: v.optional(v.array(v.string())),
-          estimated_effectiveness: v.optional(v.number()),
-        }),
+        v.union(
+          v.null(),
+          v.object({
+            subject: v.string(),
+            body: v.string(),
+            personalization_notes: v.optional(v.array(v.string())),
+            estimated_effectiveness: v.optional(v.number()),
+          }),
+        ),
       ),
       agent_results: v.optional(
         v.array(
@@ -245,7 +248,7 @@ export const handleEmailGenerationCompleted = internalMutation({
           };
         });
 
-        const formattedOutput = result.primary_email
+        const formattedOutput = result.primary_email && result.primary_email !== null
           ? {
               primary_email: {
                 subject: result.primary_email.subject,
@@ -307,7 +310,7 @@ export const handleEmailGenerationCompleted = internalMutation({
             processingTime: result.processing_time || 0,
             confidence: result.relevance_score || 0.5,
           },
-          emailContent: result.primary_email
+          emailContent: result.primary_email && result.primary_email !== null
             ? {
                 subject: result.primary_email.subject,
                 body: result.primary_email.body,
@@ -357,7 +360,7 @@ export const handleEmailGenerationCompleted = internalMutation({
         }
 
         // Create email sequence record if we have email content (idempotent by request_id per lead)
-        if (result.primary_email) {
+        if (result.primary_email && result.primary_email !== null) {
           // Check existing sequences for this lead with same requestId
           const existingForLead = await ctx.db
             .query("emailSequences")
@@ -404,7 +407,7 @@ export const handleEmailGenerationCompleted = internalMutation({
               relevanceScore: result.relevance_score || 0,
               qualityScore: args.payload.quality_score || 0,
               approved: args.payload.approved || false,
-              emailGenerated: !!result.primary_email,
+              emailGenerated: !!(result.primary_email && result.primary_email !== null),
               processingTime: result.processing_time || 0,
               requestId: args.payload.request_id,
             },
@@ -434,7 +437,7 @@ export const handleEmailGenerationCompleted = internalMutation({
         return {
           success: true,
           leadId,
-          emailGenerated: !!result.primary_email,
+          emailGenerated: !!(result.primary_email && result.primary_email !== null),
         };
       } else {
         // Handle error case
