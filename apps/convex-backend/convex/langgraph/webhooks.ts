@@ -517,7 +517,12 @@ export const handleEmailGenerationCompleted = internalMutation({
         console.error(
           `Email generation failed for lead ${leadId}: ${errorMessage}`,
         );
-        return { success: false, error: errorMessage, leadId };
+        // Always acknowledge error payloads so the worker does not retry the webhook indefinitely
+        return {
+          success: true,
+          error: errorMessage,
+          leadId,
+        };
       }
     } catch (error) {
       console.error("Error handling email generation webhook:", error);
@@ -720,8 +725,9 @@ export const handleAnalysisCompleted = internalMutation({
         console.error(
           `Analysis failed for lead ${args.payload.lead_id}: ${errorMessage}`,
         );
+        // Always acknowledge error payloads so the worker does not retry the webhook indefinitely
         return {
-          success: false,
+          success: true,
           error: errorMessage,
           leadId: args.payload.lead_id,
         };
