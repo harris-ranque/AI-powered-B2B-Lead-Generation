@@ -343,22 +343,33 @@ export const handleEmailGenerationCompleted = internalMutation({
             : undefined,
         });
 
+        const deepResearchUsed = Boolean(result.deep_research_used);
+        const deepResearchProvider = deepResearchUsed ? "perplexity" : "tavily";
+        const deepResearchReason = deepResearchUsed
+          ? result.deep_research_reason || "Deep research analysis"
+          : result.deep_research_reason || "Level one provider satisfied";
+
+        await ctx.db.patch(lead._id, {
+          deepResearchUsed,
+          deepResearchProvider,
+          deepResearchReason,
+          deepResearchTimestamp: Date.now(),
+          deepResearchDataPoints: deepResearchUsed
+            ? result.missing_data_points || []
+            : [],
+          deepResearchCreditsCharged:
+            deepResearchUsed && result.additional_credits_used
+              ? result.additional_credits_used
+              : 0,
+        });
+
         // Process deep research tracking and credit charges
-        if (result.deep_research_used) {
+        if (deepResearchUsed) {
           logger.info("Processing deep research charge", {
             leadId,
-            reason: result.deep_research_reason,
+            reason: deepResearchReason,
             additionalCredits: result.additional_credits_used,
             missingDataPoints: result.missing_data_points,
-          });
-
-          // Update lead with deep research metadata
-          await ctx.db.patch(lead._id, {
-            deepResearchUsed: true,
-            deepResearchReason: result.deep_research_reason || "Deep research analysis",
-            deepResearchTimestamp: Date.now(),
-            deepResearchDataPoints: result.missing_data_points || [],
-            deepResearchCreditsCharged: result.additional_credits_used || 0,
           });
 
           // Charge additional credits for deep research
@@ -367,7 +378,7 @@ export const handleEmailGenerationCompleted = internalMutation({
               userId: search.userId,
               amount: result.additional_credits_used,
               operation: "usage",
-              description: `Deep Research - ${result.deep_research_reason || "Enhanced business intelligence"}`,
+              description: `Deep Research - ${deepResearchReason || "Enhanced business intelligence"}`,
               relatedEntityType: "lead",
               relatedEntityId: leadId,
             });

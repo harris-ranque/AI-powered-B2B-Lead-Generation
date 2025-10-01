@@ -47,6 +47,11 @@ async def email_writer_node(state: EmailGenerationState) -> Dict[str, Any]:
     start_time = time.time()
     logger.info(f"Starting email generation for {state['lead'].company_name}")
     
+    sender_name = ""
+    sender_email = ""
+    sender_phone = ""
+    sender_website = ""
+
     try:
         # Initialize LLM with structured output
         llm = ChatOpenAI(
@@ -252,6 +257,7 @@ async def email_writer_node(state: EmailGenerationState) -> Dict[str, Any]:
         sender_email = contact_info.get("email", "")
         sender_phone = contact_info.get("phone", "")
         sender_website = contact_info.get("website", "")
+
 
         fallback_signature = "\n".join(
             line

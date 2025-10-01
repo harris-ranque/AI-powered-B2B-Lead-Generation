@@ -11,6 +11,7 @@ const useBillingMock = vi.fn<[], MockReturn>()
 const useLangGraphRequestsMock = vi.fn<[], MockReturn>()
 const useSearchesMock = vi.fn<[], MockReturn>()
 const useUserLeadsMock = vi.fn<[], MockReturn>()
+const useStatusBroadcastsMock = vi.fn<[], MockReturn>()
 const useAuthMock = vi.fn<[], MockReturn>()
 const toastMock = vi.fn()
 
@@ -44,6 +45,25 @@ vi.mock('@/hooks/useSearches', () => ({
 
 vi.mock('@/hooks/useLeads', () => ({
   useUserLeads: () => useUserLeadsMock(),
+}))
+
+vi.mock('@/hooks/base/useSearchesBase', () => ({
+  useSearchesBase: () => useSearchesMock(),
+  useSearchBase: vi.fn(),
+  useGoogleMapsSearchBase: vi.fn(),
+}))
+
+vi.mock('@/hooks/base/useLeadsBase', () => ({
+  useLeadsBase: vi.fn(),
+  useLeadBase: vi.fn(),
+  useUserLeadsBase: () => useUserLeadsMock(),
+}))
+
+vi.mock('@/hooks/base/useStatusBroadcastsBase', () => ({
+  useStatusBroadcastsBase: () => useStatusBroadcastsMock(),
+  useSearchBroadcastsBase: vi.fn(),
+  useBatchBroadcastsBase: vi.fn(),
+  useCreditBroadcastsBase: vi.fn(),
 }))
 
 vi.mock('@/hooks/useAuth', () => ({
@@ -162,6 +182,26 @@ beforeEach(() => {
   useUserLeadsMock.mockReturnValue({
     stats: { totalLeads: 24 },
     isLoading: false,
+  })
+
+  useStatusBroadcastsMock.mockReturnValue({
+    broadcasts: [],
+    urgentBroadcasts: [],
+    searchBroadcasts: [],
+    creditBroadcasts: [],
+    rateLimitWarnings: [],
+    systemAlerts: [],
+    getByType: vi.fn().mockReturnValue([]),
+    getByTags: vi.fn().mockReturnValue([]),
+    acknowledgeBroadcast: vi.fn(),
+    markAsRead: vi.fn(),
+    isLoading: false,
+    hasUrgent: false,
+    needsAcknowledgment: 0,
+    unreadCount: 0,
+    urgentUnreadCount: 0,
+    isConnected: true,
+    latestStatus: null,
   })
 
   useAuthMock.mockReturnValue({

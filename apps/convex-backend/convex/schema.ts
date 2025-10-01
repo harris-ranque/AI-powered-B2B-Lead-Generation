@@ -311,6 +311,13 @@ export default defineSchema({
     deepResearchTimestamp: v.optional(v.number()),
     deepResearchDataPoints: v.optional(v.array(v.string())),
     deepResearchCreditsCharged: v.optional(v.number()),
+    deepResearchProvider: v.optional(
+      v.union(
+        v.literal("tavily"),
+        v.literal("exa"),
+        v.literal("perplexity"),
+      ),
+    ),
 
     createdAt: v.number(),
     updatedAt: v.number(),
