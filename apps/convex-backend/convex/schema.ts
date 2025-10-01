@@ -607,30 +607,6 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_date", ["date"]),
 
-  // API Keys - For external service integrations
-  apiKeys: defineTable({
-    userId: v.id("users"), // Associate with a user
-    name: v.string(),
-    service: v.string(),
-    keyHash: v.string(), // Hashed version for security
-    isActive: v.boolean(),
-    lastUsed: v.optional(v.number()),
-    usageCount: v.number(),
-    permissions: v.optional(v.array(v.string())), // Array of permissions
-    rateLimit: v.optional(
-      v.object({
-        dailyLimit: v.number(),
-        monthlyLimit: v.optional(v.number()),
-      }),
-    ),
-    dailyUsage: v.optional(v.any()), // Record for tracking daily usage
-    createdAt: v.number(),
-    expiresAt: v.optional(v.number()),
-  })
-    .index("by_user", ["userId"])
-    .index("by_service", ["service"])
-    .index("by_active", ["isActive"]),
-
   // System Configuration - Admin configurable settings
   adminSettings: defineTable({
     maintenanceMode: v.boolean(),
@@ -1085,40 +1061,6 @@ export default defineSchema({
     .index("by_internal_search", ["internalSearchId"])
     .index("by_status", ["status"])
     .index("by_expires", ["expiresAt"]),
-
-  // Research Metrics - Track tiered business context research analytics
-  researchMetrics: defineTable({
-    searchId: v.id("searches"),
-    userId: v.id("users"),
-    stage: v.union(
-      v.literal("research_started"),
-      v.literal("tier1_tavily"),
-      v.literal("tier2_exa"),
-      v.literal("tier3_perplexity"),
-      v.literal("research_completed"),
-      v.literal("research_failed"),
-      v.literal("research_error"),
-    ),
-    tier: v.union(
-      v.literal("tavily"),
-      v.literal("exa"),
-      v.literal("perplexity"),
-      v.literal("error"),
-    ),
-    confidence: v.number(),
-    dataPoints: v.number(),
-    sourcesAnalyzed: v.number(),
-    escalationReason: v.optional(v.string()),
-    error: v.optional(v.string()),
-    metadata: v.object({}),
-    timestamp: v.number(),
-  })
-    .index("by_search_timestamp", ["searchId", "timestamp"])
-    .index("by_user", ["userId"])
-    .index("by_timestamp", ["timestamp"])
-    .index("by_tier", ["tier"])
-    .index("by_stage", ["stage"])
-    .index("by_confidence", ["confidence"]),
 
   // System Control State - Emergency admin controls for lead generation
   systemControlState: defineTable({
