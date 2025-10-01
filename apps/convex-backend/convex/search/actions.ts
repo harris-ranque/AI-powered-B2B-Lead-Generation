@@ -10,6 +10,7 @@ import {
   OPERATION_TYPES,
   formatCorrelationForLogging,
 } from "../lib/correlation";
+import { CREDIT_COSTS } from "../lib/helpers";
 // Note: This action can be scheduled by the orchestrator (no user auth).
 
 const METERS_PER_MILE = 1609.34;
@@ -437,17 +438,6 @@ export const searchGoogleMaps = action({
         leadIds.push(leadId);
       }
 
-      // Deduct credit and record transaction using scheduler
-      await ctx.runMutation(internal.users.internal.deductCreditsInternal, {
-        userId: search.userId,
-        amount: 1,
-        description: "Google Maps lead discovery",
-        relatedEntity: {
-          type: "search",
-          id: args.searchId as any,
-        },
-      });
-
       // Update search status to processing (discovery complete, but pipeline continues)
       await ctx.runMutation(
         internal.search.internal.updateSearchStatusInternal,
@@ -616,6 +606,41 @@ export const completeSearch: any = action({
         },
       );
 
+      // Determine credit costs for this search execution
+      const totalFound =
+        typeof results.totalFound === "number" ? results.totalFound : 0;
+      const enrichedCount =
+        typeof results.enrichedCount === "number" ? results.enrichedCount : 0;
+      const analyzedCount =
+        typeof results.analyzedCount === "number" ? results.analyzedCount : 0;
+
+      const creditBreakdown = {
+        discovery: totalFound * CREDIT_COSTS.LEAD_DISCOVERY,
+        enrichment: enrichedCount * CREDIT_COSTS.EMAIL_ENRICHMENT,
+        analysis: analyzedCount * CREDIT_COSTS.AI_ANALYSIS,
+      } as const;
+      const totalCreditsUsed =
+        creditBreakdown.discovery +
+        creditBreakdown.enrichment +
+        creditBreakdown.analysis;
+
+      const previouslyRecordedCredits = search.creditsUsed || 0;
+      const creditsToCharge = Math.max(
+        totalCreditsUsed - previouslyRecordedCredits,
+        0,
+      );
+
+      if (creditsToCharge > 0) {
+        await ctx.runMutation(internal.credits.transactions.recordTransaction, {
+          userId: search.userId,
+          amount: creditsToCharge,
+          operation: "usage",
+          description: `Lead generation search "${search.name}" completed`,
+          relatedEntityType: "search",
+          relatedEntityId: args.searchId as unknown as string,
+        });
+      }
+
       // Update search status to completed with final results
       await ctx.runMutation(
         internal.search.internal.updateSearchStatusInternal,
@@ -629,17 +654,18 @@ export const completeSearch: any = action({
       await ctx.runMutation(internal.search.internal.updateSearchResults, {
         searchId: args.searchId,
         results: {
-          totalFound: results.totalFound,
-          enrichedCount: results.enrichedCount,
-          analyzedCount: results.analyzedCount,
+          totalFound,
+          enrichedCount,
+          analyzedCount,
           avgRelevanceScore: results.avgRelevanceScore,
         },
         progress: {
-          discovered: results.totalFound,
-          enriched: results.enrichedCount,
-          analyzed: results.analyzedCount,
-          total: results.totalFound,
+          discovered: totalFound,
+          enriched: enrichedCount,
+          analyzed: analyzedCount,
+          total: totalFound,
         },
+        creditsUsed: totalCreditsUsed,
       });
 
       // Send final pipeline update broadcast
@@ -653,17 +679,19 @@ export const completeSearch: any = action({
           message: `Search completed! Found ${results.totalFound} leads, enriched ${results.enrichedCount}, analyzed ${results.analyzedCount}`,
           data: {
             results: {
-              totalFound: results.totalFound,
-              enrichedCount: results.enrichedCount,
-              analyzedCount: results.analyzedCount,
+              totalFound,
+              enrichedCount,
+              analyzedCount,
               avgRelevanceScore: results.avgRelevanceScore,
             },
             progress: {
-              discovered: results.totalFound,
-              enriched: results.enrichedCount,
-              analyzed: results.analyzedCount,
-              total: results.totalFound,
+              discovered: totalFound,
+              enriched: enrichedCount,
+              analyzed: analyzedCount,
+              total: totalFound,
             },
+            creditsUsed: totalCreditsUsed,
+            creditBreakdown,
           },
         },
       );
@@ -692,14 +720,16 @@ export const completeSearch: any = action({
         correlation,
         "🎉 PIPELINE COMPLETE: Search Successfully Finished",
         {
-          totalLeads: results.totalFound,
-          enrichedLeads: results.enrichedCount,
-          analyzedLeads: results.analyzedCount,
+          totalLeads: totalFound,
+          enrichedLeads: enrichedCount,
+          analyzedLeads: analyzedCount,
           avgRelevanceScore: results.avgRelevanceScore,
           completionDurationMs: performanceData?.duration || 0,
-          enrichmentRate: results.totalFound > 0 ? (results.enrichedCount / results.totalFound) * 100 : 0,
-          analysisRate: results.totalFound > 0 ? (results.analyzedCount / results.totalFound) * 100 : 0,
+          enrichmentRate: totalFound > 0 ? (enrichedCount / totalFound) * 100 : 0,
+          analysisRate: totalFound > 0 ? (analyzedCount / totalFound) * 100 : 0,
           finalStatus: "completed",
+          creditsUsed: totalCreditsUsed,
+          creditBreakdown,
         },
       );
 
@@ -707,6 +737,7 @@ export const completeSearch: any = action({
         success: true,
         message: "Search completed successfully",
         results: results,
+        creditsUsed: totalCreditsUsed,
       };
     } catch (error) {
       const performanceData = endPerformanceTracking(performanceTracker);

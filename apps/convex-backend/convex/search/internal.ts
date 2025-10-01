@@ -148,12 +148,20 @@ export const updateSearchResults = internalMutation({
     searchId: v.id("searches"),
     results: v.any(),
     progress: v.any(),
+    creditsUsed: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.searchId, {
+    const updates: any = {
       results: args.results,
       progress: args.progress,
-    });
+    };
+
+    if (typeof args.creditsUsed === "number") {
+      updates.creditsUsed = args.creditsUsed;
+      updates.updatedAt = Date.now();
+    }
+
+    await ctx.db.patch(args.searchId, updates);
   },
 });
 
