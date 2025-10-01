@@ -94,6 +94,11 @@ All colors MUST be HSL.
     --border: 222 23% 30%;
     --input: 222 23% 26%;
     --ring: 210 90% 60%;
+
+    --glass-surface: 222 32% 18% / 0.68;
+    --glass-border: 222 24% 46% / 0.4;
+    --surface-overlay: 222 30% 22% / 0.52;
+    --shadow-soft: 222 84% 8% / 0.45;
   }
 }
 
