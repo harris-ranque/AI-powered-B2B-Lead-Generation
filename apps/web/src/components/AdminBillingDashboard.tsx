@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   DollarSign,
   Users,
@@ -12,8 +13,13 @@ import {
 } from "lucide-react";
 import { useConvex, useQuery } from "convex/react";
 import { api } from "@genni/convex-types";
+import { useMemo, useState, useCallback } from "react";
+import { withErrorBoundary } from "@/utils/errorHandling";
+import { createLogger } from "@/utils/logger";
 
-export function AdminBillingDashboard() {
+const adminBillingLogger = createLogger("AdminBillingDashboard");
+
+function AdminBillingDashboardComponent() {
   // Use Convex native reactive queries - real-time updates without polling!
   const billingMetrics = useQuery(api.admin.billing.getBillingMetrics);
   const revenueAnalytics = useQuery(api.admin.billing.getRevenueAnalytics);
@@ -21,11 +27,35 @@ export function AdminBillingDashboard() {
   const costAnalytics = useQuery(api.admin.billing.getCostAnalytics);
   const convex = useConvex();
 
-  const handleRefresh = () => {
-    void convex.refreshQuery(api.admin.billing.getBillingMetrics, undefined);
-    void convex.refreshQuery(api.admin.billing.getRevenueAnalytics, undefined);
-    void convex.refreshQuery(api.admin.billing.getCostAnalytics, undefined);
-  };
+  const [componentError, setComponentError] = useState<string | null>(null);
+
+  const handleComponentError = useCallback(
+    (error: unknown, context: string, extra?: Record<string, unknown>) => {
+      const errorInstance =
+        error instanceof Error ? error : new Error(String(error));
+      adminBillingLogger.error(
+        `Billing dashboard error: ${context}`,
+        extra,
+        errorInstance,
+      );
+      setComponentError(`${context}: ${errorInstance.message}`);
+    },
+    [],
+  );
+
+  const dismissComponentError = useCallback(() => {
+    setComponentError(null);
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    try {
+      void convex.refreshQuery(api.admin.billing.getBillingMetrics, undefined);
+      void convex.refreshQuery(api.admin.billing.getRevenueAnalytics, undefined);
+      void convex.refreshQuery(api.admin.billing.getCostAnalytics, undefined);
+    } catch (error) {
+      handleComponentError(error, "handle-refresh");
+    }
+  }, [convex, handleComponentError]);
 
   if (billingMetrics === undefined || revenueAnalytics === undefined || costAnalytics === undefined) {
     return (
@@ -38,15 +68,75 @@ export function AdminBillingDashboard() {
     );
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount);
-  };
+  const formatCurrency = useCallback(
+    (amount: number) => {
+      try {
+        return new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+        }).format(amount);
+      } catch (error) {
+        handleComponentError(error, "format-currency", { amount });
+        return `$${amount.toFixed(2)}`;
+      }
+    },
+    [handleComponentError],
+  );
+
+  const planDistribution = useMemo(() => {
+    try {
+      if (!billingMetrics) {
+        return [] as Array<{ plan: string; count: number; mrr: number }>;
+      }
+
+      const mrrByPlanMap = new Map(
+        (revenueAnalytics?.mrrByPlan || []).map((entry) => [entry.plan, entry.mrr]),
+      );
+
+      return Object.entries(billingMetrics.subscriptions.planCounts).map(
+        ([plan, count]) => ({
+          plan,
+          count,
+          mrr: mrrByPlanMap.get(plan) ?? 0,
+        }),
+      );
+    } catch (error) {
+      handleComponentError(error, "plan-distribution", {
+        planCount: Object.keys(
+          billingMetrics?.subscriptions?.planCounts || {},
+        ).length,
+      });
+      return [] as Array<{ plan: string; count: number; mrr: number }>;
+    }
+  }, [billingMetrics, handleComponentError, revenueAnalytics?.mrrByPlan]);
+
+  const usageByPlan = useMemo(() => {
+    try {
+      return costAnalytics?.usageByPlan ?? [];
+    } catch (error) {
+      handleComponentError(error, "usage-by-plan");
+      return [];
+    }
+  }, [costAnalytics, handleComponentError]);
 
   return (
     <div className="space-y-6">
+      {componentError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="flex items-center justify-between gap-4">
+            <span>{componentError}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={dismissComponentError}
+            >
+              Dismiss
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -149,32 +239,30 @@ export function AdminBillingDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {billingMetrics &&
-                Object.entries(billingMetrics.subscriptions.planCounts).map(
-                  ([plan, count]) => {
-                    const planMRR =
-                      revenueAnalytics?.mrrByPlan.find((p) => p.plan === plan)
-                        ?.mrr || 0;
-                    return (
-                      <div
-                        key={plan}
-                        className="flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="capitalize">
-                            {plan}
-                          </Badge>
-                          <span className="text-sm text-muted-foreground">
-                            {count} subscribers
-                          </span>
-                        </div>
-                        <span className="font-medium">
-                          {formatCurrency(planMRR)}/mo
-                        </span>
-                      </div>
-                    );
-                  },
-                )}
+              {planDistribution.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No plan distribution data available.
+                </p>
+              ) : (
+                planDistribution.map(({ plan, count, mrr }) => (
+                  <div
+                    key={plan}
+                    className="flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="capitalize">
+                        {plan}
+                      </Badge>
+                      <span className="text-sm text-muted-foreground">
+                        {count} subscribers
+                      </span>
+                    </div>
+                    <span className="font-medium">
+                      {formatCurrency(mrr)}/mo
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           </CardContent>
         </Card>
@@ -185,29 +273,35 @@ export function AdminBillingDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {costAnalytics?.usageByPlan.map((planData) => (
-                <div
-                  key={planData.plan}
-                  className="flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="capitalize">
-                      {planData.plan}
-                    </Badge>
-                    <span className="text-sm text-muted-foreground">
-                      {planData.users} users
-                    </span>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-medium">
-                      {formatCurrency(planData.usage)}
+              {usageByPlan.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No usage insights available for the selected period.
+                </p>
+              ) : (
+                usageByPlan.map((planData) => (
+                  <div
+                    key={planData.plan}
+                    className="flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="capitalize">
+                        {planData.plan}
+                      </Badge>
+                      <span className="text-sm text-muted-foreground">
+                        {planData.users} users
+                      </span>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {formatCurrency(planData.avgUsagePerUser)} avg/user
+                    <div className="text-right">
+                      <div className="font-medium">
+                        {formatCurrency(planData.usage)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {formatCurrency(planData.avgUsagePerUser)} avg/user
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </CardContent>
         </Card>
@@ -329,3 +423,10 @@ export function AdminBillingDashboard() {
     </div>
   );
 }
+
+AdminBillingDashboardComponent.displayName = "AdminBillingDashboard";
+
+export const AdminBillingDashboard = withErrorBoundary(
+  AdminBillingDashboardComponent,
+  "Admin billing dashboard failed to render",
+);

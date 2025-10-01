@@ -2,6 +2,8 @@
  * Logging utility for web app with environment-based configuration.
  */
 
+import * as Sentry from "@sentry/react";
+
 type LogLevel = "debug" | "info" | "warn" | "error";
 
 interface LogContext {
@@ -93,6 +95,33 @@ class Logger {
     return logEntry;
   }
 
+  private sanitizeContext(
+    context?: LogContext,
+  ): Record<string, unknown> | undefined {
+    if (!context) {
+      return undefined;
+    }
+
+    try {
+      return JSON.parse(JSON.stringify(context));
+    } catch (error) {
+      return {
+        __serializationError: true,
+        message: error instanceof Error ? error.message : String(error),
+      } as Record<string, unknown>;
+    }
+  }
+
+  private buildSentryExtras(logEntry: LogEntry): Record<string, unknown> {
+    return {
+      context: this.sanitizeContext(logEntry.context),
+      correlationId: logEntry.correlationId,
+      userId: logEntry.userId,
+      sessionId: logEntry.sessionId,
+      timestamp: logEntry.timestamp,
+    };
+  }
+
   private getConsoleMethod(level: LogLevel): Console["log"] {
     switch (level) {
       case "debug":
@@ -172,6 +201,17 @@ class Logger {
         );
       }
     }
+
+    if (level === "error") {
+      const sentryError = error ?? new Error(message);
+      Sentry.captureException(sentryError, {
+        tags: {
+          component: this.component ?? "global",
+          level,
+        },
+        extra: this.buildSentryExtras(logEntry),
+      });
+    }
   }
 
   debug(message: string, context?: LogContext) {
@@ -186,7 +226,12 @@ class Logger {
     this.log("warn", message, context, error);
   }
 
-  error(message: string, context?: LogContext, error?: Error) {
+  error(message: string, context?: LogContext | Error, error?: Error) {
+    if (context instanceof Error) {
+      this.log("error", message, undefined, context);
+      return;
+    }
+
     this.log("error", message, context, error);
   }
 

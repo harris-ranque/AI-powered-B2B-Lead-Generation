@@ -29,15 +29,19 @@ import {
 import { SearchProgressTracker } from "@/components/SearchProgressTracker";
 import { SubscriptionStatusCard } from "@/components/SubscriptionStatusCard";
 import { UsageMetersCard } from "@/components/UsageMetersCard";
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useUsage } from "@/hooks/useUsage";
 import { UsageWarnings } from "@/components/SubscriptionGuard";
 import { DashboardHelpWidget } from "@/components/DashboardHelpWidget";
 import { useSubscriptionGuard } from "@/hooks/useSubscriptionGuard";
+import { withErrorBoundary } from "@/utils/errorHandling";
+import { createLogger } from "@/utils/logger";
 
-export function Dashboard() {
+const dashboardLogger = createLogger("Dashboard");
+
+function DashboardComponent() {
   // Real Convex hooks
   const {
     leadStats,
@@ -75,10 +79,26 @@ export function Dashboard() {
     needsAcknowledgment,
   } = useStatusBroadcasts();
 
-  // Local state for dismissible alerts
+  // Local state for dismissible alerts and surfaced errors
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(
-    new Set(),
+    () => new Set(),
   );
+  const [componentError, setComponentError] = useState<string | null>(null);
+
+  const handleComponentError = useCallback(
+    (error: unknown, context: string, extra?: Record<string, unknown>) => {
+      const errorInstance =
+        error instanceof Error ? error : new Error(String(error));
+
+      dashboardLogger.error(`Dashboard error: ${context}`, extra, errorInstance);
+      setComponentError(`${context}: ${errorInstance.message}`);
+    },
+    [],
+  );
+
+  const dismissComponentError = useCallback(() => {
+    setComponentError(null);
+  }, []);
 
   // Calculate real stats
   const totalLeads = userLeadStats?.totalLeads || 0;
@@ -87,71 +107,180 @@ export function Dashboard() {
   const emailsGenerated = emailRequests?.page?.length || 0;
 
   // Filter active searches for progress tracking
-  const activeSearches =
-    searches?.filter((s) => s.status === "in_progress") || [];
-  const recentCompletedSearches =
-    searches?.filter(
-      (s) =>
-        s.status === "completed" &&
-        Date.now() - s.completedAt < 24 * 60 * 60 * 1000, // Last 24 hours
-    ) || [];
+  const activeSearches = useMemo(() => {
+    try {
+      return searches?.filter((s) => s.status === "in_progress") || [];
+    } catch (error) {
+      handleComponentError(error, "active-searches", {
+        searchCount: searches?.length,
+      });
+      return [];
+    }
+  }, [handleComponentError, searches]);
+
+  const recentCompletedSearches = useMemo(() => {
+    try {
+      return (
+        searches?.filter(
+          (s) =>
+            s.status === "completed" &&
+            Date.now() - s.completedAt < 24 * 60 * 60 * 1000,
+        ) || []
+      );
+    } catch (error) {
+      handleComponentError(error, "recent-completed-searches", {
+        searchCount: searches?.length,
+      });
+      return [];
+    }
+  }, [handleComponentError, searches]);
 
   // Helper function to dismiss alerts
-  const dismissAlert = (alertId: string) => {
-    setDismissedAlerts((prev) => new Set([...prev, alertId]));
-  };
-
-  // Filter non-dismissed urgent broadcasts
-  const visibleUrgentBroadcasts = urgentBroadcasts.filter(
-    (b) => !dismissedAlerts.has(b._id),
+  const dismissAlert = useCallback(
+    (alertId: string) => {
+      try {
+        setDismissedAlerts((prev) => new Set([...prev, alertId]));
+      } catch (error) {
+        handleComponentError(error, "dismiss-alert", { alertId });
+      }
+    },
+    [handleComponentError],
   );
 
-  const stats = [
-    {
-      title: "Total Leads Found",
-      value: totalLeads.toLocaleString(),
-      change: userLeadStats?.thisWeek
-        ? `+${userLeadStats.thisWeek} this week`
-        : "No recent activity",
-      icon: Users,
-    },
-    {
-      title: "Leads with Emails",
-      value: leadsWithEmails.toLocaleString(),
-      change: `${Math.round((leadsWithEmails / totalLeads) * 100) || 0}% coverage`,
-      icon: Target,
-    },
-    {
-      title: "Searches Completed",
-      value: totalSearches.toLocaleString(),
-      change: searches?.filter((s) => s.status === "completed").length
-        ? `${searches?.filter((s) => s.status === "completed").length} completed`
-        : "No searches yet",
-      icon: Search,
-    },
-    {
-      title: "AI Emails Generated",
-      value: emailsGenerated.toLocaleString(),
-      change: emailRequests?.page?.filter((r) => r.status === "completed")
-        .length
-        ? `${emailRequests?.page?.filter((r) => r.status === "completed").length} successful`
-        : "None generated",
-      icon: Bot,
-    },
-  ];
+  // Filter non-dismissed urgent broadcasts
+  const visibleUrgentBroadcasts = useMemo(() => {
+    try {
+      return urgentBroadcasts.filter((b) => !dismissedAlerts.has(b._id));
+    } catch (error) {
+      handleComponentError(error, "visible-urgent-broadcasts", {
+        urgentCount: urgentBroadcasts.length,
+      });
+      return [];
+    }
+  }, [dismissedAlerts, handleComponentError, urgentBroadcasts]);
+
+  const stats = useMemo(() => {
+    try {
+      const completedSearchCount =
+        searches?.filter((s) => s.status === "completed").length ?? 0;
+      const successfulEmailRequests =
+        emailRequests?.page?.filter((r) => r.status === "completed").length ??
+        0;
+
+      return [
+        {
+          title: "Total Leads Found",
+          value: totalLeads.toLocaleString(),
+          change: userLeadStats?.thisWeek
+            ? `+${userLeadStats.thisWeek} this week`
+            : "No recent activity",
+          icon: Users,
+        },
+        {
+          title: "Leads with Emails",
+          value: leadsWithEmails.toLocaleString(),
+          change: `${Math.round((leadsWithEmails / Math.max(totalLeads, 1)) * 100)}% coverage`,
+          icon: Target,
+        },
+        {
+          title: "Searches Completed",
+          value: totalSearches.toLocaleString(),
+          change: completedSearchCount
+            ? `${completedSearchCount} completed`
+            : "No searches yet",
+          icon: Search,
+        },
+        {
+          title: "AI Emails Generated",
+          value: emailsGenerated.toLocaleString(),
+          change: successfulEmailRequests
+            ? `${successfulEmailRequests} successful`
+            : "None generated",
+          icon: Bot,
+        },
+      ];
+    } catch (error) {
+      handleComponentError(error, "dashboard-stats", {
+        totalLeads,
+        leadsWithEmails,
+        totalSearches,
+        emailsGenerated,
+      });
+      return [
+        {
+          title: "Total Leads Found",
+          value: totalLeads.toLocaleString(),
+          change: "Data unavailable",
+          icon: Users,
+        },
+        {
+          title: "Leads with Emails",
+          value: leadsWithEmails.toLocaleString(),
+          change: "Data unavailable",
+          icon: Target,
+        },
+        {
+          title: "Searches Completed",
+          value: totalSearches.toLocaleString(),
+          change: "Data unavailable",
+          icon: Search,
+        },
+        {
+          title: "AI Emails Generated",
+          value: emailsGenerated.toLocaleString(),
+          change: "Data unavailable",
+          icon: Bot,
+        },
+      ];
+    }
+  }, [
+    emailRequests?.page,
+    emailsGenerated,
+    handleComponentError,
+    leadsWithEmails,
+    totalLeads,
+    totalSearches,
+    userLeadStats?.thisWeek,
+    searches,
+  ]);
 
   // Convert notifications to recent activity format
-  const recentActivity =
-    notifications?.notifications?.slice(0, 4).map((notification) => ({
-      action: notification.title,
-      time: new Date(notification._creationTime).toLocaleString(),
-      count: notification.type,
-    })) || [];
+  const recentActivity = useMemo(() => {
+    try {
+      return (
+        notifications?.notifications?.slice(0, 4).map((notification) => ({
+          action: notification.title,
+          time: new Date(notification._creationTime).toLocaleString(),
+          count: notification.type,
+        })) || []
+      );
+    } catch (error) {
+      handleComponentError(error, "recent-activity", {
+        notificationCount: notifications?.notifications?.length,
+      });
+      return [];
+    }
+  }, [handleComponentError, notifications?.notifications]);
 
   return (
     <div className="flex h-screen">
       <div className="flex-1 p-8">
         <div className="max-w-6xl">
+          {componentError && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="flex items-center justify-between gap-4">
+                <span>{componentError}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={dismissComponentError}
+                >
+                  Dismiss
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
           <div className="mb-8">
             <div className="flex items-center justify-between">
               <div>
@@ -631,3 +760,10 @@ export function Dashboard() {
     </div>
   );
 }
+
+DashboardComponent.displayName = "Dashboard";
+
+export const Dashboard = withErrorBoundary(
+  DashboardComponent,
+  "Dashboard failed to render",
+);
