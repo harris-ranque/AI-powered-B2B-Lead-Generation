@@ -41,6 +41,7 @@ import { useCredits, useBilling } from "@/hooks/useBilling";
 import { useLangGraphRequests } from "@/hooks/useLangGraph";
 import { useSearches } from "@/hooks/useSearches";
 import { useUserLeads } from "@/hooks/useLeads";
+import { UserDataProvider } from "@/contexts/UserDataContext";
 import {
   safeTransformEmailRequests,
   isValidTabName,
@@ -51,7 +52,9 @@ import { ClerkUserButton } from "@/components/auth/ClerkAuthWrapper";
 export function LeadEternityDashboard() {
   return (
     <PipelineProvider>
-      <LeadEternityDashboardContent />
+      <UserDataProvider>
+        <LeadEternityDashboardContent />
+      </UserDataProvider>
     </PipelineProvider>
   );
 }
