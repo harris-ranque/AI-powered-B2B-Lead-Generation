@@ -687,7 +687,7 @@ export function AdminDashboard() {
             Monitor platform health, manage users, and configure system policies.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <Button
             variant="outline"
             onClick={handlePauseLeadGeneration}
