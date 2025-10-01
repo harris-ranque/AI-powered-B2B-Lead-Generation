@@ -51,11 +51,25 @@ export const updateEnrichmentStatus = internalMutation({
     error: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.leadId, {
+    const updateData: any = {
       enrichmentStatus: args.status,
       updatedAt: Date.now(),
-      ...(args.error && { enrichmentData: { error: args.error } }),
-    });
+    };
+
+    // Clear contactInfo for failed enrichments to prevent false positives in UI
+    if (args.status === "failed" || args.status === "completed_fallback") {
+      updateData.contactInfo = {
+        emails: [],
+        contacts: [],
+        socialProfiles: {},
+      };
+    }
+
+    if (args.error) {
+      updateData.enrichmentData = { error: args.error };
+    }
+
+    await ctx.db.patch(args.leadId, updateData);
   },
 });
 

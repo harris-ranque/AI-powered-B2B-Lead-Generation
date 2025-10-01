@@ -59,11 +59,21 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
 
       const searchResults = await Promise.allSettled(searchPromises);
 
+      // Count actual successes (fulfilled promises with success=true)
+      const successfulSearches = searchResults.filter(
+        r => r.status === 'fulfilled' && r.value?.success === true
+      ).length;
+      const failedSearches = searchResults.length - successfulSearches;
+
       console.log(`[ICypeas] Batch ${batchIndex + 1} search initiation complete:`, {
         batchNumber: batchIndex + 1,
         totalRequests: searchResults.length,
-        successful: searchResults.filter(r => r.status === 'fulfilled' && r.value.success).length,
-        failed: searchResults.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success)).length
+        successful: successfulSearches,
+        failed: failedSearches,
+        // Log first failure for debugging
+        firstFailure: failedSearches > 0 ? searchResults.find(r =>
+          r.status === 'rejected' || (r.status === 'fulfilled' && r.value?.success !== true)
+        ) : undefined
       });
 
       // Poll for results
@@ -264,6 +274,18 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
         status: jsonResponse.status,
         message: jsonResponse.message
       });
+
+      // Validate that the search was actually initiated successfully
+      if (!jsonResponse.success) {
+        const errorMsg = jsonResponse.message || "ICypeas API returned success=false";
+        console.error(`[ICypeas] Search initiation failed:`, {
+          success: jsonResponse.success,
+          message: jsonResponse.message,
+          domain,
+          companyName
+        });
+        throw new Error(errorMsg);
+      }
 
       return jsonResponse;
     } catch (error) {
