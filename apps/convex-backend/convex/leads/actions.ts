@@ -555,12 +555,26 @@ export const enrichLeads: any = action({
 
           const enrichmentData: EnrichmentBatchResult = await enrichmentService.enrichBatch(domains);
 
+          // Determine fallback provider (opposite of primary)
+          const fallbackProviderType: "findymail" | "icypeas" =
+            providerType === "icypeas" ? "findymail" : "icypeas";
+
+          // Track domains that need fallback enrichment
+          const domainsNeedingFallback: string[] = [];
+          const leadsByDomain: Map<string, any> = new Map();
+
           // Update each lead with enrichment data
           for (const lead of batch) {
             const domain = extractDomain((lead as any).website);
+            leadsByDomain.set(domain, lead);
             const leadEnrichmentData = enrichmentData[domain];
 
-            if (leadEnrichmentData) {
+            // Check if we got valid email data (not null and has emails)
+            const hasValidEmails = leadEnrichmentData &&
+                                   leadEnrichmentData.emails &&
+                                   leadEnrichmentData.emails.length > 0;
+
+            if (hasValidEmails) {
               await ctx.runMutation(
                 internal.leads.internal.updateLeadEnrichment,
                 {
@@ -572,15 +586,122 @@ export const enrichLeads: any = action({
               );
               enrichedCount++;
             } else {
-              // No enrichment data found, mark as completed with fallback
-              await ctx.runMutation(
-                internal.leads.internal.updateEnrichmentStatus,
+              // No emails found, add to fallback list
+              domainsNeedingFallback.push(domain);
+
+              logWithCorrelation(
+                "warn",
+                batchCorrelation,
+                `⚠️ No emails found for ${domain} using ${providerType}, will try ${fallbackProviderType}`,
                 {
-                  leadId: (lead as any)._id,
-                  status: "completed_fallback",
-                  error: `No enrichment data found from ${providerType}`,
+                  domain,
+                  primaryProvider: providerType,
+                  fallbackProvider: fallbackProviderType,
                 },
               );
+            }
+          }
+
+          // Try fallback provider for domains without emails
+          if (domainsNeedingFallback.length > 0) {
+            logWithCorrelation(
+              "info",
+              batchCorrelation,
+              `🔄 Attempting fallback enrichment for ${domainsNeedingFallback.length} domains`,
+              {
+                primaryProvider: providerType,
+                fallbackProvider: fallbackProviderType,
+                domainsCount: domainsNeedingFallback.length,
+              },
+            );
+
+            try {
+              // Create fallback enrichment service
+              const fallbackService = createEnrichmentService(undefined, fallbackProviderType);
+              const fallbackData: EnrichmentBatchResult = await fallbackService.enrichBatch(domainsNeedingFallback);
+
+              // Process fallback results
+              for (const domain of domainsNeedingFallback) {
+                const lead = leadsByDomain.get(domain);
+                if (!lead) continue;
+
+                const fallbackEnrichmentData = fallbackData[domain];
+                const hasValidFallbackEmails = fallbackEnrichmentData &&
+                                              fallbackEnrichmentData.emails &&
+                                              fallbackEnrichmentData.emails.length > 0;
+
+                if (hasValidFallbackEmails) {
+                  await ctx.runMutation(
+                    internal.leads.internal.updateLeadEnrichment,
+                    {
+                      leadId: (lead as any)._id,
+                      enrichmentData: fallbackEnrichmentData,
+                      status: "completed",
+                      enrichmentProvider: fallbackProviderType,
+                    },
+                  );
+                  enrichedCount++;
+
+                  logWithCorrelation(
+                    "info",
+                    batchCorrelation,
+                    `✅ Fallback enrichment successful for ${domain}`,
+                    {
+                      domain,
+                      fallbackProvider: fallbackProviderType,
+                      emailsFound: fallbackEnrichmentData.emails.length,
+                    },
+                  );
+                } else {
+                  // Both providers failed, mark as completed_fallback
+                  await ctx.runMutation(
+                    internal.leads.internal.updateEnrichmentStatus,
+                    {
+                      leadId: (lead as any)._id,
+                      status: "completed_fallback",
+                      error: `No enrichment data found from ${providerType} or ${fallbackProviderType}`,
+                    },
+                  );
+
+                  logWithCorrelation(
+                    "warn",
+                    batchCorrelation,
+                    `❌ Both providers failed for ${domain}`,
+                    {
+                      domain,
+                      primaryProvider: providerType,
+                      fallbackProvider: fallbackProviderType,
+                    },
+                  );
+                }
+              }
+            } catch (fallbackError) {
+              logWithCorrelation(
+                "error",
+                batchCorrelation,
+                "❌ Fallback enrichment provider error",
+                {
+                  fallbackProvider: fallbackProviderType,
+                  domainsCount: domainsNeedingFallback.length,
+                  errorType: fallbackError instanceof Error ? fallbackError.constructor.name : "Unknown",
+                },
+                fallbackError as Error,
+              );
+
+              // Mark all fallback domains as failed
+              for (const domain of domainsNeedingFallback) {
+                const lead = leadsByDomain.get(domain);
+                if (!lead) continue;
+
+                await ctx.runMutation(
+                  internal.leads.internal.updateEnrichmentStatus,
+                  {
+                    leadId: (lead as any)._id,
+                    status: "completed_fallback",
+                    error: `${providerType} and ${fallbackProviderType} enrichment failed`,
+                  },
+                );
+              }
             }
           }
 
@@ -613,7 +734,7 @@ export const enrichLeads: any = action({
           logWithCorrelation(
             "error",
             batchCorrelation,
-            "❌ Enrichment Provider Error",
+            "❌ Primary Enrichment Provider Error",
             {
               provider: providerType,
               batchNumber: batchIndex + 1,
@@ -623,17 +744,90 @@ export const enrichLeads: any = action({
             error as Error,
           );
 
-          // Mark batch as failed but continue
-          for (const lead of batch) {
-            await ctx.runMutation(
-              internal.leads.internal.updateEnrichmentStatus,
+          // Try fallback provider for the entire batch
+          const fallbackProviderType: "findymail" | "icypeas" =
+            providerType === "icypeas" ? "findymail" : "icypeas";
+
+          logWithCorrelation(
+            "info",
+            batchCorrelation,
+            `🔄 Primary provider failed, trying fallback provider for entire batch`,
+            {
+              primaryProvider: providerType,
+              fallbackProvider: fallbackProviderType,
+              domainsCount: domains.length,
+            },
+          );
+
+          try {
+            const fallbackService = createEnrichmentService(undefined, fallbackProviderType);
+            const fallbackData: EnrichmentBatchResult = await fallbackService.enrichBatch(domains);
+
+            // Process fallback results
+            for (const lead of batch) {
+              const domain = extractDomain((lead as any).website);
+              const fallbackEnrichmentData = fallbackData[domain];
+              const hasValidFallbackEmails = fallbackEnrichmentData &&
+                                            fallbackEnrichmentData.emails &&
+                                            fallbackEnrichmentData.emails.length > 0;
+
+              if (hasValidFallbackEmails) {
+                await ctx.runMutation(
+                  internal.leads.internal.updateLeadEnrichment,
+                  {
+                    leadId: (lead as any)._id,
+                    enrichmentData: fallbackEnrichmentData,
+                    status: "completed",
+                    enrichmentProvider: fallbackProviderType,
+                  },
+                );
+                enrichedCount++;
+
+                logWithCorrelation(
+                  "info",
+                  batchCorrelation,
+                  `✅ Fallback provider success for ${domain}`,
+                  {
+                    domain,
+                    fallbackProvider: fallbackProviderType,
+                    emailsFound: fallbackEnrichmentData.emails.length,
+                  },
+                );
+              } else {
+                await ctx.runMutation(
+                  internal.leads.internal.updateEnrichmentStatus,
+                  {
+                    leadId: (lead as any)._id,
+                    status: "failed",
+                    error: `Both ${providerType} and ${fallbackProviderType} enrichment failed`,
+                  },
+                );
+              }
+            }
+          } catch (fallbackError) {
+            logWithCorrelation(
+              "error",
+              batchCorrelation,
+              "❌ Fallback provider also failed",
               {
-                leadId: (lead as any)._id,
-                status: "failed",
-                error:
-                  error instanceof Error ? error.message : `${providerType} enrichment failed`,
+                fallbackProvider: fallbackProviderType,
+                errorType: fallbackError instanceof Error ? fallbackError.constructor.name : "Unknown",
               },
+              fallbackError as Error,
             );
+
+            // Mark batch as failed
+            for (const lead of batch) {
+              await ctx.runMutation(
+                internal.leads.internal.updateEnrichmentStatus,
+                {
+                  leadId: (lead as any)._id,
+                  status: "failed",
+                  error:
+                    error instanceof Error ? error.message : `${providerType} enrichment failed`,
+                },
+              );
+            }
           }
         }
       }
