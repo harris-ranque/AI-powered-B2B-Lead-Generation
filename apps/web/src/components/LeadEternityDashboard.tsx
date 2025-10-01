@@ -29,6 +29,7 @@ import { BusinessProfileWizard } from "./BusinessProfileWizard";
 import { CreditManager } from "./CreditManager";
 import { AdminDashboard } from "./AdminDashboard";
 import { Dashboard } from "./Dashboard";
+import { DashboardHelpWidget } from "./DashboardHelpWidget";
 import { Settings as SettingsComponent } from "./Settings";
 import type {
   Lead,
@@ -252,7 +253,7 @@ function LeadEternityDashboardContent() {
   return (
     <div className="min-h-screen bg-background">
       <div className="border-b border-border bg-card">
-        <div className="flex h-16 items-center px-6">
+        <div className="flex items-center px-6 py-4">
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2">
               <Bot className="h-8 w-8 text-primary" />
@@ -274,20 +275,23 @@ function LeadEternityDashboardContent() {
             </Button>
           </div>
 
-          <div className="ml-auto flex items-center space-x-4">
-            <Badge variant="secondary" className="bg-green-100 text-green-800">
-              <Sparkles className="mr-1 h-3 w-3" />
-              AI System Active
-            </Badge>
+          <div className="ml-auto flex flex-col items-end gap-4 text-right">
+            <DashboardHelpWidget />
+            <div className="flex items-center gap-4">
+              <Badge variant="secondary" className="bg-green-100 text-green-800">
+                <Sparkles className="mr-1 h-3 w-3" />
+                AI System Active
+              </Badge>
 
-            <div className="text-right text-sm">
-              <div className="font-medium">5 AI Agents</div>
-              <div className="text-xs text-muted-foreground">
-                Ready for personalization
+              <div className="text-right text-sm">
+                <div className="font-medium">5 AI Agents</div>
+                <div className="text-xs text-muted-foreground">
+                  Ready for personalization
+                </div>
               </div>
-            </div>
 
-            <ClerkUserButton />
+              <ClerkUserButton />
+            </div>
           </div>
         </div>
       </div>
