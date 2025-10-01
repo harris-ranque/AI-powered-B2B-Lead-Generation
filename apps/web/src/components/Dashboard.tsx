@@ -38,6 +38,7 @@ import { DashboardHelpWidget } from "@/components/DashboardHelpWidget";
 import { useSubscriptionGuard } from "@/hooks/useSubscriptionGuard";
 import { withErrorBoundary } from "@/utils/errorHandling";
 import { createLogger } from "@/utils/logger";
+import type { Id } from "@genni/convex-types/dataModel";
 
 const dashboardLogger = createLogger("Dashboard");
 
@@ -75,14 +76,15 @@ function DashboardComponent() {
     rateLimitWarnings,
     systemAlerts,
     acknowledgeBroadcast,
+    markAsRead,
     hasUrgent,
     needsAcknowledgment,
   } = useStatusBroadcasts();
 
   // Local state for dismissible alerts and surfaced errors
-  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [dismissedAlerts, setDismissedAlerts] = useState<
+    Set<Id<"statusBroadcasts">>
+  >(() => new Set());
   const [componentError, setComponentError] = useState<string | null>(null);
 
   const handleComponentError = useCallback(
@@ -137,14 +139,27 @@ function DashboardComponent() {
 
   // Helper function to dismiss alerts
   const dismissAlert = useCallback(
-    (alertId: string) => {
+    (alertId: Id<"statusBroadcasts">) => {
       try {
-        setDismissedAlerts((prev) => new Set([...prev, alertId]));
+        setDismissedAlerts((prev) => {
+          const next = new Set(prev);
+          next.add(alertId);
+          return next;
+        });
+
+        void markAsRead(alertId).catch((error: unknown) => {
+          handleComponentError(error, "dismiss-alert", { alertId });
+          setDismissedAlerts((prev) => {
+            const next = new Set(prev);
+            next.delete(alertId);
+            return next;
+          });
+        });
       } catch (error) {
         handleComponentError(error, "dismiss-alert", { alertId });
       }
     },
-    [handleComponentError],
+    [handleComponentError, markAsRead],
   );
 
   // Filter non-dismissed urgent broadcasts
