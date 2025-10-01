@@ -577,6 +577,7 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
 
   /**
    * Validate API key by making a test request
+   * Note: ICypeas requires account email for subscription info endpoint
    */
   async validateApiKey(apiKey: string): Promise<boolean> {
     console.log(`[ICypeas] Validating API key:`, {
@@ -584,19 +585,31 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
       apiKeyPrefix: apiKey ? apiKey.substring(0, 8) + '...' : 'none'
     });
 
+    // Get account email from environment (optional)
+    const accountEmail = process.env.ICYPEAS_ACCOUNT_EMAIL;
+
+    if (!accountEmail) {
+      console.log(`[ICypeas] ⚠️  No ICYPEAS_ACCOUNT_EMAIL configured, skipping validation`);
+      // Return true if we have an API key - validation will happen on actual usage
+      return !!apiKey && apiKey.length > 0;
+    }
+
     try {
-      const response = await fetch(`${ICYPEAS_BASE_URL}/credits`, {
-        method: "GET",
+      const response = await fetch(`${ICYPEAS_BASE_URL}/a/actions/subscription-information`, {
+        method: "POST",
         headers: {
           "Authorization": apiKey,
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({ email: accountEmail }),
       });
 
       const isValid = response.ok;
       console.log(`[ICypeas] API key validation result:`, {
         isValid,
         status: response.status,
-        statusText: response.statusText
+        statusText: response.statusText,
+        accountEmail
       });
 
       if (!isValid) {
@@ -620,6 +633,7 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
 
   /**
    * Get remaining credits
+   * Note: ICypeas requires account email for subscription info endpoint
    */
   async getCredits(apiKey: string): Promise<number> {
     console.log(`[ICypeas] Fetching credits:`, {
@@ -627,12 +641,22 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
       apiKeyPrefix: apiKey ? apiKey.substring(0, 8) + '...' : 'none'
     });
 
+    // Get account email from environment (optional)
+    const accountEmail = process.env.ICYPEAS_ACCOUNT_EMAIL;
+
+    if (!accountEmail) {
+      console.log(`[ICypeas] ⚠️  No ICYPEAS_ACCOUNT_EMAIL configured, cannot fetch credits`);
+      return 0;
+    }
+
     try {
-      const response = await fetch(`${ICYPEAS_BASE_URL}/credits`, {
-        method: "GET",
+      const response = await fetch(`${ICYPEAS_BASE_URL}/a/actions/subscription-information`, {
+        method: "POST",
         headers: {
           "Authorization": apiKey,
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({ email: accountEmail }),
       });
 
       if (!response.ok) {
@@ -642,15 +666,16 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
           statusText: response.statusText,
           errorBody: errorText
         });
-        throw new Error(`Failed to get credits: ${response.status} ${response.statusText}`);
+        return 0;
       }
 
-      const data = await response.json() as { credits?: number };
+      const data = await response.json() as { credits?: number; subscription?: any };
       const credits = data.credits || 0;
 
-      console.log(`[ICypeas] ✅ Credits fetched successfully:`, {
+      console.log(`[ICypeas] ✅ Subscription info fetched successfully:`, {
         credits,
-        hasCreditsField: 'credits' in data
+        hasSubscription: !!data.subscription,
+        subscriptionType: data.subscription?.type
       });
 
       return credits;
