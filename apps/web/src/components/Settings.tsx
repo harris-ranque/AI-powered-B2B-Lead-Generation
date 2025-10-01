@@ -4,6 +4,7 @@ import { api } from "@genni/convex-types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -16,6 +17,7 @@ import {
   Moon,
   Download,
   AlertCircle,
+  Mail,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -49,6 +51,12 @@ export function Settings() {
     email: "",
     phone: "",
   });
+  const [emailConfig, setEmailConfig] = useState({
+    fromName: "",
+    fromEmail: "",
+    signature: "",
+  });
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
 
   const normalizeContactName = (value: string) =>
     value
@@ -57,6 +65,17 @@ export function Settings() {
           .replace(/[\u200B-\u200D\uFEFF]/g, "")
           .trim()
       : "";
+
+  const buildSignature = (name: string, company?: string, email?: string) => {
+    const lines = [
+      "Best regards,",
+      name,
+      company,
+      email,
+    ].filter((line) => !!line?.trim());
+
+    return lines.join("\n");
+  };
 
   // Update local state when data loads
   useEffect(() => {
@@ -78,6 +97,31 @@ export function Settings() {
       });
     }
   }, [userData, businessProfile]);
+
+  useEffect(() => {
+    const contactInfo = businessProfile?.contactInfo as {
+      name?: string;
+      email?: string;
+      phone?: string;
+      website?: string;
+      linkedin?: string;
+    } | null;
+
+    const normalizedName = normalizeContactName(
+      contactInfo?.name || userData?.name || "",
+    );
+    const fromEmail = contactInfo?.email || userData?.email || "";
+
+    setEmailConfig({
+      fromName: normalizedName,
+      fromEmail,
+      signature: buildSignature(
+        normalizedName,
+        businessProfile?.companyName || "",
+        fromEmail,
+      ),
+    });
+  }, [businessProfile, userData]);
 
   const handlePreferencesUpdate = async (
     updates: Partial<typeof preferences>,
@@ -130,6 +174,46 @@ export function Settings() {
       console.error(error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleEmailConfigUpdate = async () => {
+    setIsUpdatingEmail(true);
+    try {
+      const sanitizedFromName = normalizeContactName(emailConfig.fromName);
+      const contactInfo = (businessProfile?.contactInfo as {
+        phone?: string;
+        website?: string;
+        linkedin?: string;
+      }) || {};
+
+      await updateBusinessProfile({
+        section: "contact_info",
+        data: {
+          name: sanitizedFromName,
+          email: emailConfig.fromEmail,
+          phone: contactInfo.phone || "",
+          website: contactInfo.website || "",
+          linkedin: contactInfo.linkedin || "",
+        },
+      });
+
+      setEmailConfig((prev) => ({
+        ...prev,
+        fromName: sanitizedFromName,
+        signature: buildSignature(
+          sanitizedFromName,
+          businessProfile?.companyName || "",
+          emailConfig.fromEmail,
+        ),
+      }));
+
+      toast.success("Email configuration updated successfully");
+    } catch (error) {
+      toast.error("Failed to update email configuration");
+      console.error(error);
+    } finally {
+      setIsUpdatingEmail(false);
     }
   };
 
@@ -293,6 +377,89 @@ export function Settings() {
                   </div>
                 </div>
               )}
+            </div>
+          </Card>
+
+          {/* Email Configuration */}
+          <Card className="p-6 bg-card border-border mb-6">
+            <div className="flex items-center gap-3 mb-6">
+              <Mail className="h-5 w-5 text-primary" />
+              <h3 className="text-lg font-semibold text-foreground">
+                Email Configuration
+              </h3>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-foreground mb-2 block">
+                  Default From Name
+                </label>
+                <Input
+                  value={emailConfig.fromName}
+                  onChange={(e) =>
+                    setEmailConfig((prev) => ({
+                      ...prev,
+                      fromName: e.target.value,
+                    }))
+                  }
+                  onBlur={(e) =>
+                    setEmailConfig((prev) => ({
+                      ...prev,
+                      fromName: normalizeContactName(e.target.value),
+                    }))
+                  }
+                  placeholder="Enter your name for email sending"
+                  className="bg-input border-border"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-foreground mb-2 block">
+                  Default From Email
+                </label>
+                <Input
+                  value={emailConfig.fromEmail}
+                  onChange={(e) =>
+                    setEmailConfig((prev) => ({
+                      ...prev,
+                      fromEmail: e.target.value,
+                    }))
+                  }
+                  placeholder="Enter your email address"
+                  className="bg-input border-border"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-foreground mb-2 block">
+                  Email Signature
+                </label>
+                <Textarea
+                  value={emailConfig.signature}
+                  onChange={(e) =>
+                    setEmailConfig((prev) => ({
+                      ...prev,
+                      signature: e.target.value,
+                    }))
+                  }
+                  className="bg-input border-border min-h-[100px]"
+                  placeholder="Enter your email signature"
+                />
+              </div>
+
+              <Button
+                onClick={handleEmailConfigUpdate}
+                disabled={isUpdatingEmail}
+                variant="outline"
+                className="border-border"
+              >
+                {isUpdatingEmail ? "Saving..." : "Save Email Settings"}
+              </Button>
+
+              <p className="text-sm text-muted-foreground">
+                Genni automatically prepares two follow-up emails for each
+                outreach sequence by default.
+              </p>
             </div>
           </Card>
 
