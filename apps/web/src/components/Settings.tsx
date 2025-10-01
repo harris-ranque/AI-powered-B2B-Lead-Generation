@@ -9,13 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   Bell,
-  Mail,
   Shield,
   User,
   CreditCard,
   Globe,
   Moon,
-  Sun,
   Download,
   AlertCircle,
 } from "lucide-react";
@@ -52,13 +50,6 @@ export function Settings() {
     phone: "",
   });
 
-  const [emailConfig, setEmailConfig] = useState({
-    fromName: "",
-    fromEmail: "",
-    signature: "",
-    autoFollowUp: false,
-  });
-
   const normalizeContactName = (value: string) =>
     value
       ? value
@@ -66,21 +57,6 @@ export function Settings() {
           .replace(/[\u200B-\u200D\uFEFF]/g, "")
           .trim()
       : "";
-
-  const buildSignature = (
-    name: string,
-    company?: string,
-    email?: string,
-  ) => {
-    const lines = [
-      "Best regards,",
-      name,
-      company,
-      email,
-    ].filter((line) => !!line?.trim());
-
-    return lines.join("\n");
-  };
 
   // Update local state when data loads
   useEffect(() => {
@@ -102,29 +78,6 @@ export function Settings() {
       });
     }
   }, [userData, businessProfile]);
-
-  useEffect(() => {
-    if (businessProfile?.contactInfo) {
-      const contactInfo = businessProfile.contactInfo as {
-        name?: string;
-        email?: string;
-      };
-
-      const normalizedName = normalizeContactName(
-        contactInfo.name || userData?.name || "",
-      );
-      setEmailConfig({
-        fromName: normalizedName,
-        fromEmail: contactInfo.email || userData?.email || "",
-        signature: buildSignature(
-          normalizedName,
-          businessProfile.companyName || "",
-          contactInfo.email || "",
-        ),
-        autoFollowUp: false, // This could be a new field in the profile
-      });
-    }
-  }, [businessProfile, userData]);
 
   const handlePreferencesUpdate = async (
     updates: Partial<typeof preferences>,
@@ -174,42 +127,6 @@ export function Settings() {
       toast.success("Profile updated successfully");
     } catch (error) {
       toast.error("Failed to update profile");
-      console.error(error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleEmailConfigUpdate = async () => {
-    setIsLoading(true);
-    try {
-      const sanitizedFromName = normalizeContactName(emailConfig.fromName);
-
-      if (businessProfile) {
-        await updateBusinessProfile({
-          section: "contact_info",
-          data: {
-            name: sanitizedFromName,
-            email: emailConfig.fromEmail,
-            phone: businessProfile.contactInfo?.phone || "",
-            website: businessProfile.contactInfo?.website || "",
-            linkedin: businessProfile.contactInfo?.linkedin || "",
-          },
-        });
-      }
-
-      setEmailConfig((prev) => ({
-        ...prev,
-        fromName: sanitizedFromName,
-        signature: buildSignature(
-          sanitizedFromName,
-          businessProfile?.companyName || "",
-          emailConfig.fromEmail,
-        ),
-      }));
-      toast.success("Email configuration updated successfully");
-    } catch (error) {
-      toast.error("Failed to update email configuration");
       console.error(error);
     } finally {
       setIsLoading(false);
@@ -376,104 +293,6 @@ export function Settings() {
                   </div>
                 </div>
               )}
-            </div>
-          </Card>
-
-          {/* Email Settings */}
-          <Card className="p-6 bg-card border-border mb-6">
-            <div className="flex items-center gap-3 mb-6">
-              <Mail className="h-5 w-5 text-primary" />
-              <h3 className="text-lg font-semibold text-foreground">
-                Email Configuration
-              </h3>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-foreground mb-2 block">
-                  Default From Name
-                </label>
-                <Input
-                  value={emailConfig.fromName}
-                  onChange={(e) =>
-                    setEmailConfig((prev) => ({
-                      ...prev,
-                      fromName: e.target.value,
-                    }))
-                  }
-                  onBlur={(e) =>
-                    setEmailConfig((prev) => ({
-                      ...prev,
-                      fromName: normalizeContactName(e.target.value),
-                    }))
-                  }
-                  placeholder="Enter your name for email sending"
-                  className="bg-input border-border"
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-foreground mb-2 block">
-                  Default From Email
-                </label>
-                <Input
-                  value={emailConfig.fromEmail}
-                  onChange={(e) =>
-                    setEmailConfig((prev) => ({
-                      ...prev,
-                      fromEmail: e.target.value,
-                    }))
-                  }
-                  placeholder="Enter your email address"
-                  className="bg-input border-border"
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-foreground mb-2 block">
-                  Email Signature
-                </label>
-                <textarea
-                  className="w-full p-3 bg-input border border-border rounded-md text-sm min-h-[80px] resize-none"
-                  value={emailConfig.signature}
-                  onChange={(e) =>
-                    setEmailConfig((prev) => ({
-                      ...prev,
-                      signature: e.target.value,
-                    }))
-                  }
-                  placeholder="Enter your email signature"
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-medium text-foreground">
-                    Auto-follow up
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Automatically send follow-up emails after 7 days
-                  </div>
-                </div>
-                <Switch
-                  checked={emailConfig.autoFollowUp}
-                  onCheckedChange={(checked) =>
-                    setEmailConfig((prev) => ({
-                      ...prev,
-                      autoFollowUp: checked,
-                    }))
-                  }
-                />
-              </div>
-
-              <Button
-                onClick={handleEmailConfigUpdate}
-                disabled={isLoading}
-                variant="outline"
-                className="border-border"
-              >
-                {isLoading ? "Updating..." : "Update Email Settings"}
-              </Button>
             </div>
           </Card>
 
