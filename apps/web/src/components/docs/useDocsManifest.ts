@@ -19,11 +19,24 @@ export function useDocsManifest(): UseDocsManifestResult {
 
     fetch("/docs/manifest.json")
       .then(async (res) => {
-        if (!res.ok) throw new Error(`Manifest not found (${res.status})`);
+        if (!res.ok) {
+          throw new Error(`Documentation manifest not found (${res.status})`);
+        }
+
+        const contentType = res.headers.get("content-type") ?? "";
         const text = await res.text();
         if (cancelled) return;
-        const data = JSON.parse(text) as DocsManifest;
-        setManifest(data);
+
+        if (!contentType.includes("application/json")) {
+          throw new Error("Documentation manifest is missing or not generated");
+        }
+
+        try {
+          const data = JSON.parse(text) as DocsManifest;
+          setManifest(data);
+        } catch (parseError) {
+          throw new Error("Documentation manifest is invalid JSON");
+        }
       })
       .catch((e) => {
         if (!cancelled) {
