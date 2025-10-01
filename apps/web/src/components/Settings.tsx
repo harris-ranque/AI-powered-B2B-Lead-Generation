@@ -4,20 +4,20 @@ import { api } from "@genni/convex-types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   Bell,
-  Mail,
   Shield,
   User,
   CreditCard,
   Globe,
   Moon,
-  Sun,
   Download,
   AlertCircle,
+  Mail,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -51,13 +51,12 @@ export function Settings() {
     email: "",
     phone: "",
   });
-
   const [emailConfig, setEmailConfig] = useState({
     fromName: "",
     fromEmail: "",
     signature: "",
-    autoFollowUp: false,
   });
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
 
   const normalizeContactName = (value: string) =>
     value
@@ -67,11 +66,7 @@ export function Settings() {
           .trim()
       : "";
 
-  const buildSignature = (
-    name: string,
-    company?: string,
-    email?: string,
-  ) => {
+  const buildSignature = (name: string, company?: string, email?: string) => {
     const lines = [
       "Best regards,",
       name,
@@ -104,26 +99,28 @@ export function Settings() {
   }, [userData, businessProfile]);
 
   useEffect(() => {
-    if (businessProfile?.contactInfo) {
-      const contactInfo = businessProfile.contactInfo as {
-        name?: string;
-        email?: string;
-      };
+    const contactInfo = businessProfile?.contactInfo as {
+      name?: string;
+      email?: string;
+      phone?: string;
+      website?: string;
+      linkedin?: string;
+    } | null;
 
-      const normalizedName = normalizeContactName(
-        contactInfo.name || userData?.name || "",
-      );
-      setEmailConfig({
-        fromName: normalizedName,
-        fromEmail: contactInfo.email || userData?.email || "",
-        signature: buildSignature(
-          normalizedName,
-          businessProfile.companyName || "",
-          contactInfo.email || "",
-        ),
-        autoFollowUp: false, // This could be a new field in the profile
-      });
-    }
+    const normalizedName = normalizeContactName(
+      contactInfo?.name || userData?.name || "",
+    );
+    const fromEmail = contactInfo?.email || userData?.email || "";
+
+    setEmailConfig({
+      fromName: normalizedName,
+      fromEmail,
+      signature: buildSignature(
+        normalizedName,
+        businessProfile?.companyName || "",
+        fromEmail,
+      ),
+    });
   }, [businessProfile, userData]);
 
   const handlePreferencesUpdate = async (
@@ -181,22 +178,25 @@ export function Settings() {
   };
 
   const handleEmailConfigUpdate = async () => {
-    setIsLoading(true);
+    setIsUpdatingEmail(true);
     try {
       const sanitizedFromName = normalizeContactName(emailConfig.fromName);
+      const contactInfo = (businessProfile?.contactInfo as {
+        phone?: string;
+        website?: string;
+        linkedin?: string;
+      }) || {};
 
-      if (businessProfile) {
-        await updateBusinessProfile({
-          section: "contact_info",
-          data: {
-            name: sanitizedFromName,
-            email: emailConfig.fromEmail,
-            phone: businessProfile.contactInfo?.phone || "",
-            website: businessProfile.contactInfo?.website || "",
-            linkedin: businessProfile.contactInfo?.linkedin || "",
-          },
-        });
-      }
+      await updateBusinessProfile({
+        section: "contact_info",
+        data: {
+          name: sanitizedFromName,
+          email: emailConfig.fromEmail,
+          phone: contactInfo.phone || "",
+          website: contactInfo.website || "",
+          linkedin: contactInfo.linkedin || "",
+        },
+      });
 
       setEmailConfig((prev) => ({
         ...prev,
@@ -207,12 +207,13 @@ export function Settings() {
           emailConfig.fromEmail,
         ),
       }));
+
       toast.success("Email configuration updated successfully");
     } catch (error) {
       toast.error("Failed to update email configuration");
       console.error(error);
     } finally {
-      setIsLoading(false);
+      setIsUpdatingEmail(false);
     }
   };
 
@@ -379,7 +380,7 @@ export function Settings() {
             </div>
           </Card>
 
-          {/* Email Settings */}
+          {/* Email Configuration */}
           <Card className="p-6 bg-card border-border mb-6">
             <div className="flex items-center gap-3 mb-6">
               <Mail className="h-5 w-5 text-primary" />
@@ -433,8 +434,7 @@ export function Settings() {
                 <label className="text-sm font-medium text-foreground mb-2 block">
                   Email Signature
                 </label>
-                <textarea
-                  className="w-full p-3 bg-input border border-border rounded-md text-sm min-h-[80px] resize-none"
+                <Textarea
                   value={emailConfig.signature}
                   onChange={(e) =>
                     setEmailConfig((prev) => ({
@@ -442,38 +442,24 @@ export function Settings() {
                       signature: e.target.value,
                     }))
                   }
+                  className="bg-input border-border min-h-[100px]"
                   placeholder="Enter your email signature"
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-medium text-foreground">
-                    Auto-follow up
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Automatically send follow-up emails after 7 days
-                  </div>
-                </div>
-                <Switch
-                  checked={emailConfig.autoFollowUp}
-                  onCheckedChange={(checked) =>
-                    setEmailConfig((prev) => ({
-                      ...prev,
-                      autoFollowUp: checked,
-                    }))
-                  }
                 />
               </div>
 
               <Button
                 onClick={handleEmailConfigUpdate}
-                disabled={isLoading}
+                disabled={isUpdatingEmail}
                 variant="outline"
                 className="border-border"
               >
-                {isLoading ? "Updating..." : "Update Email Settings"}
+                {isUpdatingEmail ? "Saving..." : "Save Email Settings"}
               </Button>
+
+              <p className="text-sm text-muted-foreground">
+                Genni automatically prepares two follow-up emails for each
+                outreach sequence by default.
+              </p>
             </div>
           </Card>
 
