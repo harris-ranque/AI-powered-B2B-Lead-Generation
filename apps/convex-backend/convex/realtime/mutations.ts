@@ -54,10 +54,13 @@ export const markBroadcastAsRead = mutation({
         throw new Error("Broadcast not found or access denied");
       }
 
-      // Mark as acknowledged (using acknowledged field since 'read' doesn't exist in schema)
+      // Mark as delivered/acknowledged so the notification no longer appears as active
       await ctx.db.patch(args.broadcastId, {
         acknowledged: true,
         acknowledgedAt: Date.now(),
+        delivered: true,
+        deliveredAt: Date.now(),
+        status: "delivered",
       });
 
       return { success: true };
