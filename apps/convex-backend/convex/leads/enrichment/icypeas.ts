@@ -26,12 +26,32 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
    * Enrich multiple domains in batch
    */
   async enrichBatch(domains: string[]): Promise<EnrichmentBatchResult> {
+    const batchStartTime = Date.now();
     const result: EnrichmentBatchResult = {};
+
+    console.log(`[ICypeas] Starting batch enrichment:`, {
+      totalDomains: domains.length,
+      batchSize: BATCH_SIZE,
+      domains: domains.slice(0, 5), // Log first 5 for debugging
+      estimatedBatches: Math.ceil(domains.length / BATCH_SIZE)
+    });
 
     // Process domains in smaller batches to respect rate limits
     const batches = this.chunkArray(domains, BATCH_SIZE);
 
-    for (const batch of batches) {
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      if (!batch) continue;
+
+      const batchIterationStartTime = Date.now();
+
+      console.log(`[ICypeas] Processing batch ${batchIndex + 1}/${batches.length}:`, {
+        batchNumber: batchIndex + 1,
+        totalBatches: batches.length,
+        domainsInBatch: batch.length,
+        domains: batch
+      });
+
       // Start searches in parallel
       const searchPromises = batch.map(domain =>
         this.startEmailSearch(domain)
@@ -39,24 +59,80 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
 
       const searchResults = await Promise.allSettled(searchPromises);
 
+      console.log(`[ICypeas] Batch ${batchIndex + 1} search initiation complete:`, {
+        batchNumber: batchIndex + 1,
+        totalRequests: searchResults.length,
+        successful: searchResults.filter(r => r.status === 'fulfilled' && r.value.success).length,
+        failed: searchResults.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success)).length
+      });
+
       // Poll for results
       const pollPromises = searchResults.map(async (searchResult, index) => {
         const domain = batch[index];
-        if (domain && searchResult.status === "fulfilled" && searchResult.value.success) {
-          const enrichmentData = await this.pollForResults(searchResult.value.searchId);
-          result[domain] = this.transformToEnrichmentResult(enrichmentData);
-        } else if (domain) {
+        if (!domain) return;
+
+        if (searchResult.status === "fulfilled" && searchResult.value.success) {
+          console.log(`[ICypeas] Polling for domain ${domain} (batch ${batchIndex + 1}, domain ${index + 1}/${batch.length})`);
+          try {
+            const enrichmentData = await this.pollForResults(searchResult.value.searchId);
+            const transformedResult = this.transformToEnrichmentResult(enrichmentData);
+            result[domain] = transformedResult;
+
+            if (transformedResult) {
+              console.log(`[ICypeas] ✅ Batch enrichment successful for ${domain}:`, {
+                emailsFound: transformedResult.emails?.length || 0,
+                contactsFound: transformedResult.contacts?.length || 0
+              });
+            } else {
+              console.warn(`[ICypeas] ⚠️ No enrichment data for ${domain} in batch ${batchIndex + 1}`);
+            }
+          } catch (error) {
+            console.error(`[ICypeas] ❌ Batch poll failed for ${domain}:`, {
+              domain,
+              batchNumber: batchIndex + 1,
+              error: error instanceof Error ? error.message : String(error)
+            });
+            result[domain] = null;
+          }
+        } else {
+          const errorReason = searchResult.status === 'rejected'
+            ? searchResult.reason
+            : (searchResult.status === 'fulfilled' ? searchResult.value.message : 'Unknown');
+
+          console.error(`[ICypeas] ❌ Search initiation failed for ${domain}:`, {
+            domain,
+            batchNumber: batchIndex + 1,
+            status: searchResult.status,
+            reason: errorReason
+          });
           result[domain] = null;
         }
       });
 
       await Promise.all(pollPromises);
 
+      console.log(`[ICypeas] Batch ${batchIndex + 1} complete:`, {
+        batchNumber: batchIndex + 1,
+        totalBatches: batches.length,
+        batchDuration: Date.now() - batchIterationStartTime,
+        successful: Object.values(result).filter(r => r !== null).length,
+        failed: Object.values(result).filter(r => r === null).length
+      });
+
       // Add small delay between batches to respect rate limits
-      if (batches.indexOf(batch) < batches.length - 1) {
+      if (batchIndex < batches.length - 1) {
+        console.log(`[ICypeas] Waiting 1000ms before next batch to respect rate limits...`);
         await this.delay(1000);
       }
     }
+
+    console.log(`[ICypeas] ✅ Batch enrichment complete:`, {
+      totalDomains: domains.length,
+      successful: Object.values(result).filter(r => r !== null).length,
+      failed: Object.values(result).filter(r => r === null).length,
+      successRate: ((Object.values(result).filter(r => r !== null).length / domains.length) * 100).toFixed(2) + '%',
+      totalDuration: Date.now() - batchStartTime
+    });
 
     return result;
   }
@@ -65,23 +141,68 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
    * Enrich a single domain
    */
   async enrichSingle(domain: string): Promise<EnrichmentResult | null> {
+    const startTime = Date.now();
+    console.log(`[ICypeas] Starting enrichment for domain: ${domain}`);
+
     try {
       // Extract company name from domain for better search results
       const companyName = this.extractCompanyName(domain);
+      console.log(`[ICypeas] Extracted company name: "${companyName}" from domain: ${domain}`);
 
       // Start the search
+      console.log(`[ICypeas] Initiating email search for domain: ${domain}, company: ${companyName}`);
       const searchResponse = await this.startEmailSearch(domain, companyName);
 
       if (!searchResponse.success) {
-        throw new Error(searchResponse.message || "Search initiation failed");
+        const errorMsg = searchResponse.message || "Search initiation failed";
+        console.error(`[ICypeas] Search initiation failed for ${domain}:`, {
+          domain,
+          companyName,
+          errorMessage: errorMsg,
+          searchResponse,
+          duration: Date.now() - startTime
+        });
+        throw new Error(errorMsg);
       }
 
+      console.log(`[ICypeas] Search initiated successfully for ${domain}. Search ID: ${searchResponse.searchId}, Status: ${searchResponse.status}`);
+
       // Poll for results
+      console.log(`[ICypeas] Starting to poll for results. Search ID: ${searchResponse.searchId}`);
       const result = await this.pollForResults(searchResponse.searchId);
 
-      return this.transformToEnrichmentResult(result);
+      console.log(`[ICypeas] Poll completed for ${domain}. Status: ${result.status}, Emails found: ${result.emails?.length || 0}, Contacts found: ${result.contacts?.length || 0}`);
+
+      const enrichmentResult = this.transformToEnrichmentResult(result);
+
+      if (enrichmentResult) {
+        console.log(`[ICypeas] ✅ Enrichment successful for ${domain}:`, {
+          domain,
+          emailsFound: enrichmentResult.emails?.length || 0,
+          contactsFound: enrichmentResult.contacts?.length || 0,
+          hasPhone: !!enrichmentResult.phone,
+          hasSocialProfiles: !!enrichmentResult.socialProfiles,
+          confidence: enrichmentResult.metadata?.confidence,
+          duration: Date.now() - startTime
+        });
+      } else {
+        console.warn(`[ICypeas] ⚠️ No enrichment data found for ${domain}:`, {
+          domain,
+          searchId: searchResponse.searchId,
+          resultStatus: result.status,
+          duration: Date.now() - startTime
+        });
+      }
+
+      return enrichmentResult;
     } catch (error) {
-      console.error(`IcyPeas enrichment failed for ${domain}:`, error);
+      console.error(`[ICypeas] ❌ Enrichment failed for ${domain}:`, {
+        domain,
+        errorType: error instanceof Error ? error.constructor.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+        duration: Date.now() - startTime
+      });
       return null;
     }
   }
@@ -101,6 +222,13 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
       ...(companyName && { company: companyName }),
     };
 
+    console.log(`[ICypeas] Making API request to: ${url}`, {
+      domain,
+      companyName,
+      hasApiKey: !!this.apiKey,
+      apiKeyPrefix: this.apiKey ? this.apiKey.substring(0, 8) + '...' : 'none'
+    });
+
     try {
       const response = await fetch(url, {
         method: "POST",
@@ -111,12 +239,41 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
         body: JSON.stringify(body),
       });
 
+      console.log(`[ICypeas] API response received:`, {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
+
       if (!response.ok) {
-        throw new Error(`IcyPeas API error: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        console.error(`[ICypeas] API error response:`, {
+          status: response.status,
+          statusText: response.statusText,
+          errorBody: errorText,
+          url,
+          requestBody: body
+        });
+        throw new Error(`IcyPeas API error: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
-      return await response.json() as IcyPeasSearchResponse;
+      const jsonResponse = await response.json() as IcyPeasSearchResponse;
+      console.log(`[ICypeas] Search response parsed:`, {
+        success: jsonResponse.success,
+        searchId: jsonResponse.searchId,
+        status: jsonResponse.status,
+        message: jsonResponse.message
+      });
+
+      return jsonResponse;
     } catch (error) {
+      console.error(`[ICypeas] Failed to start search:`, {
+        error: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.constructor.name : 'Unknown',
+        url,
+        domain,
+        companyName
+      });
       throw new Error(`Failed to start IcyPeas search: ${error}`);
     }
   }
@@ -126,9 +283,16 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
    */
   private async pollForResults(searchId: string): Promise<IcyPeasSearchResult> {
     const url = `${ICYPEAS_BASE_URL}/bulk-single-searchs/read`;
+    const pollStartTime = Date.now();
+
+    console.log(`[ICypeas] Starting to poll for results. Search ID: ${searchId}, Max attempts: ${MAX_POLL_ATTEMPTS}, Interval: ${POLL_INTERVAL}ms`);
 
     for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
+      const attemptStartTime = Date.now();
+
       try {
+        console.log(`[ICypeas] Poll attempt ${attempt + 1}/${MAX_POLL_ATTEMPTS} for search ID: ${searchId}`);
+
         const response = await fetch(url, {
           method: "POST",
           headers: {
@@ -138,32 +302,102 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
           body: JSON.stringify({ searchId }),
         });
 
+        console.log(`[ICypeas] Poll response received:`, {
+          attempt: attempt + 1,
+          status: response.status,
+          statusText: response.statusText,
+          ok: response.ok
+        });
+
         if (!response.ok) {
-          throw new Error(`IcyPeas polling error: ${response.status}`);
+          const errorText = await response.text();
+          console.error(`[ICypeas] Poll request failed:`, {
+            attempt: attempt + 1,
+            status: response.status,
+            statusText: response.statusText,
+            errorBody: errorText,
+            searchId
+          });
+          throw new Error(`IcyPeas polling error: ${response.status} - ${errorText}`);
         }
 
         const result = await response.json() as IcyPeasSearchResult;
 
+        console.log(`[ICypeas] Poll result parsed:`, {
+          attempt: attempt + 1,
+          searchId,
+          status: result.status,
+          hasEmails: !!result.emails,
+          emailCount: result.emails?.length || 0,
+          hasContacts: !!result.contacts,
+          contactCount: result.contacts?.length || 0,
+          attemptDuration: Date.now() - attemptStartTime
+        });
+
         // Check if search is complete
         if (result.status === "FOUND" || result.status === "NOT_FOUND") {
+          console.log(`[ICypeas] ✅ Poll completed successfully:`, {
+            searchId,
+            finalStatus: result.status,
+            totalAttempts: attempt + 1,
+            totalDuration: Date.now() - pollStartTime,
+            emailsFound: result.emails?.length || 0,
+            contactsFound: result.contacts?.length || 0
+          });
           return result;
         }
 
         // If still processing, wait and try again
         if (result.status === "ERROR") {
+          console.error(`[ICypeas] ❌ Search failed on ICypeas side:`, {
+            searchId,
+            attempt: attempt + 1,
+            status: result.status,
+            result
+          });
           throw new Error("Search failed on IcyPeas side");
         }
 
+        console.log(`[ICypeas] Search still processing, waiting ${POLL_INTERVAL}ms before next attempt...`, {
+          searchId,
+          currentStatus: result.status,
+          attempt: attempt + 1,
+          remainingAttempts: MAX_POLL_ATTEMPTS - attempt - 1
+        });
+
         await this.delay(POLL_INTERVAL);
       } catch (error) {
+        console.error(`[ICypeas] Poll attempt ${attempt + 1} error:`, {
+          searchId,
+          attempt: attempt + 1,
+          maxAttempts: MAX_POLL_ATTEMPTS,
+          error: error instanceof Error ? error.message : String(error),
+          errorType: error instanceof Error ? error.constructor.name : 'Unknown',
+          willRetry: attempt < MAX_POLL_ATTEMPTS - 1,
+          attemptDuration: Date.now() - attemptStartTime
+        });
+
         if (attempt === MAX_POLL_ATTEMPTS - 1) {
+          console.error(`[ICypeas] ❌ Max poll attempts reached, giving up:`, {
+            searchId,
+            totalAttempts: MAX_POLL_ATTEMPTS,
+            totalDuration: Date.now() - pollStartTime,
+            lastError: error instanceof Error ? error.message : String(error)
+          });
           throw error;
         }
         await this.delay(POLL_INTERVAL);
       }
     }
 
-    throw new Error("Polling timeout - search took too long");
+    const timeoutError = "Polling timeout - search took too long";
+    console.error(`[ICypeas] ❌ Polling timeout:`, {
+      searchId,
+      maxAttempts: MAX_POLL_ATTEMPTS,
+      totalDuration: Date.now() - pollStartTime,
+      error: timeoutError
+    });
+    throw new Error(timeoutError);
   }
 
   /**
@@ -172,38 +406,84 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
   private transformToEnrichmentResult(
     icyPeasResult: IcyPeasSearchResult | null
   ): EnrichmentResult | null {
+    console.log(`[ICypeas] Transforming search result:`, {
+      hasResult: !!icyPeasResult,
+      status: icyPeasResult?.status,
+      hasEmails: !!icyPeasResult?.emails,
+      emailCount: icyPeasResult?.emails?.length || 0,
+      hasContacts: !!icyPeasResult?.contacts,
+      contactCount: icyPeasResult?.contacts?.length || 0
+    });
+
     if (!icyPeasResult || icyPeasResult.status !== "FOUND") {
+      console.warn(`[ICypeas] Cannot transform result - invalid or NOT_FOUND status:`, {
+        hasResult: !!icyPeasResult,
+        status: icyPeasResult?.status,
+        expectedStatus: "FOUND"
+      });
       return null;
     }
 
-    const emails = (icyPeasResult.emails || []).map((email: IcyPeasEmailResult) => ({
-      email: email.email,
-      type: this.mapCertaintyToType(email.certainty),
-      confidence: this.mapCertaintyToConfidence(email.certainty),
-      verified: true, // IcyPeas does triple verification
-    }));
+    const emails = (icyPeasResult.emails || []).map((email: IcyPeasEmailResult) => {
+      const mappedEmail = {
+        email: email.email,
+        type: this.mapCertaintyToType(email.certainty),
+        confidence: this.mapCertaintyToConfidence(email.certainty),
+        verified: true, // IcyPeas does triple verification
+      };
+      console.log(`[ICypeas] Mapped email:`, {
+        email: email.email,
+        certainty: email.certainty,
+        type: mappedEmail.type,
+        confidence: mappedEmail.confidence
+      });
+      return mappedEmail;
+    });
 
-    const contacts = (icyPeasResult.contacts || []).map((contact: any) => ({
-      name: contact.name || "",
-      title: contact.title,
-      email: contact.email,
-      linkedin: contact.linkedin,
-      confidence: 0.8, // Default confidence for contacts
-      domain: contact.domain,
-    }));
+    const contacts = (icyPeasResult.contacts || []).map((contact: any) => {
+      const mappedContact = {
+        name: contact.name || "",
+        title: contact.title,
+        email: contact.email,
+        linkedin: contact.linkedin,
+        confidence: 0.8, // Default confidence for contacts
+        domain: contact.domain,
+      };
+      console.log(`[ICypeas] Mapped contact:`, {
+        name: mappedContact.name,
+        title: mappedContact.title,
+        hasEmail: !!mappedContact.email,
+        hasLinkedIn: !!mappedContact.linkedin
+      });
+      return mappedContact;
+    });
 
-    return {
+    const socialProfiles = this.extractSocialProfiles(icyPeasResult);
+    const overallConfidence = this.calculateOverallConfidence(emails);
+
+    const enrichmentResult: EnrichmentResult = {
       emails,
       contacts,
-      socialProfiles: this.extractSocialProfiles(icyPeasResult),
+      socialProfiles,
       phone: icyPeasResult.phoneNumbers?.[0],
       companyInfo: icyPeasResult.companyInfo,
       metadata: {
         provider: "icypeas",
-        confidence: this.calculateOverallConfidence(emails),
+        confidence: overallConfidence,
         timestamp: Date.now(),
       },
     };
+
+    console.log(`[ICypeas] ✅ Transformation complete:`, {
+      emailsTransformed: emails.length,
+      contactsTransformed: contacts.length,
+      hasSocialProfiles: !!socialProfiles,
+      hasPhone: !!enrichmentResult.phone,
+      hasCompanyInfo: !!enrichmentResult.companyInfo,
+      overallConfidence
+    });
+
+    return enrichmentResult;
   }
 
   /**
@@ -277,6 +557,11 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
    * Validate API key by making a test request
    */
   async validateApiKey(apiKey: string): Promise<boolean> {
+    console.log(`[ICypeas] Validating API key:`, {
+      hasApiKey: !!apiKey,
+      apiKeyPrefix: apiKey ? apiKey.substring(0, 8) + '...' : 'none'
+    });
+
     try {
       const response = await fetch(`${ICYPEAS_BASE_URL}/credits`, {
         method: "GET",
@@ -285,9 +570,28 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
         },
       });
 
-      return response.ok;
+      const isValid = response.ok;
+      console.log(`[ICypeas] API key validation result:`, {
+        isValid,
+        status: response.status,
+        statusText: response.statusText
+      });
+
+      if (!isValid) {
+        const errorText = await response.text();
+        console.error(`[ICypeas] API key validation failed:`, {
+          status: response.status,
+          statusText: response.statusText,
+          errorBody: errorText
+        });
+      }
+
+      return isValid;
     } catch (error) {
-      console.error("IcyPeas API key validation failed:", error);
+      console.error("[ICypeas] ❌ API key validation error:", {
+        error: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.constructor.name : 'Unknown'
+      });
       return false;
     }
   }
@@ -296,6 +600,11 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
    * Get remaining credits
    */
   async getCredits(apiKey: string): Promise<number> {
+    console.log(`[ICypeas] Fetching credits:`, {
+      hasApiKey: !!apiKey,
+      apiKeyPrefix: apiKey ? apiKey.substring(0, 8) + '...' : 'none'
+    });
+
     try {
       const response = await fetch(`${ICYPEAS_BASE_URL}/credits`, {
         method: "GET",
@@ -305,13 +614,29 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to get credits");
+        const errorText = await response.text();
+        console.error(`[ICypeas] Failed to get credits:`, {
+          status: response.status,
+          statusText: response.statusText,
+          errorBody: errorText
+        });
+        throw new Error(`Failed to get credits: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json() as { credits?: number };
-      return data.credits || 0;
+      const credits = data.credits || 0;
+
+      console.log(`[ICypeas] ✅ Credits fetched successfully:`, {
+        credits,
+        hasCreditsField: 'credits' in data
+      });
+
+      return credits;
     } catch (error) {
-      console.error("Failed to get IcyPeas credits:", error);
+      console.error("[ICypeas] ❌ Failed to get credits:", {
+        error: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.constructor.name : 'Unknown'
+      });
       return 0;
     }
   }
