@@ -40,6 +40,7 @@ import { useSearches } from "@/hooks/useSearches";
 import type { Id } from "@genni/convex-types/dataModel";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { toStandardCase } from "@/utils/string";
 
 interface SearchProgressTrackerProps {
   searchId: Id<"searches">;
@@ -86,6 +87,8 @@ export function SearchProgressTracker({
       </Card>
     );
   }
+
+  const formattedSearchName = toStandardCase(search.name || "");
 
   // Calculate overall progress
   const totalSteps = 4; // Discovery, Enrichment, Analysis, Completion
@@ -318,7 +321,7 @@ export function SearchProgressTracker({
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <h3 className="font-medium">{search.name}</h3>
+                <h3 className="font-medium">{formattedSearchName}</h3>
                 <Badge variant="outline" className="text-xs">
                   {search.status.replace("_", " ")}
                 </Badge>
@@ -361,7 +364,7 @@ export function SearchProgressTracker({
                 )}
               />
             </div>
-            Search Progress: {search.name}
+            Search Progress: {formattedSearchName}
             {search.researchTier && (
               <Badge variant={researchTierDisplay.variant} className="ml-2">
                 <ResearchTierIcon className="w-3 h-3 mr-1" />

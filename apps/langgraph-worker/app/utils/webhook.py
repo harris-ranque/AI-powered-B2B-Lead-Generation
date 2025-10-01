@@ -134,7 +134,10 @@ class WebhookClient:
 
         if include_result and isinstance(result_payload, dict):
             if isinstance(result_payload, dict):
-                sequence = result_payload.get("follow_up_sequence")
+                # Remove request_id from result since it's already at root payload level
+                result_payload_clean = {k: v for k, v in result_payload.items() if k != "request_id"}
+
+                sequence = result_payload_clean.get("follow_up_sequence")
                 follow_up_emails: list[dict[str, Any]] = []
 
                 if isinstance(sequence, dict):
@@ -164,9 +167,9 @@ class WebhookClient:
                             )
 
                 if follow_up_emails:
-                    result_payload["follow_up_emails"] = follow_up_emails
+                    result_payload_clean["follow_up_emails"] = follow_up_emails
 
-            payload["result"] = result_payload
+            payload["result"] = result_payload_clean
 
         if normalized_status == "error":
             payload["error"] = error or "Unknown error"

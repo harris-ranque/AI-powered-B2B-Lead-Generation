@@ -24,7 +24,7 @@ import {
   Brain,
   Zap,
   AlertTriangle,
-  PlayCircle,
+  RotateCcw,
   FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -206,8 +206,8 @@ export function PipelineOrchestrator({
                     }}
                     className="gap-2"
                   >
-                    <PlayCircle className="h-4 w-4" />
-                    New Search
+                    <RotateCcw className="h-4 w-4" />
+                    Start Over
                   </Button>
                   <Button
                     size="lg"

@@ -43,6 +43,7 @@ import {
   Collapsible,
   CollapsibleContent,
 } from "@/components/ui/collapsible";
+import { toStandardCase } from "@/utils/string";
 
 interface LeadDiscoveryStageProps {
   userCredits: number;
@@ -137,14 +138,27 @@ export function LeadDiscoveryStage({
 
     try {
       if (state.selectedSource === "google_maps") {
+        const formattedIndustry = toStandardCase(industry);
+        const formattedLocation = toStandardCase(location);
+        if (formattedIndustry !== industry) {
+          setIndustry(formattedIndustry);
+        }
+        if (formattedLocation !== location) {
+          setLocation(formattedLocation);
+        }
+        const searchNameParts = [formattedIndustry, formattedLocation].filter(
+          Boolean,
+        );
+        const searchName = searchNameParts.join(" in ");
+
         // Create search using existing Convex integration with auto-start
         const searchResult = await createSearch({
-          name: `${industry} in ${location}`,
+          name: searchName,
           parameters: {
-            location,
+            location: formattedLocation,
             maxResults: leadsCount[0],
             radius: radius[0],
-            keywords: [industry],
+            keywords: [formattedIndustry],
             filters: {
               minEmployees: employeeRange[0],
               maxEmployees: employeeRange[1],
@@ -159,7 +173,7 @@ export function LeadDiscoveryStage({
 
           toast({
             title: "Search Started",
-            description: `Discovering ${leadsCount[0]} leads in ${location}...`,
+            description: `Discovering ${leadsCount[0]} leads in ${formattedLocation}...`,
           });
 
           // Auto-progress after a short delay for visual feedback
