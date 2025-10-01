@@ -239,24 +239,65 @@ export const exportUsers = mutation({
 // Current systemConfiguration schema only supports creditCosts and planLimits
 // Would need schema update to add flexible settings field for admin configuration
 
-// Reset system cache (placeholder for future cache implementation)
+// Reset system cache by clearing provider caches used during lead enrichment
 export const resetSystemCache = mutation({
   args: {},
   handler: async (ctx) => {
     const adminUser = await requireAdmin(ctx);
+
+    const cacheTables = [
+      {
+        table: "findymailDomainCache" as const,
+        label: "findymailDomainCache",
+      },
+      { table: "enrichmentCache" as const, label: "enrichmentCache" },
+      { table: "icypeasSearchCache" as const, label: "icypeasSearchCache" },
+    ];
+
+    const clearedCaches: Array<{ table: string; cleared: number }> = [];
+
+    for (const { table, label } of cacheTables) {
+      let cleared = 0;
+      // Delete in batches to avoid hitting query limits with large caches
+      while (true) {
+        const batch = await ctx.db.query(table).take(100);
+        if (batch.length === 0) {
+          break;
+        }
+        for (const record of batch) {
+          await ctx.db.delete(record._id);
+        }
+        cleared += batch.length;
+      }
+
+      clearedCaches.push({ table: label, cleared });
+    }
+
+    const totalCleared = clearedCaches.reduce((sum, entry) => sum + entry.cleared, 0);
+    const timestamp = Date.now();
 
     // Log the cache reset
     await ctx.db.insert("systemLogs", {
       type: "system_maintenance",
       action: "cache_reset",
       userId: adminUser._id,
-      timestamp: Date.now(),
+      timestamp,
       data: {
         message: "System cache has been reset",
+        clearedCaches,
+        totalCleared,
       },
     });
 
-    return { success: true, message: "System cache reset completed" };
+    return {
+      success: true,
+      message:
+        totalCleared > 0
+          ? `System cache reset completed (${totalCleared} entries cleared)`
+          : "System cache reset completed",
+      clearedCaches,
+      totalCleared,
+    };
   },
 });
 
@@ -275,56 +316,237 @@ export const runSystemMaintenance = mutation({
   handler: async (ctx, args) => {
     const adminUser = await requireAdmin(ctx);
 
-    const results = [];
-    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const results: Array<Record<string, unknown>> = [];
+    const now = Date.now();
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+    const reservationRetentionMs = 30 * 24 * 60 * 60 * 1000;
+    const langgraphRetentionMs = 30 * 24 * 60 * 60 * 1000;
+    const rateLimitRetentionMs = 24 * 60 * 60 * 1000;
 
     for (const task of args.tasks) {
       try {
         switch (task) {
           case "cleanup_old_logs":
-            // Delete old system logs
-            const oldLogs = await ctx.db
-              .query("systemLogs")
-              .filter((q) => q.lt(q.field("timestamp"), thirtyDaysAgo))
-              .collect();
+            // Delete old system logs in batches using timestamp index
+            let deletedLogs = 0;
+            while (true) {
+              const batch = await ctx.db
+                .query("systemLogs")
+                .withIndex("by_timestamp", (q) => q.lt("timestamp", thirtyDaysAgo))
+                .take(100);
 
-            for (const log of oldLogs) {
-              await ctx.db.delete(log._id);
+              if (batch.length === 0) {
+                break;
+              }
+
+              for (const log of batch) {
+                await ctx.db.delete(log._id);
+              }
+              deletedLogs += batch.length;
             }
 
-            results.push({ task, success: true, deletedCount: oldLogs.length });
+            results.push({ task, success: true, deletedCount: deletedLogs });
             break;
 
           case "reset_rate_limits":
-            // Clear rate limit records
-            const rateLimits = await ctx.db.query("rateLimitRecords").collect();
-            for (const record of rateLimits) {
-              await ctx.db.delete(record._id);
+            // Clear rate limit records and violations outside the active window
+            let clearedRateLimits = 0;
+            while (true) {
+              const batch = await ctx.db
+                .query("rateLimitRecords")
+                .withIndex("by_window", (q) => q.lt("windowStart", now - rateLimitRetentionMs))
+                .take(100);
+
+              if (batch.length === 0) {
+                break;
+              }
+
+              for (const record of batch) {
+                await ctx.db.delete(record._id);
+              }
+              clearedRateLimits += batch.length;
+            }
+
+            let clearedViolations = 0;
+            while (true) {
+              const batch = await ctx.db
+                .query("rateLimitViolations")
+                .withIndex("by_timestamp", (q) => q.lt("timestamp", thirtyDaysAgo))
+                .take(100);
+
+              if (batch.length === 0) {
+                break;
+              }
+
+              for (const violation of batch) {
+                await ctx.db.delete(violation._id);
+              }
+              clearedViolations += batch.length;
             }
 
             results.push({
               task,
               success: true,
-              clearedCount: rateLimits.length,
+              clearedRateLimits,
+              clearedViolations,
             });
             break;
 
           case "optimize_database":
-            // Placeholder for database optimization
-            results.push({
-              task,
-              success: true,
-              message: "Database optimization completed",
-            });
+            {
+              let expiredReservations = 0;
+              let removedReservations = 0;
+
+              // Mark any lingering pending reservations as rolled back
+              while (true) {
+                const batch = await ctx.db
+                  .query("creditReservations")
+                  .withIndex("by_status", (q) => q.eq("status", "pending"))
+                  .filter((q) => q.lt(q.field("expiresAt"), now))
+                  .take(100);
+
+                if (batch.length === 0) {
+                  break;
+                }
+
+                for (const reservation of batch) {
+                  await ctx.db.patch(reservation._id, {
+                    status: "rolled_back",
+                    completedAt: now,
+                  });
+                  expiredReservations += 1;
+                }
+              }
+
+              const reservationStatusesToPurge = ["rolled_back", "committed"] as const;
+              for (const status of reservationStatusesToPurge) {
+                while (true) {
+                  const batch = await ctx.db
+                    .query("creditReservations")
+                    .withIndex("by_status", (q) => q.eq("status", status))
+                    .filter((q) => q.lt(q.field("expiresAt"), now - reservationRetentionMs))
+                    .take(100);
+
+                  if (batch.length === 0) {
+                    break;
+                  }
+
+                  let deletedInBatch = 0;
+                  for (const reservation of batch) {
+                    const completedAt = reservation.completedAt ?? reservation.createdAt;
+                    if (completedAt <= now - reservationRetentionMs) {
+                      await ctx.db.delete(reservation._id);
+                      removedReservations += 1;
+                      deletedInBatch += 1;
+                    }
+                  }
+
+                  if (deletedInBatch === 0) {
+                    break;
+                  }
+                }
+              }
+
+              // Remove stale LangGraph request history beyond retention window
+              let removedLanggraphRequests = 0;
+              const staleStatuses = ["completed", "failed"] as const;
+              for (const status of staleStatuses) {
+                while (true) {
+                  const batch = await ctx.db
+                    .query("langgraphRequests")
+                    .withIndex("by_status", (q) => q.eq("status", status))
+                    .filter((q) => q.lt(q.field("createdAt"), now - langgraphRetentionMs))
+                    .take(100);
+
+                  if (batch.length === 0) {
+                    break;
+                  }
+
+                  let deletedInBatch = 0;
+                  for (const request of batch) {
+                    await ctx.db.delete(request._id);
+                    removedLanggraphRequests += 1;
+                    deletedInBatch += 1;
+                  }
+
+                  if (deletedInBatch === 0) {
+                    break;
+                  }
+                }
+              }
+
+              results.push({
+                task,
+                success: true,
+                expiredReservations,
+                removedReservations,
+                removedLanggraphRequests,
+              });
+            }
             break;
 
           case "cleanup_expired_sessions":
-            // Placeholder for session cleanup
-            results.push({
-              task,
-              success: true,
-              message: "Expired sessions cleaned up",
-            });
+            {
+              const cacheTables = [
+                {
+                  table: "findymailDomainCache" as const,
+                  label: "findymailDomainCache",
+                },
+                { table: "enrichmentCache" as const, label: "enrichmentCache" },
+                { table: "icypeasSearchCache" as const, label: "icypeasSearchCache" },
+              ];
+
+              const cacheResults: Array<{ table: string; cleared: number }> = [];
+
+              for (const { table, label } of cacheTables) {
+                let cleared = 0;
+                while (true) {
+                  const batch = await ctx.db
+                    .query(table)
+                    .withIndex("by_expires", (q) => q.lt("expiresAt", now))
+                    .take(100);
+
+                  if (batch.length === 0) {
+                    break;
+                  }
+
+                  for (const record of batch) {
+                    await ctx.db.delete(record._id);
+                  }
+                  cleared += batch.length;
+                }
+
+                cacheResults.push({ table: label, cleared });
+              }
+
+              let expiredReservations = 0;
+              while (true) {
+                const batch = await ctx.db
+                  .query("creditReservations")
+                  .withIndex("by_status", (q) => q.eq("status", "pending"))
+                  .filter((q) => q.lt(q.field("expiresAt"), now))
+                  .take(100);
+
+                if (batch.length === 0) {
+                  break;
+                }
+
+                for (const reservation of batch) {
+                  await ctx.db.patch(reservation._id, {
+                    status: "rolled_back",
+                    completedAt: now,
+                  });
+                  expiredReservations += 1;
+                }
+              }
+
+              results.push({
+                task,
+                success: true,
+                cacheResults,
+                expiredReservations,
+              });
+            }
             break;
 
           default:
