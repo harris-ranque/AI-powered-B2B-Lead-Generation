@@ -449,29 +449,81 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         
         # Create follow-up sequence if requested
         follow_up_sequence = None
-        if requirements.follow_up_sequence and email_sequence.follow_up_emails:
-            follow_up_emails: List[EmailContent] = []
-            for i, follow_up in enumerate(email_sequence.follow_up_emails):
-                subject = follow_up.subject or f"Follow-up {i + 1}"
-                body_parts = [follow_up.body.strip()]
-                if follow_up.call_to_action:
-                    body_parts.append(follow_up.call_to_action.strip())
-                body_text = "\n\n".join(part for part in body_parts if part)
-                body_text = append_signature(body_text)
+        follow_up_plans: List[FollowUpEmailPlan] = list(email_sequence.follow_up_emails)
+        if requirements.follow_up_sequence and follow_up_plans:
+            contact_name = lead.contact_name or "there"
+            company_name = lead.company_name
+            primary_value = (
+                value_matches[0]
+                if value_matches
+                else business_profile.value_proposition
+            )
 
-                follow_up_email = EmailContent(
-                    subject=subject,
-                    body=body_text,
-                    personalization_notes=email_sequence.personalization_elements,
-                    estimated_effectiveness=email_sequence.estimated_effectiveness * 0.8,  # Slightly lower for follow-ups
+            follow_up_emails: List[EmailContent] = []
+            personalization_notes = list(
+                dict.fromkeys(
+                    email_sequence.personalization_elements
+                    + email_sequence.business_context_usage
                 )
-                follow_up_emails.append(follow_up_email)
-            
+            )
+
+            for index, follow_up in enumerate(follow_up_plans):
+                subject = (follow_up.subject or "").strip() or f"Follow-up {index + 1}"
+
+                email_body_sections = [
+                    f"Hi {contact_name},",
+                    "",
+                    follow_up.body.strip() if follow_up.body else "",
+                ]
+
+                if follow_up.objective:
+                    email_body_sections.extend([
+                        "",
+                        f"Objective: {follow_up.objective.strip()}",
+                    ])
+
+                if follow_up.call_to_action:
+                    email_body_sections.extend([
+                        "",
+                        follow_up.call_to_action.strip(),
+                    ])
+                elif primary_value:
+                    email_body_sections.extend([
+                        "",
+                        f"Let's revisit how {primary_value} can help {company_name}.",
+                    ])
+
+                email_body = "\n".join(
+                    section for section in email_body_sections if section
+                )
+                email_body = append_signature(email_body)
+
+                estimated_effectiveness = max(
+                    email_sequence.estimated_effectiveness * 0.8 - (index * 0.05),
+                    0.3,
+                )
+
+                follow_up_emails.append(
+                    EmailContent(
+                        subject=subject,
+                        body=email_body,
+                        personalization_notes=personalization_notes,
+                        estimated_effectiveness=estimated_effectiveness,
+                    )
+                )
+
+            default_schedule = email_sequence.timing_schedule or [3, 7, 14]
+            if len(default_schedule) < len(follow_up_emails):
+                last_interval = default_schedule[-1] if default_schedule else 7
+                default_schedule = default_schedule + [
+                    last_interval
+                ] * (len(follow_up_emails) - len(default_schedule))
+
             follow_up_sequence = FollowUpSequence(
                 sequence_id=f"sequence_{state['request_id']}",
                 emails=follow_up_emails,
-                timing_schedule=email_sequence.timing_schedule or [3, 7, 14],  # Default timing
-                conversion_strategy=email_sequence.follow_up_strategy
+                timing_schedule=default_schedule[: len(follow_up_emails)],
+                conversion_strategy=email_sequence.follow_up_strategy or messaging_strategy,
             )
             primary_value_text = (
                 primary_value

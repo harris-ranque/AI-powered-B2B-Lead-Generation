@@ -248,11 +248,17 @@ async def email_writer_node(state: EmailGenerationState) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error in email writer: {str(e)}")
         execution_time = time.time() - start_time
-        
+
         # Fallback to basic email
         lead = state["lead"]
         business_profile = state["business_profile"]
-        
+        contact_info = getattr(business_profile, "contact_info", {}) or {}
+        sender_name = contact_info.get("name") or business_profile.company_name
+        sender_email = contact_info.get("email", "")
+        sender_phone = contact_info.get("phone", "")
+        sender_website = contact_info.get("website", "")
+
+
         fallback_signature = "\n".join(
             line
             for line in [
