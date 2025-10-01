@@ -33,27 +33,31 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
-  Bug,
+  BrainCircuit,
   CheckCircle,
-  Cloud,
+  CircuitBoard,
   Code,
-  CreditCard,
   Database,
   DollarSign,
   ExternalLink,
-  GitBranch,
   Globe,
-  Key,
+  KeyRound,
+  Layers,
+  LineChart,
   Mail,
-  MapPin,
   PauseCircle,
   PlayCircle,
   RefreshCw,
+  Search,
   Server,
   Settings,
   ShieldAlert,
+  ShieldCheck,
+  Sparkles,
   Users,
+  Workflow,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   useAdminAnalytics,
@@ -163,20 +167,22 @@ type SystemHealth = {
 };
 
 // External Services Configuration
-interface ExternalService {
-  id: string;
+type ExternalService = {
   name: string;
   description: string;
-  icon: React.ComponentType<{ className?: string }>;
-  url: string;
-  status?: 'operational' | 'degraded' | 'down' | 'maintenance' | 'coming-soon';
-  category: 'infrastructure' | 'monitoring' | 'api' | 'development';
-  quickActions?: Array<{
-    label: string;
-    url: string;
-    icon?: React.ComponentType<{ className?: string }>;
-  }>;
-}
+  href: string;
+  icon: LucideIcon;
+  docsLabel?: string;
+  requiresKey?: boolean;
+  envVars?: string[];
+  notes?: string;
+};
+
+type ExternalServiceGroup = {
+  title: string;
+  description: string;
+  services: ExternalService[];
+};
 
 // URL Validation Helper
 const validateUrl = (url: string): boolean => {
@@ -188,200 +194,170 @@ const validateUrl = (url: string): boolean => {
   }
 };
 
-// Safe External Services Configuration with Production URLs
+const EXTERNAL_SERVICE_GROUPS: ExternalServiceGroup[] = [
+  {
+    title: "AI & Workflow Stack",
+    description: "Core frameworks and research providers powering Genni's AI pipeline.",
+    services: [
+      {
+        name: "LangChain",
+        description: "Primary orchestration framework for tool-augmented AI agents and pipelines.",
+        href: "https://python.langchain.com/docs/",
+        icon: Workflow,
+        docsLabel: "LangChain docs",
+      },
+      {
+        name: "LangGraph",
+        description: "Graph-native runtime for stateful agent workflows used by the worker service.",
+        href: "https://langchain-ai.github.io/langgraph/",
+        icon: BrainCircuit,
+        docsLabel: "LangGraph guides",
+      },
+      {
+        name: "OpenAI Platform",
+        description: "GPT models that power analysis and outreach. Required for AI generation steps.",
+        href: "https://platform.openai.com/",
+        icon: Sparkles,
+        docsLabel: "OpenAI console",
+        requiresKey: true,
+        envVars: ["OPENAI_API_KEY"],
+      },
+      {
+        name: "Tavily Search API",
+        description: "Tier 1 fast research provider used for business context discovery.",
+        href: "https://docs.tavily.com/",
+        icon: Search,
+        requiresKey: true,
+        envVars: ["TAVILY_API_KEY"],
+      },
+      {
+        name: "Exa Semantic Search",
+        description: "Tier 2 semantic and competitor research escalations inside the AI workflow.",
+        href: "https://exa.ai/docs",
+        icon: Layers,
+        requiresKey: true,
+        envVars: ["EXA_API_KEY"],
+      },
+      {
+        name: "Perplexity API",
+        description: "Tier 3 comprehensive research for premium users and deep analysis flows.",
+        href: "https://docs.perplexity.ai/",
+        icon: BrainCircuit,
+        requiresKey: true,
+        envVars: ["PERPLEXITY_API_KEY"],
+      },
+    ],
+  },
+  {
+    title: "Data & Enrichment Services",
+    description: "Providers that supply company intelligence and lead enrichment data.",
+    services: [
+      {
+        name: "FindyMail",
+        description: "Primary email and contact enrichment provider with batch support.",
+        href: "https://findymail.com/app/api",
+        icon: Mail,
+        requiresKey: true,
+        envVars: ["FINDYMAIL_API_KEY"],
+      },
+      {
+        name: "IcyPeas",
+        description: "Fallback enrichment provider for intent data and supplemental signals.",
+        href: "https://www.icypeas.com/docs",
+        icon: CircuitBoard,
+        requiresKey: true,
+        envVars: ["ICYPEAS_API_KEY"],
+        notes: "Optional escalation provider when FindyMail coverage is limited.",
+      },
+      {
+        name: "Google Maps Platform",
+        description: "Location search and discovery foundation for lead sourcing.",
+        href: "https://console.cloud.google.com/google/maps-apis",
+        icon: Globe,
+        requiresKey: true,
+        envVars: ["GOOGLE_MAPS_API_KEY"],
+      },
+      {
+        name: "Convex",
+        description: "Realtime database and backend functions powering Genni's application state.",
+        href: "https://www.convex.dev/",
+        icon: Database,
+        docsLabel: "Convex dashboard",
+        requiresKey: true,
+        envVars: ["CONVEX_URL", "VITE_CONVEX_URL"],
+      },
+    ],
+  },
+  {
+    title: "Infrastructure & Operations",
+    description: "Hosting, observability, and operational tooling for the Genni platform.",
+    services: [
+      {
+        name: "Railway",
+        description: "Deployment platform for the web app and LangGraph worker services.",
+        href: "https://railway.app/dashboard",
+        icon: Server,
+        docsLabel: "Railway dashboard",
+      },
+      {
+        name: "LangSmith",
+        description: "Tracing and evaluation suite for monitoring LangChain and LangGraph runs.",
+        href: "https://smith.langchain.com/",
+        icon: LineChart,
+        requiresKey: true,
+        envVars: ["LANGSMITH_API_KEY"],
+      },
+      {
+        name: "Sentry",
+        description: "Error tracking and performance monitoring for frontend and worker services.",
+        href: "https://sentry.io/",
+        icon: ShieldCheck,
+        requiresKey: true,
+        envVars: ["SENTRY_DSN"],
+      },
+      {
+        name: "Clerk",
+        description: "Authentication and user management platform integrated with Convex.",
+        href: "https://dashboard.clerk.com/",
+        icon: KeyRound,
+        requiresKey: true,
+        envVars: ["CLERK_PUBLISHABLE_KEY", "CLERK_SECRET_KEY"],
+      },
+      {
+        name: "Resend",
+        description: "Transactional email delivery for outreach and operational messaging.",
+        href: "https://resend.com/dashboard",
+        icon: Mail,
+        requiresKey: true,
+        envVars: ["RESEND_API_KEY"],
+      },
+      {
+        name: "PostHog",
+        description: "Product analytics and feature flagging for user behavior insights.",
+        href: "https://app.posthog.com/",
+        icon: BarChart3,
+        requiresKey: true,
+        envVars: ["VITE_POSTHOG_KEY", "VITE_POSTHOG_HOST"],
+      },
+    ],
+  },
+];
+
 const getExternalServices = (): ExternalService[] => {
   try {
-    const services: ExternalService[] = [
-      // Infrastructure & Deployment
-      {
-        id: 'railway',
-        name: 'Railway',
-        description: 'Application deployment platform hosting frontend and LangGraph worker',
-        icon: Server,
-        url: 'https://railway.app/dashboard',
-        status: 'operational',
-        category: 'infrastructure',
-        quickActions: [
-          { label: 'View Deployments', url: 'https://railway.app/project' },
-          { label: 'Check Logs', url: 'https://railway.app/project' },
-          { label: 'Variables', url: 'https://railway.app/project' },
-        ]
-      },
-      {
-        id: 'convex',
-        name: 'Convex',
-        description: 'Real-time backend database with functions and webhooks',
-        icon: Database,
-        url: 'https://dashboard.convex.dev',
-        status: 'operational',
-        category: 'infrastructure',
-        quickActions: [
-          { label: 'Dashboard', url: 'https://dashboard.convex.dev' },
-          { label: 'Functions', url: 'https://dashboard.convex.dev' },
-          { label: 'Data', url: 'https://dashboard.convex.dev' },
-        ]
-      },
-      {
-        id: 'github',
-        name: 'GitHub',
-        description: 'Source code repository, CI/CD, and project management',
-        icon: GitBranch,
-        url: 'https://github.com/settings/repositories',
-        status: 'operational',
-        category: 'development',
-        quickActions: [
-          { label: 'Repository', url: 'https://github.com' },
-          { label: 'Issues', url: 'https://github.com/issues' },
-          { label: 'Actions', url: 'https://github.com/actions' },
-        ]
-      },
+    return EXTERNAL_SERVICE_GROUPS.flatMap((group) =>
+      group.services.filter((service) => {
+        const isValid = validateUrl(service.href);
 
-      // Monitoring & Analytics
-      {
-        id: 'posthog',
-        name: 'PostHog',
-        description: 'User analytics, feature flags, and product insights',
-        icon: BarChart3,
-        url: 'https://app.posthog.com',
-        status: 'operational',
-        category: 'monitoring',
-        quickActions: [
-          { label: 'Analytics', url: 'https://app.posthog.com/insights' },
-          { label: 'Feature Flags', url: 'https://app.posthog.com/feature_flags' },
-          { label: 'Dashboards', url: 'https://app.posthog.com/dashboard' },
-        ]
-      },
-      {
-        id: 'sentry',
-        name: 'Sentry',
-        description: 'Error monitoring, performance tracking, and debugging',
-        icon: Bug,
-        url: 'https://sentry.io/organizations/',
-        status: 'operational',
-        category: 'monitoring',
-        quickActions: [
-          { label: 'Issues', url: 'https://sentry.io/organizations/' },
-          { label: 'Performance', url: 'https://sentry.io/organizations/' },
-          { label: 'Releases', url: 'https://sentry.io/organizations/' },
-        ]
-      },
-      {
-        id: 'langsmith',
-        name: 'LangSmith',
-        description: 'LangChain debugging, tracing, and performance monitoring',
-        icon: Activity,
-        url: 'https://smith.langchain.com',
-        status: 'operational',
-        category: 'monitoring',
-        quickActions: [
-          { label: 'Projects', url: 'https://smith.langchain.com/projects' },
-          { label: 'Traces', url: 'https://smith.langchain.com/traces' },
-          { label: 'Settings', url: 'https://smith.langchain.com/settings' },
-        ]
-      },
+        if (!isValid) {
+          console.warn(`Invalid URL configuration for service: ${service.name}`);
+        }
 
-      // APIs & External Services
-      {
-        id: 'google-cloud',
-        name: 'Google Cloud Console',
-        description: 'Google Maps API for business location discovery and geocoding',
-        icon: MapPin,
-        url: 'https://console.cloud.google.com',
-        status: 'operational',
-        category: 'api',
-        quickActions: [
-          { label: 'APIs & Services', url: 'https://console.cloud.google.com/apis' },
-          { label: 'Billing', url: 'https://console.cloud.google.com/billing' },
-          { label: 'IAM', url: 'https://console.cloud.google.com/iam-admin' },
-        ]
-      },
-      {
-        id: 'icypeas',
-        name: 'IcyPeas',
-        description: 'Email enrichment and B2B contact data provider (primary)',
-        icon: Cloud,
-        url: 'https://www.icypeas.com',
-        status: 'operational',
-        category: 'api',
-        quickActions: [
-          { label: 'Dashboard', url: 'https://app.icypeas.com' },
-          { label: 'API Docs', url: 'https://api-doc.icypeas.com' },
-          { label: 'Credits', url: 'https://app.icypeas.com/credits' },
-        ]
-      },
-      {
-        id: 'findymail',
-        name: 'FindyMail',
-        description: 'Email enrichment and contact data verification (backup to IcyPeas)',
-        icon: Mail,
-        url: 'https://app.findymail.com',
-        status: 'operational',
-        category: 'api',
-        quickActions: [
-          { label: 'Dashboard', url: 'https://app.findymail.com/dashboard' },
-          { label: 'Credits', url: 'https://app.findymail.com/credits' },
-          { label: 'API Docs', url: 'https://docs.findymail.com' },
-        ]
-      },
-      {
-        id: 'resend',
-        name: 'Resend',
-        description: 'Email delivery infrastructure for transactional emails (coming soon)',
-        icon: Mail,
-        url: 'https://resend.com',
-        status: 'coming-soon',
-        category: 'api',
-        quickActions: [
-          { label: 'Dashboard', url: 'https://resend.com/dashboard' },
-          { label: 'Docs', url: 'https://resend.com/docs' },
-          { label: 'API Keys', url: 'https://resend.com/api-keys' },
-        ]
-      },
-      {
-        id: 'stripe',
-        name: 'Stripe',
-        description: 'Payment processing, subscriptions, and billing management',
-        icon: CreditCard,
-        url: 'https://dashboard.stripe.com',
-        status: 'operational',
-        category: 'api',
-        quickActions: [
-          { label: 'Dashboard', url: 'https://dashboard.stripe.com' },
-          { label: 'Customers', url: 'https://dashboard.stripe.com/customers' },
-          { label: 'Payments', url: 'https://dashboard.stripe.com/payments' },
-          { label: 'Subscriptions', url: 'https://dashboard.stripe.com/subscriptions' },
-        ]
-      },
-      {
-        id: 'clerk',
-        name: 'Clerk',
-        description: 'Authentication, user management, and session handling',
-        icon: Key,
-        url: 'https://dashboard.clerk.com',
-        status: 'operational',
-        category: 'api',
-        quickActions: [
-          { label: 'Dashboard', url: 'https://dashboard.clerk.com' },
-          { label: 'Users', url: 'https://dashboard.clerk.com/users' },
-          { label: 'Sessions', url: 'https://dashboard.clerk.com/sessions' },
-          { label: 'Webhooks', url: 'https://dashboard.clerk.com/webhooks' },
-        ]
-      },
-    ];
-
-    // Validate all URLs before returning
-    return services.filter(service => {
-      const isMainUrlValid = validateUrl(service.url);
-      const areQuickActionsValid = service.quickActions?.every(action => validateUrl(action.url)) ?? true;
-
-      if (!isMainUrlValid || !areQuickActionsValid) {
-        console.warn(`Invalid URL configuration for service: ${service.name}`);
-        return false;
-      }
-      return true;
-    });
+        return isValid;
+      }),
+    );
   } catch (error) {
-    console.error('Error initializing external services configuration:', error);
+    console.error("Error initializing external services configuration:", error);
     return [];
   }
 };
@@ -489,40 +465,47 @@ function getUserCreatedAt(user: AdminUser): number | undefined {
 function ExternalServicesPanel() {
   const { toast } = useToast();
   const externalServices = React.useMemo(() => getExternalServices(), []);
+  const serviceGroups = React.useMemo(() => {
+    return EXTERNAL_SERVICE_GROUPS.map((group) => ({
+      ...group,
+      services: group.services.filter((service) => validateUrl(service.href)),
+    })).filter((group) => group.services.length > 0);
+  }, []);
 
-  const getStatusBadgeColor = (status?: string): string => {
-    switch (status) {
-      case 'operational':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'degraded':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'down':
-        return 'bg-red-100 text-red-800 border-red-200';
-      case 'maintenance':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'coming-soon':
-        return 'bg-purple-100 text-purple-800 border-purple-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
+  const servicesRequiringKeys = React.useMemo(
+    () => externalServices.filter((service) => service.requiresKey).length,
+    [externalServices],
+  );
 
-  const safeOpenUrl = (url: string, serviceName: string) => {
+  const trackedEnvVars = React.useMemo(() => {
+    const envVarSet = new Set<string>();
+    externalServices.forEach((service) => {
+      service.envVars?.forEach((envVar) => envVarSet.add(envVar));
+    });
+    return envVarSet;
+  }, [externalServices]);
+
+  const servicesWithDocs = React.useMemo(
+    () => externalServices.filter((service) => Boolean(service.docsLabel)).length,
+    [externalServices],
+  );
+
+  const safeOpenUrl = (url: string, targetLabel: string) => {
     try {
       if (!validateUrl(url)) {
         toast({
           title: "Invalid URL",
-          description: `Cannot open ${serviceName}: Invalid URL configuration.`,
+          description: `Cannot open ${targetLabel}: Invalid URL configuration.`,
           variant: "destructive",
         });
         return;
       }
-      window.open(url, '_blank', 'noopener,noreferrer');
+      window.open(url, "_blank", "noopener,noreferrer");
     } catch (error) {
-      console.error(`Failed to open URL for ${serviceName}:`, error);
+      console.error(`Failed to open URL for ${targetLabel}:`, error);
       toast({
         title: "Error Opening Service",
-        description: `Failed to open ${serviceName}. Please try again.`,
+        description: `Failed to open ${targetLabel}. Please try again.`,
         variant: "destructive",
       });
     }
@@ -534,162 +517,141 @@ function ExternalServicesPanel() {
         <Alert>
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            No external services configured. Please contact system administrator.
+            No external services configured. Please contact the system administrator.
           </AlertDescription>
         </Alert>
       </div>
     );
   }
 
-  const servicesByCategory = externalServices.reduce((acc, service) => {
-    if (!service || !service.category) {
-      console.warn('Invalid service configuration:', service);
-      return acc;
-    }
-    if (!acc[service.category]) acc[service.category] = [];
-    acc[service.category].push(service);
-    return acc;
-  }, {} as Record<string, ExternalService[]>);
-
-  const categoryTitles: Record<string, string> = {
-    infrastructure: 'Infrastructure & Deployment',
-    monitoring: 'Monitoring & Analytics',
-    api: 'APIs & External Services',
-    development: 'Development Tools'
-  };
-
-  const operationalServices = externalServices.filter(s => s?.status === 'operational').length;
-  const totalQuickActions = externalServices.reduce((sum, service) => sum + (service?.quickActions?.length || 0), 0);
-
   return (
     <div className="space-y-8">
-      {/* Header Section */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-lg font-semibold">External Services</h3>
           <p className="text-sm text-muted-foreground">
-            Quick access to all external service dashboards and management consoles
+            Centralized directory of credentials, documentation, and operational notes for Genni's integrations.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-            <CheckCircle className="h-3 w-3 mr-1" />
-            {operationalServices} of {externalServices.length} Operational
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700">
+            <CheckCircle className="mr-1 h-3 w-3" aria-hidden="true" />
+            {externalServices.length} services documented
+          </Badge>
+          <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
+            <KeyRound className="mr-1 h-3 w-3" aria-hidden="true" />
+            {servicesRequiringKeys} require API keys
+          </Badge>
+          <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
+            <Database className="mr-1 h-3 w-3" aria-hidden="true" />
+            {trackedEnvVars.size} env vars tracked
           </Badge>
         </div>
       </div>
 
-      {/* Services by Category */}
-      {Object.entries(servicesByCategory).map(([category, services]) => {
-        const categoryTitle = categoryTitles[category] || category;
+      {serviceGroups.map((group) => (
+        <div key={group.title} className="space-y-4">
+          <div>
+            <h4 className="text-md font-semibold">{group.title}</h4>
+            <p className="text-sm text-muted-foreground">{group.description}</p>
+          </div>
 
-        return (
-          <div key={category} className="space-y-4">
-            <h4 className="text-md font-medium text-muted-foreground border-b pb-2">
-              {categoryTitle} ({services.length})
-            </h4>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {group.services.map((service) => {
+              const IconComponent = service.icon;
+              const primaryButtonLabel = service.docsLabel ?? `Open ${service.name}`;
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {services.map((service) => {
-                const IconComponent = service.icon;
-
-                return (
-                  <Card key={service.id} className="p-6 hover:shadow-lg transition-shadow duration-200 border-2">
-                    <div className="space-y-4">
-                      {/* Header */}
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">
-                            <IconComponent className="h-6 w-6 text-blue-600" />
-                          </div>
-                          <div>
-                            <h5 className="font-semibold text-lg">{service.name}</h5>
-                            {service.status && (
-                              <Badge
-                                variant="outline"
-                                className={`mt-1 text-xs ${getStatusBadgeColor(service.status)}`}
-                              >
-                                {service.status === 'coming-soon' ? 'Coming Soon' : service.status.charAt(0).toUpperCase() + service.status.slice(1)}
-                              </Badge>
-                            )}
-                          </div>
+              return (
+                <Card key={service.name} className="border-2 p-6 transition-shadow duration-200 hover:shadow-lg">
+                  <div className="space-y-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-lg border border-blue-200 bg-blue-50 p-2">
+                          <IconComponent className="h-6 w-6 text-blue-600" aria-hidden="true" />
+                        </div>
+                        <div className="space-y-1">
+                          <h5 className="text-lg font-semibold">{service.name}</h5>
+                          {service.requiresKey ? (
+                            <Badge
+                              variant="outline"
+                              className="flex w-fit items-center gap-1 border-amber-200 bg-amber-50 text-[11px] uppercase tracking-wide text-amber-700"
+                            >
+                              <KeyRound className="h-3 w-3" aria-hidden="true" />
+                              Requires API Key
+                            </Badge>
+                          ) : null}
                         </div>
                       </div>
-
-                      {/* Description */}
-                      <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
-                        {service.description}
-                      </p>
-
-                      {/* Actions */}
-                      <div className="space-y-2">
-                        {/* Primary Action */}
-                        <Button
-                          className="w-full"
-                          onClick={() => safeOpenUrl(service.url, service.name)}
-                          disabled={!validateUrl(service.url) || service.status === 'coming-soon'}
-                          aria-label={`Open ${service.name} in new tab`}
-                        >
-                          <ExternalLink className="h-4 w-4 mr-2" aria-hidden="true" />
-                          {service.status === 'coming-soon' ? 'Coming Soon' : `Open ${service.name}`}
-                        </Button>
-
-                        {/* Quick Actions */}
-                        {service.quickActions && service.quickActions.length > 0 && service.status !== 'coming-soon' && (
-                          <div className="flex flex-wrap gap-1">
-                            {service.quickActions.map((action, index) => (
-                              <Button
-                                key={`${service.id}-${index}`}
-                                variant="ghost"
-                                size="sm"
-                                className="text-xs h-7"
-                                onClick={() => safeOpenUrl(action.url, `${service.name} ${action.label}`)}
-                                disabled={!validateUrl(action.url)}
-                                aria-label={`Open ${service.name} ${action.label} in new tab`}
-                              >
-                                {action.icon && <action.icon className="h-3 w-3 mr-1" aria-hidden="true" />}
-                                {action.label}
-                              </Button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
                     </div>
-                  </Card>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
 
-      {/* Service Summary Stats */}
-      <Card className="p-6 border-2">
-        <h4 className="text-lg font-semibold mb-4">Service Overview</h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="text-2xl font-bold text-blue-600">
-              {externalServices.length}
-            </div>
-            <div className="text-sm text-muted-foreground">Total Services</div>
+                    <p className="text-sm leading-relaxed text-muted-foreground">{service.description}</p>
+
+                    {service.envVars && service.envVars.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Environment variables
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {service.envVars.map((envVar) => (
+                            <Badge
+                              key={envVar}
+                              variant="secondary"
+                              className="font-mono text-[11px] uppercase tracking-tight"
+                            >
+                              {envVar}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {service.notes ? (
+                      <div className="rounded-md border border-dashed border-muted-foreground/20 bg-muted/40 p-3">
+                        <p className="text-xs text-muted-foreground">{service.notes}</p>
+                      </div>
+                    ) : null}
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        className="flex-1"
+                        onClick={() => safeOpenUrl(service.href, service.docsLabel ?? service.name)}
+                        aria-label={`Open ${service.docsLabel ?? service.name} in a new tab`}
+                      >
+                        <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
+                        {primaryButtonLabel}
+                      </Button>
+                      {service.docsLabel ? (
+                        <Badge variant="outline" className="h-9 items-center justify-center px-3 text-xs">
+                          {service.docsLabel.toLowerCase().includes("docs") ? "Docs" : "Console"}
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
           </div>
-          <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
-            <div className="text-2xl font-bold text-green-600">
-              {operationalServices}
-            </div>
-            <div className="text-sm text-muted-foreground">Operational</div>
+        </div>
+      ))}
+
+      <Card className="border-2 p-6">
+        <h4 className="mb-4 text-lg font-semibold">Service Overview</h4>
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-center">
+            <div className="text-2xl font-bold text-blue-600">{externalServices.length}</div>
+            <div className="text-sm text-muted-foreground">Total services</div>
           </div>
-          <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
-            <div className="text-2xl font-bold text-purple-600">
-              {Object.keys(servicesByCategory).length}
-            </div>
-            <div className="text-sm text-muted-foreground">Categories</div>
+          <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-center">
+            <div className="text-2xl font-bold text-violet-600">{serviceGroups.length}</div>
+            <div className="text-sm text-muted-foreground">Service groups</div>
           </div>
-          <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-200">
-            <div className="text-2xl font-bold text-orange-600">
-              {totalQuickActions}
-            </div>
-            <div className="text-sm text-muted-foreground">Quick Actions</div>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-center">
+            <div className="text-2xl font-bold text-amber-600">{servicesRequiringKeys}</div>
+            <div className="text-sm text-muted-foreground">Require API keys</div>
+          </div>
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-center">
+            <div className="text-2xl font-bold text-emerald-600">{servicesWithDocs}</div>
+            <div className="text-sm text-muted-foreground">Custom docs labels</div>
           </div>
         </div>
       </Card>
