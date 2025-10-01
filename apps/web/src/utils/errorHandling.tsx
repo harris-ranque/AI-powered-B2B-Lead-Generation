@@ -2,6 +2,22 @@ import React, { ReactNode, useState, useCallback } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { createLogger } from "@/utils/logger";
+
+const errorHandlingLogger = createLogger("errorHandling");
+
+const reportError = (
+  error: unknown,
+  context: string,
+  extra?: Record<string, unknown>,
+) => {
+  const errorInstance =
+    error instanceof Error ? error : new Error(String(error ?? "Unknown error"));
+
+  errorHandlingLogger.error(context, extra, errorInstance);
+
+  return errorInstance;
+};
 
 /**
  * Universal Error Handling Utilities for Bulletproof React Applications
@@ -27,10 +43,13 @@ export function safeRender<T extends unknown[]>(
       return renderFunction(...args);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
-      console.error(`Render error: ${fallbackMessage}`, error);
+      const errorInstance = reportError(error, "safeRender", {
+        fallbackMessage,
+        args,
+      });
 
       if (onError) {
-        onError(error instanceof Error ? error : new Error(errorMsg));
+        onError(errorInstance);
       }
 
       return (
@@ -61,12 +80,15 @@ export const safeArray = {
         try {
           return predicate(item, index, arr);
         } catch (error) {
-          console.warn("Filter predicate error:", error, "Item:", item);
+          reportError(error, "safeArray.filter-predicate", {
+            item,
+            index,
+          });
           return false;
         }
       });
     } catch (error) {
-      console.error("Safe filter error:", error, "Array:", array);
+      reportError(error, "safeArray.filter", { array });
       return fallback;
     }
   },
@@ -83,12 +105,12 @@ export const safeArray = {
         try {
           return mapper(item, index, arr);
         } catch (error) {
-          console.warn("Map function error:", error, "Item:", item);
+          reportError(error, "safeArray.map-mapper", { item, index });
           throw error; // Re-throw to be caught by outer try-catch
         }
       });
     } catch (error) {
-      console.error("Safe map error:", error, "Array:", array);
+      reportError(error, "safeArray.map", { array });
       return fallback;
     }
   },
@@ -110,12 +132,15 @@ export const safeArray = {
         try {
           return reducer(prev, current, index, arr);
         } catch (error) {
-          console.warn("Reduce function error:", error, "Item:", current);
+          reportError(error, "safeArray.reduce-reducer", {
+            current,
+            index,
+          });
           return prev; // Return previous value on error
         }
       }, initialValue);
     } catch (error) {
-      console.error("Safe reduce error:", error, "Array:", array);
+      reportError(error, "safeArray.reduce", { array });
       return initialValue;
     }
   },
@@ -131,12 +156,12 @@ export const safeArray = {
         try {
           return predicate(item, index, arr);
         } catch (error) {
-          console.warn("Find predicate error:", error, "Item:", item);
+          reportError(error, "safeArray.find-predicate", { item, index });
           return false;
         }
       });
     } catch (error) {
-      console.error("Safe find error:", error, "Array:", array);
+      reportError(error, "safeArray.find", { array });
       return undefined;
     }
   },
@@ -146,7 +171,7 @@ export const safeArray = {
     try {
       return array && Array.isArray(array) ? array.length : 0;
     } catch (error) {
-      console.error("Safe length error:", error);
+      reportError(error, "safeArray.length");
       return 0;
     }
   },
@@ -173,7 +198,7 @@ export function safeGet<T>(
 
     return result as T;
   } catch (error) {
-    console.error("Safe get error:", error, "Path:", path);
+    reportError(error, "safeGet", { path, object });
     return fallback;
   }
 }
@@ -195,7 +220,9 @@ export function useErrorBoundary() {
     };
 
     setError(errorState);
-    console.error("Captured error:", error, errorInfo);
+    reportError(error, "useErrorBoundary.captureError", {
+      errorInfo,
+    });
   }, []);
 
   const refreshPage = useCallback(() => {
@@ -299,8 +326,7 @@ export async function safeAsync<T>(
   try {
     return await asyncOperation();
   } catch (error) {
-    const errorObj = error instanceof Error ? error : new Error(String(error));
-    console.error("Safe async error:", errorObj);
+    const errorObj = reportError(error, "safeAsync");
 
     if (onError) {
       onError(errorObj);
@@ -320,10 +346,12 @@ export function validateData<T>(
     if (validator(data)) {
       return data;
     }
-    console.warn("Data validation failed, using fallback:", data);
+    reportError(new Error("Data validation failed"), "validateData", {
+      data,
+    });
     return fallback;
   } catch (error) {
-    console.error("Validation error:", error, "Data:", data);
+    reportError(error, "validateData", { data });
     return fallback;
   }
 }
@@ -344,11 +372,5 @@ export function logError(
     ...additionalData,
   };
 
-  console.error(`[${context}] Error:`, errorData);
-
-  // In production, send to error tracking service
-  if (process.env.NODE_ENV === "production") {
-    // Integration point for error tracking services like Sentry
-    // window.errorTracker?.captureException(error, { extra: errorData });
-  }
+  reportError(error, `logError:${context}`, errorData);
 }

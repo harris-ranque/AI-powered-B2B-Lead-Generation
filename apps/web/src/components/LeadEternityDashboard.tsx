@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -49,20 +49,34 @@ import {
 } from "@/utils/typeValidation";
 import { ToastAction } from "@/components/ui/toast";
 import { ClerkUserButton } from "@/components/auth/ClerkAuthWrapper";
+import { withErrorBoundary } from "@/utils/errorHandling";
+import { createLogger } from "@/utils/logger";
 
-export function LeadEternityDashboard() {
-  return (
-    <PipelineProvider>
-      <UserDataProvider>
-        <LeadEternityDashboardContent />
-      </UserDataProvider>
-    </PipelineProvider>
-  );
-}
+const leadDashboardLogger = createLogger("LeadEternityDashboard");
 
 function LeadEternityDashboardContent() {
   const [currentTab, setCurrentTab] = useState("pipeline");
   const completionAnnouncedRef = useRef(false);
+  const [componentError, setComponentError] = useState<string | null>(null);
+
+  const handleComponentError = useCallback(
+    (error: unknown, context: string, extra?: Record<string, unknown>) => {
+      const errorInstance =
+        error instanceof Error ? error : new Error(String(error));
+
+      leadDashboardLogger.error(
+        `Lead Eternity dashboard error: ${context}`,
+        extra,
+        errorInstance,
+      );
+      setComponentError(`${context}: ${errorInstance.message}`);
+    },
+    [],
+  );
+
+  const dismissComponentError = useCallback(() => {
+    setComponentError(null);
+  }, []);
 
   // Real backend integration
   const { user } = useAuth();
@@ -85,75 +99,98 @@ function LeadEternityDashboardContent() {
 
   const { state, setEmails, markStageComplete, setStage } = usePipeline();
 
-  const transformedEmails = useMemo(
-    () => safeTransformEmailRequests(emailRequests),
-    [emailRequests],
-  );
+  const transformedEmails = useMemo(() => {
+    try {
+      return safeTransformEmailRequests(emailRequests);
+    } catch (error) {
+      handleComponentError(error, "transform-email-requests", {
+        requestCount: emailRequests?.page?.length,
+      });
+      return [];
+    }
+  }, [emailRequests, handleComponentError]);
 
   const { toast } = useToast();
 
-  const hasEmailPage =
-    emailRequests &&
-    typeof emailRequests === "object" &&
-    emailRequests !== null &&
-    Array.isArray((emailRequests as Record<string, unknown>).page);
+  const hasEmailPage = useMemo(() => {
+    try {
+      return (
+        emailRequests &&
+        typeof emailRequests === "object" &&
+        emailRequests !== null &&
+        Array.isArray((emailRequests as Record<string, unknown>).page)
+      );
+    } catch (error) {
+      handleComponentError(error, "derive-email-page-state");
+      return false;
+    }
+  }, [emailRequests, handleComponentError]);
 
   useEffect(() => {
-    if (transformedEmails.length === 0) {
-      completionAnnouncedRef.current = false;
-      if (hasEmailPage && state.generatedEmails.length > 0) {
-        setEmails([]);
-      }
-      return;
-    }
-
-    const hasDifferences =
-      transformedEmails.length !== state.generatedEmails.length ||
-      transformedEmails.some((email, index) => {
-        const existing = state.generatedEmails[index];
-        if (!existing) return true;
-        if (email.requestId && existing.requestId) {
-          return email.requestId !== existing.requestId;
+    try {
+      if (transformedEmails.length === 0) {
+        completionAnnouncedRef.current = false;
+        if (hasEmailPage && state.generatedEmails.length > 0) {
+          setEmails([]);
         }
-        return (
-          existing.primary_email.subject !== email.primary_email.subject ||
-          existing.primary_email.body !== email.primary_email.body
-        );
-      });
+        return;
+      }
 
-    if (hasDifferences) {
-      setEmails(transformedEmails);
-    }
+      const hasDifferences =
+        transformedEmails.length !== state.generatedEmails.length ||
+        transformedEmails.some((email, index) => {
+          const existing = state.generatedEmails[index];
+          if (!existing) return true;
+          if (email.requestId && existing.requestId) {
+            return email.requestId !== existing.requestId;
+          }
+          return (
+            existing.primary_email.subject !== email.primary_email.subject ||
+            existing.primary_email.body !== email.primary_email.body
+          );
+        });
 
-    if (!state.completedStages.includes("email_generation")) {
-      markStageComplete("email_generation");
-    }
+      if (hasDifferences) {
+        setEmails(transformedEmails);
+      }
 
-    if (
-      state.currentStage === "email_generation" &&
-      !state.completedStages.includes("review_export")
-    ) {
-      setStage("review_export");
-    }
+      if (!state.completedStages.includes("email_generation")) {
+        markStageComplete("email_generation");
+      }
 
-    if (!completionAnnouncedRef.current) {
-      completionAnnouncedRef.current = true;
-      setCurrentTab("search-history");
-      toast({
-        title: "Personalized emails ready",
-        description:
-          "We generated new outreach emails. Review them in Search History or export a CSV.",
-        action: (
-          <ToastAction
-            altText="Open search history"
-            onClick={() => setCurrentTab("search-history")}
-          >
-            View history
-          </ToastAction>
-        ),
+      if (
+        state.currentStage === "email_generation" &&
+        !state.completedStages.includes("review_export")
+      ) {
+        setStage("review_export");
+      }
+
+      if (!completionAnnouncedRef.current) {
+        completionAnnouncedRef.current = true;
+        setCurrentTab("search-history");
+        toast({
+          title: "Personalized emails ready",
+          description:
+            "We generated new outreach emails. Review them in Search History or export a CSV.",
+          action: (
+            <ToastAction
+              altText="Open search history"
+              onClick={() => setCurrentTab("search-history")}
+            >
+              View history
+            </ToastAction>
+          ),
+        });
+      }
+    } catch (error) {
+      handleComponentError(error, "sync-generated-emails", {
+        generatedEmails: state.generatedEmails.length,
+        transformedEmails: transformedEmails.length,
       });
     }
   }, [
+    handleComponentError,
+    hasEmailPage,
     markStageComplete,
     setEmails,
     setStage,
@@ -162,44 +199,78 @@ function LeadEternityDashboardContent() {
     state.generatedEmails,
     toast,
     transformedEmails,
-    hasEmailPage,
   ]);
 
   const pipelineEmails = state.generatedEmails;
 
-  const handleTabChange = (newTab: string) => {
-    if (isValidTabName(newTab)) {
-      setCurrentTab(newTab);
-    } else {
-      console.warn(`Invalid tab name: ${newTab}. Defaulting to pipeline.`);
+  const handleTabChange = useCallback(
+    (newTab: string) => {
+      if (isValidTabName(newTab)) {
+        leadDashboardLogger.info("Tab changed", { newTab });
+        setCurrentTab(newTab);
+        return;
+      }
+
+      handleComponentError(
+        new Error(`Invalid tab name: ${newTab}`),
+        "handle-tab-change",
+        { newTab },
+      );
       setCurrentTab("pipeline");
+    },
+    [handleComponentError],
+  );
+
+  const handleGenerateEmail = useCallback(
+    (lead: Lead) => {
+      try {
+        toast({
+          title: "Lead Selected",
+          description: `${lead.company_name} selected. Email preview is not available here.`,
+        });
+        leadDashboardLogger.info("Lead selected", {
+          company: lead.company_name,
+        });
+      } catch (error) {
+        handleComponentError(error, "handle-generate-email", {
+          company: lead.company_name,
+        });
+      }
+    },
+    [handleComponentError, toast],
+  );
+
+  const handleCompleteOnboarding = useCallback(
+    (profileData: BusinessProfileInput) => {
+      try {
+        handleTabChange("pipeline");
+        toast({
+          title: "Welcome to Genni!",
+          description:
+            "Your business profile has been saved. You're ready to start generating leads!",
+        });
+        leadDashboardLogger.info("Onboarding completed", {
+          businessName: profileData.businessName,
+        });
+      } catch (error) {
+        handleComponentError(error, "handle-complete-onboarding");
+      }
+    },
+    [handleComponentError, handleTabChange, toast],
+  );
+
+  const handleSkipOnboarding = useCallback(() => {
+    try {
+      handleTabChange("pipeline");
+      toast({
+        title: "Onboarding Skipped",
+        description: "You can complete your business profile later in Settings.",
+      });
+      leadDashboardLogger.info("Onboarding skipped");
+    } catch (error) {
+      handleComponentError(error, "handle-skip-onboarding");
     }
-  };
-
-  const handleGenerateEmail = (lead: Lead) => {
-    // Keep selection (possible future preview usage), no navigation
-    toast({
-      title: "Lead Selected",
-      description: `${lead.company_name} selected. Email preview is not available here.`,
-    });
-  };
-
-  const handleCompleteOnboarding = (profileData: BusinessProfileInput) => {
-    handleTabChange("pipeline"); // Changed from "search" to valid tab
-    toast({
-      title: "Welcome to Genni!",
-      description:
-        "Your business profile has been saved. You're ready to start generating leads!",
-    });
-  };
-
-  const handleSkipOnboarding = () => {
-    handleTabChange("pipeline"); // Changed from "search" to valid tab
-    toast({
-      title: "Onboarding Skipped",
-      description: "You can complete your business profile later in Settings.",
-    });
-  };
+  }, [handleComponentError, handleTabChange, toast]);
 
   const handleUpgradePlan = (planId: string) => {
     // In real app, this would integrate with Stripe
@@ -209,29 +280,33 @@ function LeadEternityDashboardContent() {
     });
   };
 
-  const handlePurchaseCredits = async (amount: number) => {
-    try {
-      const res = await purchaseCredits({
-        credits: amount,
-        successUrl: `${window.location.origin}/dashboard?credits_purchased=true`,
-        cancelUrl: `${window.location.origin}/dashboard`,
-      });
-      if (res?.url) {
-        window.location.href = res.url;
-      } else {
+  const handlePurchaseCredits = useCallback(
+    async (amount: number) => {
+      try {
+        const res = await purchaseCredits({
+          credits: amount,
+          successUrl: `${window.location.origin}/dashboard?credits_purchased=true`,
+          cancelUrl: `${window.location.origin}/dashboard`,
+        });
+        if (res?.url) {
+          window.location.href = res.url;
+        } else {
+          toast({
+            title: "Purchase Started",
+            description: `Continue checkout in the opened window.`,
+          });
+        }
+      } catch (error) {
+        handleComponentError(error, "handle-purchase-credits", { amount });
         toast({
-          title: "Purchase Started",
-          description: `Continue checkout in the opened window.`,
+          title: "Purchase Failed",
+          description: "Failed to start purchase. Please try again.",
+          variant: "destructive",
         });
       }
-    } catch (error) {
-      toast({
-        title: "Purchase Failed",
-        description: "Failed to start purchase. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
+    },
+    [handleComponentError, purchaseCredits, toast],
+  );
 
   // Avoid flashing onboarding while loading profile
   if (isProfileLoading) {
@@ -252,6 +327,19 @@ function LeadEternityDashboardContent() {
 
   return (
     <div className="min-h-screen bg-background">
+      {componentError && (
+        <div className="px-6 pt-6">
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between gap-4">
+              <span>{componentError}</span>
+              <Button size="sm" variant="outline" onClick={dismissComponentError}>
+                Dismiss
+              </Button>
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
       <div className="border-b border-border bg-card">
         <div className="flex items-center px-6 py-4">
           <div className="flex items-center space-x-4">
@@ -519,5 +607,22 @@ function LeadEternityDashboardContent() {
         </div>
       </div>
     </div>
+  );
+}
+
+LeadEternityDashboardContent.displayName = "LeadEternityDashboardContent";
+
+const LeadEternityDashboardWithBoundary = withErrorBoundary(
+  LeadEternityDashboardContent,
+  "Lead Eternity dashboard failed to render",
+);
+
+export function LeadEternityDashboard() {
+  return (
+    <PipelineProvider>
+      <UserDataProvider>
+        <LeadEternityDashboardWithBoundary />
+      </UserDataProvider>
+    </PipelineProvider>
   );
 }

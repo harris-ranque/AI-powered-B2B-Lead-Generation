@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,6 +52,8 @@ import {
 import type { Id, Doc } from "@genni/convex-types/dataModel";
 import { CreditManagement } from "./admin/CreditManagement";
 import { AdminDocsPanel } from "./admin/AdminDocsPanel";
+import { withErrorBoundary } from "@/utils/errorHandling";
+import { createLogger } from "@/utils/logger";
 
 type CreditCostForm = {
   leadDiscovery: number;
@@ -158,6 +160,8 @@ const TAB_KEYS = [
   "docs",
 ] as const;
 
+const adminDashboardLogger = createLogger("AdminDashboard");
+
 const DEFAULT_CREDIT_COSTS: CreditCostForm = {
   leadDiscovery: 1,
   emailEnrichment: 2,
@@ -247,7 +251,7 @@ function getUserCreatedAt(user: AdminUser): number | undefined {
     : undefined;
 }
 
-export function AdminDashboard() {
+function AdminDashboardComponent() {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -301,6 +305,25 @@ export function AdminDashboard() {
   const [processingUserId, setProcessingUserId] = useState<Id<"users"> | null>(null);
   const [systemActionPending, setSystemActionPending] = useState(false);
   const [healthCheckPending, setHealthCheckPending] = useState(false);
+  const [componentError, setComponentError] = useState<string | null>(null);
+
+  const handleComponentError = useCallback(
+    (error: unknown, context: string, extra?: Record<string, unknown>) => {
+      const errorInstance =
+        error instanceof Error ? error : new Error(String(error));
+      adminDashboardLogger.error(
+        `Admin dashboard error: ${context}`,
+        extra,
+        errorInstance,
+      );
+      setComponentError(`${context}: ${errorInstance.message}`);
+    },
+    [],
+  );
+
+  const dismissComponentError = useCallback(() => {
+    setComponentError(null);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -348,17 +371,18 @@ export function AdminDashboard() {
       );
       lastSyncedSearchRef.current = nextSearch;
     } catch (error) {
-      if (error instanceof DOMException && error.name === "SecurityError") {
-        historySyncDisabledRef.current = true;
-        console.warn(
-          "Failed to sync admin tab to URL due to browser security restrictions.",
-          error,
-        );
-      } else {
-        throw error;
-      }
+      historySyncDisabledRef.current = true;
+      handleComponentError(error, "sync-tab-to-url", {
+        pathname: location.pathname,
+        attemptedSearch: nextSearch,
+      });
     }
-  }, [currentTab, location.pathname, navigate]); // Removed location.search from deps to prevent loop
+  }, [
+    currentTab,
+    handleComponentError,
+    location.pathname,
+    navigate,
+  ]);
 
   useEffect(() => {
     if (configuration?.creditCosts) {
@@ -507,6 +531,7 @@ export function AdminDashboard() {
         description: `${user.email} is now ${!user.isActive ? "active" : "suspended"}.`,
       });
     } catch (error) {
+      handleComponentError(error, "toggle-user-active", { userId: user._id });
       const message = error instanceof Error ? error.message : "Unable to update user";
       toast({ title: "Update failed", description: message, variant: "destructive" });
     } finally {
@@ -523,6 +548,10 @@ export function AdminDashboard() {
         description: `${user.email} moved to ${PLAN_LABELS[plan]}.`,
       });
     } catch (error) {
+      handleComponentError(error, "update-user-plan", {
+        userId: user._id,
+        plan,
+      });
       const message = error instanceof Error ? error.message : "Unable to update plan";
       toast({ title: "Update failed", description: message, variant: "destructive" });
     } finally {
@@ -540,6 +569,7 @@ export function AdminDashboard() {
         description: `${user.email} will no longer run new searches until resumed.`,
       });
     } catch (error) {
+      handleComponentError(error, "pause-processing", { userId: user._id });
       const message = error instanceof Error ? error.message : "Unable to pause processing";
       toast({ title: "Action failed", description: message, variant: "destructive" });
     } finally {
@@ -556,6 +586,7 @@ export function AdminDashboard() {
         description: `${user.email} can run new searches again.`,
       });
     } catch (error) {
+      handleComponentError(error, "resume-processing", { userId: user._id });
       const message = error instanceof Error ? error.message : "Unable to resume processing";
       toast({ title: "Action failed", description: message, variant: "destructive" });
     } finally {
@@ -577,6 +608,9 @@ export function AdminDashboard() {
       });
       toast({ title: "Credit costs updated", description: "New costs saved successfully." });
     } catch (error) {
+      handleComponentError(error, "save-credit-costs", {
+        creditCosts: creditCostsForm,
+      });
       const message = error instanceof Error ? error.message : "Unable to save credit costs";
       toast({ title: "Save failed", description: message, variant: "destructive" });
     } finally {
@@ -590,6 +624,7 @@ export function AdminDashboard() {
       await updatePlanLimits({ planLimits: planLimitsForm });
       toast({ title: "Plan limits updated", description: "Limits saved successfully." });
     } catch (error) {
+      handleComponentError(error, "save-plan-limits", { planLimits: planLimitsForm });
       const message = error instanceof Error ? error.message : "Unable to save plan limits";
       toast({ title: "Save failed", description: message, variant: "destructive" });
     } finally {
@@ -613,6 +648,7 @@ export function AdminDashboard() {
             : "System is now paused.",
       });
     } catch (error) {
+      handleComponentError(error, "pause-lead-generation", { reason });
       const message = error instanceof Error ? error.message : "Unable to pause system";
       toast({ title: "Action failed", description: message, variant: "destructive" });
     } finally {
@@ -629,6 +665,7 @@ export function AdminDashboard() {
         description: result?.message || "System resumed successfully.",
       });
     } catch (error) {
+      handleComponentError(error, "resume-lead-generation");
       const message = error instanceof Error ? error.message : "Unable to resume system";
       toast({ title: "Action failed", description: message, variant: "destructive" });
     } finally {
@@ -652,6 +689,7 @@ export function AdminDashboard() {
             : "Cleanup completed.",
       });
     } catch (error) {
+      handleComponentError(error, "clear-active-searches", { reason });
       const message = error instanceof Error ? error.message : "Unable to clear searches";
       toast({ title: "Action failed", description: message, variant: "destructive" });
     } finally {
@@ -668,6 +706,7 @@ export function AdminDashboard() {
         description: result?.message || "Health check initiated successfully.",
       });
     } catch (error) {
+      handleComponentError(error, "trigger-health-check");
       const message = error instanceof Error ? error.message : "Unable to trigger health check";
       toast({ title: "Action failed", description: message, variant: "destructive" });
     } finally {
@@ -680,6 +719,17 @@ export function AdminDashboard() {
 
   return (
     <div className="p-6 space-y-6">
+      {componentError && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription className="flex items-center justify-between gap-4">
+            <span>{componentError}</span>
+            <Button size="sm" variant="outline" onClick={dismissComponentError}>
+              Dismiss
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold">Admin Dashboard</h1>
@@ -1526,3 +1576,10 @@ export function AdminDashboard() {
     </div>
   );
 }
+
+AdminDashboardComponent.displayName = "AdminDashboard";
+
+export const AdminDashboard = withErrorBoundary(
+  AdminDashboardComponent,
+  "Admin dashboard failed to render",
+);
