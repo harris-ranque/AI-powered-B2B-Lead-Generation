@@ -83,7 +83,11 @@ class TestBusinessContextResearcher:
             services=["Lead Generation", "Email Personalization", "CRM Integration"],
             target_markets=["B2B SaaS", "Marketing Agencies", "Sales Teams"],
             key_differentiators=["AI-powered", "Real-time", "Highly personalized"],
-            contact_info={"email": "info@genni.ai", "website": "https://genni.ai"}
+            contact_info={
+                "name": "Alex Rivera",
+                "email": "info@genni.ai",
+                "website": "https://genni.ai",
+            }
         )
     
     @pytest.fixture

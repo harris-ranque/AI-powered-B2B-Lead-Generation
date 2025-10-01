@@ -137,6 +137,7 @@ class OpenAIIntegrationTest:
                     "Proven 300% conversion rate improvement"
                 ],
                 "contact_info": {
+                    "name": "Alex Rivera",
                     "email": "contact@genni.ai",
                     "phone": "555-GENNI-AI",
                     "website": "https://genni.ai"

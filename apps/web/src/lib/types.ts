@@ -25,6 +25,7 @@ export interface BusinessProfileInput {
     metrics: Record<string, string | number | boolean>;
   }>;
   contactInfo: {
+    name?: string;
     email?: string;
     phone?: string;
     website?: string;

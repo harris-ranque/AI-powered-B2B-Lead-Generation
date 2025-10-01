@@ -4,6 +4,7 @@ Validates email quality, personalization depth, and business context integration
 to ensure high standards before final output.
 """
 import time
+import re
 from typing import Dict, Any, List
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -237,7 +238,77 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
             email_body=email_body,
             declared_personalization="; ".join(email_personalization) if email_personalization else "No personalization declared"
         ))
-        
+
+        placeholder_patterns = [
+            re.compile(r"\[[^\]]*(?:your|company|insert|name|title|placeholder)[^\]]*\]", re.IGNORECASE),
+            re.compile(r"\{\{[^}]+\}\}"),
+            re.compile(r"<[^>]*placeholder[^>]*>", re.IGNORECASE),
+            re.compile(
+                r"\b(?:Your Name|Company Name|Insert Name|Insert Company)\b",
+                re.IGNORECASE,
+            ),
+        ]
+
+        placeholders_found = []
+        for pattern in placeholder_patterns:
+            placeholders_found.extend(pattern.findall(email_subject))
+            placeholders_found.extend(pattern.findall(email_body))
+
+        placeholder_lines = {
+            "your name",
+            "company name",
+            "your company",
+            "insert name",
+            "insert company",
+            "phone number",
+            "email address",
+            "contact info",
+            "signature",
+        }
+
+        for line in email_body.splitlines():
+            normalized_line = line.strip().lower()
+            if normalized_line in placeholder_lines:
+                placeholders_found.append(line.strip())
+
+        cleaned_placeholders = sorted(
+            {placeholder.strip() for placeholder in placeholders_found if placeholder.strip()}
+        )
+
+        if cleaned_placeholders:
+            issue_text = (
+                "Placeholder text detected that must be replaced: "
+                + ", ".join(cleaned_placeholders[:5])
+            )
+            updated_quality_issues = list(quality_assessment.quality_issues)
+            if issue_text not in updated_quality_issues:
+                updated_quality_issues.append(issue_text)
+
+            suggestion_text = (
+                "Replace all placeholder text with actual sender and company details before sending."
+            )
+            updated_improvement_suggestions = list(
+                quality_assessment.improvement_suggestions
+            )
+            if suggestion_text not in updated_improvement_suggestions:
+                updated_improvement_suggestions.append(suggestion_text)
+
+            updated_overall = min(quality_assessment.overall_quality_score, 0.6)
+            updated_status = (
+                "Needs_Improvement"
+                if quality_assessment.approval_status == "Approved"
+                else quality_assessment.approval_status
+            )
+
+            quality_assessment = quality_assessment.model_copy(
+                update={
+                    "quality_issues": updated_quality_issues,
+                    "improvement_suggestions": updated_improvement_suggestions,
+                    "overall_quality_score": updated_overall,
+                    "approval_status": updated_status,
+                }
+            )
+
         execution_time = time.time() - start_time
         
         # Determine final approval status based on scores

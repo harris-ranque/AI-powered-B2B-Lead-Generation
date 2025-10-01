@@ -59,6 +59,29 @@ export function Settings() {
     autoFollowUp: false,
   });
 
+  const normalizeContactName = (value: string) =>
+    value
+      ? value
+          .replace(/\s+/g, " ")
+          .replace(/[\u200B-\u200D\uFEFF]/g, "")
+          .trim()
+      : "";
+
+  const buildSignature = (
+    name: string,
+    company?: string,
+    email?: string,
+  ) => {
+    const lines = [
+      "Best regards,",
+      name,
+      company,
+      email,
+    ].filter((line) => !!line?.trim());
+
+    return lines.join("\n");
+  };
+
   // Update local state when data loads
   useEffect(() => {
     if (userPreferences) {
@@ -69,7 +92,11 @@ export function Settings() {
   useEffect(() => {
     if (userData) {
       setProfileData({
-        name: userData.name || "",
+        name:
+          normalizeContactName(
+            (businessProfile?.contactInfo as { name?: string } | undefined)
+              ?.name || userData.name || "",
+          ),
         email: userData.email || "",
         phone: businessProfile?.contactInfo?.phone || "",
       });
@@ -78,10 +105,22 @@ export function Settings() {
 
   useEffect(() => {
     if (businessProfile?.contactInfo) {
+      const contactInfo = businessProfile.contactInfo as {
+        name?: string;
+        email?: string;
+      };
+
+      const normalizedName = normalizeContactName(
+        contactInfo.name || userData?.name || "",
+      );
       setEmailConfig({
-        fromName: userData?.name || "",
-        fromEmail: businessProfile.contactInfo.email || userData?.email || "",
-        signature: `Best regards,\n${userData?.name || ""}\n${businessProfile.companyName || ""}\n${businessProfile.contactInfo.email || ""}`,
+        fromName: normalizedName,
+        fromEmail: contactInfo.email || userData?.email || "",
+        signature: buildSignature(
+          normalizedName,
+          businessProfile.companyName || "",
+          contactInfo.email || "",
+        ),
         autoFollowUp: false, // This could be a new field in the profile
       });
     }
@@ -106,9 +145,11 @@ export function Settings() {
   const handleProfileUpdate = async () => {
     setIsLoading(true);
     try {
+      const sanitizedName = normalizeContactName(profileData.name);
+
       // Update user profile
       await updateProfile({
-        name: profileData.name,
+        name: sanitizedName || undefined,
       });
 
       // Update business profile contact info
@@ -116,6 +157,7 @@ export function Settings() {
         await updateBusinessProfile({
           section: "contact_info",
           data: {
+            name: sanitizedName,
             email: profileData.email,
             phone: profileData.phone,
             website: businessProfile.contactInfo?.website || "",
@@ -123,6 +165,11 @@ export function Settings() {
           },
         });
       }
+
+      setProfileData((prev) => ({
+        ...prev,
+        name: sanitizedName,
+      }));
 
       toast.success("Profile updated successfully");
     } catch (error) {
@@ -136,10 +183,13 @@ export function Settings() {
   const handleEmailConfigUpdate = async () => {
     setIsLoading(true);
     try {
+      const sanitizedFromName = normalizeContactName(emailConfig.fromName);
+
       if (businessProfile) {
         await updateBusinessProfile({
           section: "contact_info",
           data: {
+            name: sanitizedFromName,
             email: emailConfig.fromEmail,
             phone: businessProfile.contactInfo?.phone || "",
             website: businessProfile.contactInfo?.website || "",
@@ -147,6 +197,16 @@ export function Settings() {
           },
         });
       }
+
+      setEmailConfig((prev) => ({
+        ...prev,
+        fromName: sanitizedFromName,
+        signature: buildSignature(
+          sanitizedFromName,
+          businessProfile?.companyName || "",
+          emailConfig.fromEmail,
+        ),
+      }));
       toast.success("Email configuration updated successfully");
     } catch (error) {
       toast.error("Failed to update email configuration");
@@ -211,6 +271,12 @@ export function Settings() {
                     setProfileData((prev) => ({
                       ...prev,
                       name: e.target.value,
+                    }))
+                  }
+                  onBlur={(e) =>
+                    setProfileData((prev) => ({
+                      ...prev,
+                      name: normalizeContactName(e.target.value),
                     }))
                   }
                   placeholder="Enter your full name"
@@ -333,6 +399,12 @@ export function Settings() {
                     setEmailConfig((prev) => ({
                       ...prev,
                       fromName: e.target.value,
+                    }))
+                  }
+                  onBlur={(e) =>
+                    setEmailConfig((prev) => ({
+                      ...prev,
+                      fromName: normalizeContactName(e.target.value),
                     }))
                   }
                   placeholder="Enter your name for email sending"

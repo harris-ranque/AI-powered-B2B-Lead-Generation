@@ -49,6 +49,9 @@ export const createOrUpdateProfile = mutation({
             metrics: cs.metrics,
           })) || [],
       contactInfo: {
+        name: args.contactInfo.name
+          ? sanitizeString(args.contactInfo.name)
+          : user.name || "",
         email: args.contactInfo.email
           ? validateEmail(args.contactInfo.email)
             ? args.contactInfo.email
@@ -294,6 +297,10 @@ export const updateProfileSection = mutation({
 
       case "contact_info":
         updateData.contactInfo = {
+          name: args.data.name
+            ? sanitizeString(args.data.name)
+            : (profile.contactInfo as { name?: string } | undefined)?.name ||
+              "",
           email:
             args.data.email && validateEmail(args.data.email)
               ? args.data.email

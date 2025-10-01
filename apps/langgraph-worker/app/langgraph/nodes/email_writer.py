@@ -47,6 +47,11 @@ async def email_writer_node(state: EmailGenerationState) -> Dict[str, Any]:
     start_time = time.time()
     logger.info(f"Starting email generation for {state['lead'].company_name}")
     
+    sender_name = ""
+    sender_email = ""
+    sender_phone = ""
+    sender_website = ""
+
     try:
         # Initialize LLM with structured output
         llm = ChatOpenAI(
@@ -140,6 +145,12 @@ async def email_writer_node(state: EmailGenerationState) -> Dict[str, Any]:
             personalization_level=requirements.personalization_level
         ))
         
+        contact_info = getattr(business_profile, "contact_info", {}) or {}
+        sender_name = contact_info.get("name") or business_profile.company_name
+        sender_email = contact_info.get("email", "")
+        sender_phone = contact_info.get("phone", "")
+        sender_website = contact_info.get("website", "")
+
         # Construct full email body
         email_body_parts = [
             f"Hi {lead.contact_name or 'there'},",
@@ -163,10 +174,30 @@ async def email_writer_node(state: EmailGenerationState) -> Dict[str, Any]:
             email_structure.call_to_action,
             "",
             email_structure.closing,
-            "",
-            "Best regards,",
-            "[Your name]"
         ])
+
+        signature_lines: List[str] = []
+
+        def add_signature_line(value: str):
+            if value and value not in signature_lines:
+                signature_lines.append(value)
+
+        if "regards" not in email_structure.closing.lower():
+            add_signature_line("Best regards,")
+
+        add_signature_line(sender_name or business_profile.company_name)
+
+        company_line = business_profile.company_name
+        if company_line and company_line not in signature_lines:
+            add_signature_line(company_line)
+
+        add_signature_line(sender_email)
+        add_signature_line(sender_phone)
+        add_signature_line(sender_website)
+
+        if signature_lines:
+            email_body_parts.append("")
+            email_body_parts.extend(signature_lines)
         
         # Add P.S. if provided
         if email_structure.ps_line:
@@ -222,6 +253,22 @@ async def email_writer_node(state: EmailGenerationState) -> Dict[str, Any]:
         lead = state["lead"]
         business_profile = state["business_profile"]
         
+        fallback_signature = "\n".join(
+            line
+            for line in [
+                "Best regards,",
+                sender_name or business_profile.company_name,
+                business_profile.company_name
+                if business_profile.company_name
+                and (sender_name or "").lower() != business_profile.company_name.lower()
+                else None,
+                sender_email,
+                sender_phone,
+                sender_website,
+            ]
+            if line
+        )
+
         fallback_email = EmailContent(
             subject=f"Strategic Solutions for {lead.company_name}",
             body=f"""Hi {lead.contact_name or 'there'},
@@ -232,8 +279,7 @@ Our {business_profile.value_proposition} has helped similar businesses achieve s
 
 Would you be open to a brief conversation about how we might be able to help {lead.company_name}?
 
-Best regards,
-[Your name]""",
+{fallback_signature}""",
             personalization_notes=["Company name", "Industry reference"],
             estimated_effectiveness=0.5
         )

@@ -206,9 +206,43 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         engagement_hooks = business_intelligence.get("engagement_hooks", [])
         relevance_score = business_intelligence.get("relevance_score", 0.5)
         qualification_level = business_intelligence.get("qualification_level", "Medium")
-        
+
         logger.info(f"Using business intelligence: {len(pain_points)} pain points, "
                    f"{len(value_matches)} value matches, relevance {relevance_score:.2f}")
+
+        contact_info = getattr(business_profile, "contact_info", {}) or {}
+        sender_name = contact_info.get("name") or contact_info.get("contactName") or ""
+        sender_email = contact_info.get("email", "")
+        sender_phone = contact_info.get("phone", "")
+        sender_website = contact_info.get("website", "")
+        sender_linkedin = contact_info.get("linkedin", "")
+
+        def append_signature(body: str) -> str:
+            """Append sender signature details if they're not already present."""
+
+            signature_lines = []
+            lower_body = body.lower()
+
+            def add_line(value: str):
+                if value and value.lower() not in lower_body and value not in signature_lines:
+                    signature_lines.append(value)
+
+            if sender_name:
+                add_line(sender_name)
+
+            company_line = business_profile.company_name
+            if company_line and company_line.lower() != sender_name.lower():
+                add_line(company_line)
+
+            add_line(sender_email)
+            add_line(sender_phone)
+            add_line(sender_website)
+            add_line(sender_linkedin)
+
+            if not signature_lines:
+                return body
+
+            return f"{body}\n\n" + "\n".join(signature_lines)
         
         # Initialize LLM for email generation
         # gpt-5-nano uses max_completion_tokens instead of max_tokens
@@ -289,6 +323,10 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
             
             OUR COMPANY PROFILE:
             Company: {our_company}
+            Primary Contact Name: {our_contact_name}
+            Contact Email: {our_contact_email}
+            Contact Phone: {our_contact_phone}
+            Company Website: {our_contact_website}
             Value Proposition: {our_value_prop}
             Services: {our_services}
             Differentiators: {our_differentiators}
@@ -303,7 +341,12 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
             Follow-up Expectation: Always include at least two follow-up emails with unique angles and CTAs when follow_up_sequence is true
 
             EMAIL GENERATION REQUIREMENTS:
-            
+
+            Sender & Signature:
+            - Use the provided sender name and contact details in the closing signature
+            - Ensure the signature never contains placeholder text (e.g., [Your Name])
+            - Reinforce credibility with our company name and a direct contact method
+
             1. PRIMARY EMAIL CREATION:
             - Subject line: Specific, intriguing, under 50 characters
             - Opening: Reference specific research findings or recent news
@@ -371,6 +414,10 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
             
             # Our company profile
             our_company=business_profile.company_name,
+            our_contact_name=sender_name or business_profile.company_name,
+            our_contact_email=sender_email or "not provided",
+            our_contact_phone=sender_phone or "not provided",
+            our_contact_website=sender_website or sender_linkedin or "not provided",
             our_value_prop=business_profile.value_proposition,
             our_services=", ".join(business_profile.services[:5]),
             our_differentiators=", ".join(business_profile.key_differentiators[:3]),
@@ -393,6 +440,8 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
             personalization_notes=email_sequence.personalization_elements + email_sequence.business_context_usage,
             estimated_effectiveness=email_sequence.estimated_effectiveness
         )
+
+        primary_email.body = append_signature(primary_email.body)
         
         # Add P.S. if provided
         if email_sequence.primary_ps:
@@ -400,14 +449,29 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         
         # Create follow-up sequence if requested
         follow_up_sequence = None
-        follow_up_plans: List[FollowUpEmailPlan] = list(email_sequence.follow_up_emails)
-        if requirements.follow_up_sequence:
-            contact_name = lead.contact_name or "there"
-            company_name = lead.company_name
-            primary_value = (
-                value_matches[0]
-                if value_matches
-                else business_profile.value_proposition
+        if requirements.follow_up_sequence and email_sequence.follow_up_emails:
+            follow_up_emails: List[EmailContent] = []
+            for i, follow_up in enumerate(email_sequence.follow_up_emails):
+                subject = follow_up.subject or f"Follow-up {i + 1}"
+                body_parts = [follow_up.body.strip()]
+                if follow_up.call_to_action:
+                    body_parts.append(follow_up.call_to_action.strip())
+                body_text = "\n\n".join(part for part in body_parts if part)
+                body_text = append_signature(body_text)
+
+                follow_up_email = EmailContent(
+                    subject=subject,
+                    body=body_text,
+                    personalization_notes=email_sequence.personalization_elements,
+                    estimated_effectiveness=email_sequence.estimated_effectiveness * 0.8,  # Slightly lower for follow-ups
+                )
+                follow_up_emails.append(follow_up_email)
+            
+            follow_up_sequence = FollowUpSequence(
+                sequence_id=f"sequence_{state['request_id']}",
+                emails=follow_up_emails,
+                timing_schedule=email_sequence.timing_schedule or [3, 7, 14],  # Default timing
+                conversion_strategy=email_sequence.follow_up_strategy
             )
             primary_value_text = (
                 primary_value
