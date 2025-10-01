@@ -47,6 +47,17 @@ export const generateEmail: unknown = action({
       throw new Error("Business profile required for email generation");
     }
 
+    const contactInfo = {
+      name:
+        (profile.contactInfo as { name?: string } | undefined)?.name ||
+        user.name ||
+        "",
+      email: profile.contactInfo?.email || user.email || "",
+      phone: profile.contactInfo?.phone || "",
+      website: profile.contactInfo?.website || "",
+      linkedin: profile.contactInfo?.linkedin || "",
+    };
+
     // Create LangGraph-compatible request id: searchId_leadId_attempt
     const requestId: string = `${lead?.searchId ?? ""}_${args.leadId}_ui1`;
 
@@ -74,6 +85,7 @@ export const generateEmail: unknown = action({
             services: profile.services,
             targetMarkets: profile.targetMarkets,
             keyDifferentiators: profile.keyDifferentiators,
+            contactInfo,
           },
           emailType: args.emailType || "initial",
           customInstructions: args.customInstructions,
@@ -119,6 +131,7 @@ export const generateEmail: unknown = action({
             services: profile.services,
             targetMarkets: profile.targetMarkets,
             keyDifferentiators: profile.keyDifferentiators,
+            contactInfo,
           },
           // Map request options to requirements with sensible defaults
           requirements: {
@@ -201,6 +214,17 @@ export const analyzeLead = action({
       throw new Error("Business profile required for lead analysis");
     }
 
+    const contactInfo = {
+      name:
+        (profile.contactInfo as { name?: string } | undefined)?.name ||
+        user.name ||
+        "",
+      email: profile.contactInfo?.email || user.email || "",
+      phone: profile.contactInfo?.phone || "",
+      website: profile.contactInfo?.website || "",
+      linkedin: profile.contactInfo?.linkedin || "",
+    };
+
     // Create LangGraph request using scheduler
     const requestId = `analysis_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -228,6 +252,7 @@ export const analyzeLead = action({
             services: profile.services,
             targetMarkets: profile.targetMarkets,
             keyDifferentiators: profile.keyDifferentiators,
+            contactInfo,
           },
           analysisType: args.analysisType || "relevance",
         },

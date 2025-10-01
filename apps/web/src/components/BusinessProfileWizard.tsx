@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +41,24 @@ interface BusinessProfile {
   painPointsWeSolve: string[];
   idealCustomerProfile: string;
   currentChallenges: string[];
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+  contactWebsite: string;
+  contactLinkedin: string;
 }
+
+type IncomingProfile = Partial<BusinessProfile> & {
+  targetMarkets?: string[];
+  services?: string[];
+  contactInfo?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    website?: string;
+    linkedin?: string;
+  };
+};
 
 interface BusinessProfileWizardProps {
   onComplete: (profile: BusinessProfile) => void;
@@ -48,6 +66,14 @@ interface BusinessProfileWizardProps {
   initialData?: Partial<BusinessProfile>;
   variant?: "wizard" | "editor";
 }
+
+const normalizeContactName = (value: string) =>
+  value
+    ? value
+        .replace(/\s+/g, " ")
+        .replace(/[\u200B-\u200D\uFEFF]/g, "")
+        .trim()
+    : "";
 
 export function BusinessProfileWizard({
   onComplete,
@@ -67,6 +93,7 @@ export function BusinessProfileWizard({
 
   // Convex hooks
   const { profile: existingProfile, createOrUpdateProfile } = useProfile();
+  const { user } = useAuth();
 
   const [profile, setProfile] = useState<BusinessProfile>({
     companyName: "",
@@ -79,6 +106,11 @@ export function BusinessProfileWizard({
     painPointsWeSolve: [],
     idealCustomerProfile: "",
     currentChallenges: [],
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
+    contactWebsite: "",
+    contactLinkedin: "",
     ...initialData,
     // If we have existing profile data, use it
     ...(existingProfile && {
@@ -92,8 +124,89 @@ export function BusinessProfileWizard({
       painPointsWeSolve: existingProfile.painPointsWeSolve || [],
       idealCustomerProfile: existingProfile.idealCustomerProfile || "",
       currentChallenges: existingProfile.currentChallenges || [],
+      contactName:
+        (existingProfile.contactInfo as { name?: string } | undefined)?.name ||
+        "",
+      contactEmail: existingProfile.contactInfo?.email || "",
+      contactPhone: existingProfile.contactInfo?.phone || "",
+      contactWebsite: existingProfile.contactInfo?.website || "",
+      contactLinkedin: existingProfile.contactInfo?.linkedin || "",
     }),
   });
+
+  useEffect(() => {
+    const sourceProfile = initialData || existingProfile;
+    if (!sourceProfile) {
+      return;
+    }
+
+    const normalizedProfile: IncomingProfile = sourceProfile;
+    const contactInfo = normalizedProfile.contactInfo ?? {};
+
+    setProfile((prev) => ({
+      ...prev,
+      companyName: prev.companyName || sourceProfile.companyName || "",
+      industry: prev.industry || sourceProfile.industry || "",
+      valueProposition:
+        prev.valueProposition || sourceProfile.valueProposition || "",
+      targetIndustries:
+        prev.targetIndustries.length > 0
+          ? prev.targetIndustries
+          : normalizedProfile.targetIndustries ||
+            normalizedProfile.targetMarkets ||
+            [],
+      offerings:
+        prev.offerings.length > 0
+          ? prev.offerings
+          : normalizedProfile.offerings ||
+            normalizedProfile.services ||
+            [],
+      keyDifferentiators:
+        prev.keyDifferentiators.length > 0
+          ? prev.keyDifferentiators
+          : sourceProfile.keyDifferentiators || [],
+      painPointsWeSolve:
+        prev.painPointsWeSolve.length > 0
+          ? prev.painPointsWeSolve
+          : normalizedProfile.painPointsWeSolve || [],
+      idealCustomerProfile:
+        prev.idealCustomerProfile ||
+        normalizedProfile.idealCustomerProfile ||
+        "",
+      currentChallenges:
+        prev.currentChallenges.length > 0
+          ? prev.currentChallenges
+          : normalizedProfile.currentChallenges || [],
+      contactName: normalizeContactName(
+        prev.contactName ||
+          normalizedProfile.contactName ||
+          contactInfo.name ||
+          user?.name ||
+          "",
+      ),
+      contactEmail:
+        prev.contactEmail ||
+        normalizedProfile.contactEmail ||
+        contactInfo.email ||
+        user?.email ||
+        "",
+      contactPhone:
+        prev.contactPhone ||
+        normalizedProfile.contactPhone ||
+        contactInfo.phone ||
+        "",
+      contactWebsite:
+        prev.contactWebsite ||
+        normalizedProfile.contactWebsite ||
+        contactInfo.website ||
+        "",
+      contactLinkedin:
+        prev.contactLinkedin ||
+        normalizedProfile.contactLinkedin ||
+        contactInfo.linkedin ||
+        "",
+    }));
+  }, [initialData, existingProfile, user]);
 
   const { toast } = useToast();
   const totalSteps = 4;
@@ -134,41 +247,50 @@ export function BusinessProfileWizard({
 
   const handleComplete = async () => {
     // Basic validation
+    const sanitizedContactName = normalizeContactName(profile.contactName);
+
     if (
       !profile.companyName ||
       !profile.industry ||
+      !sanitizedContactName ||
       !profile.valueProposition
     ) {
       toast({
         title: "Missing Information",
         description:
-          "Please fill in the required fields (Company Name, Industry, Value Proposition).",
+          "Please fill in the required fields (Company Name, Your Name, Industry, Value Proposition).",
         variant: "destructive",
       });
       return;
     }
+
+    const completedProfile = {
+      ...profile,
+      contactName: sanitizedContactName,
+    };
 
     setIsSaving(true);
 
     try {
       // Save profile to Convex - map frontend fields to backend schema
       await createOrUpdateProfile({
-        companyName: profile.companyName,
-        industry: profile.industry,
-        services: profile.offerings, // Map offerings to services
-        targetMarkets: profile.targetIndustries, // Map targetIndustries to targetMarkets
-        valueProposition: profile.valueProposition,
-        keyDifferentiators: profile.keyDifferentiators,
+        companyName: completedProfile.companyName,
+        industry: completedProfile.industry,
+        services: completedProfile.offerings, // Map offerings to services
+        targetMarkets: completedProfile.targetIndustries, // Map targetIndustries to targetMarkets
+        valueProposition: completedProfile.valueProposition,
+        keyDifferentiators: completedProfile.keyDifferentiators,
         contactInfo: {
-          // Include required contactInfo object with empty values
-          email: "",
-          phone: "",
-          website: "",
-          linkedin: "",
+          name: sanitizedContactName,
+          email: completedProfile.contactEmail,
+          phone: completedProfile.contactPhone,
+          website: completedProfile.contactWebsite,
+          linkedin: completedProfile.contactLinkedin,
         },
       });
 
-      onComplete(profile);
+      setProfile(completedProfile);
+      onComplete(completedProfile);
       toast({
         title: "Profile Saved!",
         description:
@@ -189,7 +311,11 @@ export function BusinessProfileWizard({
   const isStepValid = () => {
     switch (currentStep) {
       case 1:
-        return profile.companyName && profile.industry;
+        return (
+          profile.companyName &&
+          profile.industry &&
+          normalizeContactName(profile.contactName)
+        );
       case 2:
         return (
           profile.targetIndustries.length > 0 && profile.offerings.length > 0
@@ -227,6 +353,33 @@ export function BusinessProfileWizard({
               setProfile((prev) => ({ ...prev, companyName: e.target.value }))
             }
             placeholder="Enter your company name"
+            className="mt-1"
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="contactName" className="text-sm font-medium">
+            Your Name *
+          </Label>
+          <p className="text-xs text-muted-foreground mb-2">
+            We'll use this name in email signatures and personalization.
+          </p>
+          <Input
+            id="contactName"
+            value={profile.contactName}
+            onChange={(e) =>
+              setProfile((prev) => ({
+                ...prev,
+                contactName: e.target.value,
+              }))
+            }
+            onBlur={(e) =>
+              setProfile((prev) => ({
+                ...prev,
+                contactName: normalizeContactName(e.target.value),
+              }))
+            }
+            placeholder="e.g., Alex Rivera"
             className="mt-1"
           />
         </div>

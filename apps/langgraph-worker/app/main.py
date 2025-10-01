@@ -415,7 +415,10 @@ async def analyze_lead(
             services=["Lead Generation", "Email Personalization", "Sales Automation"],
             target_markets=["B2B", "SaaS", "Professional Services"],
             key_differentiators=["AI-powered", "Multi-agent system", "Personalized outreach"],
-            contact_info={"email": "contact@genni.com"}
+            contact_info={
+                "name": "Alex Rivera",
+                "email": "contact@genni.com",
+            }
         )
         
         # Create minimal state

@@ -212,6 +212,7 @@ class ComprehensiveTestSuite:
                 "95%+ email deliverability rates"
             ],
             contact_info={
+                "name": "Alex Rivera",
                 "email": "hello@genni.com",
                 "website": "https://genni.com",
                 "phone": "+1-555-GENNI-AI"

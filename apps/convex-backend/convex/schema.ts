@@ -64,6 +64,7 @@ export default defineSchema({
       ),
     ),
     contactInfo: v.object({
+      name: v.optional(v.string()),
       email: v.optional(v.string()),
       phone: v.optional(v.string()),
       website: v.optional(v.string()),

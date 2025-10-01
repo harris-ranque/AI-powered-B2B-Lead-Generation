@@ -133,6 +133,7 @@ export const mockBusinessProfile = {
   targetMarkets: ['B2B', 'SaaS'],
   keyDifferentiators: ['AI-powered', 'Fast implementation'],
   contactInfo: {
+    name: 'Test User',
     email: 'hello@testcompany.com',
     website: 'https://testcompany.com'
   },

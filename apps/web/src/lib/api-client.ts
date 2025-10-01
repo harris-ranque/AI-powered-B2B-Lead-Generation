@@ -150,6 +150,7 @@ class ApiClient {
         },
       ],
       contactInfo: {
+        name: "Alex Rivera",
         email: "hello@genni.com",
         phone: "+1 (555) 123-4567",
         website: "https://genni.com",
