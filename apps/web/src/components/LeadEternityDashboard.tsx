@@ -253,7 +253,7 @@ function LeadEternityDashboardContent() {
   return (
     <div className="min-h-screen bg-background">
       <div className="border-b border-border bg-card">
-        <div className="flex h-16 items-center px-6">
+        <div className="flex items-center px-6 py-4">
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2">
               <Bot className="h-8 w-8 text-primary" />
