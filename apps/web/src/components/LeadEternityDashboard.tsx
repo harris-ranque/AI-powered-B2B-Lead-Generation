@@ -21,6 +21,7 @@ import {
   Bug,
   Activity,
   Menu,
+  AlertTriangle,
 } from "lucide-react";
 import { PipelineOrchestrator } from "./pipeline/PipelineOrchestrator";
 import { PipelineProvider, usePipeline } from "@/pipeline/context";
