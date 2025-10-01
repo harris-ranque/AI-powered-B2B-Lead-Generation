@@ -52,6 +52,18 @@ const EmailGenerationResult = v.object({
       additional_credits_used: v.optional(v.number()),
       missing_data_points: v.optional(v.array(v.string())),
       data_completeness_score: v.optional(v.number()),
+      follow_up_sequence: v.optional(
+        v.union(
+          v.null(),
+          v.object({
+            sequence_id: v.optional(v.string()),
+            emails: v.optional(v.array(v.any())),
+            timing_schedule: v.optional(v.array(v.number())),
+            conversion_strategy: v.optional(v.string()),
+          }),
+        ),
+      ),
+      follow_up_emails: v.optional(v.array(v.any())),
     }),
   ),
   error: v.optional(v.string()),
