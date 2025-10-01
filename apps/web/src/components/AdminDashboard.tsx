@@ -307,24 +307,33 @@ export function AdminDashboard() {
     const fromQuery = params.get("tab");
     const fromHash = location.hash ? location.hash.replace(/^#/, "") : null;
     const candidate = (fromQuery || fromHash) as (typeof TAB_KEYS)[number] | null;
+
+    // Only update state if URL has a valid tab that differs from current state
     if (candidate && TAB_KEYS.includes(candidate) && candidate !== currentTab) {
       setCurrentTab(candidate);
     }
-  }, [location.search, location.hash, currentTab]);
+  }, [location.search, location.hash]); // Removed currentTab from deps to prevent loop
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (params.get("tab") === currentTab) {
-      lastSyncedSearchRef.current = params.toString();
-      return;
-    }
-
+    // Skip if history sync is disabled
     if (historySyncDisabledRef.current) {
       return;
     }
 
+    const params = new URLSearchParams(location.search);
+    const currentTabInUrl = params.get("tab");
+
+    // Skip if URL already matches current tab
+    if (currentTabInUrl === currentTab) {
+      lastSyncedSearchRef.current = params.toString();
+      return;
+    }
+
+    // Update URL to match current tab
     params.set("tab", currentTab);
     const nextSearch = params.toString();
+
+    // Prevent redundant navigation
     if (lastSyncedSearchRef.current === nextSearch) {
       return;
     }
@@ -349,7 +358,7 @@ export function AdminDashboard() {
         throw error;
       }
     }
-  }, [currentTab, location.pathname, location.search, navigate]);
+  }, [currentTab, location.pathname, navigate]); // Removed location.search from deps to prevent loop
 
   useEffect(() => {
     if (configuration?.creditCosts) {

@@ -10,11 +10,19 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field, ConfigDict
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
-from ...models.lead_models import AgentResult, EmailContent, FollowUpSequence
+from ...models.lead_models import (
+    AgentResult,
+    BusinessProfile,
+    EmailContent,
+    FollowUpSequence,
+    Lead,
+)
 from ..state import EmailGenerationState
 
 logger = setup_logger(__name__)
 settings = get_settings()
+
+MIN_FOLLOW_UP_EMAILS = 2
 
 class FollowUpEmailPlan(BaseModel):
     """Structured follow-up email draft returned by the LLM"""
@@ -68,6 +76,95 @@ class EmailSequence(BaseModel):
     key_value_propositions: List[str] = Field(..., description="Key value props highlighted")
     pain_points_addressed: List[str] = Field(..., description="Pain points directly addressed")
     proof_points_included: List[str] = Field(..., description="Proof points and credibility elements")
+
+
+def _generate_fallback_followups(
+    lead: Lead,
+    business_profile: BusinessProfile,
+    pain_points: List[str],
+    value_matches: List[str],
+    follow_up_strategy: str,
+    call_to_action: str,
+) -> List[FollowUpEmailPlan]:
+    """Create deterministic follow-up plans when the LLM returns too few."""
+
+    contact_name = lead.contact_name or "there"
+    company_name = lead.company_name
+    our_company = business_profile.company_name
+    primary_value = value_matches[0] if value_matches else business_profile.value_proposition
+    primary_service = business_profile.services[0] if business_profile.services else "our solution"
+    pressing_pain_point = pain_points[0] if pain_points else "the priorities you mentioned"
+    primary_value_text = primary_value if isinstance(primary_value, str) else str(primary_value)
+    pressing_pain_point_text = (
+        pressing_pain_point if isinstance(pressing_pain_point, str) else str(pressing_pain_point)
+    )
+    primary_service_text = primary_service if isinstance(primary_service, str) else str(primary_service)
+    case_study = next((cs for cs in business_profile.case_studies if cs.get("title")), None)
+
+    fallback_followups: List[FollowUpEmailPlan] = []
+
+    # Follow-up 1: Share a resource or case study that reinforces value
+    if case_study:
+        resource_body = (
+            f"Hi {contact_name},\n\n"
+            f"I was thinking more about {pressing_pain_point_text} at {company_name} and how others have tackled it. "
+            f"We recently partnered with {case_study.get('client', 'a peer in your space')} and helped them {case_study.get('outcome', 'achieve measurable results')}.\n\n"
+            f"I've attached a short overview that highlights the approach and the impact it delivered. "
+            f"Would it be helpful to walk through the playbook together?"
+        )
+    else:
+        resource_body = (
+            f"Hi {contact_name},\n\n"
+            f"Wanted to send over a concise breakdown of how teams similar to {company_name} are using {primary_service_text} "
+            f"to stay ahead. It outlines how the approach maps directly to {pressing_pain_point_text}.\n\n"
+            f"Happy to unpack anything that stands out or tailor a quick walkthrough for you."
+        )
+
+    fallback_followups.append(
+        FollowUpEmailPlan(
+            subject=f"Resource that helped other {lead.industry or 'teams'}",
+            body=resource_body,
+            objective="Share social proof and reinforce value",
+            call_to_action=call_to_action,
+        )
+    )
+
+    # Follow-up 2: Collaborative check-in with a new angle
+    new_angle_body = (
+        f"Hi {contact_name},\n\n"
+        f"Wanted to make sure this stayed on your radar. We mapped out a lightweight, 30-day rollout plan "
+        f"showing how {our_company} could support {primary_value_text.lower()} without adding work to your team.\n\n"
+        f"Could we compare notes on where {company_name} is focusing this quarter and see if the plan aligns?"
+    )
+
+    fallback_followups.append(
+        FollowUpEmailPlan(
+            subject=f"Re: {primary_value} at {company_name}",
+            body=new_angle_body,
+            objective="Re-engage with collaborative planning angle",
+            call_to_action=call_to_action,
+        )
+    )
+
+    # Optionally add a third follow-up aligned to strategy if needed later
+    if follow_up_strategy:
+        strategy_body = (
+            f"Hi {contact_name},\n\n"
+            f"Following the {follow_up_strategy.lower()} we discussed, I captured a few quick wins your team "
+            f"could activate immediately. They focus on {pressing_pain_point_text.lower()} and leverage {primary_service_text.lower()}.\n\n"
+            f"Open to a brief sync to prioritize which one makes the most sense to pilot first?"
+        )
+        fallback_followups.append(
+            FollowUpEmailPlan(
+                subject=f"Quick wins for {pressing_pain_point_text}",
+                body=strategy_body,
+                objective="Deliver actionable next steps",
+                call_to_action=call_to_action,
+            )
+        )
+
+    return fallback_followups
+
 
 async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, Any]:
     """
@@ -183,6 +280,7 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
             - Proof: Include relevant metrics, case studies, or social proof
             - CTA: Clear, specific, low-pressure next step
             - Follow-ups: Varied approaches, value-added content
+            - Follow-ups: Provide at least two distinct follow-up emails when a sequence is requested
             
             Integration requirements:
             - Use business intelligence data extensively
@@ -240,7 +338,8 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
             Include Case Study: {include_case_study}
             Personalization Level: {personalization_level}
             Follow-up Sequence: {follow_up_sequence}
-            
+            Follow-up Expectation: Always include at least two follow-up emails with unique angles and CTAs when follow_up_sequence is true
+
             EMAIL GENERATION REQUIREMENTS:
 
             Sender & Signature:
@@ -374,6 +473,119 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
                 timing_schedule=email_sequence.timing_schedule or [3, 7, 14],  # Default timing
                 conversion_strategy=email_sequence.follow_up_strategy
             )
+            primary_value_text = (
+                primary_value
+                if isinstance(primary_value, str)
+                else str(primary_value)
+            )
+
+            # Ensure we have enough distinct follow-up plans with meaningful variation
+            deduped_plans: List[FollowUpEmailPlan] = []
+            seen_subjects = set()
+
+            def _add_plan(plan: FollowUpEmailPlan) -> None:
+                subject = (plan.subject or "").strip()
+                normalized = subject.lower()
+
+                if not subject:
+                    base_subject = f"Follow-up {len(deduped_plans) + 1}"
+                    candidate = base_subject
+                    suffix = 1
+                    while candidate.lower() in seen_subjects:
+                        suffix += 1
+                        candidate = f"{base_subject} ({suffix})"
+                    plan = plan.model_copy(update={"subject": candidate})
+                    subject = candidate
+                    normalized = subject.lower()
+
+                if normalized in seen_subjects:
+                    return
+
+                seen_subjects.add(normalized)
+                deduped_plans.append(plan)
+
+            for plan in follow_up_plans:
+                _add_plan(plan)
+
+            if len(deduped_plans) < MIN_FOLLOW_UP_EMAILS:
+                fallback_plans = _generate_fallback_followups(
+                    lead=lead,
+                    business_profile=business_profile,
+                    pain_points=pain_points,
+                    value_matches=value_matches,
+                    follow_up_strategy=email_sequence.follow_up_strategy,
+                    call_to_action=requirements.call_to_action,
+                )
+
+                for fallback_plan in fallback_plans:
+                    subject = (fallback_plan.subject or "").strip()
+                    if subject and subject.lower() in seen_subjects:
+                        unique_subject = (
+                            f"{subject} ({len(deduped_plans) + 1})"
+                        )
+                        fallback_plan = fallback_plan.model_copy(
+                            update={"subject": unique_subject}
+                        )
+
+                    _add_plan(fallback_plan)
+
+                    if len(deduped_plans) >= MIN_FOLLOW_UP_EMAILS:
+                        break
+
+            while len(deduped_plans) < MIN_FOLLOW_UP_EMAILS:
+                index = len(deduped_plans) + 1
+                auto_subject = f"Follow-up {index}"
+                if auto_subject.lower() in seen_subjects:
+                    auto_subject = f"Follow-up {index} ({company_name})"
+
+                auto_plan = FollowUpEmailPlan(
+                    subject=auto_subject,
+                    body=(
+                        f"Hi {contact_name},\n\n"
+                        "Just wanted to keep the conversation going around how we can "
+                        f"support {primary_value_text.lower()}. "
+                        "Let me know if there's someone else on the team I should loop in "
+                        "or if there's a better time to reconnect."
+                    ),
+                    objective="Maintain momentum and confirm next steps",
+                    call_to_action=requirements.call_to_action,
+                )
+
+                seen_subjects.add(auto_subject.lower())
+                deduped_plans.append(auto_plan)
+
+            if deduped_plans:
+                follow_up_emails: List[EmailContent] = []
+                for i, follow_up in enumerate(deduped_plans):
+                    subject = follow_up.subject or f"Follow-up {i + 1}"
+                    body_parts = [follow_up.body.strip()]
+                    if follow_up.call_to_action:
+                        body_parts.append(follow_up.call_to_action.strip())
+                    body_text = "\n\n".join(part for part in body_parts if part)
+
+                    follow_up_email = EmailContent(
+                        subject=subject,
+                        body=body_text,
+                        personalization_notes=email_sequence.personalization_elements,
+                        estimated_effectiveness=email_sequence.estimated_effectiveness * 0.8,
+                    )
+                    follow_up_emails.append(follow_up_email)
+
+                timing_schedule = email_sequence.timing_schedule or [3, 7, 14]
+                if len(timing_schedule) < len(follow_up_emails):
+                    default_timings = [3, 7, 14, 21, 28]
+                    timing_schedule = (timing_schedule + default_timings)[
+                        : len(follow_up_emails)
+                    ]
+                else:
+                    timing_schedule = timing_schedule[:len(follow_up_emails)]
+
+                follow_up_sequence = FollowUpSequence(
+                    sequence_id=f"sequence_{state['request_id']}",
+                    emails=follow_up_emails,
+                    timing_schedule=timing_schedule,
+                    conversion_strategy=email_sequence.follow_up_strategy or "Multi-touch nurture",
+                )
         
         # Create comprehensive agent result
         agent_result = AgentResult(
