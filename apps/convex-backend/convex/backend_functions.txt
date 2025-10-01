@@ -14,16 +14,6 @@ getRequest
 getEmailGenerationStats
 getAgentPerformanceStats
 getRecentAIActivity
-=== ./testQuery.ts ===
-hello
-=== ./auth/index.ts ===
-auth
-getUserByClerkId
-validateApiKey
-handleUserCreated
-handleUserUpdated
-handleUserDeleted
-updateApiKeyUsage
 === ./leads/queries.ts ===
 getLeadsBySearch
 exportLeads
@@ -37,8 +27,6 @@ deleteLead
 === ./leads/enrichment.ts ===
 enrichLead
 handleEnrichmentWebhook
-=== ./debug.ts ===
-debugAuth
 === ./admin/queries.ts ===
 getAdminMetrics
 getRecentActivity
