@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ConvexProvider } from "@/components/providers/ConvexProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { GlobalErrorBoundary } from "@/components/GlobalErrorBoundary";
+import { AppThemeEffect } from "@/components/AppThemeEffect";
 
 // Public Pages
 import LandingPage from "./pages/LandingPage";
@@ -36,6 +37,7 @@ const App = () => (
   <GlobalErrorBoundary>
     <ErrorBoundary>
       <ConvexProvider>
+        <AppThemeEffect />
         <QueryClientProvider client={queryClient}>
           <TooltipProvider>
             <Toaster />

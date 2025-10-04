@@ -57,6 +57,7 @@ export const updatePreferences = mutation({
     emailNotifications: v.optional(v.boolean()),
     language: v.optional(v.string()),
     timezone: v.optional(v.string()),
+    theme: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
@@ -73,6 +74,7 @@ export const updatePreferences = mutation({
       emailNotifications: true,
       language: "en",
       timezone: "UTC",
+      theme: "harborlight",
     };
 
     const newPreferences = {
