@@ -14,7 +14,6 @@ import {
   Target,
   Users,
   TrendingUp,
-  CheckCircle,
   CreditCard,
   UserCheck,
   Building2,
@@ -365,7 +364,6 @@ function LeadEternityDashboardContent() {
           </div>
 
           <div className="ml-auto flex flex-col items-end gap-4 text-right">
-            <DashboardHelpWidget />
             <div className="flex items-center gap-4">
               <Badge variant="secondary" className="bg-green-100 text-green-800">
                 <Sparkles className="mr-1 h-3 w-3" />
@@ -386,8 +384,8 @@ function LeadEternityDashboardContent() {
       </div>
 
       <div className="flex">
-        <div className="w-64 border-r border-border bg-card">
-          <nav className="space-y-2 p-4">
+        <div className="w-64 border-r border-border bg-card flex flex-col">
+          <nav className="space-y-2 p-4 flex-1">
             <Button
               variant={currentTab === "pipeline" ? "default" : "ghost"}
               className="w-full justify-start"
@@ -464,32 +462,8 @@ function LeadEternityDashboardContent() {
               </Button>
             )}
           </nav>
-
-          {/* Recent Activity */}
           <div className="border-t border-border p-4">
-            <h3 className="mb-3 text-sm font-semibold">Recent Activity</h3>
-            <div className="space-y-3">
-              {pipelineEmails.slice(0, 3).map((email, index) => (
-                <div key={index} className="text-xs">
-                  <div className="mb-1 flex items-center gap-2">
-                    <CheckCircle className="h-3 w-3 text-green-500" />
-                    <span className="font-medium">Email Generated</span>
-                  </div>
-                  <div className="truncate text-muted-foreground">
-                    {email.primary_email.subject}
-                  </div>
-                  <div className="text-muted-foreground">
-                    {(email.relevance_score * 100).toFixed(0)}% relevance
-                  </div>
-                </div>
-              ))}
-
-              {pipelineEmails.length === 0 && (
-                <div className="text-xs text-muted-foreground">
-                  No recent activity
-                </div>
-              )}
-            </div>
+            <DashboardHelpWidget />
           </div>
         </div>
 
