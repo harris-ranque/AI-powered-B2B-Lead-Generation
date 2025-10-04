@@ -1874,7 +1874,8 @@ function AdminDashboardComponent() {
                 </>
               ) : (
                 <div className="text-sm text-muted-foreground">
-                  No health data available. Health checks run every 2 minutes.
+                  No health data available. Health checks run when a lead generation
+                  workflow begins.
                 </div>
               )}
             </CardContent>

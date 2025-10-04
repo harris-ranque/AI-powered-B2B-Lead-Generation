@@ -49,6 +49,36 @@ export const searchGoogleMaps = action({
       },
     );
 
+    // Run a LangGraph health check before beginning the lead generation pipeline
+    try {
+      const healthCheckResult = await ctx.runAction(
+        internal.langgraph.health.checkLangGraphHealth,
+        {},
+      );
+
+      const logLevel = healthCheckResult?.success ? "info" : "warn";
+      logWithCorrelation(
+        logLevel,
+        correlation,
+        "🏥 LangGraph health check executed prior to lead generation",
+        {
+          success: healthCheckResult?.success ?? false,
+          status: healthCheckResult?.status ?? "unknown",
+          error: healthCheckResult?.error,
+        },
+      );
+    } catch (error) {
+      logWithCorrelation(
+        "error",
+        correlation,
+        "❌ Failed to run LangGraph health check before lead generation",
+        {
+          error:
+            error instanceof Error ? error.message : JSON.stringify(error),
+        },
+      );
+    }
+
     // Check emergency stop first
     const systemConfig = await ctx.runQuery(
       api.admin.queries.getSystemConfiguration,
