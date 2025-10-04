@@ -3,11 +3,6 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-// LangGraph Worker Health Check - Every 2 minutes
-crons.interval(
-  "check_langgraph_health",
-  { minutes: 2 },
-  internal.langgraph.health.checkLangGraphHealth,
-);
+// Health checks are now performed on-demand when lead generation starts.
 
 export default crons;
