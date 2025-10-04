@@ -7,8 +7,68 @@ All colors MUST be HSL.
 */
 
 @layer base {
-  :root {
-    /* Neo-Futuristic Theme - Deep Blue-Green Base */
+  :root,
+  :root[data-app-theme="harborlight"] {
+    /* Calm, trustworthy palette for Harborlight Pro */
+    --background: 218 33% 97%;
+    --foreground: 222 47% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 12%;
+
+    --primary: 222 86% 55%;
+    --primary-foreground: 220 30% 98%;
+
+    --secondary: 221 27% 72%;
+    --secondary-foreground: 222 47% 24%;
+
+    --accent: 199 72% 47%;
+    --accent-foreground: 210 40% 98%;
+
+    --muted: 216 23% 92%;
+    --muted-foreground: 222 16% 40%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 16% 84%;
+    --input: 220 16% 84%;
+    --ring: 222 86% 55%;
+
+    --radius: 0.75rem;
+
+    /* Sidebar variables */
+    --sidebar-background: 220 29% 96%;
+    --sidebar-foreground: 222 36% 22%;
+    --sidebar-primary: 222 86% 55%;
+    --sidebar-primary-foreground: 220 30% 98%;
+    --sidebar-accent: 216 29% 92%;
+    --sidebar-accent-foreground: 222 36% 28%;
+    --sidebar-border: 215 18% 85%;
+    --sidebar-ring: 222 86% 55%;
+
+    /* Support legacy neon utility classes with calmer tokens */
+    --neon-lime: 222 86% 55%;
+    --neon-yellow: 221 32% 60%;
+    --neon-cyan: 199 72% 47%;
+
+    --glow-lime: 222 86% 55% / 0.18;
+    --glow-yellow: 221 32% 60% / 0.16;
+    --glow-cyan: 199 72% 47% / 0.16;
+
+    --glass-surface: 0 0% 100% / 0.7;
+    --glass-border: 222 18% 80% / 0.6;
+    --surface-overlay: 215 25% 92% / 0.6;
+
+    --shadow-soft: 222 47% 18% / 0.08;
+    --shadow-glow: 222 86% 55% / 0.12;
+  }
+
+  :root[data-app-theme="neon-pulse"] {
+    /* Neon Pulse legacy palette */
     --background: 195 85% 4%;
     --foreground: 0 0% 95%;
 
@@ -18,14 +78,13 @@ All colors MUST be HSL.
     --popover: 195 80% 6% / 0.95;
     --popover-foreground: 0 0% 95%;
 
-    /* Neon Accent Colors */
-    --primary: 154 100% 50%;  /* Electric Lime #00FFA3 */
+    --primary: 154 100% 50%;
     --primary-foreground: 195 85% 4%;
 
-    --secondary: 51 100% 50%;  /* Neon Yellow #FFD600 */
+    --secondary: 51 100% 50%;
     --secondary-foreground: 195 85% 4%;
 
-    --accent: 188 100% 50%;  /* Cyan Glow #00E0FF */
+    --accent: 188 100% 50%;
     --accent-foreground: 195 85% 4%;
 
     --muted: 195 60% 8%;
@@ -50,24 +109,60 @@ All colors MUST be HSL.
     --sidebar-border: 195 50% 15% / 0.3;
     --sidebar-ring: 154 100% 50%;
 
-    /* Neo-Futuristic Custom Colors */
-    --neon-lime: 154 100% 50%;        /* #00FFA3 */
-    --neon-yellow: 51 100% 50%;       /* #FFD600 */
-    --neon-cyan: 188 100% 50%;        /* #00E0FF */
-    
+    /* Neon utility colors */
+    --neon-lime: 154 100% 50%;
+    --neon-yellow: 51 100% 50%;
+    --neon-cyan: 188 100% 50%;
+
     --glow-lime: 154 100% 50% / 0.3;
     --glow-yellow: 51 100% 50% / 0.3;
     --glow-cyan: 188 100% 50% / 0.3;
-    
+
     --glass-surface: 195 80% 6% / 0.1;
     --glass-border: 154 100% 50% / 0.2;
     --surface-overlay: 195 70% 8% / 0.05;
-    
+
     --shadow-soft: 195 100% 3% / 0.8;
     --shadow-glow: 154 100% 50% / 0.15;
   }
 
-  .dark {
+  .dark,
+  :root[data-app-theme="harborlight"].dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 96%;
+
+    --card: 222 32% 16%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 32% 16%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 210 90% 60%;
+    --primary-foreground: 222 47% 12%;
+
+    --secondary: 222 23% 24%;
+    --secondary-foreground: 210 40% 92%;
+
+    --muted: 222 23% 24%;
+    --muted-foreground: 220 14% 70%;
+
+    --accent: 199 72% 47%;
+    --accent-foreground: 222 47% 12%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 222 23% 30%;
+    --input: 222 23% 26%;
+    --ring: 210 90% 60%;
+
+    --glass-surface: 222 32% 18% / 0.68;
+    --glass-border: 222 24% 46% / 0.4;
+    --surface-overlay: 222 30% 22% / 0.52;
+    --shadow-soft: 222 84% 8% / 0.45;
+  }
+
+  :root[data-app-theme="neon-pulse"].dark {
     --background: 240 10% 8%;
     --foreground: 0 0% 95%;
 
@@ -98,6 +193,8 @@ All colors MUST be HSL.
   }
 }
 
+
+
 @layer base {
   * {
     @apply border-border;
@@ -106,21 +203,33 @@ All colors MUST be HSL.
   body {
     @apply bg-background text-foreground;
     font-family: 'Inter', 'Orbitron', system-ui, -apple-system, sans-serif;
-    background: linear-gradient(135deg, hsl(195 85% 4%) 0%, hsl(210 80% 6%) 50%, hsl(195 75% 8%) 100%);
+    background-color: hsl(var(--background));
     min-height: 100vh;
+  }
+
+  :root[data-app-theme="harborlight"] body {
+    background-color: hsl(var(--background));
+  }
+
+  :root[data-app-theme="neon-pulse"] body {
+    background: linear-gradient(
+      135deg,
+      hsl(195 85% 4%) 0%,
+      hsl(210 80% 6%) 50%,
+      hsl(195 75% 8%) 100%
+    );
     position: relative;
     overflow-x: hidden;
   }
 
-  /* Neo-futuristic background with noise texture and radial overlays */
-  body::before {
+  :root[data-app-theme="neon-pulse"] body::before {
     content: '';
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: 
+    background:
       radial-gradient(circle at 25% 25%, hsl(var(--neon-lime) / 0.05) 0%, transparent 50%),
       radial-gradient(circle at 75% 75%, hsl(var(--neon-cyan) / 0.03) 0%, transparent 50%),
       radial-gradient(circle at 50% 100%, hsl(var(--neon-yellow) / 0.02) 0%, transparent 70%),
@@ -128,9 +237,8 @@ All colors MUST be HSL.
     pointer-events: none;
     z-index: 0;
   }
-  
-  /* Additional noise grain overlay */
-  body::after {
+
+  :root[data-app-theme="neon-pulse"] body::after {
     content: '';
     position: fixed;
     top: 0;
@@ -144,14 +252,14 @@ All colors MUST be HSL.
 }
 
 @layer components {
-  /* Neo-Futuristic Typography */
+  /* Typographic hierarchy */
   .heading-xl {
     font-family: 'Orbitron', sans-serif;
     font-weight: 800;
     font-size: 3rem;
     line-height: 1.1;
     letter-spacing: -0.02em;
-    background: linear-gradient(135deg, hsl(var(--neon-lime)), hsl(var(--neon-cyan)));
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -183,73 +291,67 @@ All colors MUST be HSL.
     color: hsl(var(--muted-foreground));
   }
 
-  /* Neon Gradient Backgrounds */
+  /* Gradient utilities */
   .gradient-neon-primary {
-    background: linear-gradient(135deg, hsl(var(--neon-lime)), hsl(var(--neon-cyan)));
-  }
-  
-  .gradient-neon-secondary {
-    background: linear-gradient(135deg, hsl(var(--neon-yellow)), hsl(var(--neon-lime)));
-  }
-  
-  .gradient-surface {
-    background: hsl(var(--glass-surface));
-    backdrop-filter: blur(20px);
-    border: 1px solid hsl(var(--glass-border));
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
   }
 
-  /* Glassmorphism Cards */
+  .gradient-neon-secondary {
+    background: linear-gradient(135deg, hsl(var(--secondary)), hsl(var(--primary)));
+  }
+
+  .gradient-surface {
+    background: hsl(var(--glass-surface));
+    backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--border));
+  }
+
+  /* Card surfaces */
   .glass-card {
     background: hsl(var(--card));
-    backdrop-filter: blur(24px);
-    border: 1px solid hsl(var(--glass-border));
-    box-shadow: 
-      0 8px 32px hsl(var(--shadow-soft)),
-      inset 0 1px 0 hsl(var(--glass-border)),
-      0 0 24px hsl(var(--shadow-glow));
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 12px 30px -12px hsl(222 47% 20% / 0.25);
+    transition: all 0.2s ease-in-out;
   }
-  
+
   .glass-card:hover {
-    border-color: hsl(var(--neon-lime) / 0.4);
-    box-shadow: 
-      0 12px 40px hsl(var(--shadow-soft)),
-      inset 0 1px 0 hsl(var(--neon-lime) / 0.3),
-      0 0 32px hsl(var(--glow-lime));
+    border-color: hsl(var(--primary) / 0.4);
+    box-shadow: 0 16px 35px -14px hsl(222 47% 20% / 0.3);
     transform: translateY(-2px);
   }
 
   /* Neon Glow Effects */
   .glow-neon-lime {
-    box-shadow: 0 0 20px hsl(var(--glow-lime)), 0 0 40px hsl(var(--glow-lime)), 0 0 60px hsl(var(--glow-lime));
+    box-shadow: 0 10px 25px -10px hsl(var(--glow-lime));
   }
-  
+
   .glow-neon-yellow {
-    box-shadow: 0 0 20px hsl(var(--glow-yellow)), 0 0 40px hsl(var(--glow-yellow));
+    box-shadow: 0 10px 24px -12px hsl(var(--glow-yellow));
   }
-  
+
   .glow-neon-cyan {
-    box-shadow: 0 0 20px hsl(var(--glow-cyan)), 0 0 40px hsl(var(--glow-cyan));
+    box-shadow: 0 10px 24px -12px hsl(var(--glow-cyan));
   }
-  
+
   .glow-soft {
-    box-shadow: 0 4px 20px hsl(var(--shadow-glow));
+    box-shadow: 0 8px 24px -12px hsl(var(--shadow-glow));
   }
 
   /* Interactive Elements */
   .neon-border {
-    border: 1px solid hsl(var(--glass-border));
-    transition: all 0.3s ease;
+    border: 1px solid hsl(var(--border));
+    transition: all 0.2s ease-in-out;
   }
-  
+
   .neon-border:hover {
-    border-color: hsl(var(--neon-lime) / 0.6);
-    box-shadow: 0 0 16px hsl(var(--glow-lime));
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 4px hsl(var(--primary) / 0.08);
   }
-  
+
   .neon-border:focus-within {
-    border-color: hsl(var(--neon-cyan) / 0.8);
-    box-shadow: 0 0 20px hsl(var(--glow-cyan));
+    border-color: hsl(var(--accent));
+    box-shadow: 0 0 0 4px hsl(var(--accent) / 0.12);
   }
 
   /* Soft Shadows for Flat Design */
@@ -271,7 +373,7 @@ All colors MUST be HSL.
   }
   
   .hover-glow:hover {
-    box-shadow: 0 0 24px hsl(var(--glow-lime));
+    box-shadow: 0 12px 26px -16px hsl(var(--glow-lime));
   }
 
   /* Pipeline-specific animations */
@@ -299,14 +401,14 @@ All colors MUST be HSL.
 
   /* Stepper animations */
   .stepper-progress-line {
-    background: linear-gradient(90deg, 
-      hsl(var(--neon-lime)) 0%, 
-      hsl(var(--neon-cyan)) 100%
+    background: linear-gradient(90deg,
+      hsl(var(--primary)) 0%,
+      hsl(var(--accent)) 100%
     );
     position: relative;
     overflow: hidden;
   }
-  
+
   .stepper-progress-line::after {
     content: '';
     position: absolute;
@@ -314,14 +416,14 @@ All colors MUST be HSL.
     left: -100%;
     width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, 
-      transparent 0%, 
-      hsl(var(--neon-lime) / 0.6) 50%, 
+    background: linear-gradient(90deg,
+      transparent 0%,
+      hsl(var(--primary) / 0.3) 50%,
       transparent 100%
     );
-    animation: shimmer 2s infinite;
+    animation: shimmer 3s ease-in-out infinite;
   }
-  
+
   @keyframes shimmer {
     0% { transform: translateX(-100%); }
     100% { transform: translateX(200%); }
@@ -350,14 +452,14 @@ All colors MUST be HSL.
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(90deg, 
-      transparent 0%, 
-      hsl(var(--neon-lime) / 0.3) 50%, 
+    background: linear-gradient(90deg,
+      transparent 0%,
+      hsl(var(--primary) / 0.2) 50%,
       transparent 100%
     );
-    animation: progress-sweep 2s ease-in-out infinite;
+    animation: progress-sweep 3s ease-in-out infinite;
   }
-  
+
   @keyframes progress-sweep {
     0% { transform: translateX(-100%); }
     100% { transform: translateX(100%); }
@@ -370,7 +472,7 @@ All colors MUST be HSL.
   
   @keyframes stage-complete {
     0% { transform: scale(1); }
-    50% { transform: scale(1.1); box-shadow: 0 0 40px hsl(var(--glow-lime)); }
+    50% { transform: scale(1.06); box-shadow: 0 12px 26px -16px hsl(var(--glow-lime)); }
     100% { transform: scale(1); }
   }
 }

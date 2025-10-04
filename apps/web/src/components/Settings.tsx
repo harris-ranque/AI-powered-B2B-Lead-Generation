@@ -20,6 +20,19 @@ import {
   Mail,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  APP_THEME_OPTIONS,
+  DEFAULT_APP_THEME,
+  applyAppTheme,
+  type AppThemeKey,
+} from "@/lib/appTheme";
+
+type PreferencesState = {
+  emailNotifications: boolean;
+  language: string;
+  timezone: string;
+  theme: AppThemeKey;
+};
 
 export function Settings() {
   const [isLoading, setIsLoading] = useState(false);
@@ -32,6 +45,11 @@ export function Settings() {
     api.notifications.queries.getNotificationCounts,
   );
 
+  const resolveThemePreference = (value: unknown): AppThemeKey => {
+    const match = APP_THEME_OPTIONS.find((option) => option.value === value);
+    return match ? match.value : DEFAULT_APP_THEME;
+  };
+
   // Mutations
   const updatePreferences = useMutation(api.users.mutations.updatePreferences);
   const updateProfile = useMutation(api.users.mutations.updateProfile);
@@ -40,10 +58,11 @@ export function Settings() {
   );
 
   // Local state for form data
-  const [preferences, setPreferences] = useState({
+  const [preferences, setPreferences] = useState<PreferencesState>({
     emailNotifications: true,
     language: "en",
     timezone: "UTC",
+    theme: DEFAULT_APP_THEME,
   });
 
   const [profileData, setProfileData] = useState({
@@ -80,7 +99,20 @@ export function Settings() {
   // Update local state when data loads
   useEffect(() => {
     if (userPreferences) {
-      setPreferences(userPreferences);
+      const theme = resolveThemePreference(
+        (userPreferences as { theme?: AppThemeKey }).theme,
+      );
+
+      setPreferences((prev) => ({
+        ...prev,
+        emailNotifications:
+          userPreferences.emailNotifications ?? prev.emailNotifications,
+        language: userPreferences.language ?? prev.language,
+        timezone: userPreferences.timezone ?? prev.timezone,
+        theme,
+      }));
+
+      applyAppTheme(theme);
     }
   }, [userPreferences]);
 
@@ -124,12 +156,15 @@ export function Settings() {
   }, [businessProfile, userData]);
 
   const handlePreferencesUpdate = async (
-    updates: Partial<typeof preferences>,
+    updates: Partial<PreferencesState>,
   ) => {
     setIsLoading(true);
     try {
       await updatePreferences(updates);
       setPreferences((prev) => ({ ...prev, ...updates }));
+      if (updates.theme) {
+        applyAppTheme(resolveThemePreference(updates.theme));
+      }
       toast.success("Preferences updated successfully");
     } catch (error) {
       toast.error("Failed to update preferences");
@@ -228,6 +263,16 @@ export function Settings() {
       setIsLoading(false);
     }
   };
+
+  const handleThemeChange = (value: string) => {
+    const theme = resolveThemePreference(value);
+    handlePreferencesUpdate({ theme });
+  };
+
+  const activeThemeOption =
+    APP_THEME_OPTIONS.find((option) => option.value === preferences.theme) ||
+    APP_THEME_OPTIONS[0];
+  const themeSelectId = "app-theme-select";
 
   if (!userData || !userPreferences) {
     return (
@@ -564,21 +609,44 @@ export function Settings() {
             </div>
 
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-medium text-foreground">
-                    Theme Preference
+              <div className="space-y-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="font-medium text-foreground">
+                      Theme Preference
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {activeThemeOption.description}
+                    </div>
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    Currently managed by system preference
-                  </div>
+                  <Badge
+                    variant="secondary"
+                    className="bg-primary/10 text-primary whitespace-nowrap"
+                  >
+                    {activeThemeOption.label}
+                  </Badge>
                 </div>
-                <Badge
-                  variant="secondary"
-                  className="bg-blue-500/10 text-blue-500"
-                >
-                  System
-                </Badge>
+                <div className="space-y-2">
+                  <label
+                    htmlFor={themeSelectId}
+                    className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                  >
+                    Choose your vibe
+                  </label>
+                  <select
+                    id={themeSelectId}
+                    className="w-full p-2 bg-input border border-border rounded-md text-sm"
+                    value={preferences.theme}
+                    onChange={(e) => handleThemeChange(e.target.value)}
+                    disabled={isLoading}
+                  >
+                    {APP_THEME_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <Separator className="bg-border" />

@@ -3,6 +3,7 @@ import "./sentry";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { initializeStoredAppTheme } from "./lib/appTheme";
 
 // Initialize global error handling
 import "./lib/error-handler";
@@ -31,6 +32,8 @@ logger.info("Application starting up", {
   clerkError: clerkValidation.error,
   hasClerkKey: Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY),
 });
+
+initializeStoredAppTheme();
 
 // Trigger redeploy
 createRoot(document.getElementById("root")!).render(<App />);
