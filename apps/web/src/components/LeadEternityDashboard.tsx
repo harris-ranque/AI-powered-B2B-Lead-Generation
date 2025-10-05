@@ -363,13 +363,13 @@ function LeadEternityDashboardContent() {
 
   // Avoid flashing onboarding while loading profile
   if (isProfileLoading) {
-    return <div className="min-h-screen bg-background" />;
+    return <div className="harborlight-shell min-h-screen bg-background" />;
   }
 
   // Show onboarding if not completed (after loading)
   if (!hasCompletedOnboarding) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="harborlight-shell min-h-screen bg-background">
         <BusinessProfileWizard
           onComplete={handleCompleteOnboarding}
           onSkip={handleSkipOnboarding}
@@ -379,7 +379,7 @@ function LeadEternityDashboardContent() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="harborlight-shell min-h-screen bg-background">
       {componentError && (
         <div className="px-6 pt-6">
           <Alert variant="destructive">
@@ -393,14 +393,16 @@ function LeadEternityDashboardContent() {
           </Alert>
         </div>
       )}
-      <div className="border-b border-border bg-card">
-        <div className="flex items-center px-6 py-4">
+      <div className="harborlight-topbar border-b border-border">
+        <div className="harborlight-topbar-inner flex items-center px-6 py-5">
           <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <Bot className="h-8 w-8 text-primary" />
+            <div className="flex items-center space-x-3">
+              <Bot className="harborlight-logo-icon h-10 w-10" aria-hidden="true" />
               <div>
-                <h1 className="text-xl font-bold">Genni</h1>
-                <p className="text-xs text-muted-foreground">
+                <h1 className="text-2xl font-display font-semibold tracking-tight text-foreground">
+                  Genni
+                </h1>
+                <p className="text-[0.65rem] font-medium uppercase tracking-[0.32em] text-muted-foreground opacity-90">
                   AI-Powered Lead Generation
                 </p>
               </div>
@@ -418,15 +420,26 @@ function LeadEternityDashboardContent() {
 
           <div className="ml-auto flex flex-col items-end gap-4 text-right">
             <div className="flex items-center gap-4">
-              <Badge variant="secondary" className="bg-green-100 text-green-800">
-                <Sparkles className="mr-1 h-3 w-3" />
-                AI System Active
+              <Badge variant="secondary" className="ai-activity-badge">
+                <Sparkles className="ai-badge-icon h-3 w-3" aria-hidden="true" />
+                <span>AI System Active</span>
               </Badge>
 
-              <div className="text-right text-sm">
-                <div className="font-medium">5 AI Agents</div>
-                <div className="text-xs text-muted-foreground">
-                  Ready for personalization
+              <div
+                className="ai-agent-indicator"
+                aria-live="polite"
+                aria-label="5 AI agents active"
+              >
+                <div className="ai-agent-orb" aria-hidden="true">
+                  <span className="ai-agent-count">5</span>
+                </div>
+                <div className="text-right">
+                  <div className="ai-agent-label text-sm leading-tight">
+                    AI Agents Active
+                  </div>
+                  <div className="ai-agent-subtitle text-xs">
+                    Ready for personalization
+                  </div>
                 </div>
               </div>
 
@@ -437,8 +450,8 @@ function LeadEternityDashboardContent() {
       </div>
 
       <div className="flex">
-        <div className="w-64 border-r border-border bg-card flex flex-col">
-          <nav className="space-y-2 p-4 flex-1">
+        <div className="harborlight-sidebar w-64 border-r border-border bg-card flex flex-col">
+          <nav className="harborlight-sidebar-nav space-y-2 p-4 flex-1">
             <Button
               variant={currentTab === "overview" ? "default" : "ghost"}
               className="w-full justify-start"
@@ -450,7 +463,7 @@ function LeadEternityDashboardContent() {
 
             <Button
               variant={currentTab === "pipeline" ? "default" : "ghost"}
-              className="w-full justify-start"
+              className="harborlight-nav-item w-full justify-start"
               onClick={() => handleTabChange("pipeline")}
             >
               <Search className="mr-2 h-4 w-4" />
@@ -459,7 +472,7 @@ function LeadEternityDashboardContent() {
 
             <Button
               variant={currentTab === "search-history" ? "default" : "ghost"}
-              className="w-full justify-start"
+              className="harborlight-nav-item w-full justify-start"
               onClick={() => handleTabChange("search-history")}
             >
               <Activity className="mr-2 h-4 w-4" />
@@ -480,7 +493,7 @@ function LeadEternityDashboardContent() {
 
             <Button
               variant={currentTab === "profile" ? "default" : "ghost"}
-              className="w-full justify-start"
+              className="harborlight-nav-item w-full justify-start"
               onClick={() => handleTabChange("profile")}
             >
               <Building2 className="mr-2 h-4 w-4" />
@@ -493,8 +506,29 @@ function LeadEternityDashboardContent() {
             </Button>
 
             <Button
+              variant={currentTab === "credits" ? "default" : "ghost"}
+              className="harborlight-nav-item w-full justify-start"
+              onClick={() => handleTabChange("credits")}
+            >
+              <CreditCard className="mr-2 h-4 w-4" />
+              Credits & Billing
+              <Badge variant="secondary" className="ml-auto text-xs">
+                {userCredits}
+              </Badge>
+            </Button>
+
+            <Button
+              variant={currentTab === "dashboard" ? "default" : "ghost"}
+              className="harborlight-nav-item w-full justify-start"
+              onClick={() => handleTabChange("dashboard")}
+            >
+              <BarChart3 className="mr-2 h-4 w-4" />
+              Analytics
+            </Button>
+
+            <Button
               variant={currentTab === "settings" ? "default" : "ghost"}
-              className="w-full justify-start"
+              className="harborlight-nav-item w-full justify-start"
               onClick={() => handleTabChange("settings")}
             >
               <Settings className="mr-2 h-4 w-4" />
@@ -504,7 +538,7 @@ function LeadEternityDashboardContent() {
             {isAdmin && (
               <Button
                 variant={currentTab === "admin" ? "default" : "ghost"}
-                className="w-full justify-start"
+                className="harborlight-nav-item w-full justify-start"
                 onClick={() => handleTabChange("admin")}
               >
                 <UserCheck className="mr-2 h-4 w-4" />
@@ -520,31 +554,7 @@ function LeadEternityDashboardContent() {
           </div>
         </div>
 
-        <div className="flex-1">
-          {currentTab === "overview" && (
-            <div className="p-6">
-              <DashboardOverview
-                onNavigate={handleTabChange}
-                userName={user?.firstName ?? (user as { first_name?: string })?.first_name ?? user?.name}
-                businessName={
-                  profile?.companyName ||
-                  (profile as { businessName?: string } | null)?.businessName ||
-                  null
-                }
-                planId={normalizedPlan}
-                credits={userCredits}
-                leadStats={leadStatsSummary}
-                emailCount={pipelineEmails.length}
-                searches={searches}
-                usageSummary={usageSummary}
-                pipelineStage={state.currentStage}
-                hasCompletedProfile={hasCompletedOnboarding}
-                hasNewEmails={pipelineEmails.length > 0}
-                isAdmin={isAdmin}
-              />
-            </div>
-          )}
-
+        <div className="harborlight-main flex-1">
           {currentTab === "pipeline" && (
             <div className="p-6">
               <PipelineOrchestrator
@@ -558,7 +568,9 @@ function LeadEternityDashboardContent() {
           {currentTab === "profile" && (
             <div className="p-6">
               <div className="mb-6">
-                <h2 className="mb-2 text-2xl font-bold">Business Profile</h2>
+                <h2 className="mb-2 text-3xl font-display font-semibold tracking-tight">
+                  Business Profile
+                </h2>
                 <p className="text-muted-foreground">
                   Update your business information to improve AI email
                   personalization.
@@ -579,10 +591,49 @@ function LeadEternityDashboardContent() {
             </div>
           )}
 
+          {currentTab === "credits" && (
+            <div className="p-6">
+              <div className="mb-6">
+                <h2 className="mb-2 text-3xl font-display font-semibold tracking-tight">
+                  Credits & Billing
+                </h2>
+                <p className="text-muted-foreground">
+                  Manage your credits, view usage statistics, and upgrade your
+                  plan.
+                </p>
+              </div>
+
+              <CreditManager
+                currentCredits={userCredits || 0}
+                currentPlan={userPlan}
+                usageStats={{
+                  currentPeriodUsage: usage?.currentPeriodUsage || 0,
+                  totalCreditsUsed: usage?.totalCreditsUsed || 0,
+                  searchesThisMonth:
+                    searches?.filter((s) => {
+                      const now = new Date();
+                      const searchDate = new Date(s._creationTime);
+                      return (
+                        searchDate.getMonth() === now.getMonth() &&
+                        searchDate.getFullYear() === now.getFullYear()
+                      );
+                    }).length || 0,
+                  leadsGenerated: leadStats?.totalLeads || 0,
+                  emailsGenerated: pipelineEmails.length,
+                  avgCostPerLead: usage?.avgCostPerLead || 0,
+                }}
+                onUpgrade={handleUpgradePlan}
+                onPurchaseCredits={handlePurchaseCredits}
+              />
+            </div>
+          )}
+
           {currentTab === "search-history" && (
             <div className="p-6">
               <div className="mb-6">
-                <h2 className="mb-2 text-2xl font-bold">Lead Search History</h2>
+                <h2 className="mb-2 text-3xl font-display font-semibold tracking-tight">
+                  Lead Search History
+                </h2>
                 <p className="text-muted-foreground">
                   Review past searches, see lead counts, and export CSVs.
                 </p>
@@ -593,24 +644,25 @@ function LeadEternityDashboardContent() {
 
           {currentTab === "performance" && (
             <div className="p-6">
-              <PerformanceWorkspace
-                userCredits={userCredits}
-                userPlan={normalizedPlan}
-                usageSummary={usageSummary}
-                leadStats={leadStatsSummary}
-                searches={searches}
-                emailCount={pipelineEmails.length}
-                onNavigate={handleTabChange}
-                onUpgradePlan={handleUpgradePlan}
-                onPurchaseCredits={handlePurchaseCredits}
-              />
+              <div className="mb-6">
+                <h2 className="mb-2 text-3xl font-display font-semibold tracking-tight">
+                  Analytics Dashboard
+                </h2>
+                <p className="text-muted-foreground">
+                  Track your lead generation performance and AI email
+                  effectiveness.
+                </p>
+              </div>
+              <Dashboard />
             </div>
           )}
 
           {currentTab === "settings" && (
             <div className="p-6">
               <div className="mb-6">
-                <h2 className="mb-2 text-2xl font-bold">Settings</h2>
+                <h2 className="mb-2 text-3xl font-display font-semibold tracking-tight">
+                  Settings
+                </h2>
                 <p className="text-muted-foreground">
                   Configure your Genni platform preferences and AI settings.
                 </p>
