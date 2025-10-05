@@ -22,5 +22,6 @@ export function useLead(leadId: Id<"leads"> | undefined): UseLeadResult {
 
 export function useUserLeads(): UseUserLeadsResult {
   const context = useUserDataMaybe();
-  return context?.userLeads ?? useUserLeadsBase();
+  const fallbackLeads = useUserLeadsBase();
+  return context?.userLeads ?? fallbackLeads;
 }

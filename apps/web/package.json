@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "prebuild": "node ../../scripts/sync-docs.mjs",
-    "pretest": "npm run type-check",
+    "pretest": "pnpm run type-check",
     "dev": "node ../../scripts/sync-docs.mjs && vite",
     "build": "node troubleshoot-env.js && vite build",
     "build:dev": "node troubleshoot-env.js && vite build --mode development",
@@ -15,10 +15,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
-    "test": "vitest",
-    "test:ui": "vitest --ui",
-    "test:coverage": "vitest --coverage",
-    "test:watch": "vitest --watch",
+    "test": "pnpm exec vitest run",
+    "test:ui": "pnpm exec vitest --ui",
+    "test:coverage": "pnpm exec vitest run --coverage",
+    "test:watch": "pnpm exec vitest --watch",
     "troubleshoot": "node troubleshoot-env.js"
   },
   "dependencies": {

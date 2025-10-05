@@ -24,6 +24,7 @@ import { DashboardHelpWidget } from "./DashboardHelpWidget";
 import { Settings as SettingsComponent } from "./Settings";
 import {
   DashboardOverview,
+  type DashboardTabName,
   type LeadStatsSummary,
   type UsageSummary,
 } from "./DashboardOverview";
@@ -107,6 +108,8 @@ function LeadEternityDashboardContent() {
       return [];
     }
   }, [emailRequests, handleComponentError]);
+
+  const hasNewEmails = transformedEmails.length > 0;
 
   const { toast } = useToast();
 
@@ -254,7 +257,7 @@ function LeadEternityDashboardContent() {
   }, [leadStats]);
 
   const handleTabChange = useCallback(
-    (newTab: string) => {
+    (newTab: DashboardTabName | string) => {
       const normalizedTab =
         newTab === "credits" || newTab === "dashboard"
           ? "performance"
@@ -312,6 +315,13 @@ function LeadEternityDashboardContent() {
       }
     },
     [handleComponentError, handleTabChange, toast],
+  );
+
+  const handleOverviewNavigate = useCallback(
+    (tab: DashboardTabName) => {
+      handleTabChange(tab);
+    },
+    [handleTabChange],
   );
 
   const handleSkipOnboarding = useCallback(() => {

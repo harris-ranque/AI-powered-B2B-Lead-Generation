@@ -22,7 +22,8 @@ export type {
 
 export function useSearches(): UseSearchesResult {
   const context = useUserDataMaybe();
-  return context?.searches ?? useSearchesBase();
+  const fallbackSearches = useSearchesBase();
+  return context?.searches ?? fallbackSearches;
 }
 
 export function useSearch(searchId: Id<"searches"> | undefined): UseSearchResult {

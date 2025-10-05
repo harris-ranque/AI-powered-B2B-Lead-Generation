@@ -30,7 +30,8 @@ export type {
 
 export function useStatusBroadcasts(): UseStatusBroadcastsResult {
   const context = useUserDataMaybe();
-  return context?.statusBroadcasts ?? useStatusBroadcastsBase();
+  const fallbackStatusBroadcasts = useStatusBroadcastsBase();
+  return context?.statusBroadcasts ?? fallbackStatusBroadcasts;
 }
 
 export function useSearchBroadcasts(
