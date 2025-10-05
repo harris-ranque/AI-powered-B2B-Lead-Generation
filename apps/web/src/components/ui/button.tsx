@@ -10,7 +10,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground hover:bg-primary/90 glow-neon-lime hover:shadow-[0_0_32px_hsl(var(--glow-lime))]",
+          "bg-primary text-primary-foreground hover:bg-primary/90 glow-neon-lime hover:shadow-[0_0_32px_hsl(var(--glow-lime))] harborlight-primary",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline:
