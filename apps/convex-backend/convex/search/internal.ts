@@ -1,5 +1,6 @@
 import { internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
+import { withUpdatedAtIfSupported } from "./utils";
 
 // Internal query to get search without auth check
 export const getSearchInternal = internalQuery({
@@ -85,7 +86,9 @@ export const updateSearchStatusInternal = internalMutation({
       throw new Error("Search not found");
     }
 
-    const updates: any = {
+    const now = Date.now();
+
+    let updates: Record<string, any> = {
       status: args.status,
     };
 
@@ -94,14 +97,14 @@ export const updateSearchStatusInternal = internalMutation({
     }
 
     if (args.status === "in_progress" && !search.startedAt) {
-      updates.startedAt = Date.now();
+      updates.startedAt = now;
     }
 
     if (args.status === "completed" || args.status === "failed") {
-      updates.completedAt = Date.now();
+      updates.completedAt = now;
     }
 
-    updates.updatedAt = Date.now();
+    updates = withUpdatedAtIfSupported(updates, search, now);
 
     await ctx.db.patch(args.searchId, updates);
 
@@ -153,16 +156,23 @@ export const updateSearchResults = internalMutation({
     creditsUsed: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const updates: any = {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      throw new Error("Search not found");
+    }
+
+    const now = Date.now();
+
+    let updates: Record<string, any> = {
       results: args.results,
       progress: args.progress,
     };
 
-    updates.updatedAt = Date.now();
-
     if (typeof args.creditsUsed === "number") {
       updates.creditsUsed = args.creditsUsed;
     }
+
+    updates = withUpdatedAtIfSupported(updates, search, now);
 
     await ctx.db.patch(args.searchId, updates);
   },
@@ -180,11 +190,23 @@ export const updateSearchProgressInternal = internalMutation({
     }),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.searchId, {
-      progress: args.progress,
-      lastOrchestrationAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      throw new Error("Search not found");
+    }
+
+    const now = Date.now();
+
+    const updates = withUpdatedAtIfSupported(
+      {
+        progress: args.progress,
+        lastOrchestrationAt: now,
+      },
+      search,
+      now,
+    );
+
+    await ctx.db.patch(args.searchId, updates);
     return { success: true };
   },
 });
