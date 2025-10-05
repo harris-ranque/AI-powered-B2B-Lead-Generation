@@ -80,6 +80,16 @@ export default {
           yellow: "hsl(var(--glow-yellow))",
           cyan: "hsl(var(--glow-cyan))",
         },
+        genniBlue: "#2563EB",
+        genniIndigo: "#7C3AED",
+        genniRose: "#F472B6",
+      },
+      boxShadow: {
+        genniCard: "0 10px 30px -12px rgba(2, 6, 23, 0.15)",
+        genniGlow: "0 0 0 6px rgba(34, 197, 94, 0.14)",
+      },
+      backgroundImage: {
+        "genni-gradient": "linear-gradient(135deg, #2563EB, #7C3AED 45%, #F472B6)",
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -64,6 +64,7 @@
     "convex": "^1.25.4",
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.3.0",
+    "framer-motion": "^11.2.10",
     "highlight.js": "^11.11.1",
     "input-otp": "^1.2.4",
     "lucide-react": "^0.462.0",

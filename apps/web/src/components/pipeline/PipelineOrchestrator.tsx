@@ -1,13 +1,11 @@
 import React, { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { usePipeline } from "@/pipeline/context";
 import type { Lead } from "@/lib/api-client";
 import { STAGE_CONFIGS, STAGE_ORDER } from "@/pipeline/config";
-import { PipelineStepper } from "./PipelineStepper";
 import { SourceSelector } from "./SourceSelector";
 import { LeadDiscoveryStage } from "./LeadDiscoveryStage";
 import { EnrichmentStage } from "./EnrichmentStage";
@@ -15,6 +13,8 @@ import { AIAnalysisStage } from "./AIAnalysisStage";
 import { EmailGenerationStage } from "./EmailGenerationStage";
 import { ReviewExportStage } from "./ReviewExportStage";
 import { SearchProgressTracker } from "../SearchProgressTracker";
+import { StageTracker } from "./StageTracker";
+import { SourceInlinePanel } from "./SourceInlinePanel";
 import {
   CheckCircle,
   Clock,
@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { useSearch } from "@/hooks/useSearches";
 import { useSearchBroadcasts } from "@/hooks/useStatusBroadcasts";
 import { useAdminSystemControl } from "@/hooks/useAdmin";
+import { SourceRegistry } from "@/pipeline/sources/SourceRegistry";
 
 interface PipelineOrchestratorProps {
   userCredits: number;
@@ -43,7 +44,7 @@ export function PipelineOrchestrator({
   userPlan,
   onGenerateEmail,
 }: PipelineOrchestratorProps) {
-  const { state, setStage } = usePipeline();
+  const { state, setStage, canProgressToStage } = usePipeline();
   const [isPipelineCollapsed, setIsPipelineCollapsed] = useState(false);
 
   // Get search data and real-time updates
@@ -59,14 +60,55 @@ export function PipelineOrchestrator({
   const isSearchCompleted = search?.status === "completed";
 
   const currentStageIndex = STAGE_ORDER.indexOf(state.currentStage);
-  const progressPercentage =
-    (currentStageIndex / (STAGE_ORDER.length - 1)) * 100;
+
+  const availableStages = STAGE_ORDER.filter((stageId) =>
+    canProgressToStage(stageId),
+  );
+
+  const selectedSource = state.selectedSource
+    ? SourceRegistry.getSource(state.selectedSource)
+    : undefined;
+
+  const inlineSourcePanel = selectedSource ? (
+    <SourceInlinePanel
+      icon={React.createElement(selectedSource.icon, {
+        className: "h-5 w-5",
+      })}
+      title={selectedSource.name}
+      subtitle={selectedSource.description}
+      onChange={() => setStage("source_selection")}
+    />
+  ) : undefined;
 
   // Compute processing state from backend + local state
   const isBusy =
     state.isProcessing ||
     search?.status === "in_progress" ||
     search?.status === "processing";
+
+  const trackerInlineContent = inlineSourcePanel || isBusy
+    ? (
+        <div className="flex flex-col gap-3">
+          {inlineSourcePanel}
+          {isBusy && (
+            <div className="flex items-center gap-2 self-start rounded-full bg-slate-100/80 px-3 py-1 text-sm text-genniBlue">
+              <Clock className="h-4 w-4 animate-spin" />
+              Processing...
+            </div>
+          )}
+        </div>
+      )
+    : undefined;
+
+  const handleStageSelect = (stage: (typeof STAGE_ORDER)[number]) => {
+    if (stage === state.currentStage) return;
+    if (
+      state.completedStages.includes(stage) ||
+      canProgressToStage(stage)
+    ) {
+      setStage(stage);
+    }
+  };
 
   // Get research tier display info
   const getResearchTierInfo = (tier?: string) => {
@@ -150,31 +192,6 @@ export function PipelineOrchestrator({
             </div>
           </div>
         </div>
-
-        {/* Overall Progress */}
-        <Card className="glass-card">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">Pipeline Progress</span>
-                  <span className="text-sm text-muted-foreground">
-                    {state.completedStages.length} of {STAGE_ORDER.length}{" "}
-                    stages
-                  </span>
-                </div>
-                <Progress value={progressPercentage} className="h-2" />
-              </div>
-
-              {isBusy && (
-                <div className="flex items-center gap-2 text-sm text-primary">
-                  <Clock className="h-4 w-4 animate-spin" />
-                  Processing...
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Completion UI */}
         {isSearchCompleted && (
@@ -294,8 +311,16 @@ export function PipelineOrchestrator({
       {/* Pipeline Content - Hide when collapsed */}
       {!(isSearchCompleted && isPipelineCollapsed) && (
         <>
-          {/* Pipeline Stepper */}
-          <PipelineStepper />
+          {/* Unified Stage Tracker */}
+          <StageTracker
+            current={state.currentStage}
+            completed={state.completedStages}
+            available={availableStages}
+            index={currentStageIndex + 1}
+            total={STAGE_ORDER.length}
+            inlinePanel={trackerInlineContent}
+            onStageClick={handleStageSelect}
+          />
 
           {/* Current Stage Content */}
           <div
