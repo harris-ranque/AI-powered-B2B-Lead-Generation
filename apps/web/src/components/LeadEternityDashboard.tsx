@@ -495,7 +495,7 @@ function LeadEternityDashboardContent() {
               onClick={() => handleTabChange("performance")}
             >
               <BarChart3 className="mr-2 h-4 w-4" />
-              Performance Workspace
+              Performance & Credits
               <Badge variant="secondary" className="ml-auto text-xs">
                 {userCredits}
               </Badge>
@@ -513,27 +513,6 @@ function LeadEternityDashboardContent() {
                   Setup
                 </Badge>
               )}
-            </Button>
-
-            <Button
-              variant={currentTab === "credits" ? "default" : "ghost"}
-              className="harborlight-nav-item w-full justify-start"
-              onClick={() => handleTabChange("credits")}
-            >
-              <CreditCard className="mr-2 h-4 w-4" />
-              Credits & Billing
-              <Badge variant="secondary" className="ml-auto text-xs">
-                {userCredits}
-              </Badge>
-            </Button>
-
-            <Button
-              variant={currentTab === "dashboard" ? "default" : "ghost"}
-              className="harborlight-nav-item w-full justify-start"
-              onClick={() => handleTabChange("dashboard")}
-            >
-              <BarChart3 className="mr-2 h-4 w-4" />
-              Analytics
             </Button>
 
             <Button
@@ -621,28 +600,6 @@ function LeadEternityDashboardContent() {
             </div>
           )}
 
-          {currentTab === "credits" && (
-            <div className="p-6">
-              <div className="mb-6">
-                <h2 className="mb-2 text-3xl font-display font-semibold tracking-tight">
-                  Credits & Billing
-                </h2>
-                <p className="text-muted-foreground">
-                  Manage your credits, view usage statistics, and upgrade your
-                  plan.
-                </p>
-              </div>
-
-              <CreditManager
-                currentCredits={userCredits || 0}
-                currentPlan={userPlan}
-                usageStats={usageSummary}
-                onUpgrade={handleUpgradePlan}
-                onPurchaseCredits={handlePurchaseCredits}
-              />
-            </div>
-          )}
-
           {currentTab === "search-history" && (
             <div className="p-6">
               <div className="mb-6">
@@ -670,20 +627,6 @@ function LeadEternityDashboardContent() {
                 onUpgradePlan={handleUpgradePlan}
                 onPurchaseCredits={handlePurchaseCredits}
               />
-            </div>
-          )}
-
-          {currentTab === "dashboard" && (
-            <div className="p-6">
-              <div className="mb-6">
-                <h2 className="mb-2 text-3xl font-display font-semibold tracking-tight">
-                  Analytics Dashboard
-                </h2>
-                <p className="text-muted-foreground">
-                  Track your lead generation performance and AI email effectiveness.
-                </p>
-              </div>
-              <Dashboard />
             </div>
           )}
 

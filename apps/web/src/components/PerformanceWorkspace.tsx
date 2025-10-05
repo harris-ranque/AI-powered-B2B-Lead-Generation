@@ -210,9 +210,9 @@ function PerformanceWorkspaceComponent({
       <header className="space-y-2">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <BarChart3 className="h-4 w-4" />
-          Unified performance & billing workspace
+          Performance & Credits
         </div>
-        <h2 className="text-3xl font-bold tracking-tight">Stay ahead of your growth metrics</h2>
+        <h2 className="text-3xl font-bold tracking-tight">Monitor performance and manage credits</h2>
         <p className="max-w-2xl text-muted-foreground">
           Monitor lead generation trends, track usage, and manage credits in one place. This workspace gives you the
           context you need before making your next move.
@@ -318,8 +318,8 @@ function PerformanceWorkspaceComponent({
         })}
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
-        <div className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
           <Card className="border-border/70">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg font-semibold">
