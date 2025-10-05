@@ -24,6 +24,7 @@ import { DashboardHelpWidget } from "./DashboardHelpWidget";
 import { Settings as SettingsComponent } from "./Settings";
 import {
   DashboardOverview,
+  type DashboardTabName,
   type LeadStatsSummary,
   type UsageSummary,
 } from "./DashboardOverview";
@@ -107,6 +108,8 @@ function LeadEternityDashboardContent() {
       return [];
     }
   }, [emailRequests, handleComponentError]);
+
+  const hasNewEmails = transformedEmails.length > 0;
 
   const { toast } = useToast();
 
@@ -253,7 +256,7 @@ function LeadEternityDashboardContent() {
   }, [leadStats]);
 
   const handleTabChange = useCallback(
-    (newTab: string) => {
+    (newTab: DashboardTabName | string) => {
       const normalizedTab =
         newTab === "credits" || newTab === "dashboard"
           ? "performance"
@@ -311,6 +314,13 @@ function LeadEternityDashboardContent() {
       }
     },
     [handleComponentError, handleTabChange, toast],
+  );
+
+  const handleOverviewNavigate = useCallback(
+    (tab: DashboardTabName) => {
+      handleTabChange(tab);
+    },
+    [handleTabChange],
   );
 
   const handleSkipOnboarding = useCallback(() => {
@@ -556,6 +566,28 @@ function LeadEternityDashboardContent() {
         </div>
 
         <div className="harborlight-main flex-1">
+          {currentTab === "overview" && (
+            <div className="p-6">
+              <DashboardOverview
+                onNavigate={handleOverviewNavigate}
+                userName={
+                  typeof user?.name === "string" ? user.name : undefined
+                }
+                businessName={profile?.businessName ?? null}
+                planId={normalizedPlan}
+                credits={userCredits}
+                leadStats={leadStatsSummary}
+                emailCount={pipelineEmails.length}
+                searches={searches}
+                usageSummary={usageSummary}
+                pipelineStage={state.currentStage}
+                hasCompletedProfile={hasCompletedOnboarding}
+                hasNewEmails={hasNewEmails}
+                isAdmin={isAdmin}
+              />
+            </div>
+          )}
+
           {currentTab === "pipeline" && (
             <div className="p-6">
               <PipelineOrchestrator

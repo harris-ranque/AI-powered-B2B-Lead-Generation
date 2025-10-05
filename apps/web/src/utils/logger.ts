@@ -2,7 +2,7 @@
  * Logging utility for web app with environment-based configuration.
  */
 
-import * as Sentry from "@sentry/react";
+import { captureException } from "@/utils/sentry-loader";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -204,7 +204,7 @@ class Logger {
 
     if (level === "error") {
       const sentryError = error ?? new Error(message);
-      Sentry.captureException(sentryError, {
+      captureException(sentryError, {
         tags: {
           component: this.component ?? "global",
           level,

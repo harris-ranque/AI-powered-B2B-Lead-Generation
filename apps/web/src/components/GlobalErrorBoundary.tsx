@@ -1,5 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
-import * as Sentry from "@sentry/react";
+import { captureException } from "@/utils/sentry-loader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, RefreshCw, Bug } from "lucide-react";
@@ -64,7 +64,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
 
     // Send error to Sentry in production
     if (process.env.NODE_ENV === "production") {
-      Sentry.captureException(error, {
+      captureException(error, {
         extra: {
           errorBoundaryId: this.state.errorBoundaryId,
           componentStack: errorInfo?.componentStack,

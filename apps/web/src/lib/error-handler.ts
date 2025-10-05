@@ -1,6 +1,6 @@
 // Global error handler for uncaught errors and promise rejections
 import { trackError, logger } from "@/utils/logger";
-import * as Sentry from "@sentry/react";
+import { captureException } from "@/utils/sentry-loader";
 
 export interface ErrorDetails {
   message: string;
@@ -102,7 +102,7 @@ class GlobalErrorHandler {
     });
 
     // Also report to Sentry with useful context
-    Sentry.captureException(error, {
+    captureException(error, {
       extra: {
         url: errorDetails.url,
         lineNumber: errorDetails.lineNumber,

@@ -27,24 +27,28 @@ const serializeArgs = (input: unknown) => {
   }
 };
 
-const useSafeAdminMutation = <M extends (...args: any[]) => Promise<any>>(
-  mutation: M,
+const useSafeAdminMutation = <Args extends unknown[], Result>(
+  mutation: (...args: Args) => Promise<Result>,
   action: string,
 ) => {
   return useCallback(
-    (async (...args: Parameters<M>) => {
+    async (...args: Args): Promise<Result> => {
       try {
         return await mutation(...args);
       } catch (error) {
         const errorInstance =
           error instanceof Error ? error : new Error(String(error));
-        adminLogger.error(`Admin mutation failed: ${action}`, {
-          action,
-          payload: serializeArgs(args[0]),
-        }, errorInstance);
+        adminLogger.error(
+          `Admin mutation failed: ${action}`,
+          {
+            action,
+            payload: serializeArgs(args[0]),
+          },
+          errorInstance,
+        );
         throw errorInstance;
       }
-    }) as M,
+    },
     [mutation, action],
   );
 };

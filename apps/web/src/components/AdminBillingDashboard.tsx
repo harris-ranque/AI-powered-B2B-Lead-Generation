@@ -57,17 +57,6 @@ function AdminBillingDashboardComponent() {
     }
   }, [convex, handleComponentError]);
 
-  if (billingMetrics === undefined || revenueAnalytics === undefined || costAnalytics === undefined) {
-    return (
-      <div className="p-6">
-        <div className="flex items-center gap-2 mb-6">
-          <RefreshCw className="h-4 w-4 animate-spin" />
-          <span>Loading billing analytics...</span>
-        </div>
-      </div>
-    );
-  }
-
   const formatCurrency = useCallback(
     (amount: number) => {
       try {
@@ -118,6 +107,21 @@ function AdminBillingDashboardComponent() {
       return [];
     }
   }, [costAnalytics, handleComponentError]);
+
+  if (
+    billingMetrics === undefined ||
+    revenueAnalytics === undefined ||
+    costAnalytics === undefined
+  ) {
+    return (
+      <div className="p-6">
+        <div className="flex items-center gap-2 mb-6">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          <span>Loading billing analytics...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
