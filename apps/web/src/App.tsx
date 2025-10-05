@@ -7,6 +7,7 @@ import { ConvexProvider } from "@/components/providers/ConvexProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { GlobalErrorBoundary } from "@/components/GlobalErrorBoundary";
 import { AppThemeEffect } from "@/components/AppThemeEffect";
+import { TitleManager } from "@/components/TitleManager";
 
 // Public Pages
 import LandingPage from "./pages/LandingPage";
@@ -43,6 +44,7 @@ const App = () => (
             <Toaster />
             <Sonner />
             <BrowserRouter>
+              <TitleManager />
               <ErrorBoundary>
                 <Routes>
                   {/* Public Routes - No Authentication Required */}
