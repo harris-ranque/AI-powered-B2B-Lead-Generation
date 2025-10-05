@@ -200,6 +200,7 @@ function LeadEternityDashboardContent() {
   ]);
 
   const pipelineEmails = state.generatedEmails;
+  const hasNewEmails = transformedEmails.length > 0;
 
   const normalizedPlan = useMemo<PlanType>(() => {
     switch (userPlan) {
@@ -556,6 +557,26 @@ function LeadEternityDashboardContent() {
         </div>
 
         <div className="harborlight-main flex-1">
+          {currentTab === "overview" && (
+            <div className="p-6">
+              <DashboardOverview
+                onNavigate={(tab) => handleTabChange(tab)}
+                userName={user?.name || profile?.contactInfo?.name || undefined}
+                businessName={profile?.companyName ?? null}
+                planId={normalizedPlan}
+                credits={userCredits}
+                leadStats={leadStatsSummary}
+                emailCount={pipelineEmails.length}
+                searches={searches ?? []}
+                usageSummary={usageSummary}
+                pipelineStage={state.currentStage}
+                hasCompletedProfile={hasCompletedOnboarding}
+                hasNewEmails={hasNewEmails}
+                isAdmin={isAdmin}
+              />
+            </div>
+          )}
+
           {currentTab === "pipeline" && (
             <div className="p-6">
               <PipelineOrchestrator
