@@ -13,6 +13,7 @@ import {
   Activity,
   Menu,
   AlertTriangle,
+  CreditCard,
 } from "lucide-react";
 import { PipelineOrchestrator } from "./pipeline/PipelineOrchestrator";
 import { PipelineProvider, usePipeline } from "@/pipeline/context";

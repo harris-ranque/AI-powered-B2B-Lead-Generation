@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -21,15 +21,14 @@ import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
 import { usePipeline } from "@/pipeline/context";
 import { SourceRegistry } from "@/pipeline/sources/SourceRegistry";
 import { FileUploadArea } from "./FileUploadArea";
+import { EstimatedCostCard } from "./EstimatedCostCard";
 import { useSearches, useGoogleMapsSearch } from "@/hooks/useSearches";
 import {
   Search,
   MapPin,
   Building,
   Users,
-  ArrowRight,
   Sparkles,
-  CreditCard,
   AlertTriangle,
   Upload,
   FileText,
@@ -265,41 +264,6 @@ export function LeadDiscoveryStage({
 
       <Collapsible open={showConfiguration}>
         <CollapsibleContent className="space-y-6">
-          {/* Credits Summary */}
-          <div className="flex items-center justify-center">
-            <div
-              className={cn(
-                "w-full max-w-2xl rounded-md border px-4 py-3 text-sm",
-                (validation.estimatedCost || 0) > userCredits
-                  ? "border-destructive/40 bg-destructive/5 text-destructive"
-                  : "border-border/50 bg-muted/30 text-muted-foreground",
-              )}
-              role="status"
-              aria-live="polite"
-            >
-              <div className="flex items-center justify-between">
-                <div className="font-medium">Credits</div>
-                <div className="flex items-center gap-3">
-                  <span>
-                    Estimated:{" "}
-                    <span className="font-semibold">
-                      {validation.estimatedCost ?? 0}
-                    </span>
-                  </span>
-                  <span>
-                    Available: <span className="font-semibold">{userCredits}</span>
-                  </span>
-                  <span className="hidden sm:inline">
-                    After search:{" "}
-                    <span className="font-semibold">
-                      {Math.max(userCredits - (validation.estimatedCost ?? 0), 0)}
-                    </span>
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Source-specific form */}
           <Card className="glass-card">
             <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -461,16 +425,22 @@ export function LeadDiscoveryStage({
 
           {/* Validation & Cost */}
           {validation.errors.length > 0 && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                <div className="space-y-1">
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className="mt-4 flex gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-700"
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <div>
+                <div className="font-medium">We need a bit more info</div>
+                <ul className="ml-5 list-disc text-sm">
                   {validation.errors.map((error, index) => (
-                    <div key={index}>{error}</div>
+                    <li key={`${error}-${index}`}>{error}</li>
                   ))}
-                </div>
-              </AlertDescription>
-            </Alert>
+                </ul>
+              </div>
+            </motion.div>
           )}
 
           {validation.warnings.length > 0 && (
@@ -487,44 +457,14 @@ export function LeadDiscoveryStage({
           )}
 
           {/* Cost Summary & Action */}
-          <Card className="glass-card">
-            <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <CreditCard className="h-4 w-4" />
-                  <span className="font-medium">Estimated Cost</span>
-                  {validation.estimatedCost && (
-                    <Badge variant="secondary">
-                      {validation.estimatedCost} credits
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  You have {userCredits} credits available
-                </p>
-              </div>
-
-              <Button
-                onClick={handleRequestStart}
-                disabled={isStartDisabled}
-                className="min-w-40"
-                size="lg"
-              >
-                {state.isProcessing ? (
-                  <>
-                    <Search className="h-4 w-4 mr-2 animate-spin" />
-                    Discovering...
-                  </>
-                ) : (
-                  <>
-                    <Search className="h-4 w-4 mr-2" />
-                    Start Discovery
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                  </>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
+          <EstimatedCostCard
+            estimatedCredits={estimatedCost}
+            availableCredits={userCredits}
+            afterBalance={Math.max(userCredits - estimatedCost, 0)}
+            onStart={handleRequestStart}
+            disabled={isStartDisabled}
+            isProcessing={state.isProcessing}
+          />
         </CollapsibleContent>
       </Collapsible>
 
