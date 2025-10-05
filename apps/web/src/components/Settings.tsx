@@ -269,10 +269,6 @@ export function Settings() {
     handlePreferencesUpdate({ theme });
   };
 
-  const activeThemeOption =
-    APP_THEME_OPTIONS.find((option) => option.value === preferences.theme) ||
-    APP_THEME_OPTIONS.find((option) => option.value === DEFAULT_APP_THEME) ||
-    APP_THEME_OPTIONS[0];
   const themeSelectId = "app-theme-select";
 
   if (!userData || !userPreferences) {
@@ -289,15 +285,6 @@ export function Settings() {
     <div className="flex h-screen">
       <div className="flex-1 p-8 overflow-y-auto">
         <div className="max-w-4xl">
-          <div className="mb-8">
-            <h1 className="text-4xl font-bold text-foreground mb-2">
-              Settings
-            </h1>
-            <p className="text-muted-foreground">
-              Manage your account preferences and application settings.
-            </p>
-          </div>
-
           {/* Account Settings */}
           <Card className="p-6 bg-card border-border mb-6">
             <div className="flex items-center gap-3 mb-6">
@@ -611,21 +598,8 @@ export function Settings() {
 
             <div className="space-y-4">
               <div className="space-y-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <div className="font-medium text-foreground">
-                      Theme Preference
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {activeThemeOption.description}
-                    </div>
-                  </div>
-                  <Badge
-                    variant="secondary"
-                    className="bg-primary/10 text-primary whitespace-nowrap"
-                  >
-                    {activeThemeOption.label}
-                  </Badge>
+                <div className="font-medium text-foreground">
+                  Theme Preference
                 </div>
                 <div className="space-y-2">
                   <label
