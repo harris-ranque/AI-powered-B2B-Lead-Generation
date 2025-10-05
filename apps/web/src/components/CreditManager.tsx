@@ -46,11 +46,17 @@ interface CreditManagerProps {
   // Optional props for backwards compatibility
   onUpgrade?: (planId: string) => void;
   onPurchaseCredits?: (amount: number) => void;
+  currentCredits?: number;
+  currentPlan?: PlanType;
+  usageStats?: UsageStats;
 }
 
 export function CreditManager({
   onUpgrade,
   onPurchaseCredits,
+  currentCredits: currentCreditsOverride,
+  currentPlan: currentPlanOverride,
+  usageStats: usageStatsOverride,
 }: CreditManagerProps = {}) {
   const [selectedCreditPack, setSelectedCreditPack] = useState<number | null>(
     null,
@@ -66,17 +72,33 @@ export function CreditManager({
     useBilling();
   const { config: runtimeConfig } = useRuntimeConfig();
 
-  // Get real data from Convex
-  const currentCredits = credits || 0;
-  const currentPlan = (user?.plan as PlanType) || "starter";
-  const usageStats: UsageStats = {
-    currentPeriodUsage: usage?.currentPeriodUsage || 0,
-    totalCreditsUsed: usage?.totalCreditsUsed || 0,
-    searchesThisMonth: usage?.searchesThisMonth || 0,
-    leadsGenerated: usage?.leadsGenerated || 0,
-    emailsGenerated: usage?.emailsGenerated || 0,
-    avgCostPerLead: usage?.avgCostPerLead || 0,
+  const normalizePlan = (plan: string | undefined): PlanType => {
+    const validPlans: PlanType[] = [
+      "starter",
+      "professional",
+      "business",
+      "enterprise",
+    ];
+    return validPlans.includes((plan as PlanType) || "")
+      ? (plan as PlanType)
+      : "starter";
   };
+
+  const currentCredits =
+    currentCreditsOverride ?? (typeof credits === "number" ? credits : credits || 0);
+  const resolvedPlan = normalizePlan(currentPlanOverride ?? user?.plan);
+  const currentPlan = resolvedPlan;
+  const usageStats: UsageStats =
+    usageStatsOverride ?? {
+      currentPeriodUsage: usage?.currentPeriodUsage || 0,
+      totalCreditsUsed: usage?.totalCreditsUsed || 0,
+      searchesThisMonth: usage?.searchesThisMonth || 0,
+      leadsGenerated: usage?.leadsGenerated || 0,
+      emailsGenerated: usage?.emailsGenerated || 0,
+      avgCostPerLead: usage?.avgCostPerLead || 0,
+    };
+
+  const showLoadingState = creditsLoading && currentCreditsOverride === undefined;
 
   const pricingPlans: PricingPlan[] = [
     {
@@ -109,6 +131,22 @@ export function CreditManager({
       ],
       popular: true,
       currentPlan: currentPlan === "professional",
+    },
+    {
+      id: "business",
+      name: "Business",
+      description: "Scale outreach with collaborative tooling",
+      price: 99,
+      credits: 2500,
+      features: [
+        "2,500 credits/month",
+        "Advanced audience filters",
+        "Team workspaces",
+        "Sequence analytics",
+        "Role-based permissions",
+        "Priority support",
+      ],
+      currentPlan: currentPlan === "business",
     },
     {
       id: "enterprise",
@@ -249,7 +287,7 @@ export function CreditManager({
   };
 
   // Show loading state
-  if (creditsLoading) {
+  if (showLoadingState) {
     return (
       <div className="space-y-6">
         <Alert>
@@ -271,6 +309,8 @@ export function CreditManager({
             className={`${
               currentPlan === "professional"
                 ? "bg-blue-100 text-blue-800"
+                : currentPlan === "business"
+                  ? "bg-emerald-100 text-emerald-800"
                 : currentPlan === "enterprise"
                   ? "bg-purple-100 text-purple-800"
                   : ""
@@ -279,6 +319,9 @@ export function CreditManager({
             {currentPlan === "starter" && <Star className="h-3 w-3 mr-1" />}
             {currentPlan === "professional" && (
               <Crown className="h-3 w-3 mr-1" />
+            )}
+            {currentPlan === "business" && (
+              <TrendingUp className="h-3 w-3 mr-1" />
             )}
             {currentPlan === "enterprise" && <Zap className="h-3 w-3 mr-1" />}
             {pricingPlans.find((p) => p.id === currentPlan)?.name || "Unknown"} Plan

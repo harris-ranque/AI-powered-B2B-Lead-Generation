@@ -227,20 +227,20 @@ export function safeTransformEmailRequests(
 export function isValidTabName(
   tab: string,
 ): tab is
+  | "overview"
   | "pipeline"
   | "search-history"
   | "profile"
-  | "credits"
   | "admin"
-  | "dashboard"
+  | "performance"
   | "settings" {
   const validTabs = [
+    "overview",
     "pipeline",
     "search-history",
     "profile",
-    "credits",
     "admin",
-    "dashboard",
+    "performance",
     "settings",
   ];
   return validTabs.includes(tab);

@@ -103,8 +103,23 @@ vi.mock('@/components/AdminDashboard', () => ({
   AdminDashboard: () => <div data-testid="admin-dashboard">Admin dashboard</div>,
 }))
 
-vi.mock('@/components/Dashboard', () => ({
-  Dashboard: () => <div data-testid="analytics-dashboard">Analytics dashboard</div>,
+vi.mock('@/components/DashboardOverview', () => ({
+  DashboardOverview: ({
+    onNavigate,
+  }: {
+    onNavigate: (tab: string) => void
+  }) => (
+    <div data-testid="dashboard-overview">
+      Dashboard overview
+      <button onClick={() => onNavigate('pipeline')}>Open pipeline</button>
+    </div>
+  ),
+}))
+
+vi.mock('@/components/PerformanceWorkspace', () => ({
+  PerformanceWorkspace: () => (
+    <div data-testid="performance-workspace">Performance workspace</div>
+  ),
 }))
 
 vi.mock('@/components/Settings', () => ({
@@ -241,8 +256,17 @@ describe('GenniApp', () => {
     expect(screen.getByTestId('profile-wizard')).toBeInTheDocument()
   })
 
-  it('renders the pipeline orchestrator by default', () => {
+  it('renders the dashboard overview by default', () => {
     render(<GenniApp />)
+
+    expect(screen.getByTestId('dashboard-overview')).toBeInTheDocument()
+  })
+
+  it('opens the pipeline orchestrator when the pipeline tab is selected', () => {
+    render(<GenniApp />)
+
+    const pipelineTab = screen.getByRole('button', { name: /lead pipeline/i })
+    fireEvent.click(pipelineTab)
 
     expect(screen.getByTestId('pipeline-orchestrator')).toBeInTheDocument()
   })
@@ -276,8 +300,10 @@ describe('GenniApp', () => {
 
     render(<GenniApp />)
 
-    expect(
-      screen.getByRole('button', { name: /credits & billing\s+75/i }),
-    ).toBeInTheDocument()
+    const performanceButton = screen.getByRole('button', {
+      name: /performance workspace/i,
+    })
+
+    expect(performanceButton).toHaveTextContent('75')
   })
 })

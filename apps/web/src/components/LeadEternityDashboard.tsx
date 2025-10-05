@@ -1,23 +1,15 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Search,
-  Mail,
   BarChart3,
   Settings,
   Bot,
   Sparkles,
-  Target,
-  Users,
-  TrendingUp,
-  CreditCard,
   UserCheck,
   Building2,
-  Bug,
   Activity,
   Menu,
   AlertTriangle,
@@ -26,11 +18,16 @@ import { PipelineOrchestrator } from "./pipeline/PipelineOrchestrator";
 import { PipelineProvider, usePipeline } from "@/pipeline/context";
 import { LeadSearchHistory } from "./LeadSearchHistory";
 import { BusinessProfileWizard } from "./BusinessProfileWizard";
-import { CreditManager } from "./CreditManager";
 import { AdminDashboard } from "./AdminDashboard";
-import { Dashboard } from "./Dashboard";
 import { DashboardHelpWidget } from "./DashboardHelpWidget";
 import { Settings as SettingsComponent } from "./Settings";
+import {
+  DashboardOverview,
+  type LeadStatsSummary,
+  type UsageSummary,
+} from "./DashboardOverview";
+import { PerformanceWorkspace } from "./PerformanceWorkspace";
+import type { PlanType } from "@/lib/pricing-config";
 import type {
   Lead,
   BusinessProfileInput,
@@ -55,7 +52,7 @@ import { createLogger } from "@/utils/logger";
 const leadDashboardLogger = createLogger("LeadEternityDashboard");
 
 function LeadEternityDashboardContent() {
-  const [currentTab, setCurrentTab] = useState("pipeline");
+  const [currentTab, setCurrentTab] = useState("overview");
   const completionAnnouncedRef = useRef(false);
   const [componentError, setComponentError] = useState<string | null>(null);
 
@@ -203,11 +200,67 @@ function LeadEternityDashboardContent() {
 
   const pipelineEmails = state.generatedEmails;
 
+  const normalizedPlan = useMemo<PlanType>(() => {
+    switch (userPlan) {
+      case "free":
+      case "starter":
+        return "starter";
+      case "pro":
+      case "professional":
+        return "professional";
+      case "business":
+        return "business";
+      case "enterprise":
+        return "enterprise";
+      default:
+        return "starter";
+    }
+  }, [userPlan]);
+
+  const monthlySearchCount = useMemo(() => {
+    if (!searches) return 0;
+    const now = new Date();
+    return searches.filter((search) => {
+      if (!search._creationTime) return false;
+      const createdAt = new Date(search._creationTime);
+      return (
+        createdAt.getMonth() === now.getMonth() &&
+        createdAt.getFullYear() === now.getFullYear()
+      );
+    }).length;
+  }, [searches]);
+
+  const usageSummary: UsageSummary = useMemo(
+    () => ({
+      currentPeriodUsage: usage?.currentPeriodUsage || 0,
+      totalCreditsUsed: usage?.totalCreditsUsed || 0,
+      searchesThisMonth: monthlySearchCount,
+      leadsGenerated: leadStats?.totalLeads || 0,
+      emailsGenerated: pipelineEmails.length,
+      avgCostPerLead: usage?.avgCostPerLead || 0,
+    }),
+    [leadStats?.totalLeads, monthlySearchCount, pipelineEmails.length, usage],
+  );
+
+  const leadStatsSummary: LeadStatsSummary | null = useMemo(() => {
+    if (!leadStats) return null;
+    return {
+      totalLeads: leadStats.totalLeads,
+      withEmails: leadStats.withEmails,
+      thisWeek: leadStats.thisWeek,
+    };
+  }, [leadStats]);
+
   const handleTabChange = useCallback(
     (newTab: string) => {
-      if (isValidTabName(newTab)) {
-        leadDashboardLogger.info("Tab changed", { newTab });
-        setCurrentTab(newTab);
+      const normalizedTab =
+        newTab === "credits" || newTab === "dashboard"
+          ? "performance"
+          : newTab;
+
+      if (isValidTabName(normalizedTab)) {
+        leadDashboardLogger.info("Tab changed", { newTab: normalizedTab });
+        setCurrentTab(normalizedTab);
         return;
       }
 
@@ -216,7 +269,7 @@ function LeadEternityDashboardContent() {
         "handle-tab-change",
         { newTab },
       );
-      setCurrentTab("pipeline");
+      setCurrentTab("overview");
     },
     [handleComponentError],
   );
@@ -243,7 +296,7 @@ function LeadEternityDashboardContent() {
   const handleCompleteOnboarding = useCallback(
     (profileData: BusinessProfileInput) => {
       try {
-        handleTabChange("pipeline");
+        handleTabChange("overview");
         toast({
           title: "Welcome to Genni!",
           description:
@@ -261,7 +314,7 @@ function LeadEternityDashboardContent() {
 
   const handleSkipOnboarding = useCallback(() => {
     try {
-      handleTabChange("pipeline");
+      handleTabChange("overview");
       toast({
         title: "Onboarding Skipped",
         description: "You can complete your business profile later in Settings.",
@@ -400,6 +453,15 @@ function LeadEternityDashboardContent() {
         <div className="harborlight-sidebar w-64 border-r border-border bg-card flex flex-col">
           <nav className="harborlight-sidebar-nav space-y-2 p-4 flex-1">
             <Button
+              variant={currentTab === "overview" ? "default" : "ghost"}
+              className="w-full justify-start"
+              onClick={() => handleTabChange("overview")}
+            >
+              <Sparkles className="mr-2 h-4 w-4" />
+              Dashboard Overview
+            </Button>
+
+            <Button
               variant={currentTab === "pipeline" ? "default" : "ghost"}
               className="harborlight-nav-item w-full justify-start"
               onClick={() => handleTabChange("pipeline")}
@@ -415,6 +477,18 @@ function LeadEternityDashboardContent() {
             >
               <Activity className="mr-2 h-4 w-4" />
               Search History
+            </Button>
+
+            <Button
+              variant={currentTab === "performance" ? "default" : "ghost"}
+              className="w-full justify-start"
+              onClick={() => handleTabChange("performance")}
+            >
+              <BarChart3 className="mr-2 h-4 w-4" />
+              Performance Workspace
+              <Badge variant="secondary" className="ml-auto text-xs">
+                {userCredits}
+              </Badge>
             </Button>
 
             <Button
@@ -568,7 +642,7 @@ function LeadEternityDashboardContent() {
             </div>
           )}
 
-          {currentTab === "dashboard" && (
+          {currentTab === "performance" && (
             <div className="p-6">
               <div className="mb-6">
                 <h2 className="mb-2 text-3xl font-display font-semibold tracking-tight">
