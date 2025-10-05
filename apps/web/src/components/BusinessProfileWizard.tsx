@@ -75,6 +75,46 @@ const normalizeContactName = (value: string) =>
         .trim()
     : "";
 
+const parseStringArray = (value: unknown): string[] => {
+  if (!value && value !== "") {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(
+        value
+          .map((item) => (typeof item === "string" ? item.trim() : ""))
+          .filter(Boolean),
+      ),
+    );
+  }
+
+  if (typeof value === "string") {
+    return Array.from(
+      new Set(
+        value
+          .split(/[,\n]/)
+          .map((item) => item.trim())
+          .filter(Boolean),
+      ),
+    );
+  }
+
+  return [];
+};
+
+const resolveArray = (...values: unknown[]): string[] => {
+  for (const value of values) {
+    const parsed = parseStringArray(value);
+    if (parsed.length > 0) {
+      return parsed;
+    }
+  }
+
+  return [];
+};
+
 export function BusinessProfileWizard({
   onComplete,
   onSkip,
@@ -95,43 +135,73 @@ export function BusinessProfileWizard({
   const { profile: existingProfile, createOrUpdateProfile } = useProfile();
   const { user } = useAuth();
 
+  const initialContactInfo =
+    (existingProfile?.contactInfo as {
+      name?: string;
+      email?: string;
+      phone?: string;
+      website?: string;
+      linkedin?: string;
+    } | null | undefined) ??
+    (initialData as IncomingProfile | undefined)?.contactInfo;
+
   const [profile, setProfile] = useState<BusinessProfile>({
-    companyName: "",
-    industry: "",
-    targetIndustries: [],
-    offerings: [],
-    toneOfVoice: "professional",
-    valueProposition: "",
-    keyDifferentiators: [],
-    painPointsWeSolve: [],
-    idealCustomerProfile: "",
-    currentChallenges: [],
-    contactName: "",
-    contactEmail: "",
-    contactPhone: "",
-    contactWebsite: "",
-    contactLinkedin: "",
-    ...initialData,
-    // If we have existing profile data, use it
-    ...(existingProfile && {
-      companyName: existingProfile.companyName || "",
-      industry: existingProfile.industry || "",
-      targetIndustries: existingProfile.targetIndustries || [],
-      offerings: existingProfile.offerings || [],
-      toneOfVoice: existingProfile.toneOfVoice || "professional",
-      valueProposition: existingProfile.valueProposition || "",
-      keyDifferentiators: existingProfile.keyDifferentiators || [],
-      painPointsWeSolve: existingProfile.painPointsWeSolve || [],
-      idealCustomerProfile: existingProfile.idealCustomerProfile || "",
-      currentChallenges: existingProfile.currentChallenges || [],
-      contactName:
-        (existingProfile.contactInfo as { name?: string } | undefined)?.name ||
+    companyName:
+      initialData?.companyName ?? existingProfile?.companyName ?? "",
+    industry: initialData?.industry ?? existingProfile?.industry ?? "",
+    targetIndustries: resolveArray(
+      initialData?.targetIndustries,
+      (initialData as IncomingProfile | undefined)?.targetMarkets,
+      existingProfile?.targetIndustries,
+      (existingProfile as IncomingProfile | undefined)?.targetMarkets,
+    ),
+    offerings: resolveArray(
+      initialData?.offerings,
+      (initialData as IncomingProfile | undefined)?.services,
+      existingProfile?.offerings,
+      (existingProfile as IncomingProfile | undefined)?.services,
+    ),
+    toneOfVoice:
+      initialData?.toneOfVoice ??
+      existingProfile?.toneOfVoice ??
+      "professional",
+    valueProposition:
+      initialData?.valueProposition ??
+      existingProfile?.valueProposition ??
+      "",
+    keyDifferentiators: resolveArray(
+      initialData?.keyDifferentiators,
+      existingProfile?.keyDifferentiators,
+    ),
+    painPointsWeSolve: resolveArray(
+      initialData?.painPointsWeSolve,
+      existingProfile?.painPointsWeSolve,
+    ),
+    idealCustomerProfile:
+      initialData?.idealCustomerProfile ??
+      existingProfile?.idealCustomerProfile ??
+      "",
+    currentChallenges: resolveArray(
+      initialData?.currentChallenges,
+      existingProfile?.currentChallenges,
+    ),
+    contactName: normalizeContactName(
+      initialData?.contactName ??
+        initialContactInfo?.name ??
+        user?.name ??
         "",
-      contactEmail: existingProfile.contactInfo?.email || "",
-      contactPhone: existingProfile.contactInfo?.phone || "",
-      contactWebsite: existingProfile.contactInfo?.website || "",
-      contactLinkedin: existingProfile.contactInfo?.linkedin || "",
-    }),
+    ),
+    contactEmail:
+      initialData?.contactEmail ??
+      initialContactInfo?.email ??
+      user?.email ??
+      "",
+    contactPhone:
+      initialData?.contactPhone ?? initialContactInfo?.phone ?? "",
+    contactWebsite:
+      initialData?.contactWebsite ?? initialContactInfo?.website ?? "",
+    contactLinkedin:
+      initialData?.contactLinkedin ?? initialContactInfo?.linkedin ?? "",
   });
 
   useEffect(() => {
@@ -152,23 +222,25 @@ export function BusinessProfileWizard({
       targetIndustries:
         prev.targetIndustries.length > 0
           ? prev.targetIndustries
-          : normalizedProfile.targetIndustries ||
-            normalizedProfile.targetMarkets ||
-            [],
+          : resolveArray(
+              normalizedProfile.targetIndustries,
+              normalizedProfile.targetMarkets,
+            ),
       offerings:
         prev.offerings.length > 0
           ? prev.offerings
-          : normalizedProfile.offerings ||
-            normalizedProfile.services ||
-            [],
+          : resolveArray(
+              normalizedProfile.offerings,
+              normalizedProfile.services,
+            ),
       keyDifferentiators:
         prev.keyDifferentiators.length > 0
           ? prev.keyDifferentiators
-          : sourceProfile.keyDifferentiators || [],
+          : resolveArray(sourceProfile.keyDifferentiators),
       painPointsWeSolve:
         prev.painPointsWeSolve.length > 0
           ? prev.painPointsWeSolve
-          : normalizedProfile.painPointsWeSolve || [],
+          : resolveArray(normalizedProfile.painPointsWeSolve),
       idealCustomerProfile:
         prev.idealCustomerProfile ||
         normalizedProfile.idealCustomerProfile ||
@@ -176,7 +248,7 @@ export function BusinessProfileWizard({
       currentChallenges:
         prev.currentChallenges.length > 0
           ? prev.currentChallenges
-          : normalizedProfile.currentChallenges || [],
+          : resolveArray(normalizedProfile.currentChallenges),
       contactName: normalizeContactName(
         prev.contactName ||
           normalizedProfile.contactName ||
@@ -212,15 +284,36 @@ export function BusinessProfileWizard({
   const totalSteps = 4;
 
   const addToArray = (field: keyof BusinessProfile, value: string) => {
-    if (!value.trim()) return;
+    const valuesToAdd = parseStringArray(value);
 
-    const currentArray = profile[field] as string[];
-    if (!currentArray.includes(value.trim())) {
-      setProfile((prev) => ({
-        ...prev,
-        [field]: [...currentArray, value.trim()],
-      }));
+    if (valuesToAdd.length === 0) {
+      return false;
     }
+
+    let added = false;
+
+    setProfile((prev) => {
+      const currentArray = prev[field] as string[];
+      const merged = [...currentArray];
+
+      valuesToAdd.forEach((item) => {
+        if (!merged.includes(item)) {
+          merged.push(item);
+          added = true;
+        }
+      });
+
+      if (!added) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [field]: merged,
+      };
+    });
+
+    return added;
   };
 
   const removeFromArray = (field: keyof BusinessProfile, value: string) => {
@@ -447,17 +540,25 @@ export function BusinessProfileWizard({
                 value={newTargetIndustry}
                 onChange={(e) => setNewTargetIndustry(e.target.value)}
                 placeholder="e.g., SaaS, Healthcare, E-commerce"
-                onKeyPress={(e) => {
-                  if (e.key === "Enter") {
-                    addToArray("targetIndustries", newTargetIndustry);
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    if (addToArray("targetIndustries", newTargetIndustry)) {
+                      setNewTargetIndustry("");
+                    }
+                  }
+                }}
+                onBlur={() => {
+                  if (addToArray("targetIndustries", newTargetIndustry)) {
                     setNewTargetIndustry("");
                   }
                 }}
               />
               <Button
                 onClick={() => {
-                  addToArray("targetIndustries", newTargetIndustry);
-                  setNewTargetIndustry("");
+                  if (addToArray("targetIndustries", newTargetIndustry)) {
+                    setNewTargetIndustry("");
+                  }
                 }}
                 size="sm"
               >
@@ -493,17 +594,25 @@ export function BusinessProfileWizard({
                 value={newOffering}
                 onChange={(e) => setNewOffering(e.target.value)}
                 placeholder="e.g., Web Development, SEO Services, AI Consulting"
-                onKeyPress={(e) => {
-                  if (e.key === "Enter") {
-                    addToArray("offerings", newOffering);
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    if (addToArray("offerings", newOffering)) {
+                      setNewOffering("");
+                    }
+                  }
+                }}
+                onBlur={() => {
+                  if (addToArray("offerings", newOffering)) {
                     setNewOffering("");
                   }
                 }}
               />
               <Button
                 onClick={() => {
-                  addToArray("offerings", newOffering);
-                  setNewOffering("");
+                  if (addToArray("offerings", newOffering)) {
+                    setNewOffering("");
+                  }
                 }}
                 size="sm"
               >
@@ -574,17 +683,25 @@ export function BusinessProfileWizard({
                 value={newDifferentiator}
                 onChange={(e) => setNewDifferentiator(e.target.value)}
                 placeholder="e.g., 24/7 support, AI-powered solutions, 10+ years experience"
-                onKeyPress={(e) => {
-                  if (e.key === "Enter") {
-                    addToArray("keyDifferentiators", newDifferentiator);
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    if (addToArray("keyDifferentiators", newDifferentiator)) {
+                      setNewDifferentiator("");
+                    }
+                  }
+                }}
+                onBlur={() => {
+                  if (addToArray("keyDifferentiators", newDifferentiator)) {
                     setNewDifferentiator("");
                   }
                 }}
               />
               <Button
                 onClick={() => {
-                  addToArray("keyDifferentiators", newDifferentiator);
-                  setNewDifferentiator("");
+                  if (addToArray("keyDifferentiators", newDifferentiator)) {
+                    setNewDifferentiator("");
+                  }
                 }}
                 size="sm"
               >
@@ -619,17 +736,25 @@ export function BusinessProfileWizard({
                 value={newPainPoint}
                 onChange={(e) => setNewPainPoint(e.target.value)}
                 placeholder="e.g., Manual processes, Poor lead quality, High customer acquisition costs"
-                onKeyPress={(e) => {
-                  if (e.key === "Enter") {
-                    addToArray("painPointsWeSolve", newPainPoint);
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    if (addToArray("painPointsWeSolve", newPainPoint)) {
+                      setNewPainPoint("");
+                    }
+                  }
+                }}
+                onBlur={() => {
+                  if (addToArray("painPointsWeSolve", newPainPoint)) {
                     setNewPainPoint("");
                   }
                 }}
               />
               <Button
                 onClick={() => {
-                  addToArray("painPointsWeSolve", newPainPoint);
-                  setNewPainPoint("");
+                  if (addToArray("painPointsWeSolve", newPainPoint)) {
+                    setNewPainPoint("");
+                  }
                 }}
                 size="sm"
               >
@@ -708,17 +833,25 @@ export function BusinessProfileWizard({
                 value={newChallenge}
                 onChange={(e) => setNewChallenge(e.target.value)}
                 placeholder="e.g., Scaling lead generation, Improving conversion rates, Reducing manual work"
-                onKeyPress={(e) => {
-                  if (e.key === "Enter") {
-                    addToArray("currentChallenges", newChallenge);
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    if (addToArray("currentChallenges", newChallenge)) {
+                      setNewChallenge("");
+                    }
+                  }
+                }}
+                onBlur={() => {
+                  if (addToArray("currentChallenges", newChallenge)) {
                     setNewChallenge("");
                   }
                 }}
               />
               <Button
                 onClick={() => {
-                  addToArray("currentChallenges", newChallenge);
-                  setNewChallenge("");
+                  if (addToArray("currentChallenges", newChallenge)) {
+                    setNewChallenge("");
+                  }
                 }}
                 size="sm"
               >
@@ -769,19 +902,8 @@ export function BusinessProfileWizard({
 
     return (
       <div className="max-w-3xl mx-auto p-6">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold">Business Profile</h1>
-          <p className="text-muted-foreground">
-            Edit any section below and save your changes.
-          </p>
-        </div>
-
         <Card className="p-4">
-          <Accordion
-            type="multiple"
-            defaultValue={["company", "market", "value", "ideal"]}
-            className="w-full"
-          >
+          <Accordion type="multiple" defaultValue={[]} className="w-full">
             <AccordionItem value="company">
               <AccordionTrigger>
                 <div className="text-left flex items-center gap-3">
