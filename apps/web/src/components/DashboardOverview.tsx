@@ -149,7 +149,7 @@ export function DashboardOverview({
   }, [searches]);
 
   const activeSearchCount = useMemo(() => {
-    return searches?.filter((search) => search.status === "in_progress").length || 0;
+    return (searches ?? []).filter((search) => search.status === "in_progress").length;
   }, [searches]);
 
   const planMeta = formatPlan(planId);
