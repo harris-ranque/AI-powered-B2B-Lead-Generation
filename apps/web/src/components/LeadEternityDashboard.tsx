@@ -203,6 +203,7 @@ function LeadEternityDashboardContent() {
   ]);
 
   const pipelineEmails = state.generatedEmails;
+  const hasNewEmails = transformedEmails.length > 0;
 
   const normalizedPlan = useMemo<PlanType>(() => {
     switch (userPlan) {
@@ -569,16 +570,14 @@ function LeadEternityDashboardContent() {
           {currentTab === "overview" && (
             <div className="p-6">
               <DashboardOverview
-                onNavigate={handleOverviewNavigate}
-                userName={
-                  typeof user?.name === "string" ? user.name : undefined
-                }
-                businessName={profile?.businessName ?? null}
+                onNavigate={(tab) => handleTabChange(tab)}
+                userName={user?.name || profile?.contactInfo?.name || undefined}
+                businessName={profile?.companyName ?? null}
                 planId={normalizedPlan}
                 credits={userCredits}
                 leadStats={leadStatsSummary}
                 emailCount={pipelineEmails.length}
-                searches={searches}
+                searches={searches ?? []}
                 usageSummary={usageSummary}
                 pipelineStage={state.currentStage}
                 hasCompletedProfile={hasCompletedOnboarding}
