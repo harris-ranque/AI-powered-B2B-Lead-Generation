@@ -818,11 +818,13 @@ http.route({
       const userId = resolvedUserId as Id<"users">;
       const leadIdSet = new Set(leads.map((lead) => String(lead._id)));
 
-      const emailRequests = (await ctx.db
-        .query("langgraphRequests")
-        .withIndex("by_user", (q) => q.eq("userId", userId))
-        .filter((q) => q.eq(q.field("type"), "email_generation"))
-        .collect()) as LanggraphRequestDoc[];
+      const emailRequests = (await ctx.runQuery(
+        internal.langgraph.internal.getUserEmailGenerationRequests,
+        {
+          userId,
+          leadIds: leads.map((lead) => lead._id),
+        },
+      )) as LanggraphRequestDoc[];
 
       const emailDetailsByLead = new Map<string, EmailExportDetails>();
 
