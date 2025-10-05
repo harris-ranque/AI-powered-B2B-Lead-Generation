@@ -3,6 +3,10 @@ import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 import { withSubscriptionCheck } from "../middleware/subscriptionMiddleware";
+import {
+  isUpdatedAtSchemaError,
+  withUpdatedAtIfSupported,
+} from "./utils";
 
 // Create a new search
 export const createSearch = mutation({
@@ -55,11 +59,11 @@ export const createSearch = mutation({
 
         const now = Date.now();
 
-        const searchId = await ctx.db.insert("searches", {
+        const baseSearchDoc = {
           userId: user._id,
           name: args.name,
           parameters: adjustedParameters,
-          status: "pending",
+          status: "pending" as const,
           progress: {
             discovered: 0,
             enriched: 0,
@@ -74,10 +78,23 @@ export const createSearch = mutation({
           },
           creditsUsed: 0,
           createdAt: now,
-          updatedAt: now,
-        });
+        };
 
-        return { searchId };
+        try {
+          const searchId = await ctx.db.insert("searches", {
+            ...baseSearchDoc,
+            updatedAt: now,
+          });
+
+          return { searchId };
+        } catch (error) {
+          if (!isUpdatedAtSchemaError(error)) {
+            throw error;
+          }
+
+          const searchId = await ctx.db.insert("searches", baseSearchDoc);
+          return { searchId };
+        }
       },
     );
   },
@@ -134,11 +151,11 @@ export const createSearchCompleted = mutation({
 
         const now = Date.now();
 
-        return await ctx.db.insert("searches", {
+        const baseSearchDoc = {
           userId: user._id,
           name: args.name,
           parameters: adjustedParameters,
-          status: "pending",
+          status: "pending" as const,
           progress: {
             discovered: 0,
             enriched: 0,
@@ -153,8 +170,20 @@ export const createSearchCompleted = mutation({
           },
           creditsUsed: 0,
           createdAt: now,
-          updatedAt: now,
-        });
+        };
+
+        try {
+          return await ctx.db.insert("searches", {
+            ...baseSearchDoc,
+            updatedAt: now,
+          });
+        } catch (error) {
+          if (!isUpdatedAtSchemaError(error)) {
+            throw error;
+          }
+
+          return await ctx.db.insert("searches", baseSearchDoc);
+        }
       },
     );
 
@@ -167,11 +196,20 @@ export const createSearchCompleted = mutation({
 
       if (!isEnabled) {
         // Mark search as failed due to system pause
-        await ctx.db.patch(searchId, {
-          status: "failed",
-          error: "Lead generation is currently paused by administrator",
-          completedAt: Date.now(),
-        });
+        const search = await ctx.db.get(searchId);
+        const nowTimestamp = Date.now();
+
+        const failurePatch = withUpdatedAtIfSupported(
+          {
+            status: "failed" as const,
+            error: "Lead generation is currently paused by administrator",
+            completedAt: nowTimestamp,
+          },
+          search,
+          nowTimestamp,
+        );
+
+        await ctx.db.patch(searchId, failurePatch);
         throw new Error("Lead generation is currently paused by administrator");
       }
 
@@ -209,7 +247,9 @@ export const updateSearchStatus = mutation({
       throw new Error("Search not found or access denied");
     }
 
-    const updates: any = {
+    const now = Date.now();
+
+    let updates: Record<string, any> = {
       status: args.status,
     };
 
@@ -218,14 +258,14 @@ export const updateSearchStatus = mutation({
     }
 
     if (args.status === "in_progress" && !search.startedAt) {
-      updates.startedAt = Date.now();
+      updates.startedAt = now;
     }
 
     if (args.status === "completed" || args.status === "failed") {
-      updates.completedAt = Date.now();
+      updates.completedAt = now;
     }
 
-    updates.updatedAt = Date.now();
+    updates = withUpdatedAtIfSupported(updates, search, now);
 
     await ctx.db.patch(args.searchId, updates);
 
@@ -253,11 +293,18 @@ export const updateSearchProgress = mutation({
       throw new Error("Search not found or access denied");
     }
 
-    await ctx.db.patch(args.searchId, {
-      progress: args.progress,
-      lastOrchestrationAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+    const now = Date.now();
+
+    const updates = withUpdatedAtIfSupported(
+      {
+        progress: args.progress,
+        lastOrchestrationAt: now,
+      },
+      search,
+      now,
+    );
+
+    await ctx.db.patch(args.searchId, updates);
 
     return { success: true };
   },
@@ -282,11 +329,18 @@ export const cancelSearch = mutation({
       throw new Error("Cannot cancel completed search");
     }
 
-    await ctx.db.patch(args.searchId, {
-      status: "cancelled",
-      completedAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+    const now = Date.now();
+
+    const updates = withUpdatedAtIfSupported(
+      {
+        status: "cancelled" as const,
+        completedAt: now,
+      },
+      search,
+      now,
+    );
+
+    await ctx.db.patch(args.searchId, updates);
 
     // Broadcast cancellation update
     try {
@@ -361,11 +415,11 @@ export const duplicateSearch = mutation({
 
     const now = Date.now();
 
-    const duplicateId = await ctx.db.insert("searches", {
+    const baseSearchDoc = {
       userId: user._id,
       name: newName,
       parameters: originalSearch.parameters,
-      status: "pending",
+      status: "pending" as const,
       progress: {
         discovered: 0,
         enriched: 0,
@@ -380,8 +434,22 @@ export const duplicateSearch = mutation({
       },
       creditsUsed: 0,
       createdAt: now,
-      updatedAt: now,
-    });
+    };
+
+    let duplicateId: string;
+
+    try {
+      duplicateId = await ctx.db.insert("searches", {
+        ...baseSearchDoc,
+        updatedAt: now,
+      });
+    } catch (error) {
+      if (!isUpdatedAtSchemaError(error)) {
+        throw error;
+      }
+
+      duplicateId = await ctx.db.insert("searches", baseSearchDoc);
+    }
 
     return { searchId: duplicateId, success: true };
   },
