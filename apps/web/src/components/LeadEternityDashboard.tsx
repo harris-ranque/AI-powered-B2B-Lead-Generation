@@ -29,6 +29,8 @@ import {
   type UsageSummary,
 } from "./DashboardOverview";
 import { PerformanceWorkspace } from "./PerformanceWorkspace";
+import { Dashboard } from "./Dashboard";
+import { CreditManager } from "./CreditManager";
 import type { PlanType } from "@/lib/pricing-config";
 import type {
   Lead,
