@@ -232,6 +232,8 @@ export function isValidTabName(
   | "search-history"
   | "profile"
   | "admin"
+  | "credits"
+  | "dashboard"
   | "performance"
   | "settings" {
   const validTabs = [
@@ -240,6 +242,8 @@ export function isValidTabName(
     "search-history",
     "profile",
     "admin",
+    "credits",
+    "dashboard",
     "performance",
     "settings",
   ];

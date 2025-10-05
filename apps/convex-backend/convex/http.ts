@@ -885,9 +885,10 @@ http.route({
         const leadKey = String(lead._id);
         const emailDetails = emailDetailsByLead.get(leadKey);
         const followUps = emailDetails?.followUps ?? [];
-        const [followUp1, followUp2, followUp3] = [0, 1, 2].map(
-          (index) => followUps[index] ?? { subject: "", body: "" },
-        );
+        const defaultFollowUp: FollowUpEmail = { subject: "", body: "" };
+        const followUp1: FollowUpEmail = followUps[0] ?? defaultFollowUp;
+        const followUp2: FollowUpEmail = followUps[1] ?? defaultFollowUp;
+        const followUp3: FollowUpEmail = followUps[2] ?? defaultFollowUp;
 
         const contactDetails = extractContactDetails(lead);
         const companyProfile = extractCompanyProfile(lead);

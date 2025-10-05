@@ -34,11 +34,12 @@ import { CreditManager } from "@/components/CreditManager";
 import { withErrorBoundary } from "@/utils/errorHandling";
 import { createLogger } from "@/utils/logger";
 import { DashboardHelpWidget } from "@/components/DashboardHelpWidget";
-import {
-  useStatusBroadcasts,
-  getPriorityDisplay,
-  formatBroadcastTime,
-} from "@/hooks/useStatusBroadcasts";
+// Temporarily disabled - Convex realtime API not yet implemented
+// import {
+//   useStatusBroadcasts,
+//   getPriorityDisplay,
+//   formatBroadcastTime,
+// } from "@/hooks/useStatusBroadcasts";
 import type {
   DashboardTabName,
   LeadStatsSummary,
@@ -78,14 +79,29 @@ function PerformanceWorkspaceComponent({
   onPurchaseCredits,
 }: PerformanceWorkspaceProps) {
   const [componentError, setComponentError] = useState<string | null>(null);
-  const {
-    urgentBroadcasts,
-    rateLimitWarnings,
-    acknowledgeBroadcast,
-    markAsRead,
-    hasUrgent,
-    needsAcknowledgment,
-  } = useStatusBroadcasts();
+  // Temporarily disabled - Convex realtime API not yet implemented
+  // const {
+  //   urgentBroadcasts,
+  //   rateLimitWarnings,
+  //   acknowledgeBroadcast,
+  //   markAsRead,
+  //   hasUrgent,
+  //   needsAcknowledgment,
+  // } = useStatusBroadcasts();
+
+  // Mock empty data until realtime API is implemented
+  const urgentBroadcasts: never[] = [];
+  const rateLimitWarnings: never[] = [];
+  const hasUrgent = false;
+  const needsAcknowledgment = 0;
+  const acknowledgeBroadcast = async (_id: unknown) => { /* no-op */ };
+  const markAsRead = async (_id: unknown) => { /* no-op */ };
+  const getPriorityDisplay = (_priority: unknown) => ({
+    label: "Normal",
+    variant: "secondary" as const,
+    className: "",
+  });
+  const formatBroadcastTime = (_timestamp: unknown) => "Just now";
 
   const handleComponentError = useCallback(
     (error: unknown, context: string, extra?: Record<string, unknown>) => {
@@ -163,11 +179,13 @@ function PerformanceWorkspaceComponent({
 
   const completedSearches = useMemo(() => {
     try {
-      return (
-        searches
-          ?.filter((search) => search.status === "completed")
-          .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0)) || []
-      );
+      if (!searches) {
+        return [];
+      }
+
+      return searches
+        .filter((search) => search.status === "completed")
+        .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
     } catch (error) {
       handleComponentError(error, "completed-searches", {
         searchCount: searches?.length,

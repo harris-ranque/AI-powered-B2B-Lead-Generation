@@ -462,7 +462,7 @@ export function CreditManager({
               className="w-full mt-4"
               disabled={isProcessing}
               onClick={() => {
-                const pack = creditPacks[selectedCreditPack];
+                const pack = visiblePacks[selectedCreditPack];
                 handlePurchaseCredits(pack.amount + pack.bonus);
               }}
             >

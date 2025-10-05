@@ -53,6 +53,8 @@ export const createSearch = mutation({
 
         const user = await requireAuth(ctx);
 
+        const now = Date.now();
+
         const searchId = await ctx.db.insert("searches", {
           userId: user._id,
           name: args.name,
@@ -71,7 +73,8 @@ export const createSearch = mutation({
             avgRelevanceScore: 0,
           },
           creditsUsed: 0,
-          createdAt: Date.now(),
+          createdAt: now,
+          updatedAt: now,
         });
 
         return { searchId };
@@ -129,6 +132,8 @@ export const createSearchCompleted = mutation({
 
         const user = await requireAuth(ctx);
 
+        const now = Date.now();
+
         return await ctx.db.insert("searches", {
           userId: user._id,
           name: args.name,
@@ -147,7 +152,8 @@ export const createSearchCompleted = mutation({
             avgRelevanceScore: 0,
           },
           creditsUsed: 0,
-          createdAt: Date.now(),
+          createdAt: now,
+          updatedAt: now,
         });
       },
     );
@@ -219,6 +225,8 @@ export const updateSearchStatus = mutation({
       updates.completedAt = Date.now();
     }
 
+    updates.updatedAt = Date.now();
+
     await ctx.db.patch(args.searchId, updates);
 
     return { success: true };
@@ -248,6 +256,7 @@ export const updateSearchProgress = mutation({
     await ctx.db.patch(args.searchId, {
       progress: args.progress,
       lastOrchestrationAt: Date.now(),
+      updatedAt: Date.now(),
     });
 
     return { success: true };
@@ -276,6 +285,7 @@ export const cancelSearch = mutation({
     await ctx.db.patch(args.searchId, {
       status: "cancelled",
       completedAt: Date.now(),
+      updatedAt: Date.now(),
     });
 
     // Broadcast cancellation update
@@ -349,6 +359,8 @@ export const duplicateSearch = mutation({
 
     const newName = args.newName || `${originalSearch.name} (Copy)`;
 
+    const now = Date.now();
+
     const duplicateId = await ctx.db.insert("searches", {
       userId: user._id,
       name: newName,
@@ -367,7 +379,8 @@ export const duplicateSearch = mutation({
         avgRelevanceScore: 0,
       },
       creditsUsed: 0,
-      createdAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     });
 
     return { searchId: duplicateId, success: true };

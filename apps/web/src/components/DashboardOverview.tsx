@@ -36,6 +36,8 @@ export type DashboardTabName =
   | "search-history"
   | "profile"
   | "performance"
+  | "credits"
+  | "dashboard"
   | "settings"
   | "admin";
 

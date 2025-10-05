@@ -21,11 +21,12 @@ import { useUserLeads } from "@/hooks/useLeads";
 import { useSearches } from "@/hooks/useSearches";
 import { useLangGraphRequests } from "@/hooks/useLangGraph";
 import { useNotifications } from "@/hooks/useNotifications";
-import {
-  useStatusBroadcasts,
-  getPriorityDisplay,
-  formatBroadcastTime,
-} from "@/hooks/useStatusBroadcasts";
+// Temporarily disabled - Convex realtime API not yet implemented
+// import {
+//   useStatusBroadcasts,
+//   getPriorityDisplay,
+//   formatBroadcastTime,
+// } from "@/hooks/useStatusBroadcasts";
 import { SearchProgressTracker } from "@/components/SearchProgressTracker";
 import { SubscriptionStatusCard } from "@/components/SubscriptionStatusCard";
 import { UsageMetersCard } from "@/components/UsageMetersCard";
@@ -68,18 +69,35 @@ function DashboardComponent() {
   const { canGenerateEmails, canUseBulkOperations, canPerformAction } =
     useSubscriptionGuard();
 
-  // Real-time broadcasting system
-  const {
-    urgentBroadcasts,
-    searchBroadcasts,
-    creditBroadcasts,
-    rateLimitWarnings,
-    systemAlerts,
-    acknowledgeBroadcast,
-    markAsRead,
-    hasUrgent,
-    needsAcknowledgment,
-  } = useStatusBroadcasts();
+  // Real-time broadcasting system - Temporarily disabled until Convex realtime API is implemented
+  // const {
+  //   urgentBroadcasts,
+  //   searchBroadcasts,
+  //   creditBroadcasts,
+  //   rateLimitWarnings,
+  //   systemAlerts,
+  //   acknowledgeBroadcast,
+  //   markAsRead,
+  //   hasUrgent,
+  //   needsAcknowledgment,
+  // } = useStatusBroadcasts();
+
+  // Mock empty data until realtime API is implemented
+  const urgentBroadcasts: never[] = [];
+  const searchBroadcasts: never[] = [];
+  const creditBroadcasts: never[] = [];
+  const rateLimitWarnings: never[] = [];
+  const systemAlerts: never[] = [];
+  const hasUrgent = false;
+  const needsAcknowledgment = 0;
+  const acknowledgeBroadcast = async (_id: unknown) => { /* no-op */ };
+  const markAsRead = async (_id: unknown) => { /* no-op */ };
+  const getPriorityDisplay = (_priority: unknown) => ({
+    label: "Normal",
+    variant: "secondary" as const,
+    icon: "💬",
+  });
+  const formatBroadcastTime = (_timestamp: unknown) => "Just now";
 
   // Local state for dismissible alerts and surfaced errors
   const [dismissedAlerts, setDismissedAlerts] = useState<
@@ -176,11 +194,12 @@ function DashboardComponent() {
 
   const stats = useMemo(() => {
     try {
-      const completedSearchCount =
-        searches?.filter((s) => s.status === "completed").length ?? 0;
-      const successfulEmailRequests =
-        emailRequests?.page?.filter((r) => r.status === "completed").length ??
-        0;
+      const completedSearchCount = searches
+        ? searches.filter((s) => s.status === "completed").length
+        : 0;
+      const successfulEmailRequests = emailRequests?.page
+        ? emailRequests.page.filter((r) => r.status === "completed").length
+        : 0;
 
       return [
         {

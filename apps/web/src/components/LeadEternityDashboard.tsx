@@ -56,7 +56,7 @@ import { createLogger } from "@/utils/logger";
 const leadDashboardLogger = createLogger("LeadEternityDashboard");
 
 function LeadEternityDashboardContent() {
-  const [currentTab, setCurrentTab] = useState("overview");
+  const [currentTab, setCurrentTab] = useState<DashboardTabName>("overview");
   const completionAnnouncedRef = useRef(false);
   const [componentError, setComponentError] = useState<string | null>(null);
 
@@ -259,14 +259,11 @@ function LeadEternityDashboardContent() {
 
   const handleTabChange = useCallback(
     (newTab: DashboardTabName | string) => {
-      const normalizedTab =
-        newTab === "credits" || newTab === "dashboard"
-          ? "performance"
-          : newTab;
+      const candidateTab = newTab as string;
 
-      if (isValidTabName(normalizedTab)) {
-        leadDashboardLogger.info("Tab changed", { newTab: normalizedTab });
-        setCurrentTab(normalizedTab);
+      if (isValidTabName(candidateTab)) {
+        leadDashboardLogger.info("Tab changed", { newTab: candidateTab });
+        setCurrentTab(candidateTab);
         return;
       }
 
@@ -639,22 +636,7 @@ function LeadEternityDashboardContent() {
               <CreditManager
                 currentCredits={userCredits || 0}
                 currentPlan={userPlan}
-                usageStats={{
-                  currentPeriodUsage: usage?.currentPeriodUsage || 0,
-                  totalCreditsUsed: usage?.totalCreditsUsed || 0,
-                  searchesThisMonth:
-                    searches?.filter((s) => {
-                      const now = new Date();
-                      const searchDate = new Date(s._creationTime);
-                      return (
-                        searchDate.getMonth() === now.getMonth() &&
-                        searchDate.getFullYear() === now.getFullYear()
-                      );
-                    }).length || 0,
-                  leadsGenerated: leadStats?.totalLeads || 0,
-                  emailsGenerated: pipelineEmails.length,
-                  avgCostPerLead: usage?.avgCostPerLead || 0,
-                }}
+                usageStats={usageSummary}
                 onUpgrade={handleUpgradePlan}
                 onPurchaseCredits={handlePurchaseCredits}
               />
@@ -677,13 +659,28 @@ function LeadEternityDashboardContent() {
 
           {currentTab === "performance" && (
             <div className="p-6">
+              <PerformanceWorkspace
+                userCredits={userCredits || 0}
+                userPlan={normalizedPlan}
+                usageSummary={usageSummary}
+                leadStats={leadStatsSummary}
+                searches={searches}
+                emailCount={pipelineEmails.length}
+                onNavigate={handleOverviewNavigate}
+                onUpgradePlan={handleUpgradePlan}
+                onPurchaseCredits={handlePurchaseCredits}
+              />
+            </div>
+          )}
+
+          {currentTab === "dashboard" && (
+            <div className="p-6">
               <div className="mb-6">
                 <h2 className="mb-2 text-3xl font-display font-semibold tracking-tight">
                   Analytics Dashboard
                 </h2>
                 <p className="text-muted-foreground">
-                  Track your lead generation performance and AI email
-                  effectiveness.
+                  Track your lead generation performance and AI email effectiveness.
                 </p>
               </div>
               <Dashboard />

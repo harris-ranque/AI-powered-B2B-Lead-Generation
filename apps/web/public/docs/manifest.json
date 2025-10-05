@@ -1,0 +1,290 @@
+{
+  "generatedAt": 1759327595986,
+  "root": {
+    "type": "dir",
+    "name": "docs",
+    "path": "",
+    "children": [
+      {
+        "type": "dir",
+        "name": "crew-ai-docs",
+        "path": "crew-ai-docs",
+        "children": [
+          {
+            "type": "file",
+            "name": "01-evaluating-use-cases.md",
+            "path": "crew-ai-docs/01-evaluating-use-cases.md",
+            "title": "Evaluating Use Cases for CrewAI",
+            "isMarkdown": true
+          },
+          {
+            "type": "file",
+            "name": "02-crafting-effective-agents.md",
+            "path": "crew-ai-docs/02-crafting-effective-agents.md",
+            "title": "Crafting Effective Agents",
+            "isMarkdown": true
+          },
+          {
+            "type": "file",
+            "name": "03-customizing-prompts.md",
+            "path": "crew-ai-docs/03-customizing-prompts.md",
+            "title": "Customizing Prompts",
+            "isMarkdown": true
+          },
+          {
+            "type": "file",
+            "name": "04-fingerprinting.md",
+            "path": "crew-ai-docs/04-fingerprinting.md",
+            "title": "Fingerprinting",
+            "isMarkdown": true
+          },
+          {
+            "type": "file",
+            "name": "05-knowledge.md",
+            "path": "crew-ai-docs/05-knowledge.md",
+            "title": "Knowledge",
+            "isMarkdown": true
+          },
+          {
+            "type": "file",
+            "name": "06-tools.md",
+            "path": "crew-ai-docs/06-tools.md",
+            "title": "Tools",
+            "isMarkdown": true
+          },
+          {
+            "type": "file",
+            "name": "07-processes.md",
+            "path": "crew-ai-docs/07-processes.md",
+            "title": "Processes",
+            "isMarkdown": true
+          },
+          {
+            "type": "file",
+            "name": "08-training.md",
+            "path": "crew-ai-docs/08-training.md",
+            "title": "Training",
+            "isMarkdown": true
+          },
+          {
+            "type": "file",
+            "name": "09-reasoning.md",
+            "path": "crew-ai-docs/09-reasoning.md",
+            "title": "Reasoning",
+            "isMarkdown": true
+          },
+          {
+            "type": "file",
+            "name": "10-testing.md",
+            "path": "crew-ai-docs/10-testing.md",
+            "title": "Testing",
+            "isMarkdown": true
+          },
+          {
+            "type": "file",
+            "name": "11-event-listeners.md",
+            "path": "crew-ai-docs/11-event-listeners.md",
+            "title": "Event Listeners",
+            "isMarkdown": true
+          },
+          {
+            "type": "file",
+            "name": "12-observability.md",
+            "path": "crew-ai-docs/12-observability.md",
+            "title": "Observability",
+            "isMarkdown": true
+          }
+        ]
+      },
+      {
+        "type": "file",
+        "name": "CONFIGURATION.md",
+        "path": "CONFIGURATION.md",
+        "title": "Configuration Guide",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "DATA_CONTRACTS.md",
+        "path": "DATA_CONTRACTS.md",
+        "title": "Genni Data Contracts Documentation",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "DEPLOYMENT_GUIDE.md",
+        "path": "DEPLOYMENT_GUIDE.md",
+        "title": "🚀 Genni Deployment Guide",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "duplicate-lead-analysis.md",
+        "path": "duplicate-lead-analysis.md",
+        "title": "Duplicate Lead Prevention Analysis - Genni Platform",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "FINAL_SETUP_INSTRUCTIONS.md",
+        "path": "FINAL_SETUP_INSTRUCTIONS.md",
+        "title": "🎯 Final Setup Instructions - Clerk + React + Convex",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "FINDYMAIL_ENHANCEMENT_SUMMARY.md",
+        "path": "FINDYMAIL_ENHANCEMENT_SUMMARY.md",
+        "title": "FindyMail API Enhancement & Troubleshooting Summary",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "FINDYMAIL_FIX_COMPLETE.md",
+        "path": "FINDYMAIL_FIX_COMPLETE.md",
+        "title": "FindyMail API Integration - Complete Fix Summary",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "FIX_AUTH_ISSUE.md",
+        "path": "FIX_AUTH_ISSUE.md",
+        "title": "Fix Clerk Authentication Issue - Railway Deployment",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "FRONTEND-INTEGRATION.md",
+        "path": "FRONTEND-INTEGRATION.md",
+        "title": "Frontend Integration with Convex Backend",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "genni-architecture.md",
+        "path": "genni-architecture.md",
+        "title": "Genni - Final Architecture & Implementation Guide",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "MIGRATION_COMPLETE.md",
+        "path": "MIGRATION_COMPLETE.md",
+        "title": "✅ CrewAI to LangGraph Migration - COMPLETE",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "MOCK_DATA_AUDIT.md",
+        "path": "MOCK_DATA_AUDIT.md",
+        "title": "🔍 Mock/Fake Data Audit Report - Genni Dashboard",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "per_stage_credit_reservations.md",
+        "path": "per_stage_credit_reservations.md",
+        "title": "Per-Stage Credit Reservations (Design)",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "PIPELINE_IMPLEMENTATION_COMPLETE.md",
+        "path": "PIPELINE_IMPLEMENTATION_COMPLETE.md",
+        "title": "Complete Lead Generation Pipeline Implementation",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "PRICING_CHANGE_GUIDE.md",
+        "path": "PRICING_CHANGE_GUIDE.md",
+        "title": "Pricing Change Management Guide",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "REACT_CLERK_SETUP.md",
+        "path": "REACT_CLERK_SETUP.md",
+        "title": "🚀 React + Clerk Setup Guide",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "README.md",
+        "path": "README.md",
+        "title": "Genni",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "Requirements.md.txt",
+        "path": "Requirements.md.txt",
+        "title": "Requirements.md.txt",
+        "isMarkdown": false
+      },
+      {
+        "type": "file",
+        "name": "resend-email-setup.md",
+        "path": "resend-email-setup.md",
+        "title": "Email service providers for multi-tenant Convex applications",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "royalty-implementation-plan.md",
+        "path": "royalty-implementation-plan.md",
+        "title": "Developer Royalty System - Implementation Plan",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "STRIPE_SETUP_GUIDE.md",
+        "path": "STRIPE_SETUP_GUIDE.md",
+        "title": "Stripe Integration Setup Guide",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "SUBSCRIPTION_SYSTEM_VALIDATION.md",
+        "path": "SUBSCRIPTION_SYSTEM_VALIDATION.md",
+        "title": "🚀 Subscription System - Production Readiness Validation",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "swapable-api-keys.md",
+        "path": "swapable-api-keys.md",
+        "title": "swapable-api-keys",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "TESTING_STRATEGY.md",
+        "path": "TESTING_STRATEGY.md",
+        "title": "Comprehensive Testing Strategy for Genni AI Platform",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "WEBHOOK-IMPROVEMENTS.md",
+        "path": "WEBHOOK-IMPROVEMENTS.md",
+        "title": "LangGraph Webhook Improvements & Type Standardization Analysis",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "ZERO_HARDCODED_PRICING_IMPLEMENTATION.md",
+        "path": "ZERO_HARDCODED_PRICING_IMPLEMENTATION.md",
+        "title": "Zero Hardcoded Pricing Implementation",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "README.root.md",
+        "path": "README.root.md",
+        "title": "Genni - AI-Powered Lead Generation Platform",
+        "isMarkdown": true
+      }
+    ]
+  }
+}

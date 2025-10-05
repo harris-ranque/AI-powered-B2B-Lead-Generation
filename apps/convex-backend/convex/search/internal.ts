@@ -101,6 +101,8 @@ export const updateSearchStatusInternal = internalMutation({
       updates.completedAt = Date.now();
     }
 
+    updates.updatedAt = Date.now();
+
     await ctx.db.patch(args.searchId, updates);
 
     return { success: true };
@@ -156,9 +158,10 @@ export const updateSearchResults = internalMutation({
       progress: args.progress,
     };
 
+    updates.updatedAt = Date.now();
+
     if (typeof args.creditsUsed === "number") {
       updates.creditsUsed = args.creditsUsed;
-      updates.updatedAt = Date.now();
     }
 
     await ctx.db.patch(args.searchId, updates);
@@ -180,6 +183,7 @@ export const updateSearchProgressInternal = internalMutation({
     await ctx.db.patch(args.searchId, {
       progress: args.progress,
       lastOrchestrationAt: Date.now(),
+      updatedAt: Date.now(),
     });
     return { success: true };
   },
