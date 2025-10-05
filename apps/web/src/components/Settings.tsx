@@ -271,6 +271,7 @@ export function Settings() {
 
   const activeThemeOption =
     APP_THEME_OPTIONS.find((option) => option.value === preferences.theme) ||
+    APP_THEME_OPTIONS.find((option) => option.value === DEFAULT_APP_THEME) ||
     APP_THEME_OPTIONS[0];
   const themeSelectId = "app-theme-select";
 

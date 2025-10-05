@@ -1,6 +1,11 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+const themePreferenceValidator = v.union(
+  v.literal("harborlight"),
+  v.literal("neon-pulse"),
+);
+
 export default defineSchema({
   // Users table - Authentication and basic user info
   users: defineTable({
@@ -33,6 +38,7 @@ export default defineSchema({
         emailNotifications: v.boolean(),
         language: v.string(),
         timezone: v.string(),
+        theme: v.optional(themePreferenceValidator),
       }),
     ),
     createdAt: v.number(),

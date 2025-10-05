@@ -3,19 +3,19 @@ const STORAGE_KEY = "app-theme";
 export const APP_THEME_OPTIONS = [
   {
     value: "harborlight" as const,
-    label: "Harborlight Pro (Modern B2B)",
+    label: "Harborlight Pro – Modern B2B",
     description: "Calm blues and softened surfaces for focus-friendly workflows.",
   },
   {
     value: "neon-pulse" as const,
-    label: "Neon Pulse (Legacy)",
+    label: "Neon Pulse – Legacy",
     description: "Vibrant neo-futuristic palette with glowing gradients.",
   },
 ] as const;
 
 export type AppThemeKey = (typeof APP_THEME_OPTIONS)[number]["value"];
 
-export const DEFAULT_APP_THEME: AppThemeKey = "harborlight";
+export const DEFAULT_APP_THEME: AppThemeKey = "neon-pulse";
 
 const APP_THEME_VALUES = new Set<AppThemeKey>(
   APP_THEME_OPTIONS.map((option) => option.value),

@@ -1,5 +1,10 @@
 import { v } from "convex/values";
 
+const themePreferenceValidator = v.union(
+  v.literal("harborlight"),
+  v.literal("neon-pulse"),
+);
+
 // User validators
 export const createUserValidator = v.object({
   email: v.string(),
@@ -15,6 +20,7 @@ export const updateUserValidator = v.object({
       emailNotifications: v.boolean(),
       language: v.string(),
       timezone: v.string(),
+      theme: v.optional(themePreferenceValidator),
     }),
   ),
 });
