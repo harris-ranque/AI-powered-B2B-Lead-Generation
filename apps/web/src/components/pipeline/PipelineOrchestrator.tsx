@@ -9,8 +9,7 @@ import { STAGE_CONFIGS, STAGE_ORDER } from "@/pipeline/config";
 import { SourceSelector } from "./SourceSelector";
 import { LeadDiscoveryStage } from "./LeadDiscoveryStage";
 import { EnrichmentStage } from "./EnrichmentStage";
-import { AIAnalysisStage } from "./AIAnalysisStage";
-import { EmailGenerationStage } from "./EmailGenerationStage";
+import { AIPersonalizationStage } from "./AIPersonalizationStage";
 import { ReviewExportStage } from "./ReviewExportStage";
 import { SearchProgressTracker } from "../SearchProgressTracker";
 import { StageTracker } from "./StageTracker";
@@ -154,10 +153,8 @@ export function PipelineOrchestrator({
         );
       case "enrichment":
         return <EnrichmentStage />;
-      case "ai_analysis":
-        return <AIAnalysisStage />;
-      case "email_generation":
-        return <EmailGenerationStage onGenerateEmail={onGenerateEmail} />;
+      case "ai_personalization":
+        return <AIPersonalizationStage />;
       case "review_export":
         return <ReviewExportStage />;
       default:

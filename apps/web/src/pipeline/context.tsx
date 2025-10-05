@@ -151,8 +151,7 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
         "source_selection",
         "lead_discovery",
         "enrichment",
-        "ai_analysis",
-        "email_generation",
+        "ai_personalization",
         "review_export",
       ];
 
@@ -179,8 +178,7 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
       "source_selection",
       "lead_discovery",
       "enrichment",
-      "ai_analysis",
-      "email_generation",
+      "ai_personalization",
       "review_export",
     ];
 

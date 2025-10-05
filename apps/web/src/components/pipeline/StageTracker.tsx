@@ -8,6 +8,7 @@ import {
   Mail,
   PenTool,
   Search,
+  Sparkles,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -21,6 +22,7 @@ const STAGE_ICONS = {
   Bot,
   PenTool,
   Download,
+  Sparkles,
 };
 
 type Stage = PipelineStage;

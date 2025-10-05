@@ -5,8 +5,7 @@ export type PipelineStage =
   | "source_selection"
   | "lead_discovery"
   | "enrichment"
-  | "ai_analysis"
-  | "email_generation"
+  | "ai_personalization"
   | "review_export";
 
 export type LeadSourceType = "google_maps" | "csv_upload" | "crm_import";

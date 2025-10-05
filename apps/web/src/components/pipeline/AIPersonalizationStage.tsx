@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export function AIAnalysisStage() {
+export function AIPersonalizationStage() {
   const { state, markStageComplete, progressToNextStage } = usePipeline();
 
   // Mock analysis progress - in real implementation this would track LangGraph progress
@@ -26,7 +26,7 @@ export function AIAnalysisStage() {
   );
 
   const handleContinue = () => {
-    markStageComplete("ai_analysis");
+    markStageComplete("ai_personalization");
     progressToNextStage();
   };
 
@@ -35,12 +35,11 @@ export function AIAnalysisStage() {
       {/* Header */}
       <div className="text-center space-y-2">
         <h3 className="text-xl font-semibold flex items-center justify-center gap-2">
-          <Bot className="h-5 w-5" />
-          AI Analysis in Progress
+          <Sparkles className="h-5 w-5" />
+          AI Personalization in Progress
         </h3>
         <p className="text-muted-foreground">
-          Our 5-agent system is analyzing your leads for relevance and
-          opportunities
+          Our 3-agent system is analyzing leads and generating personalized email sequences
         </p>
       </div>
 
@@ -52,10 +51,10 @@ export function AIAnalysisStage() {
               <div className="space-y-1">
                 <h4 className="font-semibold flex items-center gap-2">
                   <Brain className="h-4 w-4" />
-                  Multi-Agent Analysis
+                  Multi-Agent Personalization
                 </h4>
                 <p className="text-sm text-muted-foreground">
-                  {analyzedLeads} of {state.enrichedLeads.length} leads analyzed
+                  {analyzedLeads} of {state.enrichedLeads.length} leads personalized
                 </p>
               </div>
 
@@ -73,37 +72,25 @@ export function AIAnalysisStage() {
       </Card>
 
       {/* AI Agents Status */}
-      <div className="grid md:grid-cols-5 gap-4">
+      <div className="grid md:grid-cols-3 gap-4">
         {[
           {
-            name: "Relevance Analyzer",
-            icon: Target,
-            status: "complete",
-            description: "Lead relevance scoring",
-          },
-          {
-            name: "Pain Point Researcher",
+            name: "Business Intelligence",
             icon: Brain,
             status: "complete",
-            description: "Identifying challenges",
+            description: "Research & analysis",
           },
           {
-            name: "Value Matcher",
-            icon: TrendingUp,
-            status: "active",
-            description: "Solution alignment",
-          },
-          {
-            name: "Email Writer",
-            icon: Bot,
-            status: "pending",
-            description: "Personalization prep",
-          },
-          {
-            name: "Follow-up Strategist",
+            name: "Email Generation",
             icon: Sparkles,
+            status: "active",
+            description: "Personalized emails",
+          },
+          {
+            name: "Quality Assurance",
+            icon: CheckCircle,
             status: "pending",
-            description: "Sequence planning",
+            description: "Validation & approval",
           },
         ].map((agent, index) => (
           <Card key={agent.name} className="glass-card">
@@ -242,8 +229,8 @@ export function AIAnalysisStage() {
       {analysisProgress === 100 && (
         <div className="text-center">
           <Button onClick={handleContinue} size="lg" className="min-w-48">
-            <Sparkles className="h-4 w-4 mr-2" />
-            Generate Personalized Emails
+            <CheckCircle className="h-4 w-4 mr-2" />
+            Review & Export Results
             <ArrowRight className="h-4 w-4 ml-2" />
           </Button>
         </div>

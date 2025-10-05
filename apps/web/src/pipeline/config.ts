@@ -27,23 +27,14 @@ export const STAGE_CONFIGS: Record<PipelineStage, StageConfig> = {
     requiresCredits: true,
     dependencies: ["lead_discovery"],
   },
-  ai_analysis: {
-    id: "ai_analysis",
-    title: "AI Analysis",
-    description: "Analyze leads for relevance and pain points",
-    icon: "Bot",
+  ai_personalization: {
+    id: "ai_personalization",
+    title: "AI Personalization",
+    description: "Analyze leads and generate personalized email sequences",
+    icon: "Sparkles",
     estimatedTime: "5-10 min",
     requiresCredits: true,
     dependencies: ["enrichment"],
-  },
-  email_generation: {
-    id: "email_generation",
-    title: "Generate Emails",
-    description: "Create personalized email sequences",
-    icon: "PenTool",
-    estimatedTime: "2-5 min",
-    requiresCredits: true,
-    dependencies: ["ai_analysis"],
   },
   review_export: {
     id: "review_export",
@@ -52,7 +43,7 @@ export const STAGE_CONFIGS: Record<PipelineStage, StageConfig> = {
     icon: "Download",
     estimatedTime: "1 min",
     requiresCredits: false,
-    dependencies: ["email_generation"],
+    dependencies: ["ai_personalization"],
   },
 };
 
@@ -60,7 +51,6 @@ export const STAGE_ORDER: PipelineStage[] = [
   "source_selection",
   "lead_discovery",
   "enrichment",
-  "ai_analysis",
-  "email_generation",
+  "ai_personalization",
   "review_export",
 ];
