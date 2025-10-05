@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="genni-favicon-gradient" x1="6" y1="6" x2="26" y2="26" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4F46E5" />
+      <stop offset="50%" stop-color="#6366F1" />
+      <stop offset="100%" stop-color="#22D3EE" />
+    </linearGradient>
+    <linearGradient id="genni-favicon-gloss" x1="10" y1="6" x2="22" y2="18" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.55" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+    <filter id="genni-favicon-shadow" x="0" y="0" width="32" height="32" filterUnits="userSpaceOnUse">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.5" result="blur" />
+      <feOffset dy="1.5" />
+      <feComposite in2="SourceAlpha" operator="out" />
+      <feBlend in="SourceGraphic" />
+    </filter>
+  </defs>
+  <g filter="url(#genni-favicon-shadow)">
+    <rect x="3" y="3" width="26" height="26" rx="9" fill="url(#genni-favicon-gradient)" />
+    <rect x="3" y="3" width="26" height="26" rx="9" fill="url(#genni-favicon-gloss)" />
+  </g>
+  <g transform="translate(4 4)" stroke="#F8FAFC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 8V4H8" />
+    <rect width="16" height="12" x="4" y="8" rx="2" />
+    <path d="M2 14h2" />
+    <path d="M20 14h2" />
+    <path d="M15 13v2" />
+    <path d="M9 13v2" />
+  </g>
+</svg>
