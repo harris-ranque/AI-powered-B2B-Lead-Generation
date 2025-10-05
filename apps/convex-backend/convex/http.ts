@@ -20,6 +20,257 @@ const http = httpRouter();
 
 type LanggraphAuthResult = { userAgent: string };
 
+type LeadDoc = {
+  _id: Id<"leads">;
+  businessName?: string;
+  location?: {
+    city?: string;
+    state?: string;
+    country?: string;
+  };
+  website?: string;
+  email?: string;
+  phone?: string;
+  category?: string;
+  notes?: string;
+  aiAnalysis?: {
+    leadAnalysis?: Record<string, unknown>;
+  };
+  contactInfo?: {
+    contacts?: Array<{
+      name?: string;
+      email?: string;
+    }>;
+    emails?: Array<{
+      email?: string;
+    }>;
+  };
+  emailContent?: {
+    subject?: string;
+    body?: string;
+  };
+  createdAt: number;
+};
+
+type LanggraphRequestDoc = {
+  _id: Id<"langgraphRequests">;
+  userId: Id<"users">;
+  leadId?: Id<"leads">;
+  requestId: string;
+  status: string;
+  type: string;
+  outputData?: Record<string, unknown>;
+  createdAt: number;
+  completedAt?: number;
+};
+
+type FollowUpEmail = { subject: string; body: string };
+
+type EmailExportDetails = {
+  requestId?: string;
+  primarySubject?: string;
+  primaryBody?: string;
+  followUps: FollowUpEmail[];
+  timestamp: number;
+};
+
+function firstNonEmptyString(...values: Array<unknown>): string {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function escapeCsvValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  const raw = String(value).replace(/\r\n?/g, "\n");
+  if (raw.includes("\"") || raw.includes(",") || raw.includes("\n")) {
+    return `"${raw.replace(/"/g, '""')}"`;
+  }
+  return raw;
+}
+
+function extractCompanyProfile(lead: LeadDoc): string {
+  const analysis = lead.aiAnalysis?.leadAnalysis;
+  if (analysis && typeof analysis === "object" && analysis !== null) {
+    const record = analysis as Record<string, unknown>;
+    const candidateKeys = [
+      "company_overview",
+      "companyOverview",
+      "company_profile",
+      "companyProfile",
+      "company_analysis",
+      "companyAnalysis",
+      "business_overview",
+      "businessOverview",
+      "summary",
+      "description",
+      "overview",
+    ];
+
+    for (const key of candidateKeys) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    const fallbackValue = Object.values(record).find(
+      (value) => typeof value === "string" && value.trim(),
+    );
+    if (typeof fallbackValue === "string") {
+      return fallbackValue.trim();
+    }
+  }
+
+  if (typeof lead.notes === "string" && lead.notes.trim()) {
+    return lead.notes.trim();
+  }
+
+  return "";
+}
+
+function deriveFirstNameFromEmail(email: string): string {
+  const [localPart] = email.split("@");
+  if (!localPart) {
+    return "";
+  }
+  const segment = localPart
+    .split(/[._-]+/)
+    .map((part) => part.replace(/[0-9]/g, ""))
+    .find((part) => part.length > 0);
+  if (!segment) {
+    return "";
+  }
+  return segment.charAt(0).toUpperCase() + segment.slice(1);
+}
+
+function extractContactDetails(lead: LeadDoc): {
+  firstName: string;
+  fullName: string;
+  email: string;
+} {
+  const contacts = lead.contactInfo?.contacts ?? [];
+  const emails = lead.contactInfo?.emails ?? [];
+
+  const contactWithEmail = contacts.find(
+    (contact) => typeof contact?.email === "string" && contact.email.trim(),
+  );
+  const primaryContact = contactWithEmail ?? contacts[0];
+
+  const emailCandidates: Array<string | undefined> = [
+    lead.email,
+    contactWithEmail?.email,
+    primaryContact?.email,
+    emails.find((entry) => typeof entry?.email === "string")?.email,
+  ];
+
+  const email = firstNonEmptyString(...emailCandidates);
+  const fullName = firstNonEmptyString(primaryContact?.name);
+  const firstName = fullName
+    ? fullName.split(/\s+/)[0] ?? ""
+    : email
+      ? deriveFirstNameFromEmail(email)
+      : "";
+
+  return {
+    firstName,
+    fullName,
+    email,
+  };
+}
+
+function parseFollowUps(source: unknown): FollowUpEmail[] {
+  if (!Array.isArray(source)) {
+    return [];
+  }
+  return source
+    .map((entry, index) => {
+      if (!entry || typeof entry !== "object") {
+        return {
+          subject: `Follow Up ${index + 1}`,
+          body: "",
+        };
+      }
+      const record = entry as Record<string, unknown>;
+      const subject =
+        typeof record.subject === "string"
+          ? record.subject
+          : `Follow Up ${index + 1}`;
+      const body = typeof record.body === "string" ? record.body : "";
+      return { subject, body };
+    })
+    .filter((item) => item.subject || item.body);
+}
+
+function extractEmailDetails(outputData: Record<string, unknown> | undefined): {
+  primarySubject?: string;
+  primaryBody?: string;
+  followUps: FollowUpEmail[];
+} {
+  if (!outputData) {
+    return { followUps: [] };
+  }
+
+  const formatted =
+    outputData.formatted && typeof outputData.formatted === "object"
+      ? (outputData.formatted as Record<string, unknown>)
+      : undefined;
+
+  const primaryCandidate = [
+    formatted?.primary_email,
+    outputData.primary_email,
+  ].find((candidate) => candidate && typeof candidate === "object");
+
+  let primarySubject: string | undefined;
+  let primaryBody: string | undefined;
+
+  if (primaryCandidate && typeof primaryCandidate === "object") {
+    const record = primaryCandidate as Record<string, unknown>;
+    if (typeof record.subject === "string") {
+      primarySubject = record.subject;
+    }
+    if (typeof record.body === "string") {
+      primaryBody = record.body;
+    }
+  }
+
+  if (!primarySubject && typeof outputData.subject === "string") {
+    primarySubject = outputData.subject;
+  }
+  if (!primaryBody) {
+    const bodyCandidate =
+      typeof outputData.body === "string"
+        ? outputData.body
+        : typeof outputData.content === "string"
+          ? outputData.content
+          : undefined;
+    primaryBody = bodyCandidate;
+  }
+
+  let followUps = parseFollowUps(formatted?.follow_up_emails);
+
+  if (followUps.length === 0) {
+    followUps = parseFollowUps(
+      (outputData as Record<string, unknown>).follow_up_emails,
+    );
+  }
+
+  if (followUps.length === 0) {
+    const camelCaseFollowUps =
+      (outputData as Record<string, unknown>).followUpEmails;
+    if (Array.isArray(camelCaseFollowUps)) {
+      followUps = parseFollowUps(camelCaseFollowUps);
+    }
+  }
+
+  return { primarySubject, primaryBody, followUps };
+}
+
 /**
  * Log webhook signature for debugging and future verification
  * Note: Full verification requires body parsing which is done separately in handlers
@@ -525,7 +776,7 @@ http.route({
     try {
       // Get leads data
       const searchId = searchIdParam as Id<"searches"> | undefined;
-      let leads: any[] = [];
+      let leads: LeadDoc[] = [];
 
       if (searchId) {
         const search = await ctx.runQuery(
@@ -542,19 +793,19 @@ http.route({
           });
         }
 
-        leads = await ctx.runQuery(
+        leads = (await ctx.runQuery(
           internal.leads.internal.getSearchLeadsInternal,
           {
             searchId: searchId as any,
           },
-        );
+        )) as LeadDoc[];
       } else {
-        leads = await ctx.runQuery(
+        leads = (await ctx.runQuery(
           internal.leads.internal.getUserLeadsInternal,
           {
             userId: resolvedUserId as Id<"users">,
           },
-        );
+        )) as LeadDoc[];
       }
 
       if (!leads || leads.length === 0) {
@@ -564,46 +815,121 @@ http.route({
         });
       }
 
-      // Generate CSV
+      const userId = resolvedUserId as Id<"users">;
+      const leadIdSet = new Set(leads.map((lead) => String(lead._id)));
+
+      const emailRequests = (await ctx.runQuery(
+        internal.langgraph.internal.getUserEmailGenerationRequests,
+        {
+          userId,
+          leadIds: leads.map((lead) => lead._id),
+        },
+      )) as LanggraphRequestDoc[];
+
+      const emailDetailsByLead = new Map<string, EmailExportDetails>();
+
+      for (const request of emailRequests) {
+        if (!request.leadId || request.status !== "completed") {
+          continue;
+        }
+
+        const leadKey = String(request.leadId);
+        if (!leadIdSet.has(leadKey)) {
+          continue;
+        }
+
+        const timestamp = request.completedAt ?? request.createdAt ?? 0;
+        const existing = emailDetailsByLead.get(leadKey);
+        if (existing && existing.timestamp >= timestamp) {
+          continue;
+        }
+
+        const outputData = request.outputData as Record<string, unknown> | undefined;
+        const parsed = extractEmailDetails(outputData);
+
+        emailDetailsByLead.set(leadKey, {
+          requestId: request.requestId,
+          primarySubject: parsed.primarySubject,
+          primaryBody: parsed.primaryBody,
+          followUps: parsed.followUps,
+          timestamp,
+        });
+      }
+
       const csvHeaders = [
-        "Business Name",
-        "Address",
-        "Phone",
-        "Website",
-        "Email",
-        "Rating",
-        "Review Count",
-        "Category",
-        "Status",
-        "Relevance Score",
-        "Email Subject",
-        "Email Body",
-        "Personalization Notes",
-        "Notes",
-        "Search ID",
-        "Created At",
+        "id",
+        "request_id",
+        "company_name",
+        "country",
+        "city",
+        "state",
+        "website",
+        "company_profile",
+        "first_name",
+        "full_name",
+        "email",
+        "phone",
+        "category",
+        "subject_line_1",
+        "body_line_1",
+        "created_at",
+        "subject_follow_up_1",
+        "body_follow_up_1",
+        "subject_follow_up_2",
+        "body_follow_up_2",
+        "subject_follow_up_3",
+        "body_follow_up_3",
       ];
 
-      const csvRows = leads.map((lead: any) => [
-        `"${(lead.businessName || "").replace(/"/g, '""')}"`,
-        `"${(lead.address || "").replace(/"/g, '""')}"`,
-        `"${(lead.phone || "").replace(/"/g, '""')}"`,
-        `"${(lead.website || "").replace(/"/g, '""')}"`,
-        `"${(lead.email || "").replace(/"/g, '""')}"`,
-        lead.rating || "",
-        lead.reviewCount || "",
-        `"${(lead.category || "").replace(/"/g, '""')}"`,
-        lead.status,
-        lead.aiAnalysis?.relevanceScore || "",
-        `"${(lead.emailContent?.subject || "").replace(/"/g, '""')}"`,
-        `"${(lead.emailContent?.body || "").replace(/"/g, '""')}"`,
-        `"${(lead.emailContent?.personalizationNotes?.join("; ") || "").replace(/"/g, '""')}"`,
-        `"${(lead.notes || "").replace(/"/g, '""')}"`,
-        lead.searchId,
-        new Date(lead.createdAt).toISOString(),
-      ]);
+      const csvRows = leads.map((lead) => {
+        const leadKey = String(lead._id);
+        const emailDetails = emailDetailsByLead.get(leadKey);
+        const followUps = emailDetails?.followUps ?? [];
+        const [followUp1, followUp2, followUp3] = [0, 1, 2].map(
+          (index) => followUps[index] ?? { subject: "", body: "" },
+        );
 
-      const csvContent = [csvHeaders.join(","), ...csvRows.map((row: any) => row.join(","))].join("\n");
+        const contactDetails = extractContactDetails(lead);
+        const companyProfile = extractCompanyProfile(lead);
+        const primarySubject =
+          firstNonEmptyString(
+            emailDetails?.primarySubject,
+            lead.emailContent?.subject,
+          );
+        const primaryBody =
+          firstNonEmptyString(emailDetails?.primaryBody, lead.emailContent?.body);
+
+        const location = lead.location ?? {};
+
+        const rowValues: unknown[] = [
+          leadKey,
+          emailDetails?.requestId ?? "",
+          lead.businessName ?? "",
+          location.country ?? "",
+          location.city ?? "",
+          location.state ?? "",
+          lead.website ?? "",
+          companyProfile,
+          contactDetails.firstName,
+          contactDetails.fullName,
+          contactDetails.email,
+          lead.phone ?? "",
+          lead.category ?? "",
+          primarySubject,
+          primaryBody,
+          new Date(lead.createdAt).toISOString(),
+          followUp1.subject,
+          followUp1.body,
+          followUp2.subject,
+          followUp2.body,
+          followUp3.subject,
+          followUp3.body,
+        ];
+
+        return rowValues.map(escapeCsvValue).join(",");
+      });
+
+      const csvContent = [csvHeaders.join(","), ...csvRows].join("\n");
 
       return new Response(csvContent, {
         headers: {
