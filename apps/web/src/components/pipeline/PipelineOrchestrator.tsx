@@ -80,6 +80,12 @@ export function PipelineOrchestrator({
     />
   ) : undefined;
 
+  // Compute processing state from backend + local state
+  const isBusy =
+    state.isProcessing ||
+    search?.status === "in_progress" ||
+    search?.status === "processing";
+
   const trackerInlineContent = inlineSourcePanel || isBusy
     ? (
         <div className="flex flex-col gap-3">
@@ -103,12 +109,6 @@ export function PipelineOrchestrator({
       setStage(stage);
     }
   };
-
-  // Compute processing state from backend + local state
-  const isBusy =
-    state.isProcessing ||
-    search?.status === "in_progress" ||
-    search?.status === "processing";
 
   // Get research tier display info
   const getResearchTierInfo = (tier?: string) => {
