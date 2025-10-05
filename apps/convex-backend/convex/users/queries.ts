@@ -198,7 +198,7 @@ export const getUserPreferences = query({
         emailNotifications: true,
         language: "en",
         timezone: "UTC",
-        theme: "harborlight",
+        theme: "neon-pulse",
       }
     );
   },

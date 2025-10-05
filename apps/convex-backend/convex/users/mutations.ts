@@ -52,12 +52,17 @@ export const updateProfile = mutation({
 });
 
 // Update user preferences
+const themePreferenceValidator = v.union(
+  v.literal("harborlight"),
+  v.literal("neon-pulse"),
+);
+
 export const updatePreferences = mutation({
   args: {
     emailNotifications: v.optional(v.boolean()),
     language: v.optional(v.string()),
     timezone: v.optional(v.string()),
-    theme: v.optional(v.string()),
+    theme: v.optional(themePreferenceValidator),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
@@ -74,7 +79,7 @@ export const updatePreferences = mutation({
       emailNotifications: true,
       language: "en",
       timezone: "UTC",
-      theme: "harborlight",
+      theme: "neon-pulse",
     };
 
     const newPreferences = {
