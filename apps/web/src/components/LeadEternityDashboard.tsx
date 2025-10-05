@@ -205,7 +205,6 @@ function LeadEternityDashboardContent() {
   ]);
 
   const pipelineEmails = state.generatedEmails;
-  const hasNewEmails = transformedEmails.length > 0;
 
   const normalizedPlan = useMemo<PlanType>(() => {
     switch (userPlan) {
