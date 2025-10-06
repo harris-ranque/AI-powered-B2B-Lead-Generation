@@ -1261,12 +1261,97 @@ http.route({
       };
 
       if (!svixHeaders["svix-id"] || !svixHeaders["svix-timestamp"] || !svixHeaders["svix-signature"]) {
+        console.error("Missing required Svix headers");
         return new Response("Missing required Svix headers", { status: 400 });
       }
 
+      const webhookSecret = process.env.CLERK_WEBHOOK_SECRET;
+      if (!webhookSecret) {
+        console.error("CLERK_WEBHOOK_SECRET not configured");
+        return new Response("Webhook secret not configured", { status: 500 });
+      }
+
       const body = await request.text();
-      // Handle Clerk webhook - simplified version
-      // For now, just return success - webhook handling can be implemented later
+
+      // Verify webhook signature using Svix
+      const { Webhook } = await import("svix");
+      const wh = new Webhook(webhookSecret);
+
+      let evt: any;
+      try {
+        evt = wh.verify(body, {
+          "svix-id": svixHeaders["svix-id"]!,
+          "svix-timestamp": svixHeaders["svix-timestamp"]!,
+          "svix-signature": svixHeaders["svix-signature"]!,
+        });
+      } catch (err) {
+        console.error("Clerk webhook signature verification failed", err);
+        return new Response("Invalid signature", { status: 400 });
+      }
+
+      console.log(`Clerk webhook received: ${evt.type}`);
+
+      // Handle different Clerk event types
+      switch (evt.type) {
+        case "user.created": {
+          const { id, email_addresses, first_name, last_name, image_url } = evt.data;
+          const primaryEmail = email_addresses?.find((e: any) => e.id === evt.data.primary_email_address_id);
+          const email = primaryEmail?.email_address || "";
+
+          // Check if user already exists
+          const existingUser = await ctx.runQuery(
+            internal.users.internal.getUserByClerkIdInternal,
+            { clerkId: id }
+          );
+
+          if (!existingUser) {
+            // Create new user in Convex
+            await ctx.runMutation(internal.users.internal.createUserInternal, {
+              clerkId: id,
+              email: email,
+              name: [first_name, last_name].filter(Boolean).join(" ") || email.split("@")[0],
+              avatar: image_url || undefined,
+            });
+            console.log(`User created: ${id} (${email})`);
+          } else {
+            console.log(`User already exists: ${id}`);
+          }
+          break;
+        }
+
+        case "user.updated": {
+          const { id, email_addresses, first_name, last_name, image_url } = evt.data;
+          const primaryEmail = email_addresses?.find((e: any) => e.id === evt.data.primary_email_address_id);
+          const email = primaryEmail?.email_address || "";
+
+          await ctx.runMutation(internal.users.internal.updateUserByClerkIdInternal, {
+            clerkId: id,
+            email: email,
+            name: [first_name, last_name].filter(Boolean).join(" ") || undefined,
+            avatar: image_url || undefined,
+          });
+          console.log(`User updated: ${id}`);
+          break;
+        }
+
+        case "user.deleted": {
+          const { id } = evt.data;
+          await ctx.runMutation(internal.users.internal.deleteUserByClerkIdInternal, {
+            clerkId: id,
+          });
+          console.log(`User deleted: ${id}`);
+          break;
+        }
+
+        case "session.created":
+        case "session.ended":
+          // Optional: handle session events if needed
+          console.log(`Session event: ${evt.type}`);
+          break;
+
+        default:
+          console.log(`Unhandled Clerk event type: ${evt.type}`);
+      }
 
       return new Response("Webhook processed successfully");
     } catch (error) {

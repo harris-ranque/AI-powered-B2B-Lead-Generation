@@ -61,6 +61,10 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
     try {
       console.log(`[FindyMail] Enriching domain: ${domain}`);
 
+      // TODO: Make roles user-configurable - allow users to specify target roles in search parameters
+      // This could be part of search settings or user profile preferences
+      const defaultRoles = ["ceo", "founder", "cto", "manager", "director", "owner", "partner"];
+
       const response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
         method: "POST",
         headers: {
@@ -69,7 +73,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
         },
         body: JSON.stringify({
           domain: domain,
-          roles: ["ceo", "founder", "cto", "manager", "director", "owner", "partner"], // Common decision-maker roles
+          roles: defaultRoles, // Common decision-maker roles
           limit: 10, // Get up to 10 contacts per domain
         }),
       });
