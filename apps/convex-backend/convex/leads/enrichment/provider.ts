@@ -33,15 +33,22 @@ export class EnrichmentProviderFactory {
 
   /**
    * Get the configured provider type from environment
+   * Default: FindyMail (ICypeas requires firstname/lastname which we don't have in domain-only searches)
    */
   static getConfiguredProvider(): EnrichmentProviderType {
     const provider = process.env.ENRICHMENT_PROVIDER?.toLowerCase();
 
+    // NOTE: ICypeas requires firstname/lastname in discovery mode
+    // Since we only have domain names from Google Maps, we default to FindyMail
     if (provider === "icypeas") {
+      console.warn(
+        "[EnrichmentProvider] ICypeas selected but requires firstname/lastname. " +
+        "Consider using FindyMail for domain-only searches."
+      );
       return "icypeas";
     }
 
-    // Default to FindyMail for backward compatibility
+    // Default to FindyMail (works with domain-only searches)
     return "findymail";
   }
 
