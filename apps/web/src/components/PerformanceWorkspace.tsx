@@ -34,12 +34,11 @@ import { CreditManager } from "@/components/CreditManager";
 import { withErrorBoundary } from "@/utils/errorHandling";
 import { createLogger } from "@/utils/logger";
 import { DashboardHelpWidget } from "@/components/DashboardHelpWidget";
-// Temporarily disabled - Convex realtime API not yet implemented
-// import {
-//   useStatusBroadcasts,
-//   getPriorityDisplay,
-//   formatBroadcastTime,
-// } from "@/hooks/useStatusBroadcasts";
+import {
+  useStatusBroadcasts,
+  getPriorityDisplay,
+  formatBroadcastTime,
+} from "@/hooks/useStatusBroadcasts";
 import type {
   DashboardTabName,
   LeadStatsSummary,
@@ -79,29 +78,14 @@ function PerformanceWorkspaceComponent({
   onPurchaseCredits,
 }: PerformanceWorkspaceProps) {
   const [componentError, setComponentError] = useState<string | null>(null);
-  // Temporarily disabled - Convex realtime API not yet implemented
-  // const {
-  //   urgentBroadcasts,
-  //   rateLimitWarnings,
-  //   acknowledgeBroadcast,
-  //   markAsRead,
-  //   hasUrgent,
-  //   needsAcknowledgment,
-  // } = useStatusBroadcasts();
-
-  // Mock empty data until realtime API is implemented
-  const urgentBroadcasts: never[] = [];
-  const rateLimitWarnings: never[] = [];
-  const hasUrgent = false;
-  const needsAcknowledgment = 0;
-  const acknowledgeBroadcast = async (_id: unknown) => { /* no-op */ };
-  const markAsRead = async (_id: unknown) => { /* no-op */ };
-  const getPriorityDisplay = (_priority: unknown) => ({
-    label: "Normal",
-    variant: "secondary" as const,
-    className: "",
-  });
-  const formatBroadcastTime = (_timestamp: unknown) => "Just now";
+  const {
+    urgentBroadcasts,
+    rateLimitWarnings,
+    acknowledgeBroadcast,
+    markAsRead,
+    hasUrgent,
+    needsAcknowledgment,
+  } = useStatusBroadcasts();
 
   const handleComponentError = useCallback(
     (error: unknown, context: string, extra?: Record<string, unknown>) => {
@@ -248,7 +232,7 @@ function PerformanceWorkspaceComponent({
                   <div key={broadcast._id} className="rounded-lg border border-orange-200 bg-white/60 p-3 text-sm">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-semibold text-orange-800">{broadcast.title}</span>
-                      <Badge variant={priority.variant} className={priority.className}>
+                      <Badge variant={priority.variant} className={priority.color}>
                         {priority.label}
                       </Badge>
                     </div>
@@ -441,6 +425,14 @@ function PerformanceWorkspaceComponent({
             </Card>
           )}
 
+          <CreditManager
+            currentCredits={userCredits}
+            currentPlan={userPlan}
+            usageStats={usageSummary}
+            onUpgrade={onUpgradePlan}
+            onPurchaseCredits={onPurchaseCredits}
+          />
+
           <UsageWarnings />
         </div>
 
@@ -499,16 +491,6 @@ function PerformanceWorkspaceComponent({
               <DashboardHelpWidget />
             </CardContent>
           </Card>
-
-          <div className="space-y-6">
-            <CreditManager
-              currentCredits={userCredits}
-              currentPlan={userPlan}
-              usageStats={usageSummary}
-              onUpgrade={onUpgradePlan}
-              onPurchaseCredits={onPurchaseCredits}
-            />
-          </div>
         </div>
       </div>
     </div>
