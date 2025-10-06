@@ -69,6 +69,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
         },
         body: JSON.stringify({
           domain: domain,
+          roles: ["ceo", "founder", "cto", "manager", "director", "owner", "partner"], // Common decision-maker roles
           limit: 10, // Get up to 10 contacts per domain
         }),
       });
