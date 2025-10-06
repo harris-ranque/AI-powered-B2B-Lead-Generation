@@ -3,10 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import {
-  TrendingUp,
   Users,
   Mail,
-  Target,
   Clock,
   Search,
   Bot,
@@ -14,19 +12,16 @@ import {
   Bell,
   X,
   CheckCircle,
-  Bug,
 } from "lucide-react";
 import { useDashboardMetrics } from "@/hooks/useDashboard";
 import { useUserLeads } from "@/hooks/useLeads";
 import { useSearches } from "@/hooks/useSearches";
-import { useLangGraphRequests } from "@/hooks/useLangGraph";
 import { useNotifications } from "@/hooks/useNotifications";
-// Temporarily disabled - Convex realtime API not yet implemented
-// import {
-//   useStatusBroadcasts,
-//   getPriorityDisplay,
-//   formatBroadcastTime,
-// } from "@/hooks/useStatusBroadcasts";
+import {
+  useStatusBroadcasts,
+  getPriorityDisplay,
+  formatBroadcastTime,
+} from "@/hooks/useStatusBroadcasts";
 import { SearchProgressTracker } from "@/components/SearchProgressTracker";
 import { SubscriptionStatusCard } from "@/components/SubscriptionStatusCard";
 import { UsageMetersCard } from "@/components/UsageMetersCard";
@@ -40,6 +35,12 @@ import { useSubscriptionGuard } from "@/hooks/useSubscriptionGuard";
 import { withErrorBoundary } from "@/utils/errorHandling";
 import { createLogger } from "@/utils/logger";
 import type { Id } from "@genni/convex-types/dataModel";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 const dashboardLogger = createLogger("Dashboard");
 
@@ -53,9 +54,19 @@ function DashboardComponent() {
   } = useDashboardMetrics();
   const { stats: userLeadStats } = useUserLeads();
   const { searches } = useSearches();
-  const { requests: emailRequests } = useLangGraphRequests();
   const { notifications } = useNotifications();
   const { user } = useAuth();
+
+  const {
+    urgentBroadcasts,
+    searchBroadcasts,
+    creditBroadcasts,
+    rateLimitWarnings,
+    acknowledgeBroadcast,
+    markAsRead,
+    hasUrgent,
+    needsAcknowledgment,
+  } = useStatusBroadcasts();
 
   // Subscription and usage hooks
   const { isStarter, hasActiveSubscription } = useSubscription();
@@ -69,35 +80,24 @@ function DashboardComponent() {
   const { canGenerateEmails, canUseBulkOperations, canPerformAction } =
     useSubscriptionGuard();
 
-  // Real-time broadcasting system - Temporarily disabled until Convex realtime API is implemented
-  // const {
-  //   urgentBroadcasts,
-  //   searchBroadcasts,
-  //   creditBroadcasts,
-  //   rateLimitWarnings,
-  //   systemAlerts,
-  //   acknowledgeBroadcast,
-  //   markAsRead,
-  //   hasUrgent,
-  //   needsAcknowledgment,
-  // } = useStatusBroadcasts();
+  const combinedLeadStats = leadStats ?? userLeadStats;
+  const totalLeads = combinedLeadStats?.totalLeads ?? 0;
+  const leadsWithEmails = combinedLeadStats?.enrichedLeads ?? 0;
+  const enrichmentRate = combinedLeadStats?.enrichmentRate ?? 0;
+  const conversionRate = combinedLeadStats?.conversionRate ?? 0;
+  const analysisRate = combinedLeadStats?.analysisRate ?? 0;
 
-  // Mock empty data until realtime API is implemented
-  const urgentBroadcasts: never[] = [];
-  const searchBroadcasts: never[] = [];
-  const creditBroadcasts: never[] = [];
-  const rateLimitWarnings: never[] = [];
-  const systemAlerts: never[] = [];
-  const hasUrgent = false;
-  const needsAcknowledgment = 0;
-  const acknowledgeBroadcast = async (_id: unknown) => { /* no-op */ };
-  const markAsRead = async (_id: unknown) => { /* no-op */ };
-  const getPriorityDisplay = (_priority: unknown) => ({
-    label: "Normal",
-    variant: "secondary" as const,
-    icon: "💬",
-  });
-  const formatBroadcastTime = (_timestamp: unknown) => "Just now";
+  const totalSearches = searchStats?.totalSearches ?? searches?.length ?? 0;
+  const completionRate = searchStats?.completionRate ?? 0;
+  const recentSearches = searchStats?.recentSearches;
+
+  const totalEmailRuns = emailStats?.totalEmails ?? 0;
+  const successfulEmails = emailStats?.successfulEmails ?? 0;
+  const emailSuccessRate =
+    emailStats?.successRate ??
+    (totalEmailRuns > 0
+      ? Math.round((successfulEmails / totalEmailRuns) * 100)
+      : 0);
 
   // Local state for dismissible alerts and surfaced errors
   const [dismissedAlerts, setDismissedAlerts] = useState<
@@ -120,11 +120,13 @@ function DashboardComponent() {
     setComponentError(null);
   }, []);
 
-  // Calculate real stats
-  const totalLeads = userLeadStats?.totalLeads || 0;
-  const leadsWithEmails = userLeadStats?.withEmails || 0;
-  const totalSearches = searches?.length || 0;
-  const emailsGenerated = emailRequests?.page?.length || 0;
+  const formatRelativeTime = useCallback((timestamp?: number | null) => {
+    if (typeof timestamp !== "number") {
+      return "Recently";
+    }
+
+    return formatBroadcastTime(timestamp);
+  }, []);
 
   // Filter active searches for progress tracking
   const activeSearches = useMemo(() => {
@@ -141,11 +143,13 @@ function DashboardComponent() {
   const recentCompletedSearches = useMemo(() => {
     try {
       return (
-        searches?.filter(
-          (s) =>
-            s.status === "completed" &&
-            Date.now() - s.completedAt < 24 * 60 * 60 * 1000,
-        ) || []
+        searches?.filter((s) => {
+          if (s.status !== "completed" || typeof s.completedAt !== "number") {
+            return false;
+          }
+
+          return Date.now() - s.completedAt < 24 * 60 * 60 * 1000;
+        }) || []
       );
     } catch (error) {
       handleComponentError(error, "recent-completed-searches", {
@@ -192,44 +196,113 @@ function DashboardComponent() {
     }
   }, [dismissedAlerts, handleComponentError, urgentBroadcasts]);
 
+  const trendData = useMemo(() => {
+    try {
+      if (!recentSearches || recentSearches.length === 0) {
+        return [] as {
+          id: Id<"searches">;
+          label: string;
+          leads: number;
+          enriched: number;
+        }[];
+      }
+
+      const sorted = [...recentSearches].sort(
+        (a, b) => a.createdAt - b.createdAt,
+      );
+
+      return sorted.slice(-6).map((search) => {
+        const totalFound =
+          typeof search.results?.totalFound === "number"
+            ? search.results.totalFound
+            : 0;
+        const enrichedCount =
+          typeof search.results?.enrichedCount === "number"
+            ? search.results.enrichedCount
+            : 0;
+
+        return {
+          id: search._id,
+          label: new Date(search.createdAt).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+          }),
+          leads: totalFound,
+          enriched: enrichedCount,
+        };
+      });
+    } catch (error) {
+      handleComponentError(error, "trend-data", {
+        recentSearchCount: recentSearches?.length,
+      });
+      return [];
+    }
+  }, [handleComponentError, recentSearches]);
+
+  const trendSummary = useMemo(() => {
+    if (trendData.length === 0) {
+      return { totalLeads: 0, totalEnriched: 0, avgLeads: 0 };
+    }
+
+    const totals = trendData.reduce(
+      (acc, entry) => ({
+        totalLeads: acc.totalLeads + entry.leads,
+        totalEnriched: acc.totalEnriched + entry.enriched,
+      }),
+      { totalLeads: 0, totalEnriched: 0 },
+    );
+
+    return {
+      ...totals,
+      avgLeads: Math.round(totals.totalLeads / trendData.length),
+    };
+  }, [trendData]);
+
+  const trendChartConfig = useMemo(
+    () => ({
+      leads: { label: "Leads found", color: "hsl(var(--chart-1))" },
+      enriched: { label: "Enriched leads", color: "hsl(var(--chart-2))" },
+    }),
+    [],
+  );
+
   const stats = useMemo(() => {
     try {
-      const completedSearchCount = searches
-        ? searches.filter((s) => s.status === "completed").length
-        : 0;
-      const successfulEmailRequests = emailRequests?.page
-        ? emailRequests.page.filter((r) => r.status === "completed").length
-        : 0;
-
       return [
         {
           title: "Total Leads Found",
           value: totalLeads.toLocaleString(),
-          change: userLeadStats?.thisWeek
-            ? `+${userLeadStats.thisWeek} this week`
-            : "No recent activity",
+          change:
+            trendSummary.totalLeads > 0
+              ? `+${trendSummary.totalLeads} from recent searches`
+              : "No recent searches",
           icon: Users,
         },
         {
-          title: "Leads with Emails",
+          title: "Enriched Leads",
           value: leadsWithEmails.toLocaleString(),
-          change: `${Math.round((leadsWithEmails / Math.max(totalLeads, 1)) * 100)}% coverage`,
-          icon: Target,
+          change:
+            totalLeads > 0
+              ? `${enrichmentRate}% enriched`
+              : "No leads enriched yet",
+          icon: Mail,
         },
         {
           title: "Searches Completed",
           value: totalSearches.toLocaleString(),
-          change: completedSearchCount
-            ? `${completedSearchCount} completed`
-            : "No searches yet",
+          change:
+            totalSearches > 0
+              ? `${completionRate}% completion rate`
+              : "No searches yet",
           icon: Search,
         },
         {
           title: "AI Emails Generated",
-          value: emailsGenerated.toLocaleString(),
-          change: successfulEmailRequests
-            ? `${successfulEmailRequests} successful`
-            : "None generated",
+          value: successfulEmails.toLocaleString(),
+          change:
+            totalEmailRuns > 0
+              ? `${emailSuccessRate}% success rate`
+              : "No email runs",
           icon: Bot,
         },
       ];
@@ -238,7 +311,7 @@ function DashboardComponent() {
         totalLeads,
         leadsWithEmails,
         totalSearches,
-        emailsGenerated,
+        totalEmailRuns,
       });
       return [
         {
@@ -248,10 +321,10 @@ function DashboardComponent() {
           icon: Users,
         },
         {
-          title: "Leads with Emails",
+          title: "Enriched Leads",
           value: leadsWithEmails.toLocaleString(),
           change: "Data unavailable",
-          icon: Target,
+          icon: Mail,
         },
         {
           title: "Searches Completed",
@@ -261,21 +334,23 @@ function DashboardComponent() {
         },
         {
           title: "AI Emails Generated",
-          value: emailsGenerated.toLocaleString(),
+          value: successfulEmails.toLocaleString(),
           change: "Data unavailable",
           icon: Bot,
         },
       ];
     }
   }, [
-    emailRequests?.page,
-    emailsGenerated,
+    completionRate,
+    emailSuccessRate,
     handleComponentError,
     leadsWithEmails,
+    successfulEmails,
+    totalEmailRuns,
     totalLeads,
     totalSearches,
-    userLeadStats?.thisWeek,
-    searches,
+    trendSummary,
+    enrichmentRate,
   ]);
 
   // Convert notifications to recent activity format
@@ -494,7 +569,7 @@ function DashboardComponent() {
           <UsageWarnings />
 
           {/* Subscription & Usage Cards */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 mb-6">
             <SubscriptionStatusCard />
             <UsageMetersCard />
           </div>
@@ -508,13 +583,13 @@ function DashboardComponent() {
           ) : (
             <>
               {/* Stats Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {stats.map((stat) => {
                   const Icon = stat.icon;
                   return (
                     <Card
                       key={stat.title}
-                      className="p-6 bg-card border-border"
+                      className="p-5 bg-card border-border"
                     >
                       <div className="flex items-center justify-between">
                         <div>
@@ -538,22 +613,84 @@ function DashboardComponent() {
           )}
 
           {/* Charts & Activity */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {/* Performance Chart */}
-            <Card className="p-6 bg-card border-border">
-              <h3 className="text-lg font-semibold text-foreground mb-4">
-                Lead Generation Trend
-              </h3>
-              <div className="h-64 flex items-center justify-center bg-muted/20 rounded-lg">
-                <p className="text-muted-foreground">
-                  Chart visualization would go here
-                </p>
+            <Card className="p-5 bg-card border-border">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-foreground">
+                  Lead Generation Trend
+                </h3>
+                {trendData.length > 0 && (
+                  <Badge variant="outline" className="text-xs">
+                    Last {trendData.length} searches
+                  </Badge>
+                )}
+              </div>
+              {trendData.length > 0 ? (
+                <ChartContainer
+                  config={trendChartConfig}
+                  className="h-52 w-full"
+                >
+                  <BarChart data={trendData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                    <YAxis
+                      allowDecimals={false}
+                      tickLine={false}
+                      axisLine={false}
+                      width={40}
+                    />
+                    <ChartTooltip
+                      cursor={{ fill: "rgba(148, 163, 184, 0.12)" }}
+                      content={<ChartTooltipContent indicator="line" />}
+                    />
+                    <Bar dataKey="leads" fill="var(--color-leads)" radius={4} />
+                    <Bar
+                      dataKey="enriched"
+                      fill="var(--color-enriched)"
+                      radius={4}
+                    />
+                  </BarChart>
+                </ChartContainer>
+              ) : (
+                <div className="flex h-40 items-center justify-center rounded-md bg-muted/10 text-sm text-muted-foreground">
+                  Run a search to populate your trend chart.
+                </div>
+              )}
+              <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                <div>
+                  <p className="text-muted-foreground">Recent leads</p>
+                  <p className="text-lg font-semibold text-foreground">
+                    {trendSummary.totalLeads.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Avg {trendSummary.avgLeads.toLocaleString()} per search
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Enriched</p>
+                  <p className="text-lg font-semibold text-foreground">
+                    {trendSummary.totalEnriched.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {enrichmentRate}% overall coverage
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Pipeline quality</p>
+                  <p className="text-lg font-semibold text-foreground">
+                    {conversionRate}% conversion
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {analysisRate}% analyzed leads
+                  </p>
+                </div>
               </div>
             </Card>
 
             {/* Recent Activity & Real-time Updates */}
-            <Card className="p-6 bg-card border-border">
-              <div className="flex items-center justify-between mb-4">
+            <Card className="p-5 bg-card border-border">
+              <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-foreground">
                   Recent Activity
                 </h3>
@@ -567,7 +704,7 @@ function DashboardComponent() {
                 )}
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {/* Recent broadcasts */}
                 {searchBroadcasts.slice(0, 2).map((broadcast) => {
                   const priorityDisplay = getPriorityDisplay(
@@ -658,7 +795,7 @@ function DashboardComponent() {
                     ))
                   : searchBroadcasts.length === 0 &&
                     creditBroadcasts.length === 0 && (
-                      <div className="text-center py-8">
+                      <div className="py-6 text-center">
                         <p className="text-muted-foreground">
                           No recent activity
                         </p>
@@ -700,7 +837,7 @@ function DashboardComponent() {
 
           {/* Recent Completed Searches */}
           {recentCompletedSearches.length > 0 && (
-            <Card className="p-6 bg-card border-border mt-6">
+            <Card className="p-5 bg-card border-border mt-5">
               <h3 className="text-lg font-semibold text-foreground mb-4">
                 Recently Completed
               </h3>
@@ -715,7 +852,7 @@ function DashboardComponent() {
                       <p>Results: {search.results?.totalFound || 0} leads</p>
                       <p>Credits: {search.creditsUsed || 0}</p>
                       <p>
-                        Completed: {formatBroadcastTime(search.completedAt)}
+                        Completed: {formatRelativeTime(search.completedAt)}
                       </p>
                     </div>
                   </div>
@@ -725,8 +862,8 @@ function DashboardComponent() {
           )}
 
           {/* Quick Actions */}
-          <Card className="p-6 bg-card border-border mt-6">
-            <div className="flex items-center justify-between mb-4">
+          <Card className="p-5 bg-card border-border mt-5">
+            <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-foreground">
                 Quick Actions
               </h3>
@@ -736,7 +873,7 @@ function DashboardComponent() {
                 </Badge>
               )}
             </div>
-            <div className="flex gap-4 flex-wrap">
+            <div className="flex flex-wrap gap-3">
               <Button
                 className="bg-primary hover:bg-primary/90 text-primary-foreground"
                 disabled={!canPerformAction("search").allowed}
