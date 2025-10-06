@@ -219,8 +219,8 @@ async function validateGoogleMapsKey(apiKey: string): Promise<boolean> {
 
 async function validateFindyMailKey(apiKey: string): Promise<boolean> {
   try {
-    // Test with FindyMail API - checking account info
-    const response = await fetch("https://app.findymail.com/api/v1/account", {
+    // Test with FindyMail API - checking credits endpoint
+    const response = await fetch("https://app.findymail.com/api/credits", {
       method: "GET",
       headers: {
         Authorization: `Bearer ${apiKey}`,

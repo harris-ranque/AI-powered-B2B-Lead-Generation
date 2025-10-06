@@ -6,7 +6,7 @@ import {
   FindyMailResponse,
 } from "./types";
 
-const FINDYMAIL_BASE_URL = "https://app.findymail.com/api/v1";
+const FINDYMAIL_BASE_URL = "https://app.findymail.com/api";
 
 export class FindyMailProvider implements EnrichmentProviderInterface {
   name: EnrichmentProvider = "findymail";
@@ -17,8 +17,8 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
   }
 
   /**
-   * Enrich multiple domains in batch using FindyMail's search API
-   * Note: FindyMail uses /search endpoint with individual domain requests
+   * Enrich multiple domains in batch using FindyMail's domain search API
+   * Note: FindyMail uses /search/domain endpoint with individual domain requests
    */
   async enrichBatch(domains: string[]): Promise<EnrichmentBatchResult> {
     const result: EnrichmentBatchResult = {};
@@ -55,13 +55,13 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
   }
 
   /**
-   * Enrich a single domain using FindyMail's search endpoint
+   * Enrich a single domain using FindyMail's domain search endpoint
    */
   async enrichSingle(domain: string): Promise<EnrichmentResult | null> {
     try {
       console.log(`[FindyMail] Enriching domain: ${domain}`);
 
-      const response = await fetch(`${FINDYMAIL_BASE_URL}/search`, {
+      const response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${this.apiKey}`,
@@ -173,7 +173,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
   }
 
   /**
-   * Validate API key by making a test request
+   * Validate API key by making a test request to credits endpoint
    */
   async validateApiKey(apiKey: string): Promise<boolean> {
     try {
