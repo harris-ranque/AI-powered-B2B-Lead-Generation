@@ -461,7 +461,7 @@ function LeadEternityDashboardContent() {
 
       <div className="flex">
         <div className="harborlight-sidebar w-64 border-r border-border bg-card flex flex-col">
-          <nav className="harborlight-sidebar-nav space-y-2 p-4 flex-1">
+          <nav className="harborlight-sidebar-nav space-y-2 p-4">
             <Button
               variant={currentTab === "overview" ? "default" : "ghost"}
               className="w-full justify-start"
