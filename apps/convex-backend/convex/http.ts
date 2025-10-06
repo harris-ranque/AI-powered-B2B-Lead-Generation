@@ -49,6 +49,11 @@ type LeadDoc = {
     subject?: string;
     body?: string;
   };
+  followUpEmails?: Array<{
+    subject: string;
+    body: string;
+    delay_days?: number;
+  }>;
   createdAt: number;
 };
 
@@ -884,7 +889,18 @@ http.route({
       const csvRows = leads.map((lead) => {
         const leadKey = String(lead._id);
         const emailDetails = emailDetailsByLead.get(leadKey);
-        const followUps = emailDetails?.followUps ?? [];
+
+        // Get follow-up emails from langgraphRequests outputData OR from lead.followUpEmails
+        let followUps = emailDetails?.followUps ?? [];
+
+        // If no follow-ups from langgraphRequests, try lead.followUpEmails
+        if (followUps.length === 0 && (lead as any).followUpEmails) {
+          const leadFollowUps = (lead as any).followUpEmails;
+          if (Array.isArray(leadFollowUps)) {
+            followUps = parseFollowUps(leadFollowUps);
+          }
+        }
+
         const defaultFollowUp: FollowUpEmail = { subject: "", body: "" };
         const followUp1: FollowUpEmail = followUps[0] ?? defaultFollowUp;
         const followUp2: FollowUpEmail = followUps[1] ?? defaultFollowUp;

@@ -319,7 +319,7 @@ export const handleEmailGenerationCompleted = internalMutation({
           });
         }
 
-        // Update lead with AI analysis results
+        // Update lead with AI analysis results and follow-up emails
         await ctx.runMutation(internal.leads.internal.updateLeadAnalysis, {
           leadId: leadId as any,
           aiAnalysis: {
@@ -341,6 +341,7 @@ export const handleEmailGenerationCompleted = internalMutation({
                   result.primary_email.estimated_effectiveness || 0.5,
               }
             : undefined,
+          followUpEmails: formattedFollowUps.length > 0 ? formattedFollowUps : undefined,
         });
 
         const deepResearchUsed = Boolean(result.deep_research_used);

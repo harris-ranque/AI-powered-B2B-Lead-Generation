@@ -187,7 +187,7 @@ async function processLeadWithLangGraph(
             call_to_action: "Schedule a discovery call",
             include_case_study: false,
             personalization_level: "high",
-            follow_up_sequence: false,
+            follow_up_sequence: true, // Enable follow-up email sequence generation
           },
         }),
       });

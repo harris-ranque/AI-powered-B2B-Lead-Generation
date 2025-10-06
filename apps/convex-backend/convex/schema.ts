@@ -292,6 +292,17 @@ export default defineSchema({
       }),
     ),
 
+    // Follow-up email sequence from LangGraph
+    followUpEmails: v.optional(
+      v.array(
+        v.object({
+          subject: v.string(),
+          body: v.string(),
+          delay_days: v.optional(v.number()),
+        }),
+      ),
+    ),
+
     // Analysis retry tracking
     analysisAttempts: v.optional(v.number()),
     lastAnalysisAttempt: v.optional(v.number()),

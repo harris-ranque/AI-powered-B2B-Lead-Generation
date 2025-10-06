@@ -283,6 +283,15 @@ export const updateLeadAnalysis = internalMutation({
         estimatedEffectiveness: v.number(),
       }),
     ),
+    followUpEmails: v.optional(
+      v.array(
+        v.object({
+          subject: v.string(),
+          body: v.string(),
+          delay_days: v.optional(v.number()),
+        }),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const updateData: any = {
@@ -292,6 +301,11 @@ export const updateLeadAnalysis = internalMutation({
 
     if (args.emailContent) {
       updateData.emailContent = args.emailContent;
+    }
+
+    // Store follow-up emails in the lead record
+    if (args.followUpEmails && args.followUpEmails.length > 0) {
+      updateData.followUpEmails = args.followUpEmails;
     }
 
     // Track analysis attempts
