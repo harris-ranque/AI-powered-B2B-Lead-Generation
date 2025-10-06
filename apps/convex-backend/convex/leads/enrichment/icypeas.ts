@@ -219,6 +219,7 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
 
   /**
    * Start an email search
+   * Note: ICypeas requires firstname OR lastname to be provided, even if empty
    */
   private async startEmailSearch(
     domain: string,
@@ -226,10 +227,12 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
   ): Promise<IcyPeasSearchResponse> {
     const url = `${ICYPEAS_BASE_URL}/email-search`;
 
+    // ICypeas API requires firstname OR lastname for email discovery
+    // We provide empty strings to enable domain-based search
     const body = {
+      firstname: companyName || "",
+      lastname: "",
       domainOrCompany: domain,
-      // If we have a company name, use domain search instead
-      ...(companyName && { company: companyName }),
     };
 
     console.log(`[ICypeas] Making API request to: ${url}`, {
@@ -268,12 +271,31 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
       }
 
       const jsonResponse = await response.json() as IcyPeasSearchResponse;
+
+      // Extract searchId from the response (it's in item._id field)
+      const searchId = jsonResponse.item?._id || jsonResponse.searchId;
+      const status = jsonResponse.item?.status || jsonResponse.status;
+
       console.log(`[ICypeas] Search response parsed:`, {
         success: jsonResponse.success,
-        searchId: jsonResponse.searchId,
-        status: jsonResponse.status,
-        message: jsonResponse.message
+        searchId,
+        status,
+        message: jsonResponse.message,
+        hasValidationErrors: !!jsonResponse.validationErrors
       });
+
+      // Check for validation errors
+      if (jsonResponse.validationErrors && jsonResponse.validationErrors.length > 0) {
+        const errorMessages = jsonResponse.validationErrors
+          .map(e => e.humanReadableMessage || e.message)
+          .join('; ');
+        console.error(`[ICypeas] Validation errors:`, {
+          errors: jsonResponse.validationErrors,
+          domain,
+          companyName
+        });
+        throw new Error(`ICypeas validation error: ${errorMessages}`);
+      }
 
       // Validate that the search was actually initiated successfully
       if (!jsonResponse.success) {
@@ -287,7 +309,23 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
         throw new Error(errorMsg);
       }
 
-      return jsonResponse;
+      // Ensure we have a searchId
+      if (!searchId) {
+        console.error(`[ICypeas] No searchId in response:`, {
+          response: jsonResponse,
+          domain,
+          companyName
+        });
+        throw new Error("ICypeas API response missing search ID");
+      }
+
+      // Return normalized response with searchId
+      return {
+        success: true,
+        searchId,
+        status,
+        message: jsonResponse.message
+      };
     } catch (error) {
       console.error(`[ICypeas] Failed to start search:`, {
         error: error instanceof Error ? error.message : String(error),
@@ -321,7 +359,7 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
             "Authorization": this.apiKey,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ searchId }),
+          body: JSON.stringify({ id: searchId }), // Use 'id' field, not 'searchId'
         });
 
         console.log(`[ICypeas] Poll response received:`, {
@@ -343,38 +381,54 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
           throw new Error(`IcyPeas polling error: ${response.status} - ${errorText}`);
         }
 
-        const result = await response.json() as IcyPeasSearchResult;
+        const rawResult = await response.json() as IcyPeasSearchResult;
+
+        // Extract result from items array (new API format)
+        const item = rawResult.items?.[0];
+        const status = item?.status || rawResult.status;
+        const emails = item?.results?.emails || rawResult.emails || [];
+        const phones = item?.results?.phones || rawResult.phoneNumbers || [];
 
         console.log(`[ICypeas] Poll result parsed:`, {
           attempt: attempt + 1,
           searchId,
-          status: result.status,
-          hasEmails: !!result.emails,
-          emailCount: result.emails?.length || 0,
-          hasContacts: !!result.contacts,
-          contactCount: result.contacts?.length || 0,
+          status,
+          hasEmails: emails.length > 0,
+          emailCount: emails.length,
+          hasPhones: phones.length > 0,
+          phoneCount: phones.length,
           attemptDuration: Date.now() - attemptStartTime
         });
 
+        // Normalize the result format
+        const result: IcyPeasSearchResult = {
+          success: rawResult.success,
+          status: status as "FOUND" | "NOT_FOUND" | "ERROR",
+          emails,
+          contacts: rawResult.contacts || [],
+          phoneNumbers: phones,
+          companyInfo: rawResult.companyInfo
+        };
+
         // Check if search is complete
-        if (result.status === "FOUND" || result.status === "NOT_FOUND") {
+        if (status === "FOUND" || status === "NOT_FOUND") {
           console.log(`[ICypeas] ✅ Poll completed successfully:`, {
             searchId,
-            finalStatus: result.status,
+            finalStatus: status,
             totalAttempts: attempt + 1,
             totalDuration: Date.now() - pollStartTime,
-            emailsFound: result.emails?.length || 0,
-            contactsFound: result.contacts?.length || 0
+            emailsFound: emails.length,
+            phonesFound: phones.length
           });
           return result;
         }
 
         // If still processing, wait and try again
-        if (result.status === "ERROR") {
+        if (status === "ERROR") {
           console.error(`[ICypeas] ❌ Search failed on ICypeas side:`, {
             searchId,
             attempt: attempt + 1,
-            status: result.status,
+            status,
             result
           });
           throw new Error("Search failed on IcyPeas side");

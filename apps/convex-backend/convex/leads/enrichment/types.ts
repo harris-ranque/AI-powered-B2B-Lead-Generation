@@ -63,9 +63,19 @@ export interface EnrichmentProviderInterface {
 // IcyPeas specific types
 export interface IcyPeasSearchResponse {
   success: boolean;
-  searchId: string;
-  status: "NONE" | "SCHEDULED" | "IN_PROGRESS" | "DEBITED";
+  searchId?: string; // Legacy field for compatibility
+  item?: {
+    _id: string;
+    status: "NONE" | "SCHEDULED" | "IN_PROGRESS" | "DEBITED";
+  };
+  status?: "NONE" | "SCHEDULED" | "IN_PROGRESS" | "DEBITED";
   message?: string;
+  validationErrors?: Array<{
+    field: string;
+    message: string;
+    humanReadableMessage: string;
+    type: string;
+  }>;
 }
 
 export interface IcyPeasEmailResult {
@@ -86,6 +96,22 @@ export interface IcyPeasSearchResult {
     industry?: string;
     owner?: string;
   };
+  // New fields for actual API response
+  items?: Array<{
+    _id: string;
+    status: "FOUND" | "NOT_FOUND" | "ERROR" | "IN_PROGRESS" | "SCHEDULED";
+    results: {
+      firstname: string;
+      lastname: string;
+      fullname: string;
+      emails: IcyPeasEmailResult[];
+      phones: string[];
+      saasServices?: any[];
+      gender?: string;
+      li?: string;
+    };
+  }>;
+  total?: number;
 }
 
 // FindyMail specific types
