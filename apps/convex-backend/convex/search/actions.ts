@@ -360,6 +360,8 @@ export const searchGoogleMaps = action({
             analyzed: 0,
             total: totalFound,
           },
+          partialResults: totalFound < params.maxResults,
+          requestedCount: params.maxResults,
         },
       );
 
@@ -373,6 +375,53 @@ export const searchGoogleMaps = action({
           discoveryRate: (totalFound / params.maxResults) * 100,
         },
       );
+
+      // Warn user if we found fewer leads than requested
+      const requestedResults = params.maxResults;
+      if (totalFound < requestedResults) {
+        const foundPercentage = (totalFound / requestedResults) * 100;
+        const shortfall = requestedResults - totalFound;
+        const warningMessage = `Found ${totalFound} of ${requestedResults} requested leads (${foundPercentage.toFixed(0)}%) in this area`;
+
+        logWithCorrelation(
+          "warn",
+          correlation,
+          "⚠️ PARTIAL RESULTS: Fewer leads found than requested",
+          {
+            requested: requestedResults,
+            found: totalFound,
+            shortfall,
+            percentage: foundPercentage,
+          },
+        );
+
+        // Broadcast warning to user immediately
+        await ctx.runMutation(
+          internal.realtime.broadcaster.broadcastPipelineUpdate,
+          {
+            userId: search.userId,
+            searchId: args.searchId,
+            stage: "discovery_complete",
+            progress: 33,
+            priority: "high",
+            message: warningMessage,
+            data: {
+              partialResults: true,
+              requested: requestedResults,
+              found: totalFound,
+              shortfall,
+              suggestions: shortfall > requestedResults * 0.5 ? [
+                "Try increasing search radius",
+                "Use broader keywords",
+                "Expand to nearby cities",
+              ] : [
+                "Try increasing search radius slightly",
+                "Adjust keyword specificity",
+              ],
+            },
+          } as any,
+        );
+      }
 
       // Create lead records for discovered places with Place Details enrichment
       const leadIds: string[] = [];
@@ -698,6 +747,16 @@ export const completeSearch: any = action({
         creditsUsed: totalCreditsUsed,
       });
 
+      // Build completion message with partial results awareness
+      const isPartialResults = search.partialResults === true;
+      const requestedCount = search.requestedCount || search.parameters.maxResults;
+
+      let completionMessage = `Search completed! Found ${totalFound} leads, enriched ${enrichedCount}, analyzed ${analyzedCount}`;
+      if (isPartialResults && requestedCount) {
+        const foundPercentage = ((totalFound / requestedCount) * 100).toFixed(0);
+        completionMessage = `Search completed with partial results: Found ${totalFound} of ${requestedCount} requested leads (${foundPercentage}%). Enriched ${enrichedCount}, analyzed ${analyzedCount}. Consider expanding search radius or adjusting keywords.`;
+      }
+
       // Send final pipeline update broadcast
       await ctx.runMutation(
         internal.realtime.broadcaster.broadcastPipelineUpdate,
@@ -706,7 +765,8 @@ export const completeSearch: any = action({
           searchId: args.searchId,
           stage: "completed",
           progress: 100,
-          message: `Search completed! Found ${results.totalFound} leads, enriched ${results.enrichedCount}, analyzed ${results.analyzedCount}`,
+          priority: isPartialResults ? "high" : "normal",
+          message: completionMessage,
           data: {
             results: {
               totalFound,
@@ -722,8 +782,10 @@ export const completeSearch: any = action({
             },
             creditsUsed: totalCreditsUsed,
             creditBreakdown,
+            partialResults: isPartialResults,
+            requestedCount: isPartialResults ? requestedCount : undefined,
           },
-        },
+        } as any,
       );
 
       // Send completion notification

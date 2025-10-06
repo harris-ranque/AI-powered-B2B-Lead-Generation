@@ -206,6 +206,8 @@ export const updateSearchProgressInternal = internalMutation({
       analyzed: v.number(),
       total: v.number(),
     }),
+    partialResults: v.optional(v.boolean()),
+    requestedCount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const search = await ctx.db.get(args.searchId);
@@ -215,14 +217,20 @@ export const updateSearchProgressInternal = internalMutation({
 
     const now = Date.now();
 
-    const updates = withUpdatedAtIfSupported(
-      {
-        progress: args.progress,
-        lastOrchestrationAt: now,
-      },
-      search,
-      now,
-    );
+    let updateData: Record<string, any> = {
+      progress: args.progress,
+      lastOrchestrationAt: now,
+    };
+
+    // Add partial results metadata if provided
+    if (args.partialResults !== undefined) {
+      updateData.partialResults = args.partialResults;
+    }
+    if (args.requestedCount !== undefined) {
+      updateData.requestedCount = args.requestedCount;
+    }
+
+    const updates = withUpdatedAtIfSupported(updateData, search, now);
 
     try {
       await ctx.db.patch(args.searchId, updates);

@@ -5,7 +5,8 @@
       "Bash(curl -X POST https://app.findymail.com/api/search/domain -H \"Content-Type: application/json\" -H \"Authorization: Bearer test_key\" -d '{\"\"\"\"domain\"\"\"\": \"\"\"\"example.com\"\"\"\"}' -i)",
       "Bash(curl:*)",
       "Bash(git commit --amend -m \"$(cat <<''EOF''\nfix: Correct FindyMail API endpoints to resolve 405 Method Not Allowed errors\n\nFixed FindyMail API integration by updating endpoints to match official API documentation:\n- Changed base URL from `/api/v1` to `/api` \n- Updated search endpoint from `/search` to `/search/domain`\n- Kept validation endpoint as `/credits` (verified with endpoint testing)\n\nUpdated files:\n- leads/enrichment/findymail.ts: Domain search and validation endpoints\n- userApiKeys/actions.ts: API key validation endpoint\n\nEndpoint verification results:\n- POST /api/search/domain → 401 (valid endpoint, needs auth) ✓\n- GET /api/credits → 401 (valid endpoint, needs auth) ✓\n- GET /api/account → 404 (endpoint not found) ✗\n\nThis resolves 100% enrichment failure rate where all FindyMail requests were\nreceiving 405 Method Not Allowed errors.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
-      "Bash(npx convex env:*)"
+      "Bash(npx convex env:*)",
+      "Bash(pnpm type-check:*)"
     ],
     "deny": [],
     "ask": []

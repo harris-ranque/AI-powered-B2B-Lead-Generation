@@ -134,6 +134,8 @@ export default defineSchema({
       }),
     ),
     creditsRefunded: v.optional(v.number()),
+    partialResults: v.optional(v.boolean()),
+    requestedCount: v.optional(v.number()),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
     lastOrchestrationAt: v.optional(v.number()),
