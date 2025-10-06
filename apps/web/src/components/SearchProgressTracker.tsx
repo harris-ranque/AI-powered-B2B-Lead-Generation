@@ -797,6 +797,9 @@ function getStageMatchers(stage: StageId) {
         "ai_analysis",
         "email_generation",
         "research",
+        "tier1",
+        "tier2",
+        "tier3",
         "context",
         "intel",
       ];
