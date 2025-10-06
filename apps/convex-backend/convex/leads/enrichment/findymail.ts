@@ -6,7 +6,7 @@ import {
   FindyMailResponse,
 } from "./types";
 
-const FINDYMAIL_BASE_URL = "https://app.findymail.com/api";
+const FINDYMAIL_BASE_URL = "https://app.findymail.com/api/v1";
 
 export class FindyMailProvider implements EnrichmentProviderInterface {
   name: EnrichmentProvider = "findymail";
@@ -61,11 +61,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
     try {
       console.log(`[FindyMail] Enriching domain: ${domain}`);
 
-      // TODO: Make roles user-configurable - allow users to specify target roles in search parameters
-      // This could be part of search settings or user profile preferences
-      const defaultRoles = ["ceo", "founder", "cto", "manager", "director", "owner", "partner"];
-
-      const response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
+      const response = await fetch(`${FINDYMAIL_BASE_URL}/search`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${this.apiKey}`,
@@ -73,8 +69,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
         },
         body: JSON.stringify({
           domain: domain,
-          roles: defaultRoles, // Common decision-maker roles
-          limit: 10, // Get up to 10 contacts per domain
+          limit: 1, // Get top contact per domain
         }),
       });
 
