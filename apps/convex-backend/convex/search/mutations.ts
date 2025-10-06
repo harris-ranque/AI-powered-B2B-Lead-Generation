@@ -216,7 +216,7 @@ export const createSearchCompleted = mutation({
             throw error;
           }
           // Retry without updatedAt field for backward compatibility
-          const { updatedAt, ...patchWithoutTimestamp } = failurePatch;
+          const { updatedAt: _unused, ...patchWithoutTimestamp } = failurePatch as typeof failurePatch & { updatedAt?: number };
           await ctx.db.patch(searchId, patchWithoutTimestamp);
         }
         throw new Error("Lead generation is currently paused by administrator");
@@ -329,7 +329,7 @@ export const updateSearchProgress = mutation({
         throw error;
       }
       // Retry without updatedAt field for backward compatibility
-      const { updatedAt, ...updatesWithoutTimestamp } = updates;
+      const { updatedAt: _unused, ...updatesWithoutTimestamp } = updates as typeof updates & { updatedAt?: number };
       await ctx.db.patch(args.searchId, updatesWithoutTimestamp);
     }
 
@@ -374,7 +374,7 @@ export const cancelSearch = mutation({
         throw error;
       }
       // Retry without updatedAt field for backward compatibility
-      const { updatedAt, ...updatesWithoutTimestamp } = updates;
+      const { updatedAt: _unused, ...updatesWithoutTimestamp } = updates as typeof updates & { updatedAt?: number };
       await ctx.db.patch(args.searchId, updatesWithoutTimestamp);
     }
 

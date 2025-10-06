@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import Stripe from "stripe";
+import { Webhook, WebhookVerificationError } from "svix";
 import {
   base64UrlEncodeString,
   base64UrlDecodeToString,
@@ -1274,7 +1275,6 @@ http.route({
       const body = await request.text();
 
       // Verify webhook signature using Svix
-      const { Webhook } = await import("svix");
       const wh = new Webhook(webhookSecret);
 
       let evt: any;
@@ -1285,8 +1285,15 @@ http.route({
           "svix-signature": svixHeaders["svix-signature"]!,
         });
       } catch (err) {
-        console.error("Clerk webhook signature verification failed", err);
-        return new Response("Invalid signature", { status: 400 });
+        if (err instanceof WebhookVerificationError) {
+          console.error("Clerk webhook signature verification failed", {
+            error: err.message,
+            svixId: svixHeaders["svix-id"],
+          });
+          return new Response("Invalid signature", { status: 400 });
+        }
+        console.error("Clerk webhook signature verification error", err);
+        return new Response("Signature verification failed", { status: 400 });
       }
 
       console.log(`Clerk webhook received: ${evt.type}`);

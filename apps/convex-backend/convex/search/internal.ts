@@ -231,7 +231,7 @@ export const updateSearchProgressInternal = internalMutation({
         throw error;
       }
       // Retry without updatedAt field for backward compatibility
-      const { updatedAt, ...updatesWithoutTimestamp } = updates;
+      const { updatedAt: _unused, ...updatesWithoutTimestamp } = updates as typeof updates & { updatedAt?: number };
       await ctx.db.patch(args.searchId, updatesWithoutTimestamp);
     }
     return { success: true };

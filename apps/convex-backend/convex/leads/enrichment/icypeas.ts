@@ -81,7 +81,7 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
         const domain = batch[index];
         if (!domain) return;
 
-        if (searchResult.status === "fulfilled" && searchResult.value.success) {
+        if (searchResult.status === "fulfilled" && searchResult.value.success && searchResult.value.searchId) {
           console.log(`[ICypeas] Polling for domain ${domain} (batch ${batchIndex + 1}, domain ${index + 1}/${batch.length})`);
           try {
             const enrichmentData = await this.pollForResults(searchResult.value.searchId);
@@ -176,6 +176,11 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
       }
 
       console.log(`[ICypeas] Search initiated successfully for ${domain}. Search ID: ${searchResponse.searchId}, Status: ${searchResponse.status}`);
+
+      // Validate searchId before polling
+      if (!searchResponse.searchId) {
+        throw new Error(`No search ID returned for domain: ${domain}`);
+      }
 
       // Poll for results
       console.log(`[ICypeas] Starting to poll for results. Search ID: ${searchResponse.searchId}`);
