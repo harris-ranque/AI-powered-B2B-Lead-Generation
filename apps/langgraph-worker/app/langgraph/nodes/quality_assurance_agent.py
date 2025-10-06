@@ -20,15 +20,15 @@ settings = get_settings()
 class QualityAssessment(BaseModel):
     """Comprehensive quality assessment for generated email"""
     # Overall quality scores
-    overall_quality_score: float = Field(..., ge=0, le=1, description="Overall email quality score")
-    approval_status: str = Field(..., description="Approved, Needs_Improvement, or Rejected")
+    overall_quality_score: float = Field(..., ge=0, le=1, description="Overall email quality score (0.0 to 1.0)")
+    approval_status: str = Field(..., description="Must be exactly one of: Approved, Needs_Improvement, or Rejected")
     
-    # Specific quality dimensions
-    personalization_score: float = Field(..., ge=0, le=1, description="Personalization depth and accuracy")
-    business_context_score: float = Field(..., ge=0, le=1, description="Business intelligence integration")
-    professional_tone_score: float = Field(..., ge=0, le=1, description="Professional tone and language")
-    value_proposition_score: float = Field(..., ge=0, le=1, description="Value proposition clarity and relevance")
-    call_to_action_score: float = Field(..., ge=0, le=1, description="CTA clarity and appropriateness")
+    # Specific quality dimensions (all scores 0.0-1.0)
+    personalization_score: float = Field(..., ge=0, le=1, description="Personalization depth and accuracy (0.0-1.0, must not be exactly 0.0 unless truly terrible)")
+    business_context_score: float = Field(..., ge=0, le=1, description="Business intelligence integration (0.0-1.0, must not be exactly 0.0 unless truly terrible)")
+    professional_tone_score: float = Field(..., ge=0, le=1, description="Professional tone and language (0.0-1.0, must not be exactly 0.0 unless truly terrible)")
+    value_proposition_score: float = Field(..., ge=0, le=1, description="Value proposition clarity and relevance (0.0-1.0, must not be exactly 0.0 unless truly terrible)")
+    call_to_action_score: float = Field(..., ge=0, le=1, description="CTA clarity and appropriateness (0.0-1.0, must not be exactly 0.0 unless truly terrible)")
     
     # Content analysis
     personalization_elements_found: List[str] = Field(..., description="Personalization elements identified in email")
@@ -99,14 +99,18 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         
         logger.info(f"Analyzing email quality: Subject='{email_subject[:50]}...', "
                    f"Body length={len(email_body)} chars")
+
+        # Debug: Log first 500 chars of email body to check for placeholders
+        logger.debug(f"Email body preview for {lead.company_name}: {email_body[:500]}...")
         
         # Initialize LLM for quality assessment
         # gpt-5-nano uses max_completion_tokens instead of max_tokens
+        # Use medium reasoning effort for QA - we need accurate scoring, not just speed
         llm = ChatOpenAI(
             model=settings.default_model,
             temperature=0.2,  # Low temperature for consistent assessment
             max_completion_tokens=settings.max_tokens,
-            model_kwargs={"reasoning_effort": "minimal"},  # Optimize for speed with gpt-5-nano
+            model_kwargs={"reasoning_effort": "medium"},  # Use medium for better quality assessment
             openai_api_key=settings.openai_api_key
         ).with_structured_output(QualityAssessment)
         
@@ -220,24 +224,39 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         ])
         
         # Execute quality assessment
-        quality_assessment: QualityAssessment = await llm.ainvoke(prompt.format_messages(
-            # Prospect context
-            company_name=lead.company_name,
-            contact_name=lead.contact_name or "Unknown",
-            title=lead.title or "Professional",
-            industry=getattr(lead, 'industry', '') or "Not specified",
-            
-            # Business intelligence
-            pain_points="; ".join(pain_points[:5]) if pain_points else "No pain points identified",
-            value_matches="; ".join(value_matches[:5]) if value_matches else "No value matches identified",
-            personalization_elements="; ".join(personalization_elements[:8]) if personalization_elements else "No personalization elements available",
-            company_overview=company_overview[:400] if company_overview else "No company overview available",
-            
-            # Email content
-            email_subject=email_subject,
-            email_body=email_body,
-            declared_personalization="; ".join(email_personalization) if email_personalization else "No personalization declared"
-        ))
+        try:
+            quality_assessment: QualityAssessment = await llm.ainvoke(prompt.format_messages(
+                # Prospect context
+                company_name=lead.company_name,
+                contact_name=lead.contact_name or "Unknown",
+                title=lead.title or "Professional",
+                industry=getattr(lead, 'industry', '') or "Not specified",
+
+                # Business intelligence
+                pain_points="; ".join(pain_points[:5]) if pain_points else "No pain points identified",
+                value_matches="; ".join(value_matches[:5]) if value_matches else "No value matches identified",
+                personalization_elements="; ".join(personalization_elements[:8]) if personalization_elements else "No personalization elements available",
+                company_overview=company_overview[:400] if company_overview else "No company overview available",
+
+                # Email content
+                email_subject=email_subject,
+                email_body=email_body,
+                declared_personalization="; ".join(email_personalization) if email_personalization else "No personalization declared"
+            ))
+
+            # Debug logging for QA assessment results
+            logger.info(f"QA Assessment scores for {lead.company_name}: "
+                       f"Overall={quality_assessment.overall_quality_score:.2f}, "
+                       f"Personalization={quality_assessment.personalization_score:.2f}, "
+                       f"Business_Context={quality_assessment.business_context_score:.2f}, "
+                       f"Professional_Tone={quality_assessment.professional_tone_score:.2f}, "
+                       f"Value_Prop={quality_assessment.value_proposition_score:.2f}, "
+                       f"CTA={quality_assessment.call_to_action_score:.2f}, "
+                       f"Status={quality_assessment.approval_status}")
+
+        except Exception as llm_error:
+            logger.error(f"LLM quality assessment failed for {lead.company_name}: {str(llm_error)}")
+            raise
 
         placeholder_patterns = [
             re.compile(r"\[[^\]]*(?:your|company|insert|name|title|placeholder)[^\]]*\]", re.IGNORECASE),
