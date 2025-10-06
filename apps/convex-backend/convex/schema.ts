@@ -182,7 +182,7 @@ export default defineSchema({
     researchCompletedAt: v.optional(v.number()),
 
     createdAt: v.number(),
-    updatedAt: v.number(),
+    updatedAt: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_status", ["status"])

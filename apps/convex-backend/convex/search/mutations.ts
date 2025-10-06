@@ -209,7 +209,16 @@ export const createSearchCompleted = mutation({
           nowTimestamp,
         );
 
-        await ctx.db.patch(searchId, failurePatch);
+        try {
+          await ctx.db.patch(searchId, failurePatch);
+        } catch (error) {
+          if (!isUpdatedAtSchemaError(error)) {
+            throw error;
+          }
+          // Retry without updatedAt field for backward compatibility
+          const { updatedAt, ...patchWithoutTimestamp } = failurePatch;
+          await ctx.db.patch(searchId, patchWithoutTimestamp);
+        }
         throw new Error("Lead generation is currently paused by administrator");
       }
 
@@ -267,7 +276,16 @@ export const updateSearchStatus = mutation({
 
     updates = withUpdatedAtIfSupported(updates, search, now);
 
-    await ctx.db.patch(args.searchId, updates);
+    try {
+      await ctx.db.patch(args.searchId, updates);
+    } catch (error) {
+      if (!isUpdatedAtSchemaError(error)) {
+        throw error;
+      }
+      // Retry without updatedAt field for backward compatibility
+      const { updatedAt, ...updatesWithoutTimestamp } = updates;
+      await ctx.db.patch(args.searchId, updatesWithoutTimestamp);
+    }
 
     return { success: true };
   },
@@ -304,7 +322,16 @@ export const updateSearchProgress = mutation({
       now,
     );
 
-    await ctx.db.patch(args.searchId, updates);
+    try {
+      await ctx.db.patch(args.searchId, updates);
+    } catch (error) {
+      if (!isUpdatedAtSchemaError(error)) {
+        throw error;
+      }
+      // Retry without updatedAt field for backward compatibility
+      const { updatedAt, ...updatesWithoutTimestamp } = updates;
+      await ctx.db.patch(args.searchId, updatesWithoutTimestamp);
+    }
 
     return { success: true };
   },
@@ -340,7 +367,16 @@ export const cancelSearch = mutation({
       now,
     );
 
-    await ctx.db.patch(args.searchId, updates);
+    try {
+      await ctx.db.patch(args.searchId, updates);
+    } catch (error) {
+      if (!isUpdatedAtSchemaError(error)) {
+        throw error;
+      }
+      // Retry without updatedAt field for backward compatibility
+      const { updatedAt, ...updatesWithoutTimestamp } = updates;
+      await ctx.db.patch(args.searchId, updatesWithoutTimestamp);
+    }
 
     // Broadcast cancellation update
     try {

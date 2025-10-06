@@ -1,6 +1,6 @@
 import { internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
-import { withUpdatedAtIfSupported } from "./utils";
+import { withUpdatedAtIfSupported, isUpdatedAtSchemaError } from "./utils";
 
 // Internal query to get search without auth check
 export const getSearchInternal = internalQuery({
@@ -106,7 +106,16 @@ export const updateSearchStatusInternal = internalMutation({
 
     updates = withUpdatedAtIfSupported(updates, search, now);
 
-    await ctx.db.patch(args.searchId, updates);
+    try {
+      await ctx.db.patch(args.searchId, updates);
+    } catch (error) {
+      if (!isUpdatedAtSchemaError(error)) {
+        throw error;
+      }
+      // Retry without updatedAt field for backward compatibility
+      const { updatedAt, ...updatesWithoutTimestamp } = updates;
+      await ctx.db.patch(args.searchId, updatesWithoutTimestamp);
+    }
 
     return { success: true };
   },
@@ -174,7 +183,16 @@ export const updateSearchResults = internalMutation({
 
     updates = withUpdatedAtIfSupported(updates, search, now);
 
-    await ctx.db.patch(args.searchId, updates);
+    try {
+      await ctx.db.patch(args.searchId, updates);
+    } catch (error) {
+      if (!isUpdatedAtSchemaError(error)) {
+        throw error;
+      }
+      // Retry without updatedAt field for backward compatibility
+      const { updatedAt, ...updatesWithoutTimestamp } = updates;
+      await ctx.db.patch(args.searchId, updatesWithoutTimestamp);
+    }
   },
 });
 
@@ -206,7 +224,16 @@ export const updateSearchProgressInternal = internalMutation({
       now,
     );
 
-    await ctx.db.patch(args.searchId, updates);
+    try {
+      await ctx.db.patch(args.searchId, updates);
+    } catch (error) {
+      if (!isUpdatedAtSchemaError(error)) {
+        throw error;
+      }
+      // Retry without updatedAt field for backward compatibility
+      const { updatedAt, ...updatesWithoutTimestamp } = updates;
+      await ctx.db.patch(args.searchId, updatesWithoutTimestamp);
+    }
     return { success: true };
   },
 });
