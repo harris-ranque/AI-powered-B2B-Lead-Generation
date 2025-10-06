@@ -65,7 +65,7 @@ interface SearchProgressTrackerProps {
   className?: string;
 }
 
-type StageId = "discovery" | "research" | "enrichment" | "analysis" | "completion";
+type StageId = "discovery" | "enrichment" | "analysis" | "completion";
 
 type TimelineStage = {
   id: StageId;
@@ -77,7 +77,6 @@ type TimelineStage = {
 
 const STAGE_ORDER: StageId[] = [
   "discovery",
-  "research",
   "enrichment",
   "analysis",
   "completion",
@@ -138,6 +137,10 @@ export function SearchProgressTracker({
   const creditsEstimate = search.creditsReserved ?? search.creditsUsed ?? totalCount;
 
   const researchTierDisplay = getResearchTierDisplay(search.researchTier);
+  const analysisStageIcon: LucideIcon =
+    search.researchTier && search.researchTier !== "error"
+      ? researchTierDisplay.icon
+      : Bot;
   const StatusIcon = getStatusIcon(search.status);
 
   const statusBadgeVariant =
@@ -169,14 +172,12 @@ export function SearchProgressTracker({
       return STAGE_ORDER.length - 1;
     }
 
-    if (analyzedCount > 0) {
+    if (analyzedCount > 0 ||
+      (search.researchStage && search.researchStage !== "research_failed")) {
       return STAGE_ORDER.indexOf("analysis");
     }
     if (enrichedCount > 0 || search.status === "processing") {
       return STAGE_ORDER.indexOf("enrichment");
-    }
-    if (search.researchStage && search.researchStage !== "research_failed") {
-      return STAGE_ORDER.indexOf("research");
     }
     if (discoveredCount > 0 || search.status !== "pending") {
       return STAGE_ORDER.indexOf("discovery");
@@ -193,16 +194,6 @@ export function SearchProgressTracker({
       count: discoveredCount,
     },
     {
-      id: "research",
-      label: "Research",
-      icon: researchTierDisplay.icon,
-      count: researchSources,
-      tooltip:
-        search.researchTier === "error"
-          ? "Research escalated due to earlier tier failure"
-          : undefined,
-    },
-    {
       id: "enrichment",
       label: "Enrich",
       icon: Mail,
@@ -212,8 +203,16 @@ export function SearchProgressTracker({
     {
       id: "analysis",
       label: "Analysis",
-      icon: Bot,
+      icon: analysisStageIcon,
       count: analyzedCount,
+      tooltip:
+        search.researchTier === "error"
+          ? "Research escalated due to earlier tier failure"
+          : researchSources && researchSources > 0
+            ? `${researchSources} research sources analyzed`
+            : search.researchTier && search.researchTier !== "error"
+              ? `${researchTierDisplay.label} research with AI personalization`
+              : "AI personalization & research insights",
     },
     {
       id: "completion",
@@ -471,7 +470,7 @@ export function SearchProgressTracker({
                               <StageIcon className="h-5 w-5" />
                             </div>
                           </TooltipTrigger>
-                          {(stage.tooltip || (stage.id === "research" && search.researchEscalationReason)) && (
+                          {(stage.tooltip || (stage.id === "analysis" && search.researchEscalationReason)) && (
                             <TooltipContent className="max-w-xs text-xs">
                               {stage.tooltip || search.researchEscalationReason}
                             </TooltipContent>
@@ -481,7 +480,7 @@ export function SearchProgressTracker({
                       <div className="text-center text-xs">
                         <div className="font-medium text-foreground">{stage.label}</div>
                         <div className="text-muted-foreground">
-                          {typeof stage.count === "number" ? `${stage.count} ${stage.id === "research" ? "sources" : "leads"}` : "–"}
+                          {typeof stage.count === "number" ? `${stage.count} leads` : "–"}
                         </div>
                       </div>
                       {index < timelineStages.length - 1 && (
@@ -790,12 +789,17 @@ function getStageMatchers(stage: StageId) {
   switch (stage) {
     case "discovery":
       return ["discovery", "google_maps", "maps_discovery"];
-    case "research":
-      return ["research", "tier1", "tier2", "tier3", "context", "intel"];
     case "enrichment":
       return ["enrich", "enrichment", "contact", "lead_enrichment"];
     case "analysis":
-      return ["analysis", "ai_analysis", "email_generation"];
+      return [
+        "analysis",
+        "ai_analysis",
+        "email_generation",
+        "research",
+        "context",
+        "intel",
+      ];
     case "completion":
       return ["complete", "completed", "handoff", "pipeline", "ready", "wrap", "final"];
     default:
