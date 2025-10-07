@@ -159,16 +159,6 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
       };
     }
 
-    // Extract emails - handle different response formats
-    let emails: any[] = [];
-    if (Array.isArray(findyMailData.emails)) {
-      emails = findyMailData.emails;
-    } else if (findyMailData.data?.emails) {
-      emails = findyMailData.data.emails;
-    } else if (findyMailData.results?.emails) {
-      emails = findyMailData.results.emails;
-    }
-
     // Extract contacts - handle different response formats
     let contacts: any[] = [];
     if (Array.isArray(findyMailData.contacts)) {
@@ -178,6 +168,19 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
     } else if (findyMailData.results?.contacts) {
       contacts = findyMailData.results.contacts;
     }
+
+    // Extract emails from contacts array (FindyMail API structure)
+    // Each contact object contains: { name, email, domain, first_name, ... }
+    const emails: any[] = contacts
+      .filter(contact => contact.email)
+      .map(contact => ({
+        email: contact.email,
+        name: contact.name,
+        first_name: contact.first_name,
+        domain: contact.domain,
+        // Include any additional metadata from contact
+        ...contact
+      }));
 
     // Extract social profiles
     const socialProfiles = findyMailData.socialProfiles ||

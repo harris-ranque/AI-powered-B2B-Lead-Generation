@@ -66,6 +66,9 @@ const ROLE_SUGGESTIONS = [
   "VP of Sales",
   "Head of Marketing",
   "Managing Partner",
+  "Sales",
+  "Marketing",
+  "Manager",
 ] as const;
 const MAX_SELECTED_ROLES = 3;
 
