@@ -555,9 +555,9 @@ export const enrichLeads: any = action({
 
           const enrichmentData: EnrichmentBatchResult = await enrichmentService.enrichBatch(domains);
 
-          // Determine fallback provider (opposite of primary)
-          const fallbackProviderType: "findymail" | "icypeas" =
-            providerType === "icypeas" ? "findymail" : "icypeas";
+          // Determine fallback provider (disabled icypeas, no fallback)
+          const fallbackProviderType: "findymail" | "icypeas" | null =
+            null; // IcyPeas is disabled, no fallback available
 
           // Track domains that need fallback enrichment
           const domainsNeedingFallback: string[] = [];
@@ -592,18 +592,18 @@ export const enrichLeads: any = action({
               logWithCorrelation(
                 "warn",
                 batchCorrelation,
-                `⚠️ No emails found for ${domain} using ${providerType}, will try ${fallbackProviderType}`,
+                `⚠️ No emails found for ${domain} using ${providerType}${fallbackProviderType ? `, will try ${fallbackProviderType}` : " (no fallback available)"}`,
                 {
                   domain,
                   primaryProvider: providerType,
-                  fallbackProvider: fallbackProviderType,
+                  fallbackProvider: fallbackProviderType || "none",
                 },
               );
             }
           }
 
-          // Try fallback provider for domains without emails
-          if (domainsNeedingFallback.length > 0) {
+          // Try fallback provider for domains without emails (disabled)
+          if (domainsNeedingFallback.length > 0 && fallbackProviderType !== null) {
             logWithCorrelation(
               "info",
               batchCorrelation,
@@ -653,24 +653,24 @@ export const enrichLeads: any = action({
                     },
                   );
                 } else {
-                  // Both providers failed, mark as completed_fallback
+                  // Enrichment failed, mark as completed_fallback
                   await ctx.runMutation(
                     internal.leads.internal.updateEnrichmentStatus,
                     {
                       leadId: (lead as any)._id,
                       status: "completed_fallback",
-                      error: `No enrichment data found from ${providerType} or ${fallbackProviderType}`,
+                      error: `No enrichment data found from ${providerType}${fallbackProviderType ? ` or ${fallbackProviderType}` : ""}`,
                     },
                   );
 
                   logWithCorrelation(
                     "warn",
                     batchCorrelation,
-                    `❌ Both providers failed for ${domain}`,
+                    `❌ Enrichment failed for ${domain}`,
                     {
                       domain,
                       primaryProvider: providerType,
-                      fallbackProvider: fallbackProviderType,
+                      fallbackProvider: fallbackProviderType || "none",
                     },
                   );
                 }
@@ -681,7 +681,7 @@ export const enrichLeads: any = action({
                 batchCorrelation,
                 "❌ Fallback enrichment provider error",
                 {
-                  fallbackProvider: fallbackProviderType,
+                  fallbackProvider: fallbackProviderType || "none",
                   domainsCount: domainsNeedingFallback.length,
                   errorType: fallbackError instanceof Error ? fallbackError.constructor.name : "Unknown",
                 },
@@ -698,10 +698,25 @@ export const enrichLeads: any = action({
                   {
                     leadId: (lead as any)._id,
                     status: "completed_fallback",
-                    error: `${providerType} and ${fallbackProviderType} enrichment failed`,
+                    error: `${providerType}${fallbackProviderType ? ` and ${fallbackProviderType}` : ""} enrichment failed`,
                   },
                 );
               }
+            }
+          } else if (domainsNeedingFallback.length > 0) {
+            // No fallback available, mark all as completed_fallback
+            for (const domain of domainsNeedingFallback) {
+              const lead = leadsByDomain.get(domain);
+              if (!lead) continue;
+
+              await ctx.runMutation(
+                internal.leads.internal.updateEnrichmentStatus,
+                {
+                  leadId: (lead as any)._id,
+                  status: "completed_fallback",
+                  error: `No enrichment data found from ${providerType} (no fallback available)`,
+                },
+              );
             }
           }
 
@@ -744,23 +759,24 @@ export const enrichLeads: any = action({
             error as Error,
           );
 
-          // Try fallback provider for the entire batch
-          const fallbackProviderType: "findymail" | "icypeas" =
-            providerType === "icypeas" ? "findymail" : "icypeas";
+          // Try fallback provider for the entire batch (disabled)
+          const fallbackProviderType: "findymail" | "icypeas" | null =
+            null; // IcyPeas is disabled, no fallback available
 
-          logWithCorrelation(
-            "info",
-            batchCorrelation,
-            `🔄 Primary provider failed, trying fallback provider for entire batch`,
-            {
-              primaryProvider: providerType,
-              fallbackProvider: fallbackProviderType,
-              domainsCount: domains.length,
-            },
-          );
+          if (fallbackProviderType !== null) {
+            logWithCorrelation(
+              "info",
+              batchCorrelation,
+              `🔄 Primary provider failed, trying fallback provider for entire batch`,
+              {
+                primaryProvider: providerType,
+                fallbackProvider: fallbackProviderType,
+                domainsCount: domains.length,
+              },
+            );
 
-          try {
-            const fallbackService = createEnrichmentService(undefined, fallbackProviderType);
+            try {
+              const fallbackService = createEnrichmentService(undefined, fallbackProviderType);
             const fallbackData: EnrichmentBatchResult = await fallbackService.enrichBatch(domains);
 
             // Process fallback results
@@ -799,32 +815,45 @@ export const enrichLeads: any = action({
                   {
                     leadId: (lead as any)._id,
                     status: "failed",
-                    error: `Both ${providerType} and ${fallbackProviderType} enrichment failed`,
+                    error: `${providerType}${fallbackProviderType ? ` and ${fallbackProviderType}` : ""} enrichment failed`,
                   },
                 );
               }
             }
-          } catch (fallbackError) {
-            logWithCorrelation(
-              "error",
-              batchCorrelation,
-              "❌ Fallback provider also failed",
-              {
-                fallbackProvider: fallbackProviderType,
-                errorType: fallbackError instanceof Error ? fallbackError.constructor.name : "Unknown",
-              },
-              fallbackError as Error,
-            );
+            } catch (fallbackError) {
+              logWithCorrelation(
+                "error",
+                batchCorrelation,
+                "❌ Fallback provider also failed",
+                {
+                  fallbackProvider: fallbackProviderType || "none",
+                  errorType: fallbackError instanceof Error ? fallbackError.constructor.name : "Unknown",
+                },
+                fallbackError as Error,
+              );
 
-            // Mark batch as failed
+              // Mark batch as failed
+              for (const lead of batch) {
+                await ctx.runMutation(
+                  internal.leads.internal.updateEnrichmentStatus,
+                  {
+                    leadId: (lead as any)._id,
+                    status: "failed",
+                    error:
+                      error instanceof Error ? error.message : `${providerType} enrichment failed`,
+                  },
+                );
+              }
+            }
+          } else {
+            // No fallback available, mark batch as failed
             for (const lead of batch) {
               await ctx.runMutation(
                 internal.leads.internal.updateEnrichmentStatus,
                 {
                   leadId: (lead as any)._id,
                   status: "failed",
-                  error:
-                    error instanceof Error ? error.message : `${providerType} enrichment failed`,
+                  error: error instanceof Error ? error.message : `${providerType} enrichment failed (no fallback available)`,
                 },
               );
             }
@@ -1067,13 +1096,37 @@ export const analyzeLeads: any = action({
         );
       }
 
-      // Get all leads for this search (enriched and unenriched)
-      const leads: any = await ctx.runQuery(
+      // Get all leads for this search that have valid contact information
+      // Only analyze leads with both email and contact name
+      const allLeads: any = await ctx.runQuery(
         internal.leads.internal.getSearchLeadsInternal,
         {
           searchId: args.searchId,
         },
       );
+
+      // Filter leads to only those with valid contact information
+      const leads = allLeads.filter((lead: any) => {
+        const hasEmail = lead.contactInfo?.emails?.length > 0;
+        const hasContactName = lead.contactInfo?.contacts?.length > 0 &&
+                              lead.contactInfo.contacts[0]?.name;
+        return hasEmail && hasContactName;
+      });
+
+      const skippedLeads = allLeads.length - leads.length;
+      if (skippedLeads > 0) {
+        logWithCorrelation(
+          "info",
+          correlation,
+          `📋 Filtering Leads for AI Analysis`,
+          {
+            totalLeads: allLeads.length,
+            leadsWithContact: leads.length,
+            skippedLeads,
+            reason: "missing_email_or_contact_name",
+          },
+        );
+      }
 
       // LangGraph service configuration
       const langgraphUrl = process.env.LANGGRAPH_URL;
