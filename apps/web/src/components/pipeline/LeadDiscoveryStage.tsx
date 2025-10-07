@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -35,6 +36,8 @@ import {
   Mail,
   ChevronDown,
   ChevronUp,
+  X,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -53,6 +56,18 @@ const MIN_RADIUS_MILES = 1;
 const MAX_RADIUS_MILES = 31;
 const DEFAULT_RADIUS_MILES = 15;
 const RADIUS_STEP_MILES = 1;
+const DEFAULT_ROLE_SELECTION = ["CEO", "Founder", "Owner"] as const;
+const ROLE_SUGGESTIONS = [
+  "CEO",
+  "Founder",
+  "Owner",
+  "President",
+  "COO",
+  "VP of Sales",
+  "Head of Marketing",
+  "Managing Partner",
+] as const;
+const MAX_SELECTED_ROLES = 3;
 
 export function LeadDiscoveryStage({
   userCredits,
@@ -79,6 +94,11 @@ export function LeadDiscoveryStage({
   const [employeeRange, setEmployeeRange] = useState([10, 1000]);
   const [includeEmails, setIncludeEmails] = useState(true);
   const [aiAnalysis, setAiAnalysis] = useState(true);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([
+    ...DEFAULT_ROLE_SELECTION,
+  ]);
+  const [customRole, setCustomRole] = useState("");
+  const [roleError, setRoleError] = useState<string | null>(null);
 
   // Upload form state
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -96,6 +116,97 @@ export function LeadDiscoveryStage({
     }
   }, [hasActiveSearch]);
 
+  const rolesDisabled = !includeEmails;
+  const canAddMoreRoles = selectedRoles.length < MAX_SELECTED_ROLES;
+
+  useEffect(() => {
+    if (selectedRoles.length > 0) {
+      setRoleError(null);
+    }
+  }, [selectedRoles.length]);
+
+  useEffect(() => {
+    if (!includeEmails) {
+      setRoleError(null);
+    }
+  }, [includeEmails]);
+
+  const tryAddRole = (role: string) => {
+    if (rolesDisabled) {
+      return false;
+    }
+
+    const formatted = toStandardCase(role);
+    if (!formatted) {
+      setRoleError("Role name cannot be empty.");
+      return false;
+    }
+
+    if (
+      selectedRoles.some(
+        (existing) => existing.toLowerCase() === formatted.toLowerCase(),
+      )
+    ) {
+      return false;
+    }
+
+    if (!canAddMoreRoles) {
+      setRoleError(`You can target up to ${MAX_SELECTED_ROLES} roles.`);
+      return false;
+    }
+
+    setSelectedRoles((prev) => [...prev, formatted]);
+    setRoleError(null);
+    return true;
+  };
+
+  const handleToggleRole = (role: string) => {
+    if (rolesDisabled) {
+      return;
+    }
+
+    const formatted = toStandardCase(role);
+    if (!formatted) {
+      return;
+    }
+
+    const exists = selectedRoles.some(
+      (existing) => existing.toLowerCase() === formatted.toLowerCase(),
+    );
+
+    if (exists) {
+      if (selectedRoles.length <= 1) {
+        setRoleError("At least one role is required for enrichment.");
+        return;
+      }
+
+      setSelectedRoles((prev) =>
+        prev.filter(
+          (existing) => existing.toLowerCase() !== formatted.toLowerCase(),
+        ),
+      );
+      setRoleError(null);
+      return;
+    }
+
+    tryAddRole(formatted);
+  };
+
+  const handleAddCustomRole = () => {
+    if (tryAddRole(customRole)) {
+      setCustomRole("");
+    }
+  };
+
+  const handleCustomRoleKeyDown = (
+    event: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      handleAddCustomRole();
+    }
+  };
+
   const validateAndEstimateCost = () => {
     if (!selectedSource) return { isValid: false, estimatedCost: 0 };
 
@@ -109,6 +220,7 @@ export function LeadDiscoveryStage({
         maxEmployees: employeeRange[1],
         includeEmails,
         aiAnalysis,
+        roles: selectedRoles,
       };
       return selectedSource.validate(params);
     } else if (state.selectedSource === "csv_upload") {
@@ -150,6 +262,22 @@ export function LeadDiscoveryStage({
         );
         const searchName = searchNameParts.join(" in ");
 
+        const sanitizedRoles = selectedRoles
+          .map((role) => toStandardCase(role))
+          .filter(
+            (role, index, array) =>
+              role.length > 0 &&
+              array.findIndex(
+                (item) => item.toLowerCase() === role.toLowerCase(),
+              ) === index,
+          )
+          .slice(0, MAX_SELECTED_ROLES);
+
+        const rolesForSearch =
+          sanitizedRoles.length > 0
+            ? sanitizedRoles
+            : [...DEFAULT_ROLE_SELECTION];
+
         // Create search using existing Convex integration with auto-start
         const searchResult = await createSearch({
           name: searchName,
@@ -158,6 +286,7 @@ export function LeadDiscoveryStage({
             maxResults: leadsCount[0],
             radius: radius[0],
             keywords: [formattedIndustry],
+            roles: rolesForSearch,
             filters: {
               minEmployees: employeeRange[0],
               maxEmployees: employeeRange[1],
@@ -389,6 +518,109 @@ export function LeadDiscoveryStage({
                     checked={includeEmails}
                     onCheckedChange={setIncludeEmails}
                   />
+                </div>
+
+                <div
+                  className={cn(
+                    "space-y-3 rounded-lg border border-border/60 bg-background/60 p-4 transition-opacity",
+                    rolesDisabled && "pointer-events-none opacity-60",
+                  )}
+                  aria-disabled={rolesDisabled}
+                >
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-1">
+                      <Label className="flex items-center gap-2 text-sm font-medium">
+                        <Users className="h-4 w-4" />
+                        Target Roles
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Choose up to {MAX_SELECTED_ROLES} decision-maker roles for
+                        Findymail to prioritize when searching for contacts.
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {selectedRoles.length}/{MAX_SELECTED_ROLES} selected
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {selectedRoles.map((role) => (
+                      <Badge
+                        key={role.toLowerCase()}
+                        variant="secondary"
+                        className="flex items-center gap-1 rounded-full px-3 py-1 text-xs"
+                      >
+                        {role}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleRole(role)}
+                          className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+                          aria-label={`Remove ${role}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                    {selectedRoles.length === 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        No roles selected yet.
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {ROLE_SUGGESTIONS.map((role) => {
+                      const formatted = toStandardCase(role);
+                      const isSelected = selectedRoles.some(
+                        (existing) =>
+                          existing.toLowerCase() === formatted.toLowerCase(),
+                      );
+                      return (
+                        <Button
+                          key={role}
+                          type="button"
+                          size="sm"
+                          variant={isSelected ? "default" : "outline"}
+                          className={cn(
+                            "rounded-full",
+                            !isSelected && "bg-background/80",
+                          )}
+                          onClick={() => handleToggleRole(role)}
+                          disabled={
+                            rolesDisabled || (!isSelected && !canAddMoreRoles)
+                          }
+                        >
+                          {formatted}
+                        </Button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      value={customRole}
+                      onChange={(event) => setCustomRole(event.target.value)}
+                      onKeyDown={handleCustomRoleKeyDown}
+                      placeholder="Add a custom role (e.g., VP of Marketing)"
+                      disabled={rolesDisabled}
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={handleAddCustomRole}
+                      disabled={
+                        rolesDisabled || !customRole.trim() || !canAddMoreRoles
+                      }
+                      className="sm:w-auto"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Role
+                    </Button>
+                  </div>
+
+                  {roleError && (
+                    <p className="text-xs text-destructive">{roleError}</p>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between">

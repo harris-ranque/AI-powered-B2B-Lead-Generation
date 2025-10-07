@@ -17,7 +17,7 @@ import {
 } from "./enrichment/provider";
 
 // Import enrichment types
-import { EnrichmentBatchResult } from "./enrichment/types";
+import { EnrichmentBatchResult, EnrichmentOptions } from "./enrichment/types";
 
 type LangGraphResponse = {
   status: string;
@@ -411,6 +411,16 @@ export const enrichLeads: any = action({
         }
       }
 
+      const requestedRoles = Array.isArray(search.parameters?.roles)
+        ? search.parameters.roles.filter((role: unknown): role is string =>
+            typeof role === "string" && role.trim().length > 0,
+          )
+        : undefined;
+
+      const enrichmentOptions: EnrichmentOptions | undefined = requestedRoles
+        ? { roles: requestedRoles }
+        : undefined;
+
       // Create enrichment service
       let enrichmentService;
       try {
@@ -550,10 +560,12 @@ export const enrichLeads: any = action({
               provider: providerType,
               domainsCount: domains.length,
               domains: domains.slice(0, 3), // Log first 3 domains for debugging
+              roles: enrichmentOptions?.roles,
             },
           );
 
-          const enrichmentData: EnrichmentBatchResult = await enrichmentService.enrichBatch(domains);
+          const enrichmentData: EnrichmentBatchResult =
+            await enrichmentService.enrichBatch(domains, enrichmentOptions);
 
           // Determine fallback provider (disabled icypeas, no fallback)
           const fallbackProviderType: "findymail" | "icypeas" | null =
@@ -618,7 +630,11 @@ export const enrichLeads: any = action({
             try {
               // Create fallback enrichment service
               const fallbackService = createEnrichmentService(undefined, fallbackProviderType);
-              const fallbackData: EnrichmentBatchResult = await fallbackService.enrichBatch(domainsNeedingFallback);
+            const fallbackData: EnrichmentBatchResult =
+              await fallbackService.enrichBatch(
+                domainsNeedingFallback,
+                enrichmentOptions,
+              );
 
               // Process fallback results
               for (const domain of domainsNeedingFallback) {
@@ -777,7 +793,8 @@ export const enrichLeads: any = action({
 
             try {
               const fallbackService = createEnrichmentService(undefined, fallbackProviderType);
-            const fallbackData: EnrichmentBatchResult = await fallbackService.enrichBatch(domains);
+            const fallbackData: EnrichmentBatchResult =
+              await fallbackService.enrichBatch(domains, enrichmentOptions);
 
             // Process fallback results
             for (const lead of batch) {

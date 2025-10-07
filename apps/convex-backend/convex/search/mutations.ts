@@ -8,6 +8,45 @@ import {
   withUpdatedAtIfSupported,
 } from "./utils";
 
+const DEFAULT_TARGET_ROLES = ["CEO", "Founder", "Owner"] as const;
+const MAX_TARGET_ROLES = 3;
+
+function sanitizeRolesInput(roles?: string[] | null): string[] {
+  if (!roles || roles.length === 0) {
+    return [...DEFAULT_TARGET_ROLES];
+  }
+
+  const normalized = roles
+    .map((role) => role.trim())
+    .filter((role) => role.length > 0)
+    .map((role) =>
+      role
+        .split(/\s+/)
+        .map((word) =>
+          word.length > 0
+            ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+            : "",
+        )
+        .join(" "),
+    );
+
+  const deduped: string[] = [];
+  for (const role of normalized) {
+    if (!deduped.includes(role)) {
+      deduped.push(role);
+    }
+    if (deduped.length >= MAX_TARGET_ROLES) {
+      break;
+    }
+  }
+
+  if (deduped.length === 0) {
+    return [...DEFAULT_TARGET_ROLES];
+  }
+
+  return deduped.slice(0, MAX_TARGET_ROLES);
+}
+
 // Create a new search
 export const createSearch = mutation({
   args: {
@@ -18,6 +57,7 @@ export const createSearch = mutation({
       keywords: v.array(v.string()),
       industries: v.optional(v.array(v.string())),
       excludeTerms: v.optional(v.array(v.string())),
+      roles: v.optional(v.array(v.string())),
       minRating: v.optional(v.number()),
       maxResults: v.number(),
       filters: v.optional(
@@ -50,9 +90,14 @@ export const createSearch = mutation({
         }
 
         // Use adjusted max leads if necessary
+        const sanitizedRoles = sanitizeRolesInput(
+          args.parameters.roles,
+        );
+
         const adjustedParameters = {
           ...args.parameters,
           maxResults: validation.adjustedMaxLeads || args.parameters.maxResults,
+          roles: sanitizedRoles,
         };
 
         const user = await requireAuth(ctx);
@@ -110,6 +155,7 @@ export const createSearchCompleted = mutation({
       keywords: v.array(v.string()),
       industries: v.optional(v.array(v.string())),
       excludeTerms: v.optional(v.array(v.string())),
+      roles: v.optional(v.array(v.string())),
       minRating: v.optional(v.number()),
       maxResults: v.number(),
       filters: v.optional(
@@ -142,9 +188,14 @@ export const createSearchCompleted = mutation({
         }
 
         // Use adjusted max leads if necessary
+        const sanitizedRoles = sanitizeRolesInput(
+          args.parameters.roles,
+        );
+
         const adjustedParameters = {
           ...args.parameters,
           maxResults: validation.adjustedMaxLeads || args.parameters.maxResults,
+          roles: sanitizedRoles,
         };
 
         const user = await requireAuth(ctx);

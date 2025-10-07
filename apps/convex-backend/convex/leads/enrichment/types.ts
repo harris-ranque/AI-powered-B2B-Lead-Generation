@@ -52,10 +52,20 @@ export interface EnrichmentError {
   retryable: boolean;
 }
 
+export interface EnrichmentOptions {
+  roles?: string[];
+}
+
 export interface EnrichmentProviderInterface {
   name: EnrichmentProvider;
-  enrichBatch(domains: string[]): Promise<EnrichmentBatchResult>;
-  enrichSingle(domain: string): Promise<EnrichmentResult | null>;
+  enrichBatch(
+    domains: string[],
+    options?: EnrichmentOptions,
+  ): Promise<EnrichmentBatchResult>;
+  enrichSingle(
+    domain: string,
+    options?: EnrichmentOptions,
+  ): Promise<EnrichmentResult | null>;
   validateApiKey(apiKey: string): Promise<boolean>;
   getCredits(apiKey: string): Promise<number>;
 }

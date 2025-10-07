@@ -93,6 +93,7 @@ export default defineSchema({
       keywords: v.array(v.string()),
       industries: v.optional(v.array(v.string())),
       excludeTerms: v.optional(v.array(v.string())),
+      roles: v.optional(v.array(v.string())),
       minRating: v.optional(v.number()),
       maxResults: v.number(),
       filters: v.optional(
