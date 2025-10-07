@@ -348,7 +348,7 @@ export const enrichLeads: any = action({
             message: user.processingPaused
               ? user.pauseReason || "User processing paused by admin"
               : "Search cancelled",
-          } as any,
+          },
         );
         return { success: false, message: "Cancelled" } as any;
       }
@@ -496,7 +496,7 @@ export const enrichLeads: any = action({
               message: latestUser?.processingPaused
                 ? latestUser.pauseReason || "User processing paused by admin"
                 : "Search cancelled",
-            } as any,
+            },
           );
           return { success: false, message: "Cancelled" } as any;
         }
@@ -1047,7 +1047,7 @@ export const analyzeLeads: any = action({
             message: user.processingPaused
               ? user.pauseReason || "User processing paused by admin"
               : "Search cancelled",
-          } as any,
+          },
         );
         return { success: false, message: "Cancelled" } as any;
       }
@@ -1094,7 +1094,7 @@ export const analyzeLeads: any = action({
             progress: 0,
             message: "AI analysis service unavailable",
             error: errorMessage,
-          } as any,
+          },
         );
 
         throw new Error(errorMessage);
@@ -1289,7 +1289,7 @@ export const analyzeLeads: any = action({
                 message: latestUser?.processingPaused
                   ? latestUser.pauseReason || "User processing paused by admin"
                   : "Search cancelled",
-              } as any,
+              },
             );
             return { success: false, message: "Cancelled" } as any;
           }

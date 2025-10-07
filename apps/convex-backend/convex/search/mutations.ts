@@ -440,7 +440,7 @@ export const cancelSearch = mutation({
           progress: 0,
           message: "Search cancelled by user",
           data: {},
-        } as any,
+        },
       );
     } catch (e) {
       // Non-fatal if broadcast fails

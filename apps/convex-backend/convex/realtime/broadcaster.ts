@@ -94,11 +94,13 @@ async function upsertPipelineBroadcast(
     message: string;
     data?: unknown;
     error?: string;
+    priority?: BroadcastPriority;
   },
 ) {
   const now = Date.now();
   const hasError = Boolean(args.error);
-  const priority: BroadcastPriority = hasError ? "high" : "normal";
+  const priority: BroadcastPriority =
+    args.priority ?? (hasError ? "high" : "normal");
   const baseDoc = createBroadcastDocument({
     userId: args.userId,
     entityType: "search",
@@ -172,6 +174,15 @@ export const broadcastPipelineUpdate = internalMutation({
     message: v.string(),
     data: v.optional(v.any()),
     error: v.optional(v.string()),
+    priority: v.optional(
+      v.union(
+        v.literal("low"),
+        v.literal("normal"),
+        v.literal("high"),
+        v.literal("urgent"),
+        v.literal("critical"),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     await upsertPipelineBroadcast(ctx, {
@@ -182,6 +193,7 @@ export const broadcastPipelineUpdate = internalMutation({
       message: args.message,
       data: args.data,
       error: args.error,
+      priority: args.priority,
     });
   },
 });

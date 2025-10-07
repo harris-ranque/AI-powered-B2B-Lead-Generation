@@ -156,7 +156,7 @@ export const searchGoogleMaps = action({
           stage: "cancelled",
           progress: 0,
           message: user.pauseReason || "User processing paused by admin",
-        } as any,
+        },
       );
       return {
         success: false,
@@ -419,7 +419,7 @@ export const searchGoogleMaps = action({
                 "Adjust keyword specificity",
               ],
             },
-          } as any,
+          },
         );
       }
 
@@ -785,7 +785,7 @@ export const completeSearch: any = action({
             partialResults: isPartialResults,
             requestedCount: isPartialResults ? requestedCount : undefined,
           },
-        } as any,
+        },
       );
 
       // Send completion notification
