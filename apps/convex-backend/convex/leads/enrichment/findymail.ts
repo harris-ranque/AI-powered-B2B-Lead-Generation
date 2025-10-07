@@ -3,14 +3,43 @@ import {
   EnrichmentProviderInterface,
   EnrichmentResult,
   EnrichmentBatchResult,
-  FindyMailResponse,
+  EnrichmentOptions,
 } from "./types";
 
 const FINDYMAIL_BASE_URL = "https://app.findymail.com/api";
 
-// TODO: Make roles configurable per user profile or search criteria
-// Default roles target decision-makers in the organization
-const DEFAULT_ROLES = ["ceo", "founder", "owner"];
+const DEFAULT_ROLES = ["ceo", "founder", "owner"] as const;
+const MAX_ROLES = 3;
+
+function sanitizeRoles(roles?: string[] | null): string[] {
+  if (!roles || roles.length === 0) {
+    return [...DEFAULT_ROLES];
+  }
+
+  const normalized = roles
+    .map((role) => role.trim().toLowerCase())
+    .filter((role) => role.length > 0);
+
+  const deduped: string[] = [];
+  for (const role of normalized) {
+    if (!deduped.includes(role)) {
+      deduped.push(role);
+    }
+    if (deduped.length >= MAX_ROLES) {
+      break;
+    }
+  }
+
+  if (deduped.length === 0) {
+    return [...DEFAULT_ROLES];
+  }
+
+  return deduped.slice(0, MAX_ROLES);
+}
+
+function resolveRoles(options?: EnrichmentOptions): string[] {
+  return sanitizeRoles(options?.roles);
+}
 
 export class FindyMailProvider implements EnrichmentProviderInterface {
   name: EnrichmentProvider = "findymail";
@@ -24,7 +53,10 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
    * Enrich multiple domains in batch using FindyMail's domain search API
    * Note: FindyMail uses /search/domain endpoint with individual domain requests
    */
-  async enrichBatch(domains: string[]): Promise<EnrichmentBatchResult> {
+  async enrichBatch(
+    domains: string[],
+    options?: EnrichmentOptions,
+  ): Promise<EnrichmentBatchResult> {
     const result: EnrichmentBatchResult = {};
 
     if (domains.length === 0) {
@@ -37,7 +69,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
     // Process in parallel with rate limiting
     const promises = domains.map(async (domain) => {
       try {
-        const enrichmentResult = await this.enrichSingle(domain);
+        const enrichmentResult = await this.enrichSingle(domain, options);
         return { domain, result: enrichmentResult };
       } catch (error) {
         console.error(`[FindyMail] Failed to enrich ${domain}:`, error);
@@ -61,7 +93,10 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
   /**
    * Enrich a single domain using FindyMail's domain search endpoint
    */
-  async enrichSingle(domain: string): Promise<EnrichmentResult | null> {
+  async enrichSingle(
+    domain: string,
+    options?: EnrichmentOptions,
+  ): Promise<EnrichmentResult | null> {
     try {
       console.log(`[FindyMail] Enriching domain: ${domain}`);
 
@@ -73,7 +108,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
         },
         body: JSON.stringify({
           domain: domain,
-          roles: DEFAULT_ROLES, // FindyMail requires roles field (max 3)
+          roles: resolveRoles(options),
           limit: 1, // Get top contact per domain
         }),
       });

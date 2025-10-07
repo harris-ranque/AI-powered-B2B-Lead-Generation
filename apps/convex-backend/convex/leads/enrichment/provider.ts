@@ -5,6 +5,7 @@ import {
   EnrichmentProviderInterface,
   EnrichmentResult,
   EnrichmentBatchResult,
+  EnrichmentOptions,
 } from "./types";
 
 export type EnrichmentProviderType = "findymail" | "icypeas";
@@ -116,13 +117,16 @@ export class EnrichmentService {
   /**
    * Enrich multiple domains
    */
-  async enrichBatch(domains: string[]): Promise<EnrichmentBatchResult> {
+  async enrichBatch(
+    domains: string[],
+    options?: EnrichmentOptions,
+  ): Promise<EnrichmentBatchResult> {
     try {
       console.log(
         `Enriching ${domains.length} domains using ${this.providerType}`
       );
 
-      const result = await this.provider.enrichBatch(domains);
+      const result = await this.provider.enrichBatch(domains, options);
 
       // Log success metrics
       const successCount = Object.values(result).filter(r => r !== null).length;
@@ -145,10 +149,13 @@ export class EnrichmentService {
   /**
    * Enrich a single domain
    */
-  async enrichSingle(domain: string): Promise<EnrichmentResult | null> {
+  async enrichSingle(
+    domain: string,
+    options?: EnrichmentOptions,
+  ): Promise<EnrichmentResult | null> {
     try {
       console.log(`Enriching domain ${domain} using ${this.providerType}`);
-      return await this.provider.enrichSingle(domain);
+      return await this.provider.enrichSingle(domain, options);
     } catch (error) {
       console.error(
         `Single enrichment failed for ${domain} with ${this.providerType}:`,

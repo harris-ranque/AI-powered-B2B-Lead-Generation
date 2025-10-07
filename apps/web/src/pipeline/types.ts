@@ -41,6 +41,7 @@ export interface SourceParams {
   maxEmployees?: number;
   includeEmails?: boolean;
   aiAnalysis?: boolean;
+  roles?: string[];
   file?: File;
   columns?: Record<string, string>;
 }

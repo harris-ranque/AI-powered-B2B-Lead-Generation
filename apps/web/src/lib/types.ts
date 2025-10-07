@@ -51,6 +51,7 @@ export interface SearchParams {
   keywords: string[];
   industries?: string[];
   excludeTerms?: string[];
+  roles?: string[];
   minRating?: number;
   maxResults: number;
 }

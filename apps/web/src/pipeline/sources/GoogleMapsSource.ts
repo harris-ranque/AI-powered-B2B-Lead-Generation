@@ -23,6 +23,20 @@ export const GoogleMapsSource: LeadSource = {
       errors.push("Business type/industry is required");
     }
 
+    if (params.roles) {
+      const validRoles = params.roles
+        .map((role) => role.trim())
+        .filter((role) => role.length > 0);
+
+      if (validRoles.length === 0) {
+        errors.push("At least one target role is required for email enrichment");
+      }
+
+      if (validRoles.length > 3) {
+        errors.push("You can target up to 3 roles per search");
+      }
+    }
+
     // Range validation
     if (
       params.leadsCount &&

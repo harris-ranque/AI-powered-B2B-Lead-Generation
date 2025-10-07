@@ -92,6 +92,7 @@ class ApiClient {
       location: "",
       radius: 10, // miles
       keywords: [],
+      roles: ["CEO", "Founder", "Owner"],
       maxResults: 25,
       ...partial,
     };

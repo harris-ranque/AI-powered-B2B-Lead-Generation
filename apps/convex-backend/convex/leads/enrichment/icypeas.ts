@@ -4,6 +4,7 @@ import {
   EnrichmentResult,
   EnrichmentBatchResult,
   EnrichmentError,
+  EnrichmentOptions,
   IcyPeasSearchResponse,
   IcyPeasSearchResult,
   IcyPeasEmailResult,
@@ -25,7 +26,10 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
   /**
    * Enrich multiple domains in batch
    */
-  async enrichBatch(domains: string[]): Promise<EnrichmentBatchResult> {
+  async enrichBatch(
+    domains: string[],
+    _options?: EnrichmentOptions,
+  ): Promise<EnrichmentBatchResult> {
     const batchStartTime = Date.now();
     const result: EnrichmentBatchResult = {};
 
@@ -150,7 +154,10 @@ export class IcyPeasProvider implements EnrichmentProviderInterface {
   /**
    * Enrich a single domain
    */
-  async enrichSingle(domain: string): Promise<EnrichmentResult | null> {
+  async enrichSingle(
+    domain: string,
+    _options?: EnrichmentOptions,
+  ): Promise<EnrichmentResult | null> {
     const startTime = Date.now();
     console.log(`[ICypeas] Starting enrichment for domain: ${domain}`);
 
