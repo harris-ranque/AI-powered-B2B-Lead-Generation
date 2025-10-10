@@ -117,6 +117,16 @@ function LeadEternityDashboardContent() {
 
   const { toast } = useToast();
 
+  const openSearchHistory = useCallback(() => {
+    setCurrentTab("search-history");
+
+    if (typeof window !== "undefined") {
+      if (window.location.hash !== "#lead-history") {
+        window.location.hash = "lead-history";
+      }
+    }
+  }, [setCurrentTab]);
+
   const hasEmailPage = useMemo(() => {
     try {
       return (
@@ -172,7 +182,6 @@ function LeadEternityDashboardContent() {
 
       if (!completionAnnouncedRef.current) {
         completionAnnouncedRef.current = true;
-        setCurrentTab("search-history");
         toast({
           title: "Personalized emails ready",
           description:
@@ -180,7 +189,7 @@ function LeadEternityDashboardContent() {
           action: (
             <ToastAction
               altText="Open search history"
-              onClick={() => setCurrentTab("search-history")}
+              onClick={openSearchHistory}
             >
               View history
             </ToastAction>
@@ -204,6 +213,7 @@ function LeadEternityDashboardContent() {
     state.generatedEmails,
     toast,
     transformedEmails,
+    openSearchHistory,
   ]);
 
   const pipelineEmails = state.generatedEmails;
