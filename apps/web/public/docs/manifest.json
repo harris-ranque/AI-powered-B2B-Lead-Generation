@@ -1,5 +1,5 @@
 {
-  "generatedAt": 1759327595986,
+  "generatedAt": 1760056040466,
   "root": {
     "type": "dir",
     "name": "docs",
@@ -105,6 +105,13 @@
       },
       {
         "type": "file",
+        "name": "dashboard-consolidation-plan.md",
+        "path": "dashboard-consolidation-plan.md",
+        "title": "Dashboard, Analytics, and Billing Consolidation Plan",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
         "name": "DATA_CONTRACTS.md",
         "path": "DATA_CONTRACTS.md",
         "title": "Genni Data Contracts Documentation",
@@ -164,6 +171,13 @@
         "name": "genni-architecture.md",
         "path": "genni-architecture.md",
         "title": "Genni - Final Architecture & Implementation Guide",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "lead-generation-tweaks.md",
+        "path": "lead-generation-tweaks.md",
+        "title": "Lead Generation Pipeline Tweaks",
         "isMarkdown": true
       },
       {

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,20 +31,26 @@ import { useSearch } from "@/hooks/useSearches";
 import { useSearchBroadcasts } from "@/hooks/useStatusBroadcasts";
 import { useAdminSystemControl } from "@/hooks/useAdmin";
 import { SourceRegistry } from "@/pipeline/sources/SourceRegistry";
+import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 
 interface PipelineOrchestratorProps {
   userCredits: number;
   userPlan: "free" | "pro" | "enterprise";
   onGenerateEmail?: (lead: Lead) => void;
+  onOpenLeadHistory?: () => void;
 }
 
 export function PipelineOrchestrator({
   userCredits,
   userPlan,
   onGenerateEmail,
+  onOpenLeadHistory,
 }: PipelineOrchestratorProps) {
   const { state, setStage, canProgressToStage } = usePipeline();
   const [isPipelineCollapsed, setIsPipelineCollapsed] = useState(false);
+  const completionToastShownRef = useRef(false);
+  const { toast } = useToast();
 
   // Get search data and real-time updates
   const { search } = useSearch(state.searchId || undefined);
@@ -57,6 +63,16 @@ export function PipelineOrchestrator({
 
   // Check if search is completed
   const isSearchCompleted = search?.status === "completed";
+
+  const openLeadHistory = useCallback(() => {
+    if (onOpenLeadHistory) {
+      onOpenLeadHistory();
+    } else {
+      window.location.hash = "#lead-history";
+    }
+
+    setIsPipelineCollapsed(true);
+  }, [onOpenLeadHistory, setIsPipelineCollapsed]);
 
   const currentStageIndex = STAGE_ORDER.indexOf(state.currentStage);
 
@@ -90,7 +106,7 @@ export function PipelineOrchestrator({
         <div className="flex flex-col gap-3">
           {inlineSourcePanel}
           {isBusy && (
-            <div className="flex items-center gap-2 self-start rounded-full bg-slate-100/80 px-3 py-1 text-sm text-genniBlue">
+            <div className="flex items-center gap-2 self-start rounded-full bg-slate-100/80 px-3 py-1 text-sm text-genniBlue dark:bg-slate-800/70 dark:text-genniBlue">
               <Clock className="h-4 w-4 animate-spin" />
               Processing...
             </div>
@@ -116,24 +132,24 @@ export function PipelineOrchestrator({
         return {
           label: "Standard Research",
           icon: Search,
-          color: "text-blue-500",
-          bg: "bg-blue-50",
+          color: "text-blue-500 dark:text-blue-200",
+          bg: "bg-blue-50 dark:bg-blue-500/20",
           description: "Fast business context (2-3s)",
         };
       case "exa":
         return {
           label: "Enhanced Research",
           icon: Brain,
-          color: "text-purple-500",
-          bg: "bg-purple-50",
+          color: "text-purple-500 dark:text-purple-200",
+          bg: "bg-purple-50 dark:bg-purple-500/20",
           description: "Deep competitor analysis (3-4s)",
         };
       case "perplexity":
         return {
           label: "Premium Research",
           icon: Zap,
-          color: "text-amber-600",
-          bg: "bg-amber-50",
+          color: "text-amber-600 dark:text-amber-200",
+          bg: "bg-amber-50 dark:bg-amber-500/20",
           description: "Comprehensive report (10-15s)",
         };
       default:
@@ -142,6 +158,30 @@ export function PipelineOrchestrator({
   };
 
   const researchTierInfo = getResearchTierInfo(search?.researchTier);
+
+  useEffect(() => {
+    if (isSearchCompleted) {
+      if (!completionToastShownRef.current) {
+        completionToastShownRef.current = true;
+        const totalFound = search?.results?.totalFound ?? 0;
+        const enrichedCount = search?.results?.enrichedCount ?? 0;
+        toast({
+          title: "Search complete",
+          description:
+            totalFound > 0
+              ? `We found ${totalFound} leads and enriched ${enrichedCount}.`
+              : "Your search has finished. Review the results in history.",
+          action: (
+            <ToastAction altText="View lead history" onClick={openLeadHistory}>
+              View results
+            </ToastAction>
+          ),
+        });
+      }
+    } else {
+      completionToastShownRef.current = false;
+    }
+  }, [isSearchCompleted, openLeadHistory, search?.results?.enrichedCount, search?.results?.totalFound, toast]);
 
   const renderStageContent = () => {
     switch (state.currentStage) {
@@ -163,7 +203,13 @@ export function PipelineOrchestrator({
   };
 
   return (
-    <div className="space-y-6">
+    <div
+      className={cn(
+        "space-y-6 transition-colors",
+        isSearchCompleted &&
+          "rounded-2xl border border-green-200/70 bg-green-50/80 p-3 shadow-inner dark:border-green-700/60 dark:bg-green-950/40",
+      )}
+    >
       {/* Pipeline Header */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -176,7 +222,10 @@ export function PipelineOrchestrator({
           </div>
 
           <div className="flex items-center gap-3">
-            <Badge variant="secondary" className="bg-green-100 text-green-800">
+            <Badge
+              variant="secondary"
+              className="bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200"
+            >
               <Sparkles className="h-3 w-3 mr-1" />
               AI-Powered Pipeline
             </Badge>
@@ -192,7 +241,7 @@ export function PipelineOrchestrator({
 
         {/* Completion UI */}
         {isSearchCompleted && (
-          <Card className="glass-card border-green-200 bg-green-50">
+          <Card className="glass-card border-green-200 bg-green-50 dark:border-green-600/60 dark:bg-green-950/40">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -200,10 +249,10 @@ export function PipelineOrchestrator({
                     <CheckCircle className="h-6 w-6 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-green-900">
+                    <h3 className="text-lg font-semibold text-green-900 dark:text-green-100">
                       Search Completed!
                     </h3>
-                    <p className="text-sm text-green-700">
+                    <p className="text-sm text-green-700 dark:text-green-200">
                       Found {search.results?.totalFound || 0} leads, enriched{" "}
                       {search.results?.enrichedCount || 0}, analyzed{" "}
                       {search.results?.analyzedCount || 0}
@@ -223,14 +272,7 @@ export function PipelineOrchestrator({
                     <RotateCcw className="h-4 w-4" />
                     Start Over
                   </Button>
-                  <Button
-                    size="lg"
-                    onClick={() => {
-                      window.location.hash = "#lead-history";
-                      setIsPipelineCollapsed(true);
-                    }}
-                    className="gap-2"
-                  >
+                  <Button size="lg" onClick={openLeadHistory} className="gap-2">
                     <FileText className="h-4 w-4" />
                     View Results
                   </Button>
@@ -243,7 +285,10 @@ export function PipelineOrchestrator({
 
       {/* System Status Warning */}
       {systemStatus?.leadGenerationPaused && (
-        <Alert variant="destructive" className="border-red-500 bg-red-50">
+        <Alert
+          variant="destructive"
+          className="border-red-500 bg-red-50 dark:border-red-500/70 dark:bg-red-950/40"
+        >
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
             <div className="space-y-1">
@@ -266,7 +311,10 @@ export function PipelineOrchestrator({
 
       {/* LangGraph Worker Health Warning */}
       {systemConfiguration?.orchestrationSettings?.langGraphHealth?.status === "unavailable" && (
-        <Alert variant="destructive" className="border-red-500 bg-red-50">
+        <Alert
+          variant="destructive"
+          className="border-red-500 bg-red-50 dark:border-red-500/70 dark:bg-red-950/40"
+        >
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
             <div className="space-y-1">
@@ -287,17 +335,17 @@ export function PipelineOrchestrator({
       )}
 
       {systemConfiguration?.orchestrationSettings?.langGraphHealth?.status === "degraded" && (
-        <Alert className="border-yellow-500 bg-yellow-50">
-          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+        <Alert className="border-yellow-500 bg-yellow-50 dark:border-yellow-500/70 dark:bg-yellow-950/40">
+          <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-300" />
           <AlertDescription>
             <div className="space-y-1">
-              <div className="font-semibold text-yellow-900">
+              <div className="font-semibold text-yellow-900 dark:text-yellow-200">
                 AI Analysis Service Degraded
               </div>
-              <div className="text-sm text-yellow-800">
+              <div className="text-sm text-yellow-800 dark:text-yellow-200/80">
                 The LangGraph worker is experiencing issues. AI analysis may be slower than usual or encounter errors.
               </div>
-              <div className="text-xs text-yellow-700 mt-1">
+              <div className="text-xs text-yellow-700 mt-1 dark:text-yellow-300/80">
                 {systemConfiguration.orchestrationSettings.langGraphHealth.consecutiveFailures} consecutive failures detected
               </div>
             </div>
@@ -362,10 +410,10 @@ export function PipelineOrchestrator({
                 {researchTierInfo && (
                   <Badge
                     variant="outline"
-                    className={cn("ml-2", researchTierInfo.bg)}
+                    className={cn("ml-2", researchTierInfo.bg, researchTierInfo.color)}
                   >
                     {React.createElement(researchTierInfo.icon, {
-                      className: "w-3 h-3 mr-1",
+                      className: cn("w-3 h-3 mr-1", researchTierInfo.color),
                     })}
                     {researchTierInfo.label}
                   </Badge>
@@ -383,8 +431,8 @@ export function PipelineOrchestrator({
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {/* Discovered Leads */}
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-                  <Search className="h-4 w-4 text-blue-500" />
+                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center dark:bg-blue-500/20">
+                  <Search className="h-4 w-4 text-blue-500 dark:text-blue-200" />
                 </div>
                 <div>
                   <div className="text-lg font-semibold">
@@ -398,8 +446,8 @@ export function PipelineOrchestrator({
 
               {/* Enriched Leads */}
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
-                  <Users className="h-4 w-4 text-green-500" />
+                <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center dark:bg-green-500/20">
+                  <Users className="h-4 w-4 text-green-500 dark:text-green-200" />
                 </div>
                 <div>
                   <div className="text-lg font-semibold">
@@ -413,8 +461,8 @@ export function PipelineOrchestrator({
 
               {/* AI Analyzed */}
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center">
-                  <Brain className="h-4 w-4 text-purple-500" />
+                <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center dark:bg-purple-500/20">
+                  <Brain className="h-4 w-4 text-purple-500 dark:text-purple-200" />
                 </div>
                 <div>
                   <div className="text-lg font-semibold">
@@ -427,8 +475,8 @@ export function PipelineOrchestrator({
               {/* Research Quality */}
               {search?.researchConfidence && (
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
-                    <Sparkles className="h-4 w-4 text-amber-500" />
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center dark:bg-amber-500/20">
+                    <Sparkles className="h-4 w-4 text-amber-500 dark:text-amber-200" />
                   </div>
                   <div>
                     <div className="text-lg font-semibold">
