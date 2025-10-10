@@ -3,6 +3,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { usePipeline } from "@/pipeline/context";
 import type { Lead } from "@/lib/api-client";
 import { STAGE_CONFIGS, STAGE_ORDER } from "@/pipeline/config";
@@ -52,6 +60,7 @@ export function PipelineOrchestrator({
 }: PipelineOrchestratorProps) {
   const { state, setStage, canProgressToStage } = usePipeline();
   const [isPipelineCollapsed, setIsPipelineCollapsed] = useState(false);
+  const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   const lastCompletedSearchIdRef = useRef<string | null>(null);
   const { toast } = useToast();
 
@@ -74,6 +83,7 @@ export function PipelineOrchestrator({
   const enrichedCount = search?.results?.enrichedCount ?? 0;
 
   const openLeadHistory = useCallback(() => {
+    setShowCompletionDialog(false);
     if (onOpenLeadHistory) {
       onOpenLeadHistory();
     } else {
@@ -180,18 +190,8 @@ export function PipelineOrchestrator({
       }
 
       lastCompletedSearchIdRef.current = activeSearchId;
-      toast({
-        title: "Search complete",
-        description:
-          totalFound > 0
-            ? `We found ${totalFound} leads and enriched ${enrichedCount}.`
-            : "Your search has finished. Review the results in history.",
-        action: (
-          <ToastAction altText="View lead history" onClick={openLeadHistory}>
-            View results
-          </ToastAction>
-        ),
-      });
+      // Show completion dialog instead of toast - no auto-forwarding
+      setShowCompletionDialog(true);
       return;
     }
 
@@ -202,7 +202,7 @@ export function PipelineOrchestrator({
     ) {
       lastCompletedSearchIdRef.current = null;
     }
-  }, [activeSearchId, enrichedCount, isSearchCompleted, openLeadHistory, searchStatus, toast, totalFound]);
+  }, [activeSearchId, enrichedCount, isSearchCompleted, searchStatus, totalFound]);
 
   const unifiedPanelActions = isSearchCompleted
     ? (
@@ -247,13 +247,72 @@ export function PipelineOrchestrator({
   };
 
   return (
-    <div
-      className={cn(
-        "space-y-6 transition-colors",
-        isSearchCompleted &&
-          "rounded-2xl border border-green-200/70 bg-green-50/80 p-3 shadow-inner dark:border-green-700/60 dark:bg-green-950/40",
-      )}
-    >
+    <>
+      {/* Search Completion Dialog */}
+      <Dialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center">
+                <CheckCircle className="h-6 w-6 text-white" />
+              </div>
+              <DialogTitle className="text-2xl">Search Complete!</DialogTitle>
+            </div>
+            <DialogDescription className="text-base pt-2">
+              {totalFound > 0 ? (
+                <div className="space-y-2">
+                  <p className="font-medium text-foreground">
+                    Great news! We found and processed your leads.
+                  </p>
+                  <div className="grid grid-cols-3 gap-3 pt-3">
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-muted/50 p-3">
+                      <div className="text-2xl font-bold text-foreground">{totalFound}</div>
+                      <div className="text-xs text-muted-foreground">Found</div>
+                    </div>
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-muted/50 p-3">
+                      <div className="text-2xl font-bold text-foreground">{enrichedCount}</div>
+                      <div className="text-xs text-muted-foreground">Enriched</div>
+                    </div>
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-muted/50 p-3">
+                      <div className="text-2xl font-bold text-foreground">
+                        {search?.results?.analyzedCount || 0}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Analyzed</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p>Your search has finished. Review the results in search history.</p>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowCompletionDialog(false);
+                setStage("source_selection");
+                setIsPipelineCollapsed(false);
+              }}
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Start New Search
+            </Button>
+            <Button onClick={openLeadHistory} className="gap-2">
+              <FileText className="h-4 w-4" />
+              View Results
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <div
+        className={cn(
+          "space-y-6 transition-colors",
+          isSearchCompleted &&
+            "rounded-2xl border border-green-200/70 bg-green-50/80 p-3 shadow-inner dark:border-green-700/60 dark:bg-green-950/40",
+        )}
+      >
       {/* Pipeline Header */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -559,6 +618,7 @@ export function PipelineOrchestrator({
           </CardContent>
         </Card>
       )}
-    </div>
+      </div>
+    </>
   );
 }
