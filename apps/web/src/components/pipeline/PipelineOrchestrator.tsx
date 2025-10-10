@@ -33,6 +33,9 @@ import { useAdminSystemControl } from "@/hooks/useAdmin";
 import { SourceRegistry } from "@/pipeline/sources/SourceRegistry";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
+import { PipelineProgressProvider } from "@/contexts/PipelineProgressContext";
+import { PipelineProgressPanel } from "@/components/PipelineProgressPanel";
+import { featureFlags } from "@/lib/featureFlags";
 
 interface PipelineOrchestratorProps {
   userCredits: number;
@@ -60,6 +63,8 @@ export function PipelineOrchestrator({
 
   // Get system status and configuration for health checks
   const { systemStatus, systemConfiguration } = useAdminSystemControl();
+
+  const isUnifiedProgressEnabled = featureFlags.unifiedProgressPanel;
 
   // Check if search is completed
   const isSearchCompleted = search?.status === "completed";
@@ -182,6 +187,29 @@ export function PipelineOrchestrator({
       completionToastShownRef.current = false;
     }
   }, [isSearchCompleted, openLeadHistory, search?.results?.enrichedCount, search?.results?.totalFound, toast]);
+
+  const unifiedPanelActions = isSearchCompleted
+    ? (
+        <Button size="sm" variant="outline" onClick={openLeadHistory} className="gap-2">
+          <FileText className="h-4 w-4" />
+          View results
+        </Button>
+      )
+    : undefined;
+
+  const optimisticMetrics = {
+    discovered: state.leads.length,
+    enriched: state.enrichedLeads.length,
+    analyzed: state.generatedEmails.length,
+    total: Math.max(
+      state.leads.length,
+      state.enrichedLeads.length,
+      state.generatedEmails.length,
+    ),
+  };
+
+  const shouldHideInteractiveSections =
+    isSearchCompleted && isPipelineCollapsed;
 
   const renderStageContent = () => {
     switch (state.currentStage) {
@@ -354,165 +382,166 @@ export function PipelineOrchestrator({
       )}
 
       {/* Pipeline Content - Hide when collapsed */}
-      {!(isSearchCompleted && isPipelineCollapsed) && (
-        <>
-          {/* Unified Stage Tracker */}
-          <StageTracker
-            current={state.currentStage}
-            completed={state.completedStages}
-            available={availableStages}
-            index={currentStageIndex + 1}
-            total={STAGE_ORDER.length}
+      {isUnifiedProgressEnabled ? (
+        <PipelineProgressProvider
+          searchId={state.searchId || undefined}
+          currentStage={state.currentStage}
+          completedStages={state.completedStages}
+          availableStages={availableStages}
+          optimisticMetrics={optimisticMetrics}
+          onStageAdvance={setStage}
+          onStageSelect={handleStageSelect}
+          collapsed={isPipelineCollapsed}
+          onCollapseChange={setIsPipelineCollapsed}
+        >
+          <PipelineProgressPanel
             inlinePanel={trackerInlineContent}
-            onStageClick={handleStageSelect}
+            actions={unifiedPanelActions}
           />
-
-          {/* Current Stage Content */}
-          <div
-            className={cn(
-              "transition-all duration-500 ease-in-out",
-              (isBusy || systemStatus?.leadGenerationPaused) &&
-                "opacity-75 pointer-events-none",
-            )}
-          >
-            {renderStageContent()}
-          </div>
-        </>
-      )}
-
-      {/* Real-Time Research Progress - Hide when collapsed */}
-      {state.searchId && search && !(isSearchCompleted && isPipelineCollapsed) && (
-        <SearchProgressTracker
-          searchId={state.searchId}
-          compact={false}
-          showHistory={true}
-          className="mb-6"
+        </PipelineProgressProvider>
+      ) : (
+        <StageTracker
+          current={state.currentStage}
+          completed={state.completedStages}
+          available={availableStages}
+          index={currentStageIndex + 1}
+          total={STAGE_ORDER.length}
+          inlinePanel={trackerInlineContent}
+          onStageClick={handleStageSelect}
         />
       )}
 
-      {/* Enhanced Pipeline Status - Hide when collapsed */}
-      {!(isSearchCompleted && isPipelineCollapsed) && (
+      {!shouldHideInteractiveSections && (
+        <div
+          className={cn(
+            "transition-all duration-500 ease-in-out",
+            (isBusy || systemStatus?.leadGenerationPaused) &&
+              "opacity-75 pointer-events-none",
+          )}
+        >
+          {renderStageContent()}
+        </div>
+      )}
+
+      {!isUnifiedProgressEnabled &&
+        state.searchId &&
+        search &&
+        !shouldHideInteractiveSections && (
+          <SearchProgressTracker
+            searchId={state.searchId}
+            compact={false}
+            showHistory={true}
+            className="mb-6"
+          />
+        )}
+
+      {!isUnifiedProgressEnabled && !shouldHideInteractiveSections && (
         <Card className="glass-card">
-        <CardContent className="p-4">
-          <div className="space-y-4">
-            {/* Status Header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div
-                  className={cn(
-                    "w-3 h-3 rounded-full transition-colors",
-                    isBusy ? "bg-yellow-500 animate-pulse" : "bg-green-500",
+          <CardContent className="p-4">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={cn(
+                      "w-3 h-3 rounded-full transition-colors",
+                      isBusy ? "bg-yellow-500 animate-pulse" : "bg-green-500",
+                    )}
+                  />
+                  <span className="text-sm font-medium">
+                    {isBusy ? "Processing..." : "Ready"}
+                  </span>
+                  {researchTierInfo && (
+                    <Badge
+                      variant="outline"
+                      className={cn("ml-2", researchTierInfo.bg, researchTierInfo.color)}
+                    >
+                      {React.createElement(researchTierInfo.icon, {
+                        className: cn("w-3 h-3 mr-1", researchTierInfo.color),
+                      })}
+                      {researchTierInfo.label}
+                    </Badge>
                   )}
-                />
-                <span className="text-sm font-medium">
-                  {isBusy ? "Processing..." : "Ready"}
-                </span>
-                {researchTierInfo && (
-                  <Badge
-                    variant="outline"
-                    className={cn("ml-2", researchTierInfo.bg, researchTierInfo.color)}
-                  >
-                    {React.createElement(researchTierInfo.icon, {
-                      className: cn("w-3 h-3 mr-1", researchTierInfo.color),
-                    })}
-                    {researchTierInfo.label}
+                </div>
+
+                {latestStatus && (
+                  <Badge variant="secondary" className="text-xs">
+                    {latestStatus.title}
                   </Badge>
                 )}
               </div>
 
-              {latestStatus && (
-                <Badge variant="secondary" className="text-xs">
-                  {latestStatus.title}
-                </Badge>
-              )}
-            </div>
-
-            {/* Real-Time Progress Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Discovered Leads */}
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center dark:bg-blue-500/20">
-                  <Search className="h-4 w-4 text-blue-500 dark:text-blue-200" />
-                </div>
-                <div>
-                  <div className="text-lg font-semibold">
-                    {search?.progress?.discovered || state.leads.length || 0}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Discovered
-                  </div>
-                </div>
-              </div>
-
-              {/* Enriched Leads */}
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center dark:bg-green-500/20">
-                  <Users className="h-4 w-4 text-green-500 dark:text-green-200" />
-                </div>
-                <div>
-                  <div className="text-lg font-semibold">
-                    {search?.progress?.enriched ||
-                      state.enrichedLeads.length ||
-                      0}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Enriched</div>
-                </div>
-              </div>
-
-              {/* AI Analyzed */}
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center dark:bg-purple-500/20">
-                  <Brain className="h-4 w-4 text-purple-500 dark:text-purple-200" />
-                </div>
-                <div>
-                  <div className="text-lg font-semibold">
-                    {search?.progress?.analyzed || 0}
-                  </div>
-                  <div className="text-xs text-muted-foreground">Analyzed</div>
-                </div>
-              </div>
-
-              {/* Research Quality */}
-              {search?.researchConfidence && (
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center dark:bg-amber-500/20">
-                    <Sparkles className="h-4 w-4 text-amber-500 dark:text-amber-200" />
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center dark:bg-blue-500/20">
+                    <Search className="h-4 w-4 text-blue-500 dark:text-blue-200" />
                   </div>
                   <div>
                     <div className="text-lg font-semibold">
-                      {Math.round(search.researchConfidence * 100)}%
+                      {search?.progress?.discovered || state.leads.length || 0}
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      Confidence
+                    <div className="text-xs text-muted-foreground">Discovered</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center dark:bg-green-500/20">
+                    <Users className="h-4 w-4 text-green-500 dark:text-green-200" />
+                  </div>
+                  <div>
+                    <div className="text-lg font-semibold">
+                      {search?.progress?.enriched || state.enrichedLeads.length || 0}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Enriched</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center dark:bg-purple-500/20">
+                    <Brain className="h-4 w-4 text-purple-500 dark:text-purple-200" />
+                  </div>
+                  <div>
+                    <div className="text-lg font-semibold">
+                      {search?.progress?.analyzed || 0}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Analyzed</div>
+                  </div>
+                </div>
+
+                {search?.researchConfidence && (
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center dark:bg-amber-500/20">
+                      <Sparkles className="h-4 w-4 text-amber-500 dark:text-amber-200" />
+                    </div>
+                    <div>
+                      <div className="text-lg font-semibold">
+                        {Math.round(search.researchConfidence * 100)}%
+                      </div>
+                      <div className="text-xs text-muted-foreground">Confidence</div>
                     </div>
                   </div>
+                )}
+              </div>
+
+              {search?.researchStage && (
+                <div className="pt-2 border-t">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Research Progress</span>
+                    <span className="font-medium">
+                      {search.researchStage
+                        .replace("_", " ")
+                        .replace(/\b\w/g, (l) => l.toUpperCase())}
+                    </span>
+                  </div>
+                  {researchTierInfo && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {researchTierInfo.description}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
-
-            {/* Research Progress Indicator */}
-            {search?.researchStage && (
-              <div className="pt-2 border-t">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">
-                    Research Progress
-                  </span>
-                  <span className="font-medium">
-                    {search.researchStage
-                      .replace("_", " ")
-                      .replace(/\b\w/g, (l) => l.toUpperCase())}
-                  </span>
-                </div>
-                {researchTierInfo && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {researchTierInfo.description}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

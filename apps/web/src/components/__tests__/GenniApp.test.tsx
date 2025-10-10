@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import React from 'react'
+import React, { type ReactNode } from 'react'
 import { GenniApp } from '../GenniApp'
+
+vi.mock('react-router-dom', () => ({
+  useLocation: () => ({ pathname: '/', search: '', hash: '', state: null, key: 'test' }),
+}))
 
 type MockReturn = Record<string, unknown>
 
@@ -75,7 +79,7 @@ vi.mock('@/hooks/use-toast', () => ({
 }))
 
 vi.mock('@/pipeline/context', () => ({
-  PipelineProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  PipelineProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
   usePipeline: () => pipelineValue,
 }))
 
@@ -301,7 +305,7 @@ describe('GenniApp', () => {
     render(<GenniApp />)
 
     const performanceButton = screen.getByRole('button', {
-      name: /performance workspace/i,
+      name: /performance/i,
     })
 
     expect(performanceButton).toHaveTextContent('75')
