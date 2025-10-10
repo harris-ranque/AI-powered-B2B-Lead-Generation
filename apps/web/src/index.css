@@ -369,7 +369,7 @@ All colors MUST be HSL.
   .btn-primary-gradient {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white shadow-md transition-all duration-200 ease-out;
     @apply bg-gradient-to-r from-genniBlue via-genniIndigo to-genniRose hover:brightness-110 active:scale-[0.98];
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-genniBlue focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-60;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-60;
   }
 
   .card-glass {

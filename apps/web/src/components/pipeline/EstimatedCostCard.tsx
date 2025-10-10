@@ -30,7 +30,7 @@ export function EstimatedCostCard({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="text-sm text-slate-600">Estimated Cost</span>
-            <span className="rounded-full bg-gradient-to-r from-genniBlue via-genniIndigo to-genniRose px-2.5 py-1 text-sm font-medium text-white shadow-[0_0_20px_rgba(37,99,235,0.2)]">
+            <span className="rounded-full bg-gradient-to-r from-genniBlue via-genniIndigo to-genniRose px-2.5 py-1 text-sm font-medium text-white shadow-[0_0_20px_rgba(16,185,129,0.3)]">
               {estimatedCredits} credits
             </span>
           </div>

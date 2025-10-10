@@ -342,48 +342,7 @@ export function PipelineOrchestrator({
           </div>
         </div>
 
-        {/* Completion UI */}
-        {isSearchCompleted && (
-          <Card className="glass-card border-green-200 bg-green-50 dark:border-green-600/60 dark:bg-green-950/40">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center">
-                    <CheckCircle className="h-6 w-6 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-green-900 dark:text-green-100">
-                      Search Completed!
-                    </h3>
-                    <p className="text-sm text-green-700 dark:text-green-200">
-                      Found {search.results?.totalFound || 0} leads, enriched{" "}
-                      {search.results?.enrichedCount || 0}, analyzed{" "}
-                      {search.results?.analyzedCount || 0}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    onClick={() => {
-                      setStage("source_selection");
-                      setIsPipelineCollapsed(false);
-                    }}
-                    className="gap-2"
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                    Start Over
-                  </Button>
-                  <Button size="lg" onClick={openLeadHistory} className="gap-2">
-                    <FileText className="h-4 w-4" />
-                    View Results
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* Completion UI removed - using modal dialog only to prevent duplicate UI and flickering */}
       </div>
 
       {/* System Status Warning */}
