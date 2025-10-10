@@ -23,6 +23,9 @@ import {
   formatBroadcastTime,
 } from "@/hooks/useStatusBroadcasts";
 import { SearchProgressTracker } from "@/components/SearchProgressTracker";
+import { PipelineProgressProvider } from "@/contexts/PipelineProgressContext";
+import { PipelineProgressPanel } from "@/components/PipelineProgressPanel";
+import { featureFlags } from "@/lib/featureFlags";
 import { SubscriptionStatusCard } from "@/components/SubscriptionStatusCard";
 import { UsageMetersCard } from "@/components/UsageMetersCard";
 import { useState, useMemo, useCallback } from "react";
@@ -522,12 +525,18 @@ function DashboardComponent() {
               </h3>
               <div className="space-y-4">
                 {activeSearches.slice(0, 3).map((search) => (
-                  <SearchProgressTracker
-                    key={search._id}
-                    searchId={search._id}
-                    compact
-                    showHistory={false}
-                  />
+                  featureFlags.unifiedProgressPanel ? (
+                    <PipelineProgressProvider key={search._id} searchId={search._id}>
+                      <PipelineProgressPanel layout="compact" showTimeline={false} />
+                    </PipelineProgressProvider>
+                  ) : (
+                    <SearchProgressTracker
+                      key={search._id}
+                      searchId={search._id}
+                      compact
+                      showHistory={false}
+                    />
+                  )
                 ))}
                 {activeSearches.length > 3 && (
                   <Card className="p-4">

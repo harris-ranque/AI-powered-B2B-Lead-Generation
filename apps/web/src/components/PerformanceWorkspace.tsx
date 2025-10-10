@@ -27,6 +27,9 @@ import {
 import { format } from "date-fns";
 import type { Search } from "@/lib/types";
 import { SearchProgressTracker } from "@/components/SearchProgressTracker";
+import { PipelineProgressProvider } from "@/contexts/PipelineProgressContext";
+import { PipelineProgressPanel } from "@/components/PipelineProgressPanel";
+import { featureFlags } from "@/lib/featureFlags";
 import { UsageWarnings } from "@/components/SubscriptionGuard";
 import { SubscriptionStatusCard } from "@/components/SubscriptionStatusCard";
 import { UsageMetersCard } from "@/components/UsageMetersCard";
@@ -359,7 +362,18 @@ function PerformanceWorkspaceComponent({
               </CardHeader>
               <CardContent className="space-y-4">
                 {activeSearches.slice(0, 3).map((search) => (
-                  <SearchProgressTracker key={search._id} searchId={search._id} compact showHistory={false} />
+                  featureFlags.unifiedProgressPanel ? (
+                    <PipelineProgressProvider key={search._id} searchId={search._id}>
+                      <PipelineProgressPanel layout="compact" showTimeline={false} />
+                    </PipelineProgressProvider>
+                  ) : (
+                    <SearchProgressTracker
+                      key={search._id}
+                      searchId={search._id}
+                      compact
+                      showHistory={false}
+                    />
+                  )
                 ))}
                 {activeSearches.length > 3 && (
                   <p className="text-center text-xs text-muted-foreground">
