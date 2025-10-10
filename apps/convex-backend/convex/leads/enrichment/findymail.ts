@@ -146,6 +146,83 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
   private transformToEnrichmentResult(
     findyMailData: any
   ): EnrichmentResult {
+    const toConfidence = (value: any): number => {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+      }
+      if (typeof value === "string") {
+        const parsed = Number.parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+      }
+      return 0;
+    };
+
+    const normalizeContactName = (contact: any): string => {
+      if (typeof contact?.name === "string" && contact.name.trim().length > 0) {
+        return contact.name.trim();
+      }
+      const parts = [contact?.first_name, contact?.last_name]
+        .map((part: any) => (typeof part === "string" ? part.trim() : ""))
+        .filter(Boolean);
+      if (parts.length > 0) {
+        return parts.join(" ");
+      }
+      if (typeof contact?.email === "string" && contact.email.trim().length > 0) {
+        return contact.email.trim();
+      }
+      return "Unknown contact";
+    };
+
+    const normalizeTitle = (contact: any): string | undefined => {
+      const candidate =
+        contact?.title ??
+        contact?.job_title ??
+        contact?.role ??
+        contact?.position ??
+        contact?.occupation;
+      return typeof candidate === "string" && candidate.trim().length > 0
+        ? candidate.trim()
+        : undefined;
+    };
+
+    const normalizeLinkedIn = (contact: any): string | undefined => {
+      const candidate =
+        contact?.linkedin ??
+        contact?.linkedin_profile ??
+        contact?.linkedin_url ??
+        contact?.linkedinProfile ??
+        contact?.li;
+      return typeof candidate === "string" && candidate.trim().length > 0
+        ? candidate.trim()
+        : undefined;
+    };
+
+    const extractContacts = (): any[] => {
+      if (Array.isArray(findyMailData?.contacts)) {
+        return findyMailData.contacts;
+      }
+      if (Array.isArray(findyMailData?.data?.contacts)) {
+        return findyMailData.data.contacts;
+      }
+      if (Array.isArray(findyMailData?.results?.contacts)) {
+        return findyMailData.results.contacts;
+      }
+      return [];
+    };
+
+    const extractEmails = (): any[] => {
+      if (Array.isArray(findyMailData?.emails)) {
+        return findyMailData.emails;
+      }
+      if (Array.isArray(findyMailData?.data?.emails)) {
+        return findyMailData.data.emails;
+      }
+      if (Array.isArray(findyMailData?.results?.emails)) {
+        return findyMailData.results.emails;
+      }
+      return [];
+    };
+
     // Handle null/undefined data
     if (!findyMailData) {
       return {
@@ -160,27 +237,69 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
     }
 
     // Extract contacts - handle different response formats
-    let contacts: any[] = [];
-    if (Array.isArray(findyMailData.contacts)) {
-      contacts = findyMailData.contacts;
-    } else if (findyMailData.data?.contacts) {
-      contacts = findyMailData.data.contacts;
-    } else if (findyMailData.results?.contacts) {
-      contacts = findyMailData.results.contacts;
-    }
+    const rawContacts = extractContacts();
+    const contacts = rawContacts.map((contact: any) => ({
+      name: normalizeContactName(contact),
+      title: normalizeTitle(contact),
+      email:
+        typeof contact?.email === "string" && contact.email.trim().length > 0
+          ? contact.email.trim()
+          : undefined,
+      linkedin: normalizeLinkedIn(contact),
+      confidence: toConfidence(
+        contact?.confidence ??
+          contact?.confidence_score ??
+          contact?.confidenceScore ??
+          contact?.score ??
+          contact?.certainty ??
+          contact?.accuracy ??
+          contact?.email_confidence
+      ),
+    }));
 
     // Extract emails from contacts array (FindyMail API structure)
     // Each contact object contains: { name, email, domain, first_name, ... }
-    const emails: any[] = contacts
-      .filter(contact => contact.email)
-      .map(contact => ({
-        email: contact.email,
-        name: contact.name,
-        first_name: contact.first_name,
-        domain: contact.domain,
-        // Include any additional metadata from contact
-        ...contact
+    const rawEmails = extractEmails();
+
+    const emailsFromApi = rawEmails
+      .filter((email: any) => typeof email?.email === "string")
+      .map((email: any) => ({
+        email: email.email.trim(),
+        type:
+          typeof email?.type === "string" && email.type.trim().length > 0
+            ? email.type.trim()
+            : "generic",
+        confidence: toConfidence(
+          email?.confidence ??
+            email?.confidence_score ??
+            email?.confidenceScore ??
+            email?.score ??
+            email?.certainty ??
+            email?.accuracy
+        ),
+        verified:
+          typeof email?.verified === "boolean"
+            ? email.verified
+            : undefined,
       }));
+
+    const emailsFromContacts = contacts
+      .filter((contact) => contact.email)
+      .map((contact) => ({
+        email: contact.email!,
+        type: "contact",
+        confidence: contact.confidence,
+        verified: undefined,
+      }));
+
+    const seenEmails = new Set<string>();
+    const emails = [...emailsFromApi, ...emailsFromContacts].filter((email) => {
+      if (seenEmails.has(email.email)) {
+        return false;
+      }
+      seenEmails.add(email.email);
+      return true;
+    });
 
     // Extract social profiles
     const socialProfiles = findyMailData.socialProfiles ||

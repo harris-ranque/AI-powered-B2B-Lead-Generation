@@ -232,12 +232,10 @@ export { AI_CONFIG } from './config';
 
 // Static AI constants that don't need configuration
 export const LANGGRAPH_AGENTS = {
+  BUSINESS_INTELLIGENCE: "business_intelligence",
+  EMAIL_GENERATION: "email_generation",
+  QUALITY_ASSURANCE: "quality_assurance",
   RELEVANCE_ANALYZER: "relevance_analyzer",
-  PAIN_POINT_RESEARCHER: "pain_point_researcher",
-  VALUE_MATCHER: "value_matcher",
-  EMAIL_WRITER: "email_writer",
-  FOLLOW_UP_STRATEGIST: "follow_up_strategist",
-  SUPERVISOR: "supervisor",
   AGGREGATOR: "aggregator",
 } as const;
 

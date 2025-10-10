@@ -52,7 +52,7 @@ export function PipelineOrchestrator({
 }: PipelineOrchestratorProps) {
   const { state, setStage, canProgressToStage } = usePipeline();
   const [isPipelineCollapsed, setIsPipelineCollapsed] = useState(false);
-  const completionToastShownRef = useRef(false);
+  const lastCompletedSearchIdRef = useRef<string | null>(null);
   const { toast } = useToast();
 
   // Get search data and real-time updates
@@ -67,7 +67,11 @@ export function PipelineOrchestrator({
   const isUnifiedProgressEnabled = featureFlags.unifiedProgressPanel;
 
   // Check if search is completed
-  const isSearchCompleted = search?.status === "completed";
+  const searchStatus = search?.status;
+  const isSearchCompleted = searchStatus === "completed";
+  const activeSearchId = (search?._id ?? state.searchId) ?? null;
+  const totalFound = search?.results?.totalFound ?? 0;
+  const enrichedCount = search?.results?.enrichedCount ?? 0;
 
   const openLeadHistory = useCallback(() => {
     if (onOpenLeadHistory) {
@@ -165,28 +169,40 @@ export function PipelineOrchestrator({
   const researchTierInfo = getResearchTierInfo(search?.researchTier);
 
   useEffect(() => {
-    if (isSearchCompleted) {
-      if (!completionToastShownRef.current) {
-        completionToastShownRef.current = true;
-        const totalFound = search?.results?.totalFound ?? 0;
-        const enrichedCount = search?.results?.enrichedCount ?? 0;
-        toast({
-          title: "Search complete",
-          description:
-            totalFound > 0
-              ? `We found ${totalFound} leads and enriched ${enrichedCount}.`
-              : "Your search has finished. Review the results in history.",
-          action: (
-            <ToastAction altText="View lead history" onClick={openLeadHistory}>
-              View results
-            </ToastAction>
-          ),
-        });
-      }
-    } else {
-      completionToastShownRef.current = false;
+    if (!activeSearchId) {
+      lastCompletedSearchIdRef.current = null;
+      return;
     }
-  }, [isSearchCompleted, openLeadHistory, search?.results?.enrichedCount, search?.results?.totalFound, toast]);
+
+    if (isSearchCompleted) {
+      if (lastCompletedSearchIdRef.current === activeSearchId) {
+        return;
+      }
+
+      lastCompletedSearchIdRef.current = activeSearchId;
+      toast({
+        title: "Search complete",
+        description:
+          totalFound > 0
+            ? `We found ${totalFound} leads and enriched ${enrichedCount}.`
+            : "Your search has finished. Review the results in history.",
+        action: (
+          <ToastAction altText="View lead history" onClick={openLeadHistory}>
+            View results
+          </ToastAction>
+        ),
+      });
+      return;
+    }
+
+    if (
+      searchStatus !== undefined &&
+      searchStatus !== "completed" &&
+      lastCompletedSearchIdRef.current === activeSearchId
+    ) {
+      lastCompletedSearchIdRef.current = null;
+    }
+  }, [activeSearchId, enrichedCount, isSearchCompleted, openLeadHistory, searchStatus, toast, totalFound]);
 
   const unifiedPanelActions = isSearchCompleted
     ? (
