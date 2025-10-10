@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -57,6 +58,7 @@ const leadDashboardLogger = createLogger("LeadEternityDashboard");
 
 function LeadEternityDashboardContent() {
   const [currentTab, setCurrentTab] = useState<DashboardTabName>("overview");
+  const location = useLocation();
   const completionAnnouncedRef = useRef(false);
   const [componentError, setComponentError] = useState<string | null>(null);
 
@@ -206,6 +208,26 @@ function LeadEternityDashboardContent() {
 
   const pipelineEmails = state.generatedEmails;
 
+  const updateHashForTab = useCallback((tab: string) => {
+    if (typeof window === "undefined") return;
+
+    if (tab === "search-history") {
+      if (window.location.hash !== "#lead-history") {
+        window.location.hash = "lead-history";
+      }
+      return;
+    }
+
+    if (window.location.hash) {
+      const { pathname, search } = window.location;
+      if (typeof window.history?.replaceState === "function") {
+        window.history.replaceState(null, "", `${pathname}${search}`);
+      } else {
+        window.location.hash = "";
+      }
+    }
+  }, []);
+
   const normalizedPlan = useMemo<PlanType>(() => {
     switch (userPlan) {
       case "free":
@@ -264,6 +286,7 @@ function LeadEternityDashboardContent() {
       if (isValidTabName(candidateTab)) {
         leadDashboardLogger.info("Tab changed", { newTab: candidateTab });
         setCurrentTab(candidateTab);
+        updateHashForTab(candidateTab);
         return;
       }
 
@@ -273,9 +296,21 @@ function LeadEternityDashboardContent() {
         { newTab },
       );
       setCurrentTab("overview");
+      updateHashForTab("overview");
     },
-    [handleComponentError],
+    [handleComponentError, updateHashForTab],
   );
+
+  useEffect(() => {
+    const hash = location.hash ? location.hash.replace(/^#/, "") : "";
+    if (!hash) {
+      return;
+    }
+
+    if (hash === "lead-history" && currentTab !== "search-history") {
+      handleTabChange("search-history");
+    }
+  }, [currentTab, handleTabChange, location.hash]);
 
   const handleGenerateEmail = useCallback(
     (lead: Lead) => {
@@ -601,7 +636,7 @@ function LeadEternityDashboardContent() {
           )}
 
           {currentTab === "search-history" && (
-            <div className="p-6">
+            <div className="p-6" id="lead-history">
               <div className="mb-6">
                 <h2 className="mb-2 text-3xl font-display font-semibold tracking-tight">
                   Lead Search History
