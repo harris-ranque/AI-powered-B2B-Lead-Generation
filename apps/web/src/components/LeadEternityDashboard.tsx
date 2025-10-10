@@ -357,6 +357,10 @@ function LeadEternityDashboardContent() {
     [handleTabChange],
   );
 
+  const handleOpenLeadHistory = useCallback(() => {
+    handleTabChange("search-history");
+  }, [handleTabChange]);
+
   const handleSkipOnboarding = useCallback(() => {
     try {
       handleTabChange("overview");
@@ -605,6 +609,7 @@ function LeadEternityDashboardContent() {
                 onGenerateEmail={handleGenerateEmail}
                 userCredits={userCredits}
                 userPlan={userPlan}
+                onOpenLeadHistory={handleOpenLeadHistory}
               />
             </div>
           )}

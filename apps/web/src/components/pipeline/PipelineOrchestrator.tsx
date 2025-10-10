@@ -38,12 +38,14 @@ interface PipelineOrchestratorProps {
   userCredits: number;
   userPlan: "free" | "pro" | "enterprise";
   onGenerateEmail?: (lead: Lead) => void;
+  onOpenLeadHistory?: () => void;
 }
 
 export function PipelineOrchestrator({
   userCredits,
   userPlan,
   onGenerateEmail,
+  onOpenLeadHistory,
 }: PipelineOrchestratorProps) {
   const { state, setStage, canProgressToStage } = usePipeline();
   const [isPipelineCollapsed, setIsPipelineCollapsed] = useState(false);
@@ -63,9 +65,14 @@ export function PipelineOrchestrator({
   const isSearchCompleted = search?.status === "completed";
 
   const openLeadHistory = useCallback(() => {
-    window.location.hash = "#lead-history";
+    if (onOpenLeadHistory) {
+      onOpenLeadHistory();
+    } else {
+      window.location.hash = "#lead-history";
+    }
+
     setIsPipelineCollapsed(true);
-  }, [setIsPipelineCollapsed]);
+  }, [onOpenLeadHistory, setIsPipelineCollapsed]);
 
   const currentStageIndex = STAGE_ORDER.indexOf(state.currentStage);
 
