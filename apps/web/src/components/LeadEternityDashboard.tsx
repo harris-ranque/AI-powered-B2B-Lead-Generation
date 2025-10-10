@@ -60,6 +60,7 @@ function LeadEternityDashboardContent() {
   const [currentTab, setCurrentTab] = useState<DashboardTabName>("overview");
   const location = useLocation();
   const completionAnnouncedRef = useRef(false);
+  const isHandlingHashChangeRef = useRef(false);
   const [componentError, setComponentError] = useState<string | null>(null);
 
   const handleComponentError = useCallback(
@@ -221,6 +222,11 @@ function LeadEternityDashboardContent() {
   const updateHashForTab = useCallback((tab: string) => {
     if (typeof window === "undefined") return;
 
+    // Prevent hash updates while we're already handling a hash change
+    if (isHandlingHashChangeRef.current) {
+      return;
+    }
+
     if (tab === "search-history") {
       if (window.location.hash !== "#lead-history") {
         window.location.hash = "lead-history";
@@ -228,6 +234,7 @@ function LeadEternityDashboardContent() {
       return;
     }
 
+    // Always clear hash when navigating away from search-history
     if (window.location.hash) {
       const { pathname, search } = window.location;
       if (typeof window.history?.replaceState === "function") {
@@ -311,14 +318,38 @@ function LeadEternityDashboardContent() {
     [handleComponentError, updateHashForTab],
   );
 
+  // Clear hash on initial mount to prevent auto-redirects from previous sessions
   useEffect(() => {
+    // Only run on mount
+    if (window.location.hash === "#lead-history") {
+      // Clear the hash without triggering navigation
+      if (typeof window.history?.replaceState === "function") {
+        const { pathname, search } = window.location;
+        window.history.replaceState(null, "", `${pathname}${search}`);
+      }
+    }
+  }, []); // Empty deps - only run once on mount
+
+  // Listen to hash changes only when explicitly set by user actions
+  useEffect(() => {
+    // Prevent loops - if we're already handling a hash change, skip
+    if (isHandlingHashChangeRef.current) {
+      return;
+    }
+
     const hash = location.hash ? location.hash.replace(/^#/, "") : "";
     if (!hash) {
       return;
     }
 
+    // Only respond to hash if we're not already on that tab
     if (hash === "lead-history" && currentTab !== "search-history") {
+      isHandlingHashChangeRef.current = true;
       handleTabChange("search-history");
+      // Reset the flag after a short delay
+      setTimeout(() => {
+        isHandlingHashChangeRef.current = false;
+      }, 100);
     }
   }, [currentTab, handleTabChange, location.hash]);
 
