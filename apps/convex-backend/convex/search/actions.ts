@@ -16,6 +16,42 @@ import { CREDIT_COSTS } from "../lib/helpers";
 const METERS_PER_MILE = 1609.34;
 const MAX_PLACES_RADIUS_METERS = 50000;
 
+type GoogleAddressComponent = {
+  long_name?: string;
+  short_name?: string;
+  types?: string[];
+};
+
+type GooglePlaceDetails = {
+  formatted_address?: string;
+  geometry?: { location?: { lat?: number; lng?: number } };
+  address_components?: GoogleAddressComponent[];
+};
+
+const findAddressComponentValue = (
+  components: GoogleAddressComponent[] | undefined,
+  targetTypes: string[],
+  { preferShort }: { preferShort?: boolean } = {},
+): string | undefined => {
+  if (!components || components.length === 0) {
+    return undefined;
+  }
+
+  const match = components.find((component) =>
+    targetTypes.every((type) => component.types?.includes(type)),
+  );
+
+  if (!match) {
+    return undefined;
+  }
+
+  if (preferShort) {
+    return match.short_name ?? match.long_name ?? undefined;
+  }
+
+  return match.long_name ?? match.short_name ?? undefined;
+};
+
 // Google Maps search action
 export const searchGoogleMaps = action({
   args: {
@@ -453,7 +489,14 @@ export const searchGoogleMaps = action({
             detailsUrl.searchParams.set("place_id", place.place_id);
             detailsUrl.searchParams.set(
               "fields",
-              "website,formatted_phone_number,international_phone_number",
+              [
+                "address_component",
+                "formatted_address",
+                "geometry",
+                "website",
+                "formatted_phone_number",
+                "international_phone_number",
+              ].join(","),
             );
             detailsUrl.searchParams.set("key", googleMapsApiKey);
 
@@ -484,6 +527,32 @@ export const searchGoogleMaps = action({
         }
 
         // Create lead using internal mutation (works without user auth)
+        const detailedPlaceInfo = detailedPlace as GooglePlaceDetails;
+        const basePlaceInfo = place as GooglePlaceDetails;
+        const addressComponents =
+          detailedPlaceInfo.address_components ??
+          basePlaceInfo.address_components;
+
+        const city =
+          findAddressComponentValue(addressComponents, ["locality"]) ??
+          findAddressComponentValue(addressComponents, ["postal_town"]) ??
+          findAddressComponentValue(addressComponents, [
+            "administrative_area_level_2",
+          ]);
+
+        const state = findAddressComponentValue(
+          addressComponents,
+          ["administrative_area_level_1"],
+          { preferShort: true },
+        );
+
+        const country = findAddressComponentValue(addressComponents, ["country"]);
+
+        const postalCode = findAddressComponentValue(
+          addressComponents,
+          ["postal_code"],
+        );
+
         const leadId = await ctx.runMutation(
           internal.leads.internal.createLeadInternal,
           {
@@ -494,13 +563,22 @@ export const searchGoogleMaps = action({
               address: detailedPlace.formatted_address || "",
               placeId: detailedPlace.place_id || "",
               location: {
-                lat: detailedPlace.geometry?.location?.lat || 0,
-                lng: detailedPlace.geometry?.location?.lng || 0,
-                formattedAddress: detailedPlace.formatted_address || "",
-                city: undefined,
-                state: undefined,
-                country: undefined,
-                postalCode: undefined,
+                lat:
+                  detailedPlaceInfo.geometry?.location?.lat ??
+                  basePlaceInfo.geometry?.location?.lat ??
+                  0,
+                lng:
+                  detailedPlaceInfo.geometry?.location?.lng ??
+                  basePlaceInfo.geometry?.location?.lng ??
+                  0,
+                formattedAddress:
+                  detailedPlaceInfo.formatted_address ??
+                  basePlaceInfo.formatted_address ??
+                  "",
+                city: city ?? undefined,
+                state: state ?? undefined,
+                country: country ?? undefined,
+                postalCode: postalCode ?? undefined,
               },
               phone:
                 detailedPlace.formatted_phone_number ||
