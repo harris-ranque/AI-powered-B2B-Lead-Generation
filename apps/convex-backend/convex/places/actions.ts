@@ -409,88 +409,105 @@ export const enrichBatch = action({
       };
     }
 
-    const detailResults = await mapWithConcurrency(
-      unseen,
-      PLACE_DETAILS_CONCURRENCY,
-      async (placeId) => ({
-        placeId,
-        detail: await fetchPlaceCandidate(placeId, googleMapsApiKey),
-      }),
-    );
-
-    const candidates: PlaceCandidate[] = [];
-    let skippedNoWebsite = 0;
-    let noEmail = 0;
-
-    for (const { placeId, detail } of detailResults) {
-      if (!detail) {
-        await ctx.runMutation(api.places.suppressions.markNoEmail, {
-          userId,
+    try {
+      const detailResults = await mapWithConcurrency(
+        unseen,
+        PLACE_DETAILS_CONCURRENCY,
+        async (placeId) => ({
           placeId,
-          reason: "place_details_failed",
-        });
-        noEmail += 1;
-        continue;
+          detail: await fetchPlaceCandidate(placeId, googleMapsApiKey),
+        }),
+      );
+
+      const candidates: PlaceCandidate[] = [];
+      let skippedNoWebsite = 0;
+      let noEmail = 0;
+
+      for (const { placeId, detail } of detailResults) {
+        if (!detail) {
+          await ctx.runMutation(api.places.suppressions.markNoEmail, {
+            userId,
+            placeId,
+            reason: "place_details_failed",
+          });
+          noEmail += 1;
+          continue;
+        }
+
+        if (!detail.domain) {
+          skippedNoWebsite += 1;
+          await ctx.runMutation(api.places.suppressions.markNoEmail, {
+            userId,
+            placeId,
+            reason: "missing_domain",
+          });
+          continue;
+        }
+
+        candidates.push(detail);
       }
 
-      if (!detail.domain) {
-        skippedNoWebsite += 1;
-        await ctx.runMutation(api.places.suppressions.markNoEmail, {
-          userId,
-          placeId,
-          reason: "missing_domain",
+      let domainResults = new Map<string, { name?: string; email: string }[]>();
+      const uniqueDomains = Array.from(
+        new Set(candidates.map((candidate) => candidate.domain)),
+      );
+      if (uniqueDomains.length > 0) {
+        domainResults = await resolveDomainsWithFindyMail(uniqueDomains, roles, {
+          concurrency: FINDYMAIL_CONCURRENCY,
         });
-        continue;
       }
 
-      candidates.push(detail);
-    }
+      let promoted = 0;
 
-    let domainResults = new Map<string, { name?: string; email: string }[]>();
-    const uniqueDomains = Array.from(new Set(candidates.map((candidate) => candidate.domain)));
-    if (uniqueDomains.length > 0) {
-      domainResults = await resolveDomainsWithFindyMail(uniqueDomains, roles, {
-        concurrency: FINDYMAIL_CONCURRENCY,
-      });
-    }
+      for (const candidate of candidates) {
+        const contacts = domainResults.get(candidate.domain) ?? [];
+        const best = pickBestContact(contacts);
 
-    let promoted = 0;
+        if (!best) {
+          await ctx.runMutation(api.places.suppressions.markNoEmail, {
+            userId,
+            placeId: candidate.placeId,
+            reason: "findymail_no_email",
+          });
+          noEmail += 1;
+          continue;
+        }
 
-    for (const candidate of candidates) {
-      const contacts = domainResults.get(candidate.domain) ?? [];
-      const best = pickBestContact(contacts);
+        const meta = {
+          ...candidate.meta,
+          contact: best,
+        };
 
-      if (!best) {
-        await ctx.runMutation(api.places.suppressions.markNoEmail, {
+        await ctx.runMutation(api.places.leads.promoteLead, {
           userId,
           placeId: candidate.placeId,
-          reason: "findymail_no_email",
+          email: best.email,
+          domain: candidate.domain,
+          meta,
         });
-        noEmail += 1;
-        continue;
+        promoted += 1;
       }
 
-      const meta = {
-        ...candidate.meta,
-        contact: best,
+      return {
+        attempted: unseen.length,
+        promoted,
+        noEmail,
+        skippedNoWebsite,
+        durationMs: Date.now() - startedAt,
       };
-
-      await ctx.runMutation(api.places.leads.promoteLead, {
-        userId,
-        placeId: candidate.placeId,
-        email: best.email,
-        domain: candidate.domain,
-        meta,
-      });
-      promoted += 1;
+    } catch (error) {
+      try {
+        await ctx.runMutation(api.places.suppressions.releasePendingSkips, {
+          userId,
+          placeIds: unseen,
+        });
+      } catch (cleanupError) {
+        console.error(
+          "Failed to release pending suppression rows after enrichment error",
+          cleanupError,
+        );
+      }
+      throw error;
     }
-
-    return {
-      attempted: unseen.length,
-      promoted,
-      noEmail,
-      skippedNoWebsite,
-      durationMs: Date.now() - startedAt,
-    };
   },
 });

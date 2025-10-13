@@ -85,6 +85,45 @@ export const filterAndMarkUnseen = mutation({
   },
 });
 
+export const releasePendingSkips = mutation({
+  args: {
+    userId: v.string(),
+    placeIds: v.array(v.string()),
+  },
+  handler: async (ctx, { userId, placeIds }) => {
+    if (placeIds.length === 0) {
+      return 0;
+    }
+
+    let released = 0;
+
+    for (let offset = 0; offset < placeIds.length; offset += CHUNK_SIZE) {
+      const slice = placeIds.slice(offset, offset + CHUNK_SIZE);
+      const lookups = await mapWithConcurrency(
+        slice,
+        MEMBERSHIP_CONCURRENCY,
+        async (placeId) => ({
+          placeId,
+          existing: await getSuppression(ctx.db, userId, placeId),
+        }),
+      );
+
+      for (const { existing } of lookups) {
+        if (
+          existing &&
+          existing.status === "skipped" &&
+          existing.lastTriedAt === undefined
+        ) {
+          await ctx.db.delete(existing._id);
+          released += 1;
+        }
+      }
+    }
+
+    return released;
+  },
+});
+
 export const markNoEmail = mutation({
   args: {
     userId: v.string(),
