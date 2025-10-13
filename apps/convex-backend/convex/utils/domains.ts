@@ -1,5 +1,3 @@
-import { toASCII } from "node:punycode";
-
 const PROTOCOL_REGEX = /^[a-z]+:\/\//i;
 const TRAILING_DOT_REGEX = /\.+$/;
 
@@ -45,7 +43,7 @@ export function canonicalizeDomain(urlOrHost: string): string {
   }
 
   try {
-    return toASCII(normalizedHost);
+    return new URL(`https://${normalizedHost}`).hostname;
   } catch {
     return normalizedHost;
   }
