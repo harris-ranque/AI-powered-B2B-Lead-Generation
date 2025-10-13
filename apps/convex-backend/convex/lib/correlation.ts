@@ -55,6 +55,9 @@ export const OPERATION_TYPES = {
   // Broadcasting
   BROADCAST_STATUS: "broadcast_status",
   NOTIFICATION_SEND: "notification_send",
+
+  // Monitoring & observability
+  MONITORING: "monitoring",
 } as const;
 
 // Generate a new correlation ID

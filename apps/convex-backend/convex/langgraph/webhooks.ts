@@ -2,7 +2,7 @@ import { internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { createOperationLogger } from "../lib/logger";
-import { Id } from "../_generated/dataModel";
+import { Id, Doc } from "../_generated/dataModel";
 
 // Type definitions for LangGraph webhook payloads
 const WebhookStatus = v.union(
@@ -344,6 +344,11 @@ export const handleEmailGenerationCompleted = internalMutation({
           followUpEmails: formattedFollowUps.length > 0 ? formattedFollowUps : undefined,
         });
 
+        // Mark lead analysis as completed (async tracking)
+        await ctx.runMutation(internal.leads.internal.markLeadAnalysisCompleted, {
+          leadId: leadId as any,
+        });
+
         const deepResearchUsed = Boolean(result.deep_research_used);
         const deepResearchProvider = deepResearchUsed ? "perplexity" : "tavily";
         const deepResearchReason = deepResearchUsed
@@ -423,15 +428,38 @@ export const handleEmailGenerationCompleted = internalMutation({
           }
         }
 
+        // Calculate search-level progress
+        const allLeads = await ctx.runQuery(
+          internal.leads.internal.getSearchLeadsInternal,
+          { searchId: searchId as any },
+        );
+
+        // Filter to only eligible leads (same criteria as getLeadsForAnalysis)
+        // This ensures we only count leads that should be analyzed
+        const eligibleLeads = allLeads.filter((l: Doc<"leads">) => {
+          const enrichmentComplete =
+            l.enrichmentStatus === "completed" ||
+            l.enrichmentStatus === "completed_fallback";
+          const hasEmail = Boolean(l.contactInfo?.emails?.length);
+          const hasContactName = Boolean(l.contactInfo?.contacts?.[0]?.name);
+          return enrichmentComplete && hasEmail && hasContactName;
+        });
+
+        const completedLeads = eligibleLeads.filter(
+          (l: Doc<"leads">) => l.analysisStatus === "completed",
+        ).length;
+        const totalLeads = eligibleLeads.length;
+        const progressPercent = totalLeads > 0 ? (completedLeads / totalLeads) * 100 : 0;
+
         // Broadcast success update via real-time status broadcast
         await ctx.runMutation(
           internal.realtime.broadcaster.broadcastPipelineUpdate,
           {
             userId: search.userId,
             searchId: searchId as any,
-            stage: "email_generation_completed",
-            progress: 100,
-            message: `Personalized emails ready for ${lead.businessName}. Download them from Search History or continue reviewing.`,
+            stage: "analysis",
+            progress: progressPercent,
+            message: `Analyzed ${completedLeads} of ${totalLeads} leads - ${lead.businessName} complete`,
             data: {
               stage: "email_generation_completed",
               redirectTo: "search-history",
@@ -443,9 +471,53 @@ export const handleEmailGenerationCompleted = internalMutation({
               emailGenerated: !!(result.primary_email && result.primary_email !== null),
               processingTime: result.processing_time || 0,
               requestId: args.payload.request_id,
+              progress: {
+                discovered: allLeads.length,
+                enriched: allLeads.filter(
+                  (l: Doc<"leads">) =>
+                    l.enrichmentStatus === "completed" ||
+                    l.enrichmentStatus === "completed_fallback",
+                ).length,
+                analyzed: completedLeads,
+                total: totalLeads, // Use eligible leads count
+              },
             },
           },
         );
+
+        // Check if all eligible leads are complete and trigger search completion
+        // Use idempotency guard to prevent race conditions when multiple webhooks complete simultaneously
+        const scheduledOrProcessing = eligibleLeads.filter(
+          (l: Doc<"leads">) =>
+            l.analysisStatus === "scheduled" || l.analysisStatus === "processing",
+        ).length;
+
+        if (scheduledOrProcessing === 0 && completedLeads === totalLeads && totalLeads > 0) {
+          // Verify search is still in processing state (idempotency check)
+          // This prevents race conditions when multiple webhooks complete simultaneously
+          const currentSearch = await ctx.db.get(searchId);
+          if (
+            currentSearch &&
+            (currentSearch.status === "processing" || currentSearch.status === "in_progress")
+          ) {
+            // All leads are complete! Trigger search completion
+            // Note: completeSearch action handles final status transition and idempotency
+            logger.info("All leads analyzed - triggering search completion", {
+              searchId: searchIdStr,
+              totalLeads,
+              completedLeads,
+              eligibleLeads: eligibleLeads.length,
+            });
+
+            await ctx.scheduler.runAfter(
+              0,
+              "search/actions:completeSearch" as any,
+              {
+                searchId: searchId as any,
+              },
+            );
+          }
+        }
 
         await ctx.runMutation(internal.realtime.broadcaster.broadcast, {
           userId: search.userId,
@@ -505,24 +577,102 @@ export const handleEmailGenerationCompleted = internalMutation({
           emailContent: undefined,
         });
 
+        // Mark lead analysis as failed (async tracking)
+        await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
+          leadId: leadId as any,
+          error: errorMessage,
+        });
+
+        // Calculate search-level progress (including failures)
+        const allLeads = await ctx.runQuery(
+          internal.leads.internal.getSearchLeadsInternal,
+          { searchId: searchId as any },
+        );
+
+        // Filter to only eligible leads (same criteria as getLeadsForAnalysis)
+        const eligibleLeads = allLeads.filter((l: Doc<"leads">) => {
+          const enrichmentComplete =
+            l.enrichmentStatus === "completed" ||
+            l.enrichmentStatus === "completed_fallback";
+          const hasEmail = Boolean(l.contactInfo?.emails?.length);
+          const hasContactName = Boolean(l.contactInfo?.contacts?.[0]?.name);
+          return enrichmentComplete && hasEmail && hasContactName;
+        });
+
+        const completedLeads = eligibleLeads.filter(
+          (l: Doc<"leads">) => l.analysisStatus === "completed",
+        ).length;
+        const failedLeads = eligibleLeads.filter(
+          (l: Doc<"leads">) => l.analysisStatus === "failed",
+        ).length;
+        const totalLeads = eligibleLeads.length;
+        const processedLeads = completedLeads + failedLeads;
+        const progressPercent = totalLeads > 0 ? (processedLeads / totalLeads) * 100 : 0;
+
         // Broadcast error via real-time status broadcast
         await ctx.runMutation(
           internal.realtime.broadcaster.broadcastPipelineUpdate,
           {
             userId: search.userId,
             searchId: searchId as any,
-            stage: "analysis_failed",
-            progress: 0,
-            message: `AI analysis failed for ${lead.businessName}: ${errorMessage}`,
-            error: errorMessage,
+            stage: "analysis",
+            progress: progressPercent,
+            message: `Analyzed ${processedLeads} of ${totalLeads} leads (${completedLeads} successful, ${failedLeads} failed)`,
+            error: `Failed: ${lead.businessName} - ${errorMessage}`,
             data: {
               stage: "email_generation_failed",
               leadId: leadId,
               leadName: lead.businessName,
               error: errorMessage,
+              progress: {
+                discovered: allLeads.length,
+                enriched: allLeads.filter(
+                  (l: Doc<"leads">) =>
+                    l.enrichmentStatus === "completed" ||
+                    l.enrichmentStatus === "completed_fallback",
+                ).length,
+                analyzed: completedLeads,
+                failed: failedLeads,
+                total: totalLeads, // Use eligible leads count
+              },
             },
           },
         );
+
+        // Check if all eligible leads are processed (complete or failed) and trigger search completion
+        // Use idempotency guard to prevent race conditions
+        const scheduledOrProcessing = eligibleLeads.filter(
+          (l: Doc<"leads">) =>
+            l.analysisStatus === "scheduled" || l.analysisStatus === "processing",
+        ).length;
+
+        if (scheduledOrProcessing === 0 && processedLeads === totalLeads && totalLeads > 0) {
+          // Verify search is still in processing state (idempotency check)
+          // This prevents race conditions when multiple webhooks complete simultaneously
+          const currentSearch = await ctx.db.get(searchId);
+          if (
+            currentSearch &&
+            (currentSearch.status === "processing" || currentSearch.status === "in_progress")
+          ) {
+            // All leads are processed! Trigger search completion
+            // Note: completeSearch action handles final status transition and idempotency
+            logger.info("All leads processed - triggering search completion", {
+              searchId: searchIdStr,
+              totalLeads,
+              completedLeads,
+              failedLeads,
+              eligibleLeads: eligibleLeads.length,
+            });
+
+            await ctx.scheduler.runAfter(
+              0,
+              "search/actions:completeSearch" as any,
+              {
+                searchId: searchId as any,
+              },
+            );
+          }
+        }
 
         await ctx.runMutation(internal.realtime.broadcaster.broadcast, {
           userId: search.userId,

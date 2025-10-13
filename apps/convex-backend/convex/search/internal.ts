@@ -1,5 +1,6 @@
 import { internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
+import { Doc } from "../_generated/dataModel";
 import { withUpdatedAtIfSupported, isUpdatedAtSchemaError } from "./utils";
 
 // Internal query to get search without auth check
@@ -63,6 +64,41 @@ export const getStuckSearches = internalQuery({
       .withIndex("by_status", (q) => q.eq("status", "in_progress"))
       .filter((q) => q.lt(q.field("lastOrchestrationAt"), args.stuckThreshold))
       .take(10); // Process max 10 stuck searches at a time
+  },
+});
+
+export const getSearchesByStatusesInternal = internalQuery({
+  args: {
+    statuses: v.array(
+      v.union(
+        v.literal("pending"),
+        v.literal("in_progress"),
+        v.literal("processing"),
+        v.literal("completed"),
+        v.literal("failed"),
+        v.literal("cancelled"),
+      ),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const seen = new Set<string>();
+    const results: Doc<"searches">[] = [];
+
+    for (const status of args.statuses) {
+      const matches = await ctx.db
+        .query("searches")
+        .withIndex("by_status", (q) => q.eq("status", status))
+        .collect();
+
+      for (const search of matches) {
+        if (!seen.has(search._id)) {
+          seen.add(search._id);
+          results.push(search);
+        }
+      }
+    }
+
+    return results;
   },
 });
 

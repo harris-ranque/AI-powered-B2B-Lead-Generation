@@ -55,6 +55,7 @@ from .langgraph.state import EmailGenerationState
 from .langgraph.workflow import create_email_generation_workflow, execute_email_generation, execute_with_streaming
 from .utils.webhook import WebhookClient
 from .utils.performance import single_replica_optimizer
+from .utils.concurrent_handler import concurrent_handler
 from .utils.logger import setup_logger, log_request_details, log_response_details, log_error_details
 
 # Configure logging
@@ -225,15 +226,75 @@ async def health_check():
     logger.info(f"Health check: Memory={health_response['performance']['memory_percent']}%, Queue={health_response['performance']['queue_size']}, Active={health_response['performance']['active_tasks']}")
     return health_response
 
+@app.get("/stats")
+async def get_stats():
+    """Get concurrent handler and system statistics"""
+    logger.debug("Stats endpoint accessed")
+    stats = concurrent_handler.get_stats()
+
+    return {
+        "service": "Genni LangGraph Worker",
+        "version": "2.0.0",
+        "timestamp": datetime.utcnow().isoformat(),
+        "concurrent_handler": stats,
+        "configuration": {
+            "max_concurrent": concurrent_handler.max_concurrent,
+            "rate_limit_per_client": "60 requests/minute",
+            "burst_size": 20,
+            "max_queue_size": concurrent_handler.max_queue_size,
+        },
+        "recommendations": {
+            "current_capacity": f"{stats['active_requests']}/{stats['max_concurrent']}",
+            "recommended_max_concurrent": stats['max_safe_concurrent'],
+            "status": "healthy" if stats['active_requests'] < stats['max_concurrent'] * 0.8 else "at_capacity",
+        },
+    }
+
+@app.get("/stats/client/{client_id}")
+async def get_client_stats(client_id: str):
+    """Get rate limit stats for a specific client/search"""
+    logger.debug(f"Client stats requested for: {client_id}")
+    stats = concurrent_handler.get_client_stats(client_id)
+
+    return {
+        "client_id": client_id,
+        "rate_limit": stats,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+@app.post("/cleanup-clients")
+async def cleanup_inactive_clients(inactive_hours: int = 1):
+    """
+    Clean up inactive clients from rate limiter to prevent memory leaks
+
+    Args:
+        inactive_hours: Remove clients inactive for this many hours (default: 1)
+
+    Returns:
+        Number of clients removed and cleanup stats
+    """
+    logger.info(f"Manual client cleanup triggered: inactive_hours={inactive_hours}")
+
+    removed_count = await concurrent_handler.cleanup_inactive_clients(inactive_hours)
+    current_stats = concurrent_handler.get_stats()
+
+    return {
+        "status": "success",
+        "removed_clients": removed_count,
+        "remaining_clients": current_stats["tracked_clients"],
+        "inactive_hours": inactive_hours,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
 @app.get("/sentry-debug")
 async def trigger_sentry_error():
     """Sentry debug endpoint to test error tracking"""
     logger.info("Sentry debug endpoint triggered - intentional error for testing")
-    
+
     # Send some logs to Sentry first
     sentry_sdk.logger.info('Sentry test - info log message')
     sentry_sdk.logger.warning('Sentry test - warning message')
-    
+
     # Add some context for debugging
     sentry_sdk.set_context("debug_test", {
         "endpoint": "/sentry-debug",
@@ -241,7 +302,7 @@ async def trigger_sentry_error():
         "service": "langgraph-worker",
         "version": "2.0.0"
     })
-    
+
     # Trigger an intentional error
     division_by_zero = 1 / 0
     return {"message": "This should not be reached"}
@@ -254,42 +315,64 @@ async def generate_email(
 ):
     """
     Generate personalized email using optimized 3-agent LangGraph system
-    
-    This endpoint processes a lead through our streamlined 3-agent system:
-    1. Business Intelligence Agent - Comprehensive research and analysis (Tavily→Exa→Perplexity)
-    2. Email Generation Agent - Personalized email writing with rich context
+
+    Multi-client architecture with:
+    - Concurrent handling for 500+ requests
+    - Per-client rate limiting (60 req/min)
+    - Adaptive resource management
+    - Graceful degradation under load
+
+    Agent pipeline:
+    1. Business Intelligence Agent - Comprehensive research (Tavily→Exa→Perplexity)
+    2. Email Generation Agent - Personalized email writing
     3. Quality Assurance Agent - Validation and quality enforcement
-    
+
     Benefits: 57% fewer LLM calls, 50% faster execution, better personalization
     """
     start_time = datetime.utcnow()
-    
-    try:
-        # Add Sentry context for this request
-        sentry_sdk.set_context("email_generation", {
-            "request_id": request.request_id,
-            "lead_company": request.lead.company_name,
-            "lead_id": request.lead.id,
-            "business_profile": request.business_profile.company_name if request.business_profile else "Unknown"
-        })
-        
-        logger.info(f"[LangGraph] Processing email generation for lead: {request.lead.company_name}")
-        log_request_details(logger, request.dict(), "/generate-email")
-        
-        # Check system capacity
-        optimizer_status = single_replica_optimizer.get_status()
-        if optimizer_status["memory"]["percent"] > 90:
-            raise HTTPException(
-                status_code=503, 
-                detail="System at capacity. Please try again in a few minutes."
+
+    # Extract client ID from request (use search ID as client identifier)
+    # Format: searchId_leadId_attempt
+    client_id = request.request_id.split("_")[0] if "_" in request.request_id else "unknown"
+
+    # Define the actual processing function
+    async def process_email_generation():
+        try:
+            # Add Sentry context for this request
+            sentry_sdk.set_context("email_generation", {
+                "request_id": request.request_id,
+                "client_id": client_id,
+                "lead_company": request.lead.company_name,
+                "lead_id": request.lead.id,
+                "business_profile": request.business_profile.company_name if request.business_profile else "Unknown"
+            })
+
+            logger.info(f"[LangGraph] Processing email generation for lead: {request.lead.company_name} (client: {client_id})")
+            log_request_details(logger, request.dict(), "/generate-email")
+
+            # Execute LangGraph workflow
+            result = await execute_email_generation(
+                lead=request.lead,
+                business_profile=request.business_profile,
+                requirements=request.requirements,
+                request_id=request.request_id
             )
-        
-        # Execute LangGraph workflow
-        result = await execute_email_generation(
-            lead=request.lead,
-            business_profile=request.business_profile,
-            requirements=request.requirements,
-            request_id=request.request_id
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error in process_email_generation: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+            }
+
+    try:
+        # Process with concurrent handler (includes rate limiting and resource management)
+        result = await concurrent_handler.process_request(
+            request_id=request.request_id,
+            client_id=client_id,
+            process_fn=process_email_generation,
         )
         
         if result["status"] == "completed":

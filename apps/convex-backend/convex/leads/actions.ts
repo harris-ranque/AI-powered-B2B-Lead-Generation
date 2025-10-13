@@ -960,7 +960,7 @@ export const enrichLeads: any = action({
   },
 });
 
-// Analyze leads using LangGraph AI system
+// Analyze leads using LangGraph AI system (Async Fire-and-Forget Architecture)
 export const analyzeLeads: any = action({
   args: {
     searchId: v.id("searches"),
@@ -973,23 +973,23 @@ export const analyzeLeads: any = action({
       {
         searchId: args.searchId,
         metadata: {
-          stage: "ai_analysis",
+          stage: "ai_analysis_async",
+          architecture: "fire_and_forget",
         },
       },
     );
 
     const performanceTracker = startPerformanceTracking();
-    let leads: any[] = [];
-    let analyzedCount = 0;
-    let failedCount = 0;
 
     logWithCorrelation(
       "info",
       correlation,
-      "🚀 PHASE 3 START: AI Analysis Phase Beginning",
+      "🚀 PHASE 3 START: AI Analysis Phase Beginning (Async Architecture)",
       {
         searchId: args.searchId,
         timestamp: new Date().toISOString(),
+        architecture: "webhook_based",
+        maxConcurrency: "unlimited",
       },
     );
 
@@ -1152,12 +1152,14 @@ export const analyzeLeads: any = action({
       logWithCorrelation(
         "info",
         correlation,
-        "📋 AI Analysis Configuration",
+        "📋 AI Analysis Configuration (Async Fire-and-Forget)",
         {
           totalLeadsToAnalyze: leads.length,
-          batchSize: 3,
-          estimatedDuration: Math.ceil(leads.length / 3) * 30000, // ~30s per batch
+          architecture: "scheduled_actions",
+          concurrency: "unlimited_parallel",
+          webhookBased: true,
           langgraphUrl: langgraphUrl?.includes("localhost") ? "local" : "production",
+          scalability: "500+ leads supported",
         },
       );
 
@@ -1171,7 +1173,7 @@ export const analyzeLeads: any = action({
             nextPhase: "search_completion",
           },
         );
-        
+
         // No leads to analyze, complete the search
         await ctx.scheduler.runAfter(
           0,
@@ -1183,7 +1185,7 @@ export const analyzeLeads: any = action({
         return {
           success: true,
           message: "No leads to analyze",
-          analyzedCount: 0,
+          scheduledCount: 0,
         };
       }
 
@@ -1201,265 +1203,162 @@ export const analyzeLeads: any = action({
         throw new Error("LangGraph service not configured");
       }
 
-      // Process leads in concurrent batches for better performance
-      const batchSize = 3; // Process 3 leads concurrently
-      const leadBatches = chunk(leads, batchSize);
+      // ========================================================================
+      // FIRE-AND-FORGET SCHEDULING (Async Webhook Architecture)
+      // ========================================================================
+      // Schedule all leads for analysis in parallel - no waiting!
+      // Each lead gets its own scheduled action with independent 10-min timeout
+      // Webhooks handle result storage and progress updates
+      // ========================================================================
 
       logWithCorrelation(
         "info",
         correlation,
-        "🔄 Starting LangGraph AI Analysis Batches",
+        "🚀 Scheduling All Leads for Async Analysis (Fire-and-Forget)",
         {
           totalLeads: leads.length,
-          batchSize,
-          totalBatches: leadBatches.length,
-          estimatedDuration: leadBatches.length * 30000, // ~30s per batch
-          concurrentAnalysis: true,
+          architecture: "scheduled_actions",
+          concurrency: "unlimited",
+          webhookBased: true,
+          estimatedSchedulingTime: leads.length * 10, // ~10ms per schedule
         },
       );
 
-      for (let batchIndex = 0; batchIndex < leadBatches.length; batchIndex++) {
-        const batch = leadBatches[batchIndex];
-        if (!batch) continue;
+      let scheduledCount = 0;
+      let schedulingErrors = 0;
 
-        // Create batch correlation context
-        const batchCorrelation = createChildContext(
-          correlation,
-          OPERATION_TYPES.LANGGRAPH_API,
-          {
-            batchId: `analysis_batch_${batchIndex + 1}`,
-            metadata: {
-              batchNumber: batchIndex + 1,
-              totalBatches: leadBatches.length,
-              batchSize: batch.length,
-              concurrentProcessing: true,
-            },
-          },
-        );
+      // Schedule all leads immediately (fire-and-forget)
+      for (const lead of leads) {
+        try {
+          // Create unique request ID for tracking
+          const requestId = `${args.searchId}_${lead._id}_auto`;
 
-        logWithCorrelation(
-          "info",
-          batchCorrelation,
-          "🤖 Processing AI Analysis Batch",
-          {
-            batchNumber: batchIndex + 1,
-            totalBatches: leadBatches.length,
-            leadsInBatch: batch.length,
-            progressPercent: ((batchIndex + 1) / leadBatches.length) * 100,
-            concurrentAnalysis: true,
-          },
-        );
+          // Mark lead as scheduled
+          await ctx.runMutation(internal.leads.internal.markLeadAnalysisScheduled, {
+            leadId: lead._id,
+            requestId,
+          });
 
-        // Check for cancellation/paused before each batch
-        {
-          const latest = await ctx.runQuery(
-            internal.search.internal.getSearchInternal,
+          // Schedule the lead analysis action (fire-and-forget)
+          await ctx.scheduler.runAfter(
+            0, // Run immediately
+            (internal as any)["leads/asyncAnalysis"].analyzeSingleLead,
             {
+              leadId: lead._id,
               searchId: args.searchId,
-            },
-          );
-          const latestUser = await ctx.runQuery(
-            internal.users.internal.getUserInternal,
-            {
               userId: search.userId,
+              profileId: profile._id,
+              maxRetries: 3,
             },
           );
-          if (
-            !latest ||
-            latest.status === "cancelled" ||
-            latestUser?.processingPaused
-          ) {
-            await ctx.runMutation(
-              internal.search.internal.updateSearchStatusInternal,
-              {
-                searchId: args.searchId,
-                status: "cancelled",
-                error: latestUser?.processingPaused
-                  ? latestUser.pauseReason || "User processing paused by admin"
-                  : undefined,
-              },
-            );
-            await ctx.runMutation(
-              internal.realtime.broadcaster.broadcastPipelineUpdate,
-              {
-                userId: search.userId,
-                searchId: args.searchId,
-                stage: "cancelled",
-                progress: 0,
-                message: latestUser?.processingPaused
-                  ? latestUser.pauseReason || "User processing paused by admin"
-                  : "Search cancelled",
-              },
-            );
-            return { success: false, message: "Cancelled" } as any;
-          }
-        }
 
-        // Process batch concurrently with Promise.allSettled for error resilience
-        const batchPromises = batch.map((lead) =>
-          processLeadWithLangGraph(
-            lead,
-            profile,
-            langgraphUrl,
-            langgraphApiKey,
-            args.searchId,
-          ),
-        );
+          scheduledCount++;
+        } catch (error) {
+          schedulingErrors++;
+          console.error(`Failed to schedule lead ${lead._id}:`, error);
 
-        const batchResults = await Promise.allSettled(batchPromises);
+          // Mark as failed immediately
+          await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
+            leadId: lead._id,
+            error: error instanceof Error ? error.message : "Scheduling failed",
+          });
 
-        // Process results and update database
-        for (let i = 0; i < batchResults.length; i++) {
-          const result = batchResults[i];
-          const lead = batch[i] as any; // Type assertion for lead object
-
-          if (!lead || !lead._id) continue;
-
-          if (result?.status === "fulfilled" && result.value.success) {
-            // Success: rely on webhook handler to persist analysis and email content (single write-path)
-            analyzedCount++;
-          } else {
-            // Handle failed analysis
-            failedCount++;
-            const errorMessage =
-              result?.status === "fulfilled"
-                ? result.value.error
-                : "Promise rejected";
-            console.error(
-              `Failed to analyze lead ${lead?._id}: ${errorMessage}`,
-            );
-
-            // Update lead with analysis error
-            try {
-              await ctx.runMutation(
-                internal.leads.internal.updateLeadAnalysis,
-                {
-                  leadId: lead._id as any,
-                  aiAnalysis: {
-                    relevanceScore: 0,
-                    painPoints: [],
-                    valueMatches: [],
-                    recommendations: [`Analysis failed: ${errorMessage}`],
-                    leadAnalysis: { error: errorMessage },
-                    processingTime: 0,
-                    confidence: 0,
-                  },
-                  emailContent: undefined,
-                },
-              );
-            } catch (dbError) {
-              console.error(
-                `Error storing failure state for lead ${lead._id}:`,
-                dbError,
-              );
-            }
-          }
-        }
-
-        // Broadcast progress update after each batch
-        const totalProcessed = analyzedCount + failedCount;
-        const progressPercent = (totalProcessed / leads.length) * 100;
-
-        await ctx.runMutation(
-          internal.realtime.broadcaster.broadcastPipelineUpdate,
-          {
+          // Broadcast scheduling error to user
+          await ctx.runMutation(internal.realtime.broadcaster.broadcast, {
             userId: search.userId,
-            searchId: args.searchId,
-            stage: "analysis",
-            progress: progressPercent,
-            message: `Analyzed ${totalProcessed} of ${leads.length} leads (${analyzedCount} successful, ${failedCount} failed)`,
+            type: "lead_analysis_error",
+            title: `Failed to schedule ${lead.businessName}`,
+            message: "This lead could not be scheduled for analysis. It will be marked as failed.",
             data: {
-              currentBatch: batchIndex + 1,
-              totalBatches: leadBatches.length,
-              progress: {
-                discovered: leads.length,
-                enriched: leads.filter(
-                  (l: any) =>
-                    l.enrichmentStatus === "completed" ||
-                    l.enrichmentStatus === "completed_fallback",
-                ).length,
-                analyzed: analyzedCount,
-                failed: failedCount,
-                total: leads.length,
-              },
+              searchId: args.searchId,
+              leadId: lead._id,
+              leadName: lead.businessName,
+              error: error instanceof Error ? error.message : "Unknown error",
             },
-          },
-        );
-
-        // Add small delay between batches to prevent overwhelming the LangGraph service
-        if (batchIndex < leadBatches.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+            priority: "normal",
+            tags: ["analysis", "error"],
+          });
         }
       }
 
       const performanceData = endPerformanceTracking(performanceTracker);
-      
-      logWithCorrelation(
-        "info",
-        correlation,
-        "🎉 PHASE 3 COMPLETE: AI Analysis Phase Finished",
-        {
-          totalLeads: leads.length,
-          analyzedCount,
-          failedCount,
-          analysisSuccessRate: (analyzedCount / leads.length) * 100,
-          durationMs: performanceData?.duration || 0,
-          averageTimePerLead: leads.length > 0 ? (performanceData?.duration || 0) / leads.length : 0,
-          nextPhase: "search_completion",
-        },
-      );
 
       logWithCorrelation(
         "info",
         correlation,
-        "🔄 PHASE TRANSITION: Triggering Final Phase (Search Completion)",
+        "🎉 PHASE 3 SCHEDULING COMPLETE: All Leads Scheduled for Async Analysis",
         {
-          analyzedLeads: analyzedCount,
-          failedLeads: failedCount,
           totalLeads: leads.length,
-          schedulingDelay: "immediate",
+          scheduledCount,
+          schedulingErrors,
+          schedulingSuccessRate: (scheduledCount / leads.length) * 100,
+          durationMs: performanceData?.duration || 0,
+          averageTimePerSchedule:
+            leads.length > 0 ? (performanceData?.duration || 0) / leads.length : 0,
+          nextPhase: "webhook_processing",
+          note: "Results will arrive via webhooks as each lead completes",
         },
       );
-      
-      // Complete the search
-      await ctx.scheduler.runAfter(0, "search/actions:completeSearch" as any, {
+
+      // Broadcast initial progress (leads scheduled, processing will happen async)
+      await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+        userId: search.userId,
         searchId: args.searchId,
+        stage: "analysis",
+        progress: 0, // 0% analyzed (scheduled but not complete)
+        message: `Scheduled ${scheduledCount} leads for AI analysis`,
+        data: {
+          progress: {
+            discovered: leads.length,
+            enriched: leads.filter(
+              (l: any) =>
+                l.enrichmentStatus === "completed" ||
+                l.enrichmentStatus === "completed_fallback",
+            ).length,
+            analyzed: 0, // None complete yet
+            scheduled: scheduledCount,
+            total: leads.length,
+          },
+        },
       });
+
+      // NOTE: We do NOT call completeSearch here!
+      // The webhook handler will call it when all leads are processed
+      // This is handled by the monitoring cron job checking completion status
 
       return {
         success: true,
-        message: `Analysis completed: ${analyzedCount}/${leads.length} leads analyzed`,
-        analyzedCount,
+        message: `Scheduled ${scheduledCount}/${leads.length} leads for async analysis`,
+        scheduledCount,
+        schedulingErrors,
         totalLeads: leads.length,
+        note: "Analysis will complete asynchronously via webhooks",
       };
     } catch (error) {
       const performanceData = endPerformanceTracking(performanceTracker);
-      
+
       logWithCorrelation(
         "error",
         correlation,
-        "💥 PHASE 3 FAILED: AI Analysis Phase Error",
+        "💥 PHASE 3 FAILED: AI Analysis Scheduling Error",
         {
           errorType: error instanceof Error ? error.constructor.name : "Unknown",
           duration: performanceData?.duration || 0,
-          totalLeads: leads?.length || 0,
-          analyzedSoFar: analyzedCount || 0,
-          failedSoFar: failedCount || 0,
         },
         error as Error,
       );
 
-      // Update search status to failed (internal to bypass auth in actions)
-      await ctx.runMutation(
-        internal.search.internal.updateSearchStatusInternal,
-        {
-          searchId: args.searchId,
-          status: "failed",
-          error: error instanceof Error ? error.message : "AI analysis failed",
-        },
-      );
+      // Update search status to failed
+      await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
+        searchId: args.searchId,
+        status: "failed",
+        error: error instanceof Error ? error.message : "AI analysis scheduling failed",
+      });
 
       throw error;
     }
   },
 });
+
+// ===== OLD BATCH PROCESSING CODE REMOVED =====
+// Legacy helper references retained near top-of-file for enrichment batching

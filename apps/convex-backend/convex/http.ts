@@ -919,6 +919,10 @@ http.route({
           firstNonEmptyString(emailDetails?.primaryBody, lead.emailContent?.body);
 
         const location = lead.location ?? {};
+        const postalCode =
+          "postalCode" in location && typeof (location as any).postalCode === "string"
+            ? (location as any).postalCode
+            : "";
 
         const rowValues: unknown[] = [
           leadKey,
@@ -927,7 +931,7 @@ http.route({
           location.country ?? "",
           location.city ?? "",
           location.state ?? "",
-          location.postalCode ?? "",
+          postalCode,
           lead.website ?? "",
           companyProfile,
           contactDetails.firstName,

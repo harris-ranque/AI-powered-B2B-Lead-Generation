@@ -402,3 +402,176 @@ export const getUserLeadsInternal = internalQuery({
       .collect();
   },
 });
+
+// ============================================================================
+// ASYNC ANALYSIS FUNCTIONS (Webhook-Based Architecture)
+// ============================================================================
+
+// Internal query to get leads ready for analysis
+export const getLeadsForAnalysis = internalQuery({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    // Get leads with valid contact info and enrichment completed
+    const leads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .filter((q) =>
+        q.and(
+          // Enrichment completed
+          q.or(
+            q.eq(q.field("enrichmentStatus"), "completed"),
+            q.eq(q.field("enrichmentStatus"), "completed_fallback"),
+          ),
+          // Not already analyzed
+          q.or(
+            q.eq(q.field("analysisStatus"), undefined),
+            q.eq(q.field("analysisStatus"), "pending"),
+            q.eq(q.field("analysisStatus"), "failed"),
+            q.eq(q.field("analysisStatus"), "timeout"),
+          ),
+        ),
+      )
+      .collect();
+
+    // Filter to only leads with valid contact information (email + name)
+    return leads.filter((lead) => {
+      const hasEmail = lead.contactInfo?.emails?.length && lead.contactInfo.emails.length > 0;
+      const hasContactName =
+        lead.contactInfo?.contacts?.length &&
+        lead.contactInfo.contacts.length > 0 &&
+        lead.contactInfo.contacts[0]?.name;
+      return hasEmail && hasContactName;
+    });
+  },
+});
+
+// Internal mutation to mark lead as scheduled for analysis
+export const markLeadAnalysisScheduled = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+    requestId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const lead = await ctx.db.get(args.leadId);
+    if (!lead) {
+      return;
+    }
+
+    const attempts = typeof lead.analysisAttempts === "number" ? lead.analysisAttempts : 0;
+
+    await ctx.db.patch(args.leadId, {
+      analysisStatus: "scheduled",
+      analysisScheduledAt: Date.now(),
+      analysisRequestId: args.requestId,
+      analysisAttempts: attempts,
+      analysisStartedAt: undefined,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Internal mutation to mark lead analysis as started
+export const markLeadAnalysisStarted = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+  },
+  handler: async (ctx, args) => {
+    const lead = await ctx.db.get(args.leadId);
+    if (!lead) return;
+
+    await ctx.db.patch(args.leadId, {
+      analysisStatus: "processing",
+      analysisStartedAt: Date.now(),
+      lastAnalysisAttempt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Internal mutation to mark lead analysis as completed
+export const markLeadAnalysisCompleted = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.leadId, {
+      analysisStatus: "completed",
+      analysisCompletedAt: Date.now(),
+      analysisError: undefined, // Clear any previous errors
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Internal mutation to mark lead analysis as failed
+export const markLeadAnalysisFailed = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+    error: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const lead = await ctx.db.get(args.leadId);
+    if (!lead) return;
+
+    const attempts = (lead.analysisAttempts || 0) + 1;
+
+    await ctx.db.patch(args.leadId, {
+      analysisStatus: "failed",
+      analysisError: args.error,
+      analysisAttempts: attempts,
+      lastAnalysisAttempt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Internal query to get stuck leads (scheduled but not completed)
+export const getStuckLeads = internalQuery({
+  args: {
+    timeoutMinutes: v.number(), // e.g., 15 minutes
+  },
+  handler: async (ctx, args) => {
+    const timeoutMs = args.timeoutMinutes * 60 * 1000;
+    const cutoffTime = Date.now() - timeoutMs;
+
+    // Get leads in "scheduled" or "processing" status that are older than timeout
+    const allLeads = await ctx.db
+      .query("leads")
+      .withIndex("by_analysis_status", (q) => q.eq("analysisStatus", "scheduled"))
+      .collect();
+
+    const processingLeads = await ctx.db
+      .query("leads")
+      .withIndex("by_analysis_status", (q) => q.eq("analysisStatus", "processing"))
+      .collect();
+
+    const allPotentiallyStuck = [...allLeads, ...processingLeads];
+
+    // Filter to only truly stuck leads
+    return allPotentiallyStuck.filter((lead) => {
+      const scheduledAt = lead.analysisScheduledAt || lead.createdAt;
+      return scheduledAt < cutoffTime;
+    });
+  },
+});
+
+// Internal mutation to mark lead analysis as timeout
+export const markLeadAnalysisTimeout = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+  },
+  handler: async (ctx, args) => {
+    const lead = await ctx.db.get(args.leadId);
+    if (!lead) return;
+
+    const attempts = (lead.analysisAttempts || 0) + 1;
+
+    await ctx.db.patch(args.leadId, {
+      analysisStatus: "timeout",
+      analysisError: "Analysis request timed out after 15 minutes",
+      analysisAttempts: attempts,
+      lastAnalysisAttempt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});

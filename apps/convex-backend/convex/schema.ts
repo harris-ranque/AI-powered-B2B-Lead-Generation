@@ -311,6 +311,22 @@ export default defineSchema({
     lastAnalysisAttempt: v.optional(v.number()),
     analysisError: v.optional(v.string()),
 
+    // Async analysis tracking (for scalable webhook-based processing)
+    analysisStatus: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("scheduled"),
+        v.literal("processing"),
+        v.literal("completed"),
+        v.literal("failed"),
+        v.literal("timeout"),
+      ),
+    ),
+    analysisScheduledAt: v.optional(v.number()),
+    analysisStartedAt: v.optional(v.number()),
+    analysisCompletedAt: v.optional(v.number()),
+    analysisRequestId: v.optional(v.string()), // LangGraph request ID for correlation
+
     // Generated content
     generatedEmails: v.optional(v.array(v.id("emailSequences"))),
 
@@ -347,7 +363,10 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_status", ["status"])
     .index("by_place_id", ["placeId"])
-    .index("by_enrichment_status", ["enrichmentStatus"]),
+    .index("by_enrichment_status", ["enrichmentStatus"])
+    .index("by_analysis_status", ["analysisStatus"])
+    .index("by_analysis_scheduled", ["analysisScheduledAt"])
+    .index("by_search_analysis_status", ["searchId", "analysisStatus"]),
 
   // Email Sequences - AI-generated personalized emails
   emailSequences: defineTable({
