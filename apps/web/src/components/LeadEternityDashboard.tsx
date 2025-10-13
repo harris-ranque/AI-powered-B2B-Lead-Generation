@@ -227,21 +227,32 @@ function LeadEternityDashboardContent() {
       return;
     }
 
-    if (tab === "search-history") {
-      if (window.location.hash !== "#lead-history") {
-        window.location.hash = "lead-history";
-      }
-      return;
-    }
+    // Set flag to prevent useEffect from responding to our programmatic changes
+    isHandlingHashChangeRef.current = true;
 
-    // Always clear hash when navigating away from search-history
-    if (window.location.hash) {
-      const { pathname, search } = window.location;
-      if (typeof window.history?.replaceState === "function") {
-        window.history.replaceState(null, "", `${pathname}${search}`);
-      } else {
-        window.location.hash = "";
+    try {
+      if (tab === "search-history") {
+        if (window.location.hash !== "#lead-history") {
+          window.location.hash = "lead-history";
+        }
+        return;
       }
+
+      // Always clear hash when navigating away from search-history
+      if (window.location.hash) {
+        const { pathname, search } = window.location;
+        if (typeof window.history?.replaceState === "function") {
+          window.history.replaceState(null, "", `${pathname}${search}`);
+        } else {
+          window.location.hash = "";
+        }
+      }
+    } finally {
+      // Reset flag after hash update completes
+      // Use setTimeout to ensure effect doesn't run during same tick
+      setTimeout(() => {
+        isHandlingHashChangeRef.current = false;
+      }, 50);
     }
   }, []);
 
