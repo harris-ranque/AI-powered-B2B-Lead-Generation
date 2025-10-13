@@ -33,6 +33,9 @@ export default function LandingPage() {
   const [isHovered, setIsHovered] = useState<string | null>(null);
   const [hasError, setHasError] = useState(false);
 
+  // Feature flag for pricing section (default: false for beta testing)
+  const showPricing = import.meta.env.VITE_SHOW_PRICING === "true";
+
   // Check if we're in a good state to render the landing page
   useEffect(() => {
     try {
@@ -208,12 +211,14 @@ export default function LandingPage() {
               >
                 Features
               </Link>
-              <Link
-                to="#pricing"
-                className="text-sm font-medium hover:text-primary transition-colors"
-              >
-                Pricing
-              </Link>
+              {showPricing && (
+                <Link
+                  to="#pricing"
+                  className="text-sm font-medium hover:text-primary transition-colors"
+                >
+                  Pricing
+                </Link>
+              )}
               <Link
                 to="/about"
                 className="text-sm font-medium hover:text-primary transition-colors"
@@ -448,67 +453,69 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Pricing Section */}
-        <section id="pricing" className="py-20 px-4 bg-muted/30">
-          <div className="container mx-auto">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                Simple, Transparent Pricing
-              </h2>
-              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-                Choose the plan that fits your business needs
-              </p>
-            </div>
+        {/* Pricing Section - Feature Flagged for Beta */}
+        {showPricing && (
+          <section id="pricing" className="py-20 px-4 bg-muted/30">
+            <div className="container mx-auto">
+              <div className="text-center mb-12">
+                <h2 className="text-3xl md:text-4xl font-bold mb-4">
+                  Simple, Transparent Pricing
+                </h2>
+                <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+                  Choose the plan that fits your business needs
+                </p>
+              </div>
 
-            <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-              {pricingPlans.map((plan, index) => (
-                <Card
-                  key={index}
-                  className={
-                    plan.highlighted ? "border-primary shadow-lg scale-105" : ""
-                  }
-                >
-                  <CardHeader>
-                    {plan.highlighted && (
-                      <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
-                        Most Popular
-                      </Badge>
-                    )}
-                    <CardTitle className="text-2xl">{plan.name}</CardTitle>
-                    <CardDescription>{plan.description}</CardDescription>
-                    <div className="mt-4">
-                      <span className="text-4xl font-bold">{plan.price}</span>
-                      {plan.price !== "Custom" && (
-                        <span className="text-muted-foreground">/month</span>
+              <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+                {pricingPlans.map((plan, index) => (
+                  <Card
+                    key={index}
+                    className={
+                      plan.highlighted ? "border-primary shadow-lg scale-105" : ""
+                    }
+                  >
+                    <CardHeader>
+                      {plan.highlighted && (
+                        <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">
+                          Most Popular
+                        </Badge>
                       )}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="space-y-2 mb-6">
-                      {plan.features.map((feature, featureIndex) => (
-                        <li
-                          key={featureIndex}
-                          className="flex items-center gap-2"
+                      <CardTitle className="text-2xl">{plan.name}</CardTitle>
+                      <CardDescription>{plan.description}</CardDescription>
+                      <div className="mt-4">
+                        <span className="text-4xl font-bold">{plan.price}</span>
+                        {plan.price !== "Custom" && (
+                          <span className="text-muted-foreground">/month</span>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-2 mb-6">
+                        {plan.features.map((feature, featureIndex) => (
+                          <li
+                            key={featureIndex}
+                            className="flex items-center gap-2"
+                          >
+                            <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                            <span className="text-sm">{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <Link to="/signup">
+                        <Button
+                          className="w-full"
+                          variant={plan.highlighted ? "default" : "outline"}
                         >
-                          <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
-                          <span className="text-sm">{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Link to="/signup">
-                      <Button
-                        className="w-full"
-                        variant={plan.highlighted ? "default" : "outline"}
-                      >
-                        {plan.cta}
-                      </Button>
-                    </Link>
-                  </CardContent>
-                </Card>
-              ))}
+                          {plan.cta}
+                        </Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* CTA Section */}
         <section className="py-20 px-4">
@@ -566,11 +573,13 @@ export default function LandingPage() {
                       Features
                     </Link>
                   </li>
-                  <li>
-                    <Link to="#pricing" className="hover:text-primary">
-                      Pricing
-                    </Link>
-                  </li>
+                  {showPricing && (
+                    <li>
+                      <Link to="#pricing" className="hover:text-primary">
+                        Pricing
+                      </Link>
+                    </li>
+                  )}
                   <li>
                     <Link to="/api" className="hover:text-primary">
                       API
