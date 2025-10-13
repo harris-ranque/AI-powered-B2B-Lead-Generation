@@ -36,6 +36,25 @@ def _ensure_str_list(value: Any) -> List[str]:
 
     return []
 
+
+def _normalize_competitors(value: Any) -> List[Dict[str, Any]]:
+    """Normalize competitor insights into serializable dictionaries."""
+
+    normalized: List[Dict[str, Any]] = []
+
+    if not isinstance(value, list):
+        return normalized
+
+    for item in value:
+        if hasattr(item, "model_dump"):
+            normalized.append(item.model_dump())
+        elif isinstance(item, dict):
+            normalized.append(item)
+        elif isinstance(item, str) and item.strip():
+            normalized.append({"name": item.strip()})
+
+    return normalized
+
 async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
     """
     Aggregate all results and prepare final response.
@@ -93,7 +112,50 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
             recommendations.append("Time-sensitive opportunity detected - prioritize outreach")
         
         business_context_raw = state.get("business_context") or {}
-        business_context = business_context_raw if isinstance(business_context_raw, dict) else {}
+        business_context: Dict[str, Any] = (
+            business_context_raw.copy() if isinstance(business_context_raw, dict) else {}
+        )
+
+        business_intelligence_raw = state.get("business_intelligence") or {}
+        if isinstance(business_intelligence_raw, dict) and business_intelligence_raw:
+            normalized_bi = business_intelligence_raw.copy()
+
+            # Ensure list fields are consistently formatted
+            normalized_bi["key_services"] = _ensure_str_list(normalized_bi.get("key_services"))
+            normalized_bi["recent_news"] = _ensure_str_list(normalized_bi.get("recent_news"))
+            normalized_bi["pain_points"] = _ensure_str_list(normalized_bi.get("pain_points"))
+            normalized_bi["technology_stack"] = _ensure_str_list(normalized_bi.get("technology_stack"))
+            normalized_bi["data_sources"] = _ensure_str_list(normalized_bi.get("data_sources"))
+
+            # Normalize competitors into serializable dictionaries
+            normalized_bi["competitors"] = _normalize_competitors(
+                normalized_bi.get("competitors", [])
+            )
+
+            # Ensure research metadata is a dictionary
+            research_metadata = normalized_bi.get("research_metadata")
+            if not isinstance(research_metadata, dict):
+                normalized_bi["research_metadata"] = {}
+
+            # Provide fallbacks for tier and confidence
+            if not normalized_bi.get("research_tier") and state.get("research_tier"):
+                normalized_bi["research_tier"] = state.get("research_tier")
+
+            confidence_scores = state.get("confidence_scores")
+            if (
+                not normalized_bi.get("confidence_score")
+                and isinstance(confidence_scores, dict)
+                and confidence_scores.get("research_confidence") is not None
+            ):
+                normalized_bi["confidence_score"] = confidence_scores["research_confidence"]
+
+            # Align overview fields used by downstream consumers
+            company_overview = normalized_bi.get("company_overview") or ""
+            if company_overview:
+                normalized_bi.setdefault("summary", company_overview)
+                normalized_bi.setdefault("company_profile", company_overview)
+
+            business_context.update(normalized_bi)
 
         lead = state["lead"]
         lead_description = getattr(lead, "description", "") or ""

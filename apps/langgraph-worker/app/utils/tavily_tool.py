@@ -83,7 +83,8 @@ class TavilySearchTool:
         time_range: Optional[Literal["day", "week", "month", "year"]] = None,
         include_domains: Optional[List[str]] = None,
         exclude_domains: Optional[List[str]] = None,
-        timeout: float = 5.0
+        timeout: float = 5.0,
+        tavily_api_key: Optional[str] = None,
     ):
         """
         Initialize Tavily search tool with comprehensive configuration.
@@ -100,45 +101,65 @@ class TavilySearchTool:
             include_domains: List of domains to specifically include (default: None)
             exclude_domains: List of domains to specifically exclude (default: None)
             timeout: Request timeout in seconds (default: 5.0)
+            tavily_api_key: Explicit Tavily API key override (defaults to settings/env configuration)
         """
         self.timeout = timeout
-        
-        # Check if API key is configured
-        self.api_key = getattr(settings, 'tavily_api_key', None)
+
+        # Persist configuration so we can recreate the tool for runtime key overrides
+        self._base_tool_config = {
+            "max_results": max_results,
+            "topic": topic,
+            "include_answer": include_answer,
+            "include_raw_content": include_raw_content,
+            "include_images": include_images,
+            "include_image_descriptions": include_image_descriptions,
+            "search_depth": search_depth,
+            "time_range": time_range,
+            "include_domains": include_domains,
+            "exclude_domains": exclude_domains,
+        }
+
+        # Check if API key is configured (allow explicit override or settings fallback)
+        self.api_key = tavily_api_key or getattr(settings, 'tavily_api_key', None)
         if not self.api_key:
             logger.warning("Tavily API key not configured")
             self.tool = None
             return
-            
+
+        self.tool = self._create_tool(self.api_key)
+
+    def _create_tool(self, api_key: Optional[str]):
+        """Instantiate a TavilySearch runnable for the provided API key."""
+
+        if not api_key:
+            return None
+
         try:
-            # Initialize the LangChain Tavily tool with configuration
-            self.tool = TavilySearch(
-                max_results=max_results,
-                topic=topic,
-                include_answer=include_answer,
-                include_raw_content=include_raw_content,
-                include_images=include_images,
-                include_image_descriptions=include_image_descriptions,
-                search_depth=search_depth,
-                time_range=time_range,
-                include_domains=include_domains,
-                exclude_domains=exclude_domains
+            tool = TavilySearch(
+                tavily_api_key=api_key,
+                **self._base_tool_config,
             )
-            logger.info(f"Tavily tool initialized with max_results={max_results}, topic={topic}, depth={search_depth}")
-            
+            logger.info(
+                "Tavily tool initialized with max_results=%s, topic=%s, depth=%s",
+                self._base_tool_config["max_results"],
+                self._base_tool_config["topic"],
+                self._base_tool_config["search_depth"],
+            )
+            return tool
         except Exception as e:
             logger.error(f"Failed to initialize Tavily tool: {str(e)}")
-            self.tool = None
+            return None
     
     async def search_async(
-        self, 
+        self,
         query: str,
         # Allow runtime parameter overrides
         include_images: Optional[bool] = None,
         search_depth: Optional[Literal["basic", "advanced"]] = None,
         time_range: Optional[Literal["day", "week", "month", "year"]] = None,
         include_domains: Optional[List[str]] = None,
-        exclude_domains: Optional[List[str]] = None
+        exclude_domains: Optional[List[str]] = None,
+        tavily_api_key: Optional[str] = None,
     ) -> TavilySearchResult:
         """
         Perform async search using Tavily API via LangChain tool.
@@ -150,13 +171,30 @@ class TavilySearchTool:
             time_range: Override time_range setting
             include_domains: Override include_domains setting
             exclude_domains: Override exclude_domains setting
+            tavily_api_key: Override Tavily API key for this request (for BYO key support)
             
         Returns:
             TavilySearchResult with search results and metadata
         """
         start_time = time.time()
-        
-        if not self.tool:
+
+        tool = self.tool
+
+        if not tool and self.api_key:
+            # Attempt lazy initialization in case the tool failed to construct at startup
+            tool = self._create_tool(self.api_key)
+            if tool:
+                self.tool = tool
+
+        if tavily_api_key and tavily_api_key != self.api_key:
+            logger.debug("Tavily API key override detected for current search")
+            tool = self._create_tool(tavily_api_key)
+            if tool:
+                # Cache the override so subsequent calls can reuse the initialized tool
+                self.api_key = tavily_api_key
+                self.tool = tool
+
+        if not tool:
             return TavilySearchResult(
                 query=query,
                 error="Tavily tool not initialized - check API key configuration",
@@ -187,7 +225,7 @@ class TavilySearchTool:
 
             # Execute search with timeout
             result = await asyncio.wait_for(
-                self._run_tool_async(search_params),
+                self._run_tool_async(tool, search_params),
                 timeout=self.timeout
             )
             
@@ -211,11 +249,11 @@ class TavilySearchTool:
                 response_time=time.time() - start_time
             )
     
-    async def _run_tool_async(self, search_params: Dict[str, Any]) -> Any:
+    async def _run_tool_async(self, tool: TavilySearch, search_params: Dict[str, Any]) -> Any:
         """Run the LangChain tool in async context"""
         # LangChain tools are typically sync, so we run in thread pool
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self.tool.invoke, search_params)
+        return await loop.run_in_executor(None, tool.invoke, search_params)
     
     def _process_tavily_result(self, query: str, raw_result: Any, response_time: float) -> TavilySearchResult:
         """
