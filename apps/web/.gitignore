@@ -25,3 +25,5 @@ dist-ssr
 
 # Convex generated files (now using real files from convex-backend)
 convex/_generated
+
+.env.local

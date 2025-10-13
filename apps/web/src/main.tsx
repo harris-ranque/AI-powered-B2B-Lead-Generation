@@ -13,6 +13,9 @@ import { logger } from "./utils/logger";
 
 // Log environment status in development
 import { logEnvironmentStatus, validateClerkConfiguration } from "./lib/env-validation";
+// PostHog analytics provider
+import { PostHogProvider } from "posthog-js/react";
+
 logEnvironmentStatus();
 
 // Enhanced startup logging with Clerk configuration
@@ -36,4 +39,16 @@ logger.info("Application starting up", {
 initializeStoredAppTheme();
 
 // Trigger redeploy
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <PostHogProvider
+    apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_KEY}
+    options={{
+      api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+      defaults: '2025-05-24',
+      capture_exceptions: true,
+      debug: import.meta.env.MODE === "development",
+    }}
+  >
+    <App />
+  </PostHogProvider>
+);
