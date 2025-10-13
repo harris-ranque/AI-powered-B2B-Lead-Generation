@@ -377,7 +377,7 @@ export function PipelineProgressPanel({
             <Button
               size="sm"
               variant="ghost"
-              className="h-8 px-2"
+              className="h-8 px-2 border border-genniBlue/30 bg-gradient-to-r from-genniBlue/5 to-genniIndigo/5 hover:from-genniBlue/10 hover:to-genniIndigo/10 text-genniBlue hover:text-genniIndigo transition-all duration-200"
               onClick={toggleCollapsed}
             >
               {isCollapsed ? (
@@ -443,9 +443,8 @@ export function PipelineProgressPanel({
           </div>
         )}
 
-        {showTimeline && (
-          <div className={cn("space-y-3", isCollapsed && "hidden")}
-          >
+        {showTimeline && !isCollapsed && (
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <Timer className="h-4 w-4" />

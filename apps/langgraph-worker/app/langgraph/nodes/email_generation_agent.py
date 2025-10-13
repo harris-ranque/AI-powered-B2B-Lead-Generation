@@ -250,7 +250,7 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
             model=settings.default_model,
             temperature=0.4,  # Slightly higher for creative email writing
             max_completion_tokens=settings.max_tokens,  # Use Railway MAX_TOKENS_OPTIONAL config (10000)
-            model_kwargs={"reasoning_effort": "minimal"},  # Optimize for speed with gpt-5-nano
+            reasoning_effort="minimal",  # Optimize for speed with gpt-5-nano
             openai_api_key=settings.openai_api_key
         ).with_structured_output(EmailSequence)
         

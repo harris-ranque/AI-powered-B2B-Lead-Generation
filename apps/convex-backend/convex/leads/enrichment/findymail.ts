@@ -50,8 +50,9 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
   }
 
   /**
-   * Enrich multiple domains in batch using FindyMail's domain search API
+   * Enrich multiple domains in batch using FindyMail's domain search API with rate limiting
    * Note: FindyMail uses /search/domain endpoint with individual domain requests
+   * Implements rate limiting to prevent 429/504 errors
    */
   async enrichBatch(
     domains: string[],
@@ -63,25 +64,61 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
       return result;
     }
 
-    console.log(`[FindyMail] Starting batch enrichment for ${domains.length} domains`);
+    console.log(`[FindyMail] Starting batch enrichment for ${domains.length} domains with rate limiting`);
 
-    // Process domains individually since FindyMail doesn't have a true bulk endpoint
-    // Process in parallel with rate limiting
-    const promises = domains.map(async (domain) => {
-      try {
-        const enrichmentResult = await this.enrichSingle(domain, options);
-        return { domain, result: enrichmentResult };
-      } catch (error) {
-        console.error(`[FindyMail] Failed to enrich ${domain}:`, error);
+    // Rate limiting configuration per FindyMail API docs:
+    // - API limit: 5 concurrent requests (synchronous)
+    // - Heavy processing involved (real-time search)
+    // We use conservative limits to be respectful of their infrastructure
+    const CONCURRENT_REQUESTS = 3; // Max concurrent requests (API limit is 5)
+    const DELAY_BETWEEN_BATCHES_MS = 500; // 500ms delay between batches for heavy processing
+    const RETRY_ATTEMPTS = 2; // Number of retry attempts for failed requests
+
+    // Process domains in controlled batches
+    const batches: string[][] = [];
+    for (let i = 0; i < domains.length; i += CONCURRENT_REQUESTS) {
+      batches.push(domains.slice(i, i + CONCURRENT_REQUESTS));
+    }
+
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex]!;
+      console.log(`[FindyMail] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} domains) - respecting 5 concurrent request limit`);
+
+      // Process batch with retries
+      const batchPromises = batch.map(async (domain) => {
+        for (let attempt = 0; attempt <= RETRY_ATTEMPTS; attempt++) {
+          try {
+            const enrichmentResult = await this.enrichSingle(domain, options);
+            return { domain, result: enrichmentResult };
+          } catch (error: any) {
+            const isRateLimitError = error?.message?.includes("429") || error?.message?.includes("Too Many Requests");
+            const isGatewayError = error?.message?.includes("504") || error?.message?.includes("Gateway");
+
+            if ((isRateLimitError || isGatewayError) && attempt < RETRY_ATTEMPTS) {
+              const backoffDelay = Math.min(1000 * Math.pow(2, attempt), 5000); // Exponential backoff, max 5s
+              console.log(`[FindyMail] Rate limit/gateway error for ${domain}, retrying in ${backoffDelay}ms (attempt ${attempt + 1}/${RETRY_ATTEMPTS})`);
+              await new Promise(resolve => setTimeout(resolve, backoffDelay));
+              continue;
+            }
+
+            console.error(`[FindyMail] Failed to enrich ${domain} after ${attempt + 1} attempts:`, error?.message || error);
+            return { domain, result: null };
+          }
+        }
         return { domain, result: null };
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+
+      // Collect results
+      for (const { domain, result: enrichmentResult } of batchResults) {
+        result[domain] = enrichmentResult;
       }
-    });
 
-    const results = await Promise.all(promises);
-
-    // Build result map
-    for (const { domain, result: enrichmentResult } of results) {
-      result[domain] = enrichmentResult;
+      // Add delay between batches to avoid rate limiting (except for last batch)
+      if (batchIndex < batches.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES_MS));
+      }
     }
 
     const successCount = Object.values(result).filter(r => r !== null).length;

@@ -149,7 +149,7 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
             model=settings.default_model,
             temperature=0.3,
             max_completion_tokens=settings.max_tokens,
-            model_kwargs={"reasoning_effort": "minimal"},  # Optimize for speed with gpt-5-nano
+            reasoning_effort="minimal",  # Optimize for speed with gpt-5-nano
             openai_api_key=settings.openai_api_key
         ).with_structured_output(BusinessIntelligence)
         

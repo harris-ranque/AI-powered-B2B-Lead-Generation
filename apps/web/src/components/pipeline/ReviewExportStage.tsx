@@ -35,22 +35,6 @@ const EXPORT_FORMATS = [
     includeEmails: true,
     size: "Small",
   },
-  {
-    type: "json",
-    name: "JSON Export",
-    description: "Developer-friendly format with full data",
-    icon: FileText,
-    includeEmails: true,
-    size: "Medium",
-  },
-  {
-    type: "pdf",
-    name: "PDF Report",
-    description: "Professional report with insights and emails",
-    icon: FileText,
-    includeEmails: true,
-    size: "Large",
-  },
 ];
 
 export function ReviewExportStage() {

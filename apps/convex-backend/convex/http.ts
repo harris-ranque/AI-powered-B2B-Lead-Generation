@@ -102,27 +102,81 @@ function escapeCsvValue(value: unknown): string {
 
 function extractCompanyProfile(lead: LeadDoc): string {
   const analysis = lead.aiAnalysis?.leadAnalysis;
-  if (analysis && typeof analysis === "object" && analysis !== null) {
-    const record = analysis as Record<string, unknown>;
+  if (!analysis || typeof analysis !== "object" || analysis === null) {
+    if (typeof lead.notes === "string" && lead.notes.trim()) {
+      return lead.notes.trim();
+    }
+    return "";
+  }
+
+  const record = analysis as Record<string, unknown>;
+  const sections: string[] = [];
+
+  // Helper to format array values
+  const formatArray = (arr: unknown): string => {
+    if (!Array.isArray(arr)) return "";
+    return arr.filter(item => typeof item === "string" && item.trim()).join("; ");
+  };
+
+  // Helper to get string value
+  const getString = (key: string): string => {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    return "";
+  };
+
+  // Extract comprehensive company profile data from Exa/Business Intelligence
+  const overview = getString("company_overview") || getString("companyOverview") || getString("overview");
+  if (overview) sections.push(`OVERVIEW: ${overview}`);
+
+  const industry = getString("industry_focus") || getString("industryFocus");
+  if (industry) sections.push(`INDUSTRY: ${industry}`);
+
+  const businessModel = getString("business_model") || getString("businessModel");
+  if (businessModel) sections.push(`BUSINESS MODEL: ${businessModel}`);
+
+  const keyServices = formatArray(record.key_services || record.keyServices);
+  if (keyServices) sections.push(`SERVICES: ${keyServices}`);
+
+  const targetCustomers = getString("target_customers") || getString("targetCustomers");
+  if (targetCustomers) sections.push(`TARGET CUSTOMERS: ${targetCustomers}`);
+
+  const competitive = getString("competitive_landscape") || getString("competitiveLandscape");
+  if (competitive) sections.push(`COMPETITIVE POSITION: ${competitive}`);
+
+  const growthStage = getString("growth_stage") || getString("growthStage");
+  if (growthStage) sections.push(`GROWTH STAGE: ${growthStage}`);
+
+  const techStack = formatArray(record.technology_stack || record.technologyStack);
+  if (techStack) sections.push(`TECH STACK: ${techStack}`);
+
+  const recentNews = formatArray(record.recent_news || record.recentNews);
+  if (recentNews) sections.push(`RECENT NEWS: ${recentNews}`);
+
+  const industryInsights = getString("industry_insights") || getString("industryInsights");
+  if (industryInsights) sections.push(`INDUSTRY INSIGHTS: ${industryInsights}`);
+
+  const painPoints = formatArray(record.pain_points || record.painPoints);
+  if (painPoints) sections.push(`PAIN POINTS: ${painPoints}`);
+
+  const valueMatches = formatArray(record.value_matches || record.valueMatches);
+  if (valueMatches) sections.push(`VALUE MATCHES: ${valueMatches}`);
+
+  const opportunities = formatArray(record.opportunities);
+  if (opportunities) sections.push(`OPPORTUNITIES: ${opportunities}`);
+
+  // If no structured data found, try fallback to any string value
+  if (sections.length === 0) {
     const candidateKeys = [
-      "company_overview",
-      "companyOverview",
-      "company_profile",
-      "companyProfile",
-      "company_analysis",
-      "companyAnalysis",
-      "business_overview",
-      "businessOverview",
-      "summary",
-      "description",
-      "overview",
+      "company_profile", "companyProfile",
+      "company_analysis", "companyAnalysis",
+      "business_overview", "businessOverview",
+      "summary", "description",
     ];
 
     for (const key of candidateKeys) {
-      const value = record[key];
-      if (typeof value === "string" && value.trim()) {
-        return value.trim();
-      }
+      const value = getString(key);
+      if (value) return value;
     }
 
     const fallbackValue = Object.values(record).find(
@@ -133,11 +187,12 @@ function extractCompanyProfile(lead: LeadDoc): string {
     }
   }
 
-  if (typeof lead.notes === "string" && lead.notes.trim()) {
+  // If still no data, try notes
+  if (sections.length === 0 && typeof lead.notes === "string" && lead.notes.trim()) {
     return lead.notes.trim();
   }
 
-  return "";
+  return sections.join(" | ");
 }
 
 function deriveFirstNameFromEmail(email: string): string {

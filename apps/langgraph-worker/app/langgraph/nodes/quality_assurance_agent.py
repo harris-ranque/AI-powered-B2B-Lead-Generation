@@ -110,7 +110,7 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
             model=settings.default_model,
             temperature=0.2,  # Low temperature for consistent assessment
             max_completion_tokens=settings.max_tokens,
-            model_kwargs={"reasoning_effort": "medium"},  # Use medium for better quality assessment
+            reasoning_effort="medium",  # Use medium for better quality assessment
             openai_api_key=settings.openai_api_key
         ).with_structured_output(QualityAssessment)
         

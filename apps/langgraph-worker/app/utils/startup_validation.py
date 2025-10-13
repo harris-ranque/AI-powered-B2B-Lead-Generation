@@ -176,7 +176,7 @@ class StartupValidator:
                 model=self.settings.default_model,
                 temperature=0,
                 max_completion_tokens=min(50, self.settings.max_tokens or 50),
-                model_kwargs={"reasoning_effort": "minimal"},  # Optimize for speed with gpt-5-nano
+                reasoning_effort="minimal",  # Optimize for speed with gpt-5-nano
                 openai_api_key=self.settings.openai_api_key
             )
 
