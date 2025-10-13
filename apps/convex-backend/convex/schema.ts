@@ -196,6 +196,31 @@ export default defineSchema({
     .index("by_user_status", ["userId", "status"])
     .index("by_user_status_created", ["userId", "status", "createdAt"]),
 
+  "place_suppressions": defineTable({
+    userId: v.string(),
+    placeId: v.string(),
+    status: v.union(
+      v.literal("skipped"),
+      v.literal("no_email"),
+      v.literal("converted"),
+    ),
+    firstSeenAt: v.number(),
+    lastTriedAt: v.optional(v.number()),
+    reason: v.optional(v.string()),
+  }).index("by_user_place", ["userId", "placeId"]),
+
+  "place_leads": defineTable({
+    userId: v.string(),
+    placeId: v.string(),
+    email: v.string(),
+    domain: v.optional(v.string()),
+    source: v.literal("google_places"),
+    meta: v.any(),
+    createdAt: v.number(),
+  })
+    .index("by_user_place", ["userId", "placeId"])
+    .index("by_user_email", ["userId", "email"]),
+
   // Leads - Individual business leads with enrichment data
   leads: defineTable({
     searchId: v.id("searches"),

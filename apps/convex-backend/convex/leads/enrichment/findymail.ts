@@ -5,6 +5,8 @@ import {
   EnrichmentBatchResult,
   EnrichmentOptions,
 } from "./types";
+import { mapWithConcurrency } from "../../utils/async";
+import { parseRetryAfter, sleep, withJitter } from "../../utils/http";
 
 const FINDYMAIL_BASE_URL = "https://app.findymail.com/api";
 
@@ -413,4 +415,301 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
       return 0;
     }
   }
+}
+
+type DomainContact = { name?: string; email: string; verified: boolean };
+
+function isTruthyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function deriveContactName(entry: any): string | undefined {
+  if (isTruthyString(entry?.name)) {
+    return entry.name.trim();
+  }
+  const parts = [entry?.first_name, entry?.last_name]
+    .filter(isTruthyString)
+    .map((part: string) => part.trim());
+  if (parts.length > 0) {
+    return parts.join(" ");
+  }
+  if (isTruthyString(entry?.full_name)) {
+    return entry.full_name.trim();
+  }
+  if (isTruthyString(entry?.email)) {
+    return entry.email.trim();
+  }
+  return undefined;
+}
+
+function extractConfidence(entry: any): number | undefined {
+  const sources = [
+    entry?.confidence,
+    entry?.confidence_score,
+    entry?.confidenceScore,
+    entry?.score,
+    entry?.certainty,
+    entry?.accuracy,
+  ];
+  for (const source of sources) {
+    if (typeof source === "number" && Number.isFinite(source)) {
+      return source;
+    }
+    if (typeof source === "string") {
+      const parsed = Number.parseFloat(source);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+}
+
+function isVerified(entry: any): boolean {
+  const flags = [
+    entry?.verified,
+    entry?.is_verified,
+    entry?.email_verified,
+    entry?.emailVerified,
+    entry?.verification_status,
+    entry?.verificationStatus,
+    entry?.status,
+    entry?.email_status,
+  ];
+
+  for (const flag of flags) {
+    if (typeof flag === "boolean") {
+      return flag;
+    }
+    if (isTruthyString(flag)) {
+      const normalized = flag.trim().toLowerCase();
+      if (["verified", "valid", "deliverable", "success", "accept_all"].includes(normalized)) {
+        return true;
+      }
+      if (["unverified", "invalid", "undeliverable", "unknown"].includes(normalized)) {
+        return false;
+      }
+    }
+  }
+
+  const confidence = extractConfidence(entry);
+  if (typeof confidence === "number") {
+    return confidence >= 0.7;
+  }
+
+  return false;
+}
+
+function normalizeEmail(value: any): string | null {
+  if (!isTruthyString(value)) {
+    return null;
+  }
+  const candidate = value.trim().toLowerCase();
+  if (!candidate.includes("@")) {
+    return null;
+  }
+  return candidate;
+}
+
+function extractVerifiedContacts(payload: any): DomainContact[] {
+  const collected = new Map<string, DomainContact>();
+
+  const candidateArrays = [
+    payload?.contacts,
+    payload?.data?.contacts,
+    payload?.results?.contacts,
+  ];
+
+  for (const array of candidateArrays) {
+    if (!Array.isArray(array)) {
+      continue;
+    }
+    for (const entry of array) {
+      const email = normalizeEmail(entry?.email);
+      if (!email) {
+        continue;
+      }
+      const verified = isVerified(entry);
+      const name = deriveContactName(entry);
+      const existing = collected.get(email);
+      if (!existing) {
+        collected.set(email, { email, name, verified });
+      } else if (verified && !existing.verified) {
+        collected.set(email, { email, name: name ?? existing.name, verified });
+      }
+    }
+  }
+
+  const emailArrays = [payload?.emails, payload?.data?.emails, payload?.results?.emails];
+  for (const array of emailArrays) {
+    if (!Array.isArray(array)) {
+      continue;
+    }
+    for (const entry of array) {
+      const email = normalizeEmail(entry?.email);
+      if (!email) {
+        continue;
+      }
+      const verified = isVerified(entry);
+      const name = deriveContactName(entry);
+      const existing = collected.get(email);
+      if (!existing) {
+        collected.set(email, { email, name, verified });
+      } else if (verified && !existing.verified) {
+        collected.set(email, { email, name: name ?? existing.name, verified });
+      }
+    }
+  }
+
+  return Array.from(collected.values()).filter((contact) => contact.verified);
+}
+
+interface DomainResolveOptions {
+  concurrency?: number;
+  maxRetries?: number;
+  baseDelayMs?: number;
+}
+
+interface DomainRequestOptions {
+  apiKey: string;
+  roles: string[];
+  maxRetries: number;
+  baseDelayMs: number;
+}
+
+async function fetchDomainContacts(
+  domain: string,
+  { apiKey, roles, maxRetries, baseDelayMs }: DomainRequestOptions,
+): Promise<DomainContact[]> {
+  const maxDelayMs = 15_000;
+  const startedAt = Date.now();
+  let attempt = 0;
+
+  while (attempt < maxRetries) {
+    attempt += 1;
+    const attemptStartedAt = Date.now();
+    try {
+      const response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          domain,
+          roles,
+          limit: 5,
+        }),
+      });
+
+      const elapsed = Date.now() - attemptStartedAt;
+      console.info(
+        `[FindyMail] domain=${domain} attempt=${attempt} status=${response.status} durationMs=${elapsed}`,
+      );
+
+      if (response.status === 429 || response.status === 504) {
+        if (attempt >= maxRetries) {
+          console.warn(
+            `[FindyMail] domain=${domain} exhausted retries after ${attempt} attempts (status ${response.status})`,
+          );
+          break;
+        }
+        const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
+        const delayMs = retryAfter ?? Math.min(maxDelayMs, withJitter(baseDelayMs * 2 ** (attempt - 1)));
+        console.warn(
+          `[FindyMail] domain=${domain} transient status=${response.status}, retrying in ${delayMs}ms`,
+        );
+        await sleep(delayMs);
+        continue;
+      }
+
+      if (!response.ok) {
+        if (response.status >= 400 && response.status < 500) {
+          const body = await response.text();
+          console.warn(
+            `[FindyMail] domain=${domain} non-retriable error ${response.status}: ${body.slice(0, 200)}`,
+          );
+          break;
+        }
+        if (attempt >= maxRetries) {
+          const body = await response.text();
+          console.error(
+            `[FindyMail] domain=${domain} failed after ${attempt} attempts: ${body.slice(0, 200)}`,
+          );
+          break;
+        }
+        const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
+        const delayMs = retryAfter ?? Math.min(maxDelayMs, withJitter(baseDelayMs * 2 ** (attempt - 1)));
+        console.warn(
+          `[FindyMail] domain=${domain} server error ${response.status}, retrying in ${delayMs}ms`,
+        );
+        await sleep(delayMs);
+        continue;
+      }
+
+      const payload = await response.json();
+      const contacts = extractVerifiedContacts(payload);
+      const totalElapsed = Date.now() - startedAt;
+      console.info(
+        `[FindyMail] domain=${domain} resolved ${contacts.length} verified contacts in ${totalElapsed}ms`,
+      );
+      return contacts;
+    } catch (error) {
+      if (attempt >= maxRetries) {
+        console.error(`[FindyMail] domain=${domain} network error:`, error);
+        break;
+      }
+      const delayMs = Math.min(maxDelayMs, withJitter(baseDelayMs * 2 ** (attempt - 1)));
+      console.warn(
+        `[FindyMail] domain=${domain} attempt ${attempt} failed (${(error as Error).message}), retrying in ${delayMs}ms`,
+      );
+      await sleep(delayMs);
+    }
+  }
+
+  return [];
+}
+
+export async function resolveDomainsWithFindyMail(
+  domains: string[],
+  roles: string[],
+  options: DomainResolveOptions = {},
+): Promise<Map<string, { name?: string; email: string }[]>> {
+  const apiKey = process.env.FINDYMAIL_API_KEY;
+  if (!apiKey) {
+    throw new Error("FINDYMAIL_API_KEY environment variable is not configured");
+  }
+
+  const uniqueDomains = Array.from(
+    new Set(domains.map((domain) => domain.trim().toLowerCase()).filter(Boolean)),
+  );
+
+  const results = new Map<string, { name?: string; email: string }[]>();
+  if (uniqueDomains.length === 0) {
+    return results;
+  }
+
+  const concurrency = Math.min(options.concurrency ?? 5, 5);
+  const maxRetries = options.maxRetries ?? 5;
+  const baseDelayMs = options.baseDelayMs ?? 800;
+  const sanitizedRoles = sanitizeRoles(roles);
+
+  await mapWithConcurrency(uniqueDomains, concurrency, async (domain) => {
+    const contacts = await fetchDomainContacts(domain, {
+      apiKey,
+      roles: sanitizedRoles,
+      maxRetries,
+      baseDelayMs,
+    });
+    if (contacts.length > 0) {
+      results.set(
+        domain,
+        contacts.map(({ email, name }) => ({ email, name })),
+      );
+    } else {
+      results.set(domain, []);
+    }
+  });
+
+  return results;
 }
