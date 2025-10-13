@@ -11,6 +11,12 @@ import {
   formatCorrelationForLogging,
 } from "../lib/correlation";
 import { CREDIT_COSTS } from "../lib/helpers";
+import {
+  searchPlacesWithTiling,
+  Bounds,
+  LatLng,
+  Place,
+} from "./googlePlaces";
 // Note: This action can be scheduled by the orchestrator (no user auth).
 
 const METERS_PER_MILE = 1609.34;
@@ -84,6 +90,10 @@ export const searchGoogleMaps = action({
         timestamp: new Date().toISOString(),
       },
     );
+
+    // Hoist variables for error handling scope
+    let useTiling = false;
+    let totalApiCalls = 0;
 
     // Run a LangGraph health check before beginning the lead generation pipeline
     try {
@@ -286,8 +296,9 @@ export const searchGoogleMaps = action({
         );
       }
 
-      // First geocode the location to get lat,lng coordinates
+      // Enhanced geocoding: Get both coordinates AND bounding box for tiling
       let lat: number, lng: number;
+      let bounds: Bounds | undefined;
       try {
         const geocodeUrl = new URL(
           "https://maps.googleapis.com/maps/api/geocode/json",
@@ -301,6 +312,14 @@ export const searchGoogleMaps = action({
           results?: Array<{
             geometry: {
               location: { lat: number; lng: number };
+              viewport?: {
+                northeast: { lat: number; lng: number };
+                southwest: { lat: number; lng: number };
+              };
+              bounds?: {
+                northeast: { lat: number; lng: number };
+                southwest: { lat: number; lng: number };
+              };
             };
           }>;
         };
@@ -309,17 +328,40 @@ export const searchGoogleMaps = action({
           throw new Error(`Geocoding failed: ${geocodeData.status}`);
         }
 
-        const coordinates = geocodeData.results[0].geometry.location;
+        const result = geocodeData.results[0];
+        const coordinates = result.geometry.location;
         lat = coordinates.lat;
         lng = coordinates.lng;
-        
+
+        // Extract bounds (prefer bounds, fallback to viewport)
+        const geoBounds = result.geometry.bounds || result.geometry.viewport;
+        if (geoBounds) {
+          bounds = {
+            ne: {
+              lat: geoBounds.northeast.lat,
+              lng: geoBounds.northeast.lng,
+            },
+            sw: {
+              lat: geoBounds.southwest.lat,
+              lng: geoBounds.southwest.lng,
+            },
+          };
+        }
+
         logWithCorrelation(
           "info",
           discoveryCorrelation,
-          "📍 Location Geocoding Successful",
+          "📍 Enhanced Geocoding Successful",
           {
             originalLocation: location,
             geocodedCoordinates: { lat, lng },
+            hasBounds: !!bounds,
+            boundsArea: bounds
+              ? {
+                  latSpan: bounds.ne.lat - bounds.sw.lat,
+                  lngSpan: bounds.ne.lng - bounds.sw.lng,
+                }
+              : undefined,
           },
         );
       } catch (geocodeError) {
@@ -333,56 +375,187 @@ export const searchGoogleMaps = action({
         // Fallback: use text search without location bias
         lat = 0;
         lng = 0;
+        bounds = undefined;
       }
 
-      // Call Google Maps Places API with proper location format
-      const placesUrl = new URL(
-        "https://maps.googleapis.com/maps/api/place/textsearch/json",
-      );
-      placesUrl.searchParams.set("query", query);
-      if (lat !== 0 && lng !== 0 && radius > 0) {
-        placesUrl.searchParams.set("location", `${lat},${lng}`);
-        placesUrl.searchParams.set("radius", radius.toString());
-      }
-      placesUrl.searchParams.set("type", "establishment");
-      placesUrl.searchParams.set("key", googleMapsApiKey);
+      // 🎯 ADAPTIVE STRATEGY: Choose between simple pagination or spatial tiling
+      useTiling = params.maxResults > 60 && (!!bounds || (lat !== 0 && lng !== 0));
 
-      const response = await fetch(placesUrl.toString());
-      if (!response.ok) {
-        throw new Error(
-          `Google Maps API error: ${response.status} ${response.statusText}`,
+      let places: Place[] = [];
+      totalApiCalls = 0;
+
+      if (useTiling) {
+        logWithCorrelation(
+          "info",
+          discoveryCorrelation,
+          "🗺️ Using SPATIAL TILING strategy (maxResults > 60)",
+          {
+            maxResults: params.maxResults,
+            hasBounds: !!bounds,
+            hasCenter: lat !== 0 && lng !== 0,
+            strategy: "tiled_search",
+            estimatedTiles: Math.ceil(params.maxResults / 50), // ~50 places per tile average
+            estimatedApiCalls: Math.ceil(params.maxResults / 50) * 3,
+            estimatedTimeMinutes: Math.ceil(params.maxResults / 250), // ~250 places per minute
+          },
+        );
+
+        // Use spatial tiling for large result sets
+        const tilingResult = await searchPlacesWithTiling({
+          apiKey: googleMapsApiKey,
+          query,
+          type: "establishment",
+          keyword: query,
+          bounds: bounds || undefined,
+          center: bounds ? undefined : { lat, lng },
+          radiusMeters: bounds ? undefined : radius,
+          maxResults: params.maxResults,
+          maxTiles: 250, // Increased for 1000-result searches
+          concurrency: 5, // Increased for better throughput
+          correlation: discoveryCorrelation,
+          shouldCancel: async () => {
+            const latest = await ctx.runQuery(
+              internal.search.internal.getSearchInternal,
+              { searchId: args.searchId },
+            );
+            return !latest || latest.status === "cancelled";
+          },
+        });
+
+        places = tilingResult.places;
+        totalApiCalls = tilingResult.totalApiCalls;
+
+        logWithCorrelation(
+          "info",
+          discoveryCorrelation,
+          "✅ TILED SEARCH COMPLETE",
+          {
+            placesFound: places.length,
+            targetPlaces: params.maxResults,
+            tilesSearched: tilingResult.tilesSearched,
+            apiCalls: totalApiCalls,
+            duplicatesFiltered: tilingResult.duplicatesFiltered,
+            efficiency: ((places.length / totalApiCalls) * 100).toFixed(1) + "% places per API call",
+            timeMs: tilingResult.timeMs,
+          },
+        );
+      } else {
+        logWithCorrelation(
+          "info",
+          discoveryCorrelation,
+          "📄 Using SIMPLE PAGINATION strategy (maxResults ≤ 60)",
+          {
+            maxResults: params.maxResults,
+            strategy: "simple_pagination",
+            maxPages: 3,
+          },
+        );
+
+        // Use simple pagination for small result sets (≤60 results)
+        let nextPageToken: string | undefined = undefined;
+        const maxPages = 3;
+        let currentPage = 0;
+
+        while (currentPage < maxPages && places.length < params.maxResults) {
+          const placesUrl = new URL(
+            "https://maps.googleapis.com/maps/api/place/textsearch/json",
+          );
+          placesUrl.searchParams.set("query", query);
+          if (lat !== 0 && lng !== 0 && radius > 0) {
+            placesUrl.searchParams.set("location", `${lat},${lng}`);
+            placesUrl.searchParams.set("radius", radius.toString());
+          }
+          placesUrl.searchParams.set("type", "establishment");
+          placesUrl.searchParams.set("key", googleMapsApiKey);
+
+          if (nextPageToken) {
+            placesUrl.searchParams.set("pagetoken", nextPageToken);
+          }
+
+          const response = await fetch(placesUrl.toString());
+          if (!response.ok) {
+            throw new Error(
+              `Google Maps API error: ${response.status} ${response.statusText}`,
+            );
+          }
+          totalApiCalls++;
+
+          const data = (await response.json()) as {
+            status: string;
+            error_message?: string;
+            results?: any[];
+            next_page_token?: string;
+          };
+
+          if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
+            throw new Error(
+              `Google Maps API error: ${data.status} - ${data.error_message || "Unknown error"}`,
+            );
+          }
+
+          const pageResults = data.results || [];
+          places.push(...pageResults);
+
+          logWithCorrelation(
+            "info",
+            discoveryCorrelation,
+            `📄 Page ${currentPage + 1}: ${pageResults.length} results (total: ${places.length})`,
+            {
+              page: currentPage + 1,
+              pageResults: pageResults.length,
+              totalResults: places.length,
+              hasNextPage: !!data.next_page_token,
+            },
+          );
+
+          nextPageToken = data.next_page_token;
+          currentPage++;
+
+          if (!nextPageToken || places.length >= params.maxResults) {
+            break;
+          }
+
+          // Check cancellation between pages
+          const latest = await ctx.runQuery(
+            internal.search.internal.getSearchInternal,
+            { searchId: args.searchId },
+          );
+          if (!latest || latest.status === "cancelled") {
+            return { success: false, message: "Search cancelled" } as any;
+          }
+
+          // Wait for token activation
+          logWithCorrelation(
+            "debug",
+            discoveryCorrelation,
+            "⏳ Waiting 2s for next page token",
+            { nextPage: currentPage + 1 },
+          );
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+
+        logWithCorrelation(
+          "info",
+          discoveryCorrelation,
+          "✅ SIMPLE PAGINATION COMPLETE",
+          {
+            placesFound: places.length,
+            pagesSearched: currentPage,
+            apiCalls: totalApiCalls,
+          },
         );
       }
 
-      const data = (await response.json()) as {
-        status: string;
-        error_message?: string;
-        results?: any[];
-      };
-
-      if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-        throw new Error(
-          `Google Maps API error: ${data.status} - ${data.error_message || "Unknown error"}`,
-        );
-      }
-
-      // Re-check cancellation before processing results
+      // Final cancellation check before processing results
       {
         const latest = await ctx.runQuery(
           internal.search.internal.getSearchInternal,
-          {
-            searchId: args.searchId,
-          },
+          { searchId: args.searchId },
         );
         if (!latest || latest.status === "cancelled") {
-          return {
-            success: false,
-            message: "Search cancelled",
-          } as any;
+          return { success: false, message: "Search cancelled" } as any;
         }
       }
-
-      const places = data.results || [];
       const totalFound = Math.min(places.length, params.maxResults);
 
       // Update search progress using scheduler
@@ -409,6 +582,9 @@ export const searchGoogleMaps = action({
           totalFound,
           requestedMax: params.maxResults,
           discoveryRate: (totalFound / params.maxResults) * 100,
+          strategy: useTiling ? "spatial_tiling" : "simple_pagination",
+          apiCalls: totalApiCalls,
+          efficiency: totalApiCalls > 0 ? (totalFound / totalApiCalls).toFixed(2) + " places/API call" : "N/A",
         },
       );
 
@@ -478,9 +654,13 @@ export const searchGoogleMaps = action({
           } as any;
         }
         const place = places[i];
+        if (!place || !place.place_id) {
+          // Skip invalid places
+          continue;
+        }
 
         // Get detailed place information including website and phone
-        let detailedPlace = place;
+        let detailedPlace: any = place;
         if (place.place_id) {
           try {
             const detailsUrl = new URL(
@@ -617,6 +797,11 @@ export const searchGoogleMaps = action({
           averageTimePerLead: totalFound > 0 ? (performanceData?.duration || 0) / totalFound : 0,
           nextPhase: "lead_enrichment",
           phaseCompletionRate: 100,
+          // API efficiency metrics
+          strategy: useTiling ? "spatial_tiling" : "simple_pagination",
+          totalApiCalls,
+          placesPerApiCall: totalApiCalls > 0 ? (totalFound / totalApiCalls).toFixed(2) : "N/A",
+          apiCostEfficiency: totalApiCalls > 0 ? ((totalFound / totalApiCalls) * 100).toFixed(1) + "%" : "N/A",
         },
       );
 
@@ -676,9 +861,11 @@ export const searchGoogleMaps = action({
 
       return {
         success: true,
-        message: `Discovered ${totalFound} potential leads, starting enrichment...`,
+        message: `Discovered ${totalFound} potential leads using ${useTiling ? "spatial tiling" : "pagination"} (${totalApiCalls} API calls)`,
         totalFound,
         leadIds,
+        strategy: useTiling ? "spatial_tiling" : "simple_pagination",
+        apiCalls: totalApiCalls,
       };
     } catch (error) {
       const performanceData = endPerformanceTracking(performanceTracker);
@@ -692,6 +879,8 @@ export const searchGoogleMaps = action({
           duration: performanceData?.duration || 0,
           searchQuery: search?.parameters?.keywords?.join(" ") || "unknown",
           location: search?.parameters?.location || "unknown",
+          strategy: useTiling ? "spatial_tiling" : "simple_pagination",
+          apiCallsBeforeFailure: totalApiCalls || 0,
         },
         error as Error,
       );
