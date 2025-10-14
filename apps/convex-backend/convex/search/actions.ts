@@ -772,7 +772,10 @@ export const searchGoogleMaps: any = action({
           },
         );
 
-        leadIds.push(leadId);
+        // Skip duplicates - null means duplicate was detected and skipped
+        if (leadId !== null) {
+          leadIds.push(leadId);
+        }
       }
 
       // Update search status to processing (discovery complete, but pipeline continues)

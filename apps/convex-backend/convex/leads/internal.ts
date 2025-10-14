@@ -153,6 +153,21 @@ export const createLeadInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     // Trust caller to ensure search exists and belongs to user
+
+    // Check for duplicate placeId within this search
+    const existingLead = await ctx.db
+      .query("leads")
+      .withIndex("by_place_id", (q) => q.eq("placeId", args.leadData.placeId))
+      .filter((q) => q.eq(q.field("searchId"), args.searchId))
+      .first();
+
+    if (existingLead) {
+      console.log(
+        `Duplicate lead detected for placeId ${args.leadData.placeId} in search ${args.searchId}, skipping to prevent re-processing`
+      );
+      return null; // Skip duplicate, don't re-process
+    }
+
     const leadId = await ctx.db.insert("leads", {
       userId: args.userId,
       searchId: args.searchId,

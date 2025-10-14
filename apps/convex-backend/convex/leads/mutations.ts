@@ -38,6 +38,19 @@ export const createLead = mutation({
       throw new Error("Search not found or access denied");
     }
 
+    // Check for duplicate placeId within this search
+    const existingLead = await ctx.db
+      .query("leads")
+      .withIndex("by_place_id", (q) => q.eq("placeId", args.leadData.placeId))
+      .filter((q) => q.eq(q.field("searchId"), args.searchId))
+      .first();
+
+    if (existingLead) {
+      throw new Error(
+        `Lead with this location already exists in this search. Cannot create duplicate.`
+      );
+    }
+
     const leadId = await ctx.db.insert("leads", {
       userId: user._id,
       searchId: args.searchId,
