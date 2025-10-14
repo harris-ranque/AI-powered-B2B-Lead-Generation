@@ -218,52 +218,74 @@ class BaseDataValidator:
                 return True
         return False
     
-    def should_trigger_deep_research(self, 
+    def should_trigger_deep_research(self,
                                    validation_result: DataValidationResult,
-                                   user_tier: str = "free", 
+                                   user_tier: str = "free",
                                    confidence_score: float = 1.0,
                                    lead_value: float = 0.0) -> tuple[bool, str]:
         """
-        Determine if deep research should be triggered based on validation results.
-        
+        TIGHTENED: Deep research is now a LAST RESORT.
+        Only triggers when MULTIPLE critical conditions are met simultaneously.
+
+        With optimized Tavily (advanced search, domain targeting, metadata extraction)
+        and Exa semantic search, deep research should rarely be needed.
+
         Args:
             validation_result: Result from validate_research_result
             user_tier: User subscription tier
-            confidence_score: Research confidence score
+            confidence_score: Research confidence score (adjusted by validation)
             lead_value: Estimated lead value
-            
+
         Returns:
             Tuple of (should_trigger, reason)
         """
         from ..config import DEEP_RESEARCH_CONFIG
-        
+
         # Check if deep research is globally enabled
         if not DEEP_RESEARCH_CONFIG['ENABLED']:
             return False, "Deep research is currently disabled"
-        
+
         # Check user tier requirements
         allowed_tiers = ['pro', 'enterprise'] if DEEP_RESEARCH_CONFIG['MINIMUM_TIER'] == 'pro' else ['free', 'pro', 'enterprise']
         if user_tier not in allowed_tiers:
             return False, f"Deep research only available for {DEEP_RESEARCH_CONFIG['MINIMUM_TIER']}+ users"
-            
-        # Check if missing critical data points
-        min_missing = DEEP_RESEARCH_CONFIG['MIN_MISSING_DATA_POINTS']
-        if len(validation_result.missing_data_points) >= min_missing:
-            return True, f"Missing {len(validation_result.missing_data_points)}/5 critical data points"
-            
-        # Check validation score threshold
-        threshold = DEEP_RESEARCH_CONFIG['DATA_COMPLETENESS_THRESHOLD']
-        if validation_result.validation_score < threshold:
-            return True, f"Low data completeness score ({validation_result.validation_score:.2f})"
-            
-        # Check overall confidence
-        confidence_threshold = DEEP_RESEARCH_CONFIG['CONFIDENCE_THRESHOLD']
-        if confidence_score < confidence_threshold:
-            return True, f"Low research confidence ({confidence_score:.2f})"
-            
-        # High-value leads always get deep research
+
+        # PRIORITY 1: High-value leads get deep research regardless (but with higher threshold)
         value_threshold = DEEP_RESEARCH_CONFIG['HIGH_VALUE_THRESHOLD']
         if lead_value >= value_threshold:
-            return True, f"High-value lead (${lead_value:,.0f})"
-            
-        return False, "Base research data is sufficient"
+            return True, f"High-value lead (${lead_value:,.0f}) - comprehensive research justified"
+
+        # PRIORITY 2: Multiple critical failures required (AND logic, not OR)
+        # Deep research only if BOTH data quality AND confidence are critically low
+        min_missing = DEEP_RESEARCH_CONFIG['MIN_MISSING_DATA_POINTS']
+        data_threshold = DEEP_RESEARCH_CONFIG['DATA_COMPLETENESS_THRESHOLD']
+        confidence_threshold = DEEP_RESEARCH_CONFIG['CONFIDENCE_THRESHOLD']
+
+        is_data_critically_incomplete = (
+            len(validation_result.missing_data_points) >= min_missing  # Missing 4+ of 5 data points
+            and validation_result.validation_score < data_threshold     # Data quality <0.4
+        )
+
+        is_confidence_critically_low = confidence_score < confidence_threshold  # Confidence <0.3
+
+        # Trigger only if BOTH conditions are true
+        if is_data_critically_incomplete and is_confidence_critically_low:
+            return True, (
+                f"Critical data failure: {len(validation_result.missing_data_points)}/5 missing, "
+                f"quality={validation_result.validation_score:.2f}, confidence={confidence_score:.2f}"
+            )
+
+        # If only one condition is met, explain why we're NOT escalating
+        if is_data_critically_incomplete:
+            return False, (
+                f"Data incomplete ({validation_result.validation_score:.2f}) but confidence acceptable ({confidence_score:.2f}) - "
+                f"Exa research should be sufficient"
+            )
+
+        if is_confidence_critically_low:
+            return False, (
+                f"Confidence low ({confidence_score:.2f}) but data quality acceptable ({validation_result.validation_score:.2f}) - "
+                f"Exa research should be sufficient"
+            )
+
+        return False, "Tavily + Exa research sufficient - deep research not needed"

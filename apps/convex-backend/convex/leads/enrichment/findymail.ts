@@ -74,7 +74,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
     // We use conservative limits to be respectful of their infrastructure
     const CONCURRENT_REQUESTS = 3; // Max concurrent requests (API limit is 5)
     const DELAY_BETWEEN_BATCHES_MS = 500; // 500ms delay between batches for heavy processing
-    const RETRY_ATTEMPTS = 2; // Number of retry attempts for failed requests
+    const RETRY_ATTEMPTS = 4; // Increased to 4 retries for 504 Gateway Timeouts (heavy processing)
 
     // Process domains in controlled batches
     const batches: string[][] = [];
@@ -97,7 +97,8 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
             const isGatewayError = error?.message?.includes("504") || error?.message?.includes("Gateway");
 
             if ((isRateLimitError || isGatewayError) && attempt < RETRY_ATTEMPTS) {
-              const backoffDelay = Math.min(1000 * Math.pow(2, attempt), 5000); // Exponential backoff, max 5s
+              // Increased backoff: 1s, 2s, 4s, 8s, 15s max (504 errors need more time)
+              const backoffDelay = Math.min(1000 * Math.pow(2, attempt), 15000); // Exponential backoff, max 15s
               console.log(`[FindyMail] Rate limit/gateway error for ${domain}, retrying in ${backoffDelay}ms (attempt ${attempt + 1}/${RETRY_ATTEMPTS})`);
               await new Promise(resolve => setTimeout(resolve, backoffDelay));
               continue;

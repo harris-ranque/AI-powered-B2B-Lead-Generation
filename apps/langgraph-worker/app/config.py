@@ -48,22 +48,27 @@ CREDIT_COSTS = {
 }
 
 # Deep Research Configuration
+# TIGHTENED: Deep research is now a LAST RESORT for only the most critical cases
 DEEP_RESEARCH_CONFIG = {
     # Minimum user tier required for deep research
     'MINIMUM_TIER': get_env_str('DEEP_RESEARCH_MIN_TIER', 'pro'),
-    
-    # Confidence threshold - trigger deep research below this score
-    'CONFIDENCE_THRESHOLD': get_env_float('DEEP_RESEARCH_CONFIDENCE_THRESHOLD', 0.5),
-    
-    # Data completeness threshold - trigger deep research below this score
-    'DATA_COMPLETENESS_THRESHOLD': get_env_float('DEEP_RESEARCH_DATA_THRESHOLD', 0.6),
-    
-    # Minimum missing data points to trigger deep research
-    'MIN_MISSING_DATA_POINTS': get_env_int('DEEP_RESEARCH_MIN_MISSING_POINTS', 3),
-    
-    # High-value lead threshold (in USD) - always trigger deep research above this
-    'HIGH_VALUE_THRESHOLD': get_env_int('DEEP_RESEARCH_HIGH_VALUE_THRESHOLD', 1000),
-    
+
+    # TIGHTENED: Only trigger if confidence is critically low (was 0.5)
+    # With optimized Tavily, most searches should score 0.6-0.8
+    'CONFIDENCE_THRESHOLD': get_env_float('DEEP_RESEARCH_CONFIDENCE_THRESHOLD', 0.3),
+
+    # TIGHTENED: Only trigger if data is severely incomplete (was 0.6)
+    # With advanced Tavily + Exa, should get 0.7+ data completeness
+    'DATA_COMPLETENESS_THRESHOLD': get_env_float('DEEP_RESEARCH_DATA_THRESHOLD', 0.4),
+
+    # TIGHTENED: Must be missing 4+ data points (was 3)
+    # Only trigger when nearly all data is missing
+    'MIN_MISSING_DATA_POINTS': get_env_int('DEEP_RESEARCH_MIN_MISSING_POINTS', 4),
+
+    # RAISED: Only for very high-value leads (was $1,000)
+    # Deep research costs 5 credits, so reserve for $5k+ opportunities
+    'HIGH_VALUE_THRESHOLD': get_env_int('DEEP_RESEARCH_HIGH_VALUE_THRESHOLD', 5000),
+
     # Enable/disable deep research globally
     'ENABLED': get_env_bool('DEEP_RESEARCH_ENABLED', True),
 }

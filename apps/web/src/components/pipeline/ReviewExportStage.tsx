@@ -154,8 +154,8 @@ export function ReviewExportStage() {
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h3 className="text-xl font-semibold flex items-center justify-center gap-2">
-          <CheckCircle className="h-5 w-5 text-green-500" />
+        <h3 className="heading-md flex items-center justify-center gap-2">
+          <CheckCircle className="h-6 w-6" style={{ color: 'hsl(var(--primary))' }} />
           Pipeline Complete!
         </h3>
         <p className="text-muted-foreground">
@@ -171,8 +171,8 @@ export function ReviewExportStage() {
         <CardContent>
           <div className="grid md:grid-cols-4 gap-6">
             <div className="text-center space-y-2">
-              <div className="w-12 h-12 mx-auto rounded-full bg-blue-500/20 flex items-center justify-center">
-                <BarChart3 className="h-6 w-6 text-blue-500" />
+              <div className="w-12 h-12 mx-auto rounded-full glow-neon-cyan flex items-center justify-center" style={{ backgroundColor: 'hsl(var(--neon-cyan) / 0.2)' }}>
+                <BarChart3 className="h-6 w-6" style={{ color: 'hsl(var(--neon-cyan))' }} />
               </div>
               <div className="text-2xl font-bold">{totalLeads}</div>
               <div className="text-sm text-muted-foreground">
@@ -181,8 +181,8 @@ export function ReviewExportStage() {
             </div>
 
             <div className="text-center space-y-2">
-              <div className="w-12 h-12 mx-auto rounded-full bg-green-500/20 flex items-center justify-center">
-                <Mail className="h-6 w-6 text-green-500" />
+              <div className="w-12 h-12 mx-auto rounded-full glow-neon-lime flex items-center justify-center" style={{ backgroundColor: 'hsl(var(--neon-lime) / 0.2)' }}>
+                <Mail className="h-6 w-6" style={{ color: 'hsl(var(--neon-lime))' }} />
               </div>
               <div className="text-2xl font-bold">{enrichedLeads}</div>
               <div className="text-sm text-muted-foreground">
@@ -191,8 +191,8 @@ export function ReviewExportStage() {
             </div>
 
             <div className="text-center space-y-2">
-              <div className="w-12 h-12 mx-auto rounded-full bg-purple-500/20 flex items-center justify-center">
-                <Sparkles className="h-6 w-6 text-purple-500" />
+              <div className="w-12 h-12 mx-auto rounded-full glow-soft flex items-center justify-center" style={{ backgroundColor: 'hsl(var(--primary) / 0.2)' }}>
+                <Sparkles className="h-6 w-6" style={{ color: 'hsl(var(--primary))' }} />
               </div>
               <div className="text-2xl font-bold">{generatedEmails}</div>
               <div className="text-sm text-muted-foreground">
@@ -201,8 +201,8 @@ export function ReviewExportStage() {
             </div>
 
             <div className="text-center space-y-2">
-              <div className="w-12 h-12 mx-auto rounded-full bg-orange-500/20 flex items-center justify-center">
-                <BarChart3 className="h-6 w-6 text-orange-500" />
+              <div className="w-12 h-12 mx-auto rounded-full glow-neon-yellow flex items-center justify-center" style={{ backgroundColor: 'hsl(var(--neon-yellow) / 0.2)' }}>
+                <BarChart3 className="h-6 w-6" style={{ color: 'hsl(var(--neon-yellow))' }} />
               </div>
               <div className="text-2xl font-bold">
                 {((enrichedLeads / totalLeads) * 100).toFixed(0)}%
@@ -234,24 +234,27 @@ export function ReviewExportStage() {
                   key={format.type}
                   className={cn(
                     "glass-card transition-all duration-300 hover-lift",
-                    isExported && "border-green-500/50 bg-green-500/5",
+                    isExported && "neon-border",
                   )}
+                  style={isExported ? {
+                    borderColor: 'hsl(var(--neon-lime) / 0.5)',
+                    backgroundColor: 'hsl(var(--neon-lime) / 0.05)'
+                  } : {}}
                 >
                   <CardHeader>
                     <div className="flex items-center gap-3">
                       <div
                         className={cn(
-                          "p-2 rounded-lg transition-colors",
-                          isExported ? "bg-green-500/20" : "bg-muted/20",
+                          "p-2 rounded-lg transition-colors glow-neon-lime",
+                          isExported ? "glow-neon-lime" : "bg-muted/20",
                         )}
+                        style={isExported ? { backgroundColor: 'hsl(var(--neon-lime) / 0.2)' } : {}}
                       >
                         <IconComponent
                           className={cn(
                             "h-5 w-5",
-                            isExported
-                              ? "text-green-500"
-                              : "text-muted-foreground",
                           )}
+                          style={isExported ? { color: 'hsl(var(--neon-lime))' } : {}}
                         />
                       </div>
                       <div className="flex-1">
@@ -286,7 +289,10 @@ export function ReviewExportStage() {
                       <Button
                         onClick={() => handleExport(format.type)}
                         disabled={isExporting || isExported}
-                        className="w-full"
+                        className={cn(
+                          "w-full transition-neo",
+                          !isExported && "gradient-neon-primary hover-glow"
+                        )}
                         variant={isExported ? "secondary" : "default"}
                       >
                         {isExported ? (
@@ -357,7 +363,7 @@ export function ReviewExportStage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm">Estimated Response Rate</span>
-                      <span className="font-medium text-green-600">24.3%</span>
+                      <span className="font-medium" style={{ color: 'hsl(var(--neon-lime))' }}>24.3%</span>
                     </div>
                   </div>
                 </div>
@@ -379,7 +385,12 @@ export function ReviewExportStage() {
 
       {/* Actions */}
       <div className="flex items-center justify-center gap-4">
-        <Button onClick={handleStartNewPipeline} variant="outline" size="lg">
+        <Button
+          onClick={handleStartNewPipeline}
+          variant="outline"
+          size="lg"
+          className="neon-border transition-neo hover-lift"
+        >
           <RefreshCw className="h-4 w-4 mr-2" />
           Start New Pipeline
         </Button>
@@ -388,7 +399,10 @@ export function ReviewExportStage() {
           onClick={() => handleExport("csv")}
           disabled={exportedFormats.includes("csv")}
           size="lg"
-          className="min-w-48"
+          className={cn(
+            "min-w-48 transition-neo",
+            !exportedFormats.includes("csv") && "gradient-neon-primary hover-glow"
+          )}
         >
           <Download className="h-4 w-4 mr-2" />
           Quick CSV Export
