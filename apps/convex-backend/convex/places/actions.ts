@@ -356,7 +356,7 @@ async function fetchPlaceCandidate(
   };
 }
 
-export const enrichBatch = action({
+export const enrichBatch: any = action({
   args: {
     userId: v.string(),
     placeIds: v.array(v.string()),
@@ -391,7 +391,7 @@ export const enrichBatch = action({
       throw new Error("Google Maps API key not configured");
     }
 
-    const unseen = await ctx.runMutation(
+    const unseen: string[] = await ctx.runMutation(
       api.places.suppressions.filterAndMarkUnseen,
       {
         userId,
@@ -413,7 +413,7 @@ export const enrichBatch = action({
       const detailResults = await mapWithConcurrency(
         unseen,
         PLACE_DETAILS_CONCURRENCY,
-        async (placeId) => ({
+        async (placeId: string) => ({
           placeId,
           detail: await fetchPlaceCandidate(placeId, googleMapsApiKey),
         }),

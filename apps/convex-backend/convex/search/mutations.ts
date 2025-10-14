@@ -1,5 +1,6 @@
 import { mutation } from "../_generated/server";
-import { api, internal } from "../_generated/api";
+import { api } from "../_generated/api";
+import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 import { withSubscriptionCheck } from "../middleware/subscriptionMiddleware";
@@ -274,7 +275,7 @@ export const createSearchCompleted = mutation({
       }
 
       // Schedule the Google Maps search action
-      await ctx.scheduler.runAfter(0, api.search.actions.searchGoogleMaps, {
+      await ctx.scheduler.runAfter(0, (api as any).search.actions.searchGoogleMaps, {
         searchId,
         forceRestart: false,
       });

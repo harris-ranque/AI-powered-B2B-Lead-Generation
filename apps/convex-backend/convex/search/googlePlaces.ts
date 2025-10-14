@@ -501,18 +501,25 @@ export async function searchPlacesWithTiling(
     },
   );
 
-  // De-duplication tracking
-  const seenPlaceIds = new Set<string>();
-  const allPlaces: Place[] = [];
-  let totalApiCalls = 0;
-  let duplicatesFiltered = 0;
+  // Worker result type for safe aggregation
+  type WorkerResult = {
+    places: Place[];
+    apiCalls: number;
+    localDuplicates: number;
+  };
 
   // Concurrent tile processing with worker pool
   let tileIndex = 0;
   const concurrency = Math.max(1, Math.min(params.concurrency || 5, 10));
 
-  async function worker() {
-    while (tileIndex < tiles.length && allPlaces.length < params.maxResults) {
+  async function worker(): Promise<WorkerResult> {
+    // Worker-local deduplication (thread-safe)
+    const localSeen = new Set<string>();
+    const localPlaces: Place[] = [];
+    let localApiCalls = 0;
+    let localDuplicates = 0;
+
+    while (tileIndex < tiles.length) {
       const idx = tileIndex++;
       const tile = tiles[idx];
 
@@ -530,10 +537,9 @@ export async function searchPlacesWithTiling(
           {
             tilesCompleted: idx,
             totalTiles: tiles.length,
-            placesFound: allPlaces.length,
           },
         );
-        return;
+        break;
       }
 
       logWithCorrelation(
@@ -543,7 +549,6 @@ export async function searchPlacesWithTiling(
         {
           tileIndex: idx + 1,
           totalTiles: tiles.length,
-          currentPlaces: allPlaces.length,
           targetPlaces: params.maxResults,
           progress: ((idx / tiles.length) * 100).toFixed(1) + "%",
         },
@@ -561,20 +566,19 @@ export async function searchPlacesWithTiling(
         correlation: params.correlation,
       });
 
-      totalApiCalls += tileResult.apiCalls;
+      localApiCalls += tileResult.apiCalls;
 
-      // De-duplicate and add to results
+      // Worker-local de-duplication
       let newPlaces = 0;
       for (const place of tileResult.places) {
         if (!place.place_id) continue;
-        if (seenPlaceIds.has(place.place_id)) {
-          duplicatesFiltered++;
+        if (localSeen.has(place.place_id)) {
+          localDuplicates++;
           continue;
         }
-        seenPlaceIds.add(place.place_id);
-        allPlaces.push(place);
+        localSeen.add(place.place_id);
+        localPlaces.push(place);
         newPlaces++;
-        if (allPlaces.length >= params.maxResults) break;
       }
 
       logWithCorrelation(
@@ -586,18 +590,46 @@ export async function searchPlacesWithTiling(
           totalInTile: tileResult.places.length,
           newPlaces,
           duplicates: tileResult.places.length - newPlaces,
-          cumulativeTotal: allPlaces.length,
+          workerLocalTotal: localPlaces.length,
           apiCallsForTile: tileResult.apiCalls,
         },
       );
     }
+
+    return {
+      places: localPlaces,
+      apiCalls: localApiCalls,
+      localDuplicates,
+    };
   }
 
-  // Run worker pool
+  // Run worker pool and collect results
   const workers = Array(concurrency)
     .fill(0)
     .map(() => worker());
-  await Promise.all(workers);
+  const workerResults = await Promise.all(workers);
+
+  // Global deduplication (single-threaded, safe)
+  const globalSeen = new Set<string>();
+  const allPlaces: Place[] = [];
+  let totalApiCalls = 0;
+  let duplicatesFiltered = 0;
+
+  for (const result of workerResults) {
+    totalApiCalls += result.apiCalls;
+    duplicatesFiltered += result.localDuplicates;
+
+    for (const place of result.places) {
+      if (!globalSeen.has(place.place_id)) {
+        globalSeen.add(place.place_id);
+        allPlaces.push(place);
+        if (allPlaces.length >= params.maxResults) break;
+      } else {
+        duplicatesFiltered++;
+      }
+    }
+    if (allPlaces.length >= params.maxResults) break;
+  }
 
   const timeMs = Date.now() - startTime;
 

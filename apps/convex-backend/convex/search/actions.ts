@@ -59,7 +59,7 @@ const findAddressComponentValue = (
 };
 
 // Google Maps search action
-export const searchGoogleMaps = action({
+export const searchGoogleMaps: any = action({
   args: {
     searchId: v.id("searches"),
     forceRestart: v.optional(v.boolean()),
@@ -141,7 +141,7 @@ export const searchGoogleMaps = action({
     }
 
     // Get search record (internal query works in scheduled/system context)
-    const search = await ctx.runQuery(
+    const search: any = await ctx.runQuery(
       internal.search.internal.getSearchInternal,
       { searchId: args.searchId },
     );
@@ -275,7 +275,7 @@ export const searchGoogleMaps = action({
       }
 
       // Build search query
-      const params = search.parameters;
+      const params: any = search.parameters;
       const query = params.keywords.join(" ");
       const location = params.location;
       const radiusMiles = params.radius;
