@@ -1,8 +1,14 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import React, { Component, ErrorInfo, ReactNode } from "react";
+import { AlertTriangle, RefreshCw, Home } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface Props {
   children: ReactNode;
@@ -31,7 +37,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
     this.setState({
       error,
       errorInfo,
@@ -43,19 +49,23 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   private handleGoHome = () => {
-    window.location.href = '/';
+    window.location.href = "/";
   };
 
   private isEnvironmentError = (error: Error) => {
-    return error.message.includes('VITE_CONVEX_URL') || 
-           error.message.includes('environment variable') ||
-           error.message.includes('Missing');
+    return (
+      error.message.includes("VITE_CONVEX_URL") ||
+      error.message.includes("environment variable") ||
+      error.message.includes("Missing")
+    );
   };
 
   private isNetworkError = (error: Error) => {
-    return error.message.includes('network') ||
-           error.message.includes('fetch') ||
-           error.message.includes('connection');
+    return (
+      error.message.includes("network") ||
+      error.message.includes("fetch") ||
+      error.message.includes("connection")
+    );
   };
 
   public render() {
@@ -75,15 +85,14 @@ export class ErrorBoundary extends Component<Props, State> {
                 <AlertTriangle className="h-6 w-6 text-red-600" />
               </div>
               <CardTitle className="text-xl font-semibold text-gray-900">
-                {isEnvError ? 'Configuration Error' : 'Something went wrong'}
+                {isEnvError ? "Configuration Error" : "Something went wrong"}
               </CardTitle>
               <CardDescription>
-                {isEnvError 
-                  ? 'The application is missing required configuration.'
+                {isEnvError
+                  ? "The application is missing required configuration."
                   : isNetError
-                  ? 'Unable to connect to our services.'
-                  : 'An unexpected error occurred.'
-                }
+                    ? "Unable to connect to our services."
+                    : "An unexpected error occurred."}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -114,9 +123,9 @@ export class ErrorBoundary extends Component<Props, State> {
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Try Again
                 </Button>
-                <Button 
-                  onClick={this.handleGoHome} 
-                  variant="outline" 
+                <Button
+                  onClick={this.handleGoHome}
+                  variant="outline"
                   className="flex-1"
                 >
                   <Home className="mr-2 h-4 w-4" />
@@ -124,17 +133,18 @@ export class ErrorBoundary extends Component<Props, State> {
                 </Button>
               </div>
 
-              {process.env.NODE_ENV === 'development' && this.state.errorInfo && (
-                <details className="mt-4">
-                  <summary className="cursor-pointer text-sm text-gray-500">
-                    Development Details
-                  </summary>
-                  <pre className="mt-2 whitespace-pre-wrap text-xs text-gray-600 bg-gray-50 p-2 rounded">
-                    {this.state.error.stack}
-                    {this.state.errorInfo.componentStack}
-                  </pre>
-                </details>
-              )}
+              {process.env.NODE_ENV === "development" &&
+                this.state.errorInfo && (
+                  <details className="mt-4">
+                    <summary className="cursor-pointer text-sm text-gray-500">
+                      Development Details
+                    </summary>
+                    <pre className="mt-2 whitespace-pre-wrap text-xs text-gray-600 bg-gray-50 p-2 rounded">
+                      {this.state.error.stack}
+                      {this.state.errorInfo.componentStack}
+                    </pre>
+                  </details>
+                )}
             </CardContent>
           </Card>
         </div>
@@ -151,10 +161,9 @@ interface ErrorBoundaryWrapperProps {
   fallback?: ReactNode;
 }
 
-export function ErrorBoundaryWrapper({ children, fallback }: ErrorBoundaryWrapperProps) {
-  return (
-    <ErrorBoundary fallback={fallback}>
-      {children}
-    </ErrorBoundary>
-  );
+export function ErrorBoundaryWrapper({
+  children,
+  fallback,
+}: ErrorBoundaryWrapperProps) {
+  return <ErrorBoundary fallback={fallback}>{children}</ErrorBoundary>;
 }

@@ -38,11 +38,13 @@ The backend is built on Convex, providing real-time data synchronization, server
 ### Installation
 
 1. Install dependencies:
+
    ```bash
    npm install
    ```
 
 2. Set up environment variables:
+
    ```bash
    cp .env.local.example .env.local
    # Edit .env.local with your API keys
@@ -56,11 +58,13 @@ The backend is built on Convex, providing real-time data synchronization, server
 ### Development
 
 Run the development server:
+
 ```bash
 npm run dev
 ```
 
 This will start Convex in development mode with:
+
 - Real-time database synchronization
 - Function hot reloading
 - Authentication setup
@@ -70,6 +74,7 @@ This will start Convex in development mode with:
 ### Deployment
 
 Deploy to production:
+
 ```bash
 npm run deploy
 ```
@@ -82,7 +87,7 @@ npm run deploy
 # Google Maps API (for lead discovery)
 GOOGLE_MAPS_API_KEY=your-api-key
 
-# FindyMail API (for contact enrichment)  
+# FindyMail API (for contact enrichment)
 FINDYMAIL_API_KEY=your-api-key
 
 # CrewAI Worker (for AI email generation)
@@ -163,10 +168,11 @@ ENABLE_WEBHOOK_RETRIES=true
 ### Credit System
 
 - **Free Plan**: 50 credits/month, 25 leads per search
-- **Pro Plan**: 500 credits/month, 100 leads per search  
+- **Pro Plan**: 500 credits/month, 100 leads per search
 - **Enterprise Plan**: 2000 credits/month, 500 leads per search
 
 Credit costs:
+
 - Lead discovery: 1 credit
 - Contact enrichment: 2 credits
 - AI analysis: 3 credits
@@ -263,6 +269,7 @@ Credit costs:
 ## Support
 
 For issues and questions:
+
 - Check the troubleshooting guide
 - Review error logs in Convex dashboard
 - Contact support at support@genni.com

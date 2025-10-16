@@ -4,7 +4,7 @@ import { requireAuth } from "../auth";
 
 // Get user searches with pagination
 export const getUserSearches = query({
-  args: { 
+  args: {
     limit: v.optional(v.number()),
     offset: v.optional(v.number()),
   },
@@ -23,7 +23,7 @@ export const getUserSearches = query({
       .order("desc")
       .take(limit + offset);
 
-    return searches.slice(offset);
+    return { searches: searches.slice(offset) };
   },
 });
 
@@ -37,7 +37,7 @@ export const getSearchById = query({
     }
 
     const search = await ctx.db.get(args.searchId);
-    
+
     if (!search || search.userId !== user._id) {
       throw new Error("Search not found or access denied");
     }
@@ -60,29 +60,33 @@ export const getSearchStats = query({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
 
-    const completedSearches = searches.filter(s => s.status === "completed");
-    const failedSearches = searches.filter(s => s.status === "failed");
-    
-    const totalLeadsDiscovered = searches.reduce((sum, search) => 
-      sum + (search.results?.totalFound || 0), 0
+    const completedSearches = searches.filter((s) => s.status === "completed");
+    const failedSearches = searches.filter((s) => s.status === "failed");
+
+    const totalLeadsDiscovered = searches.reduce(
+      (sum, search) => sum + (search.results?.totalFound || 0),
+      0,
     );
 
-    const totalCreditsUsed = searches.reduce((sum, search) => 
-      sum + search.creditsUsed, 0
+    const totalCreditsUsed = searches.reduce(
+      (sum, search) => sum + search.creditsUsed,
+      0,
     );
 
     return {
       totalSearches: searches.length,
       completedSearches: completedSearches.length,
       failedSearches: failedSearches.length,
-      successRate: searches.length > 0 ? 
-        Math.round((completedSearches.length / searches.length) * 100) : 0,
+      successRate:
+        searches.length > 0
+          ? Math.round((completedSearches.length / searches.length) * 100)
+          : 0,
       totalLeadsDiscovered,
       totalCreditsUsed,
       recentSearches: searches
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, 5)
-        .map(search => ({
+        .map((search) => ({
           _id: search._id,
           name: search.name,
           status: search.status,
@@ -105,11 +109,11 @@ export const getActiveSearches = query({
     return await ctx.db
       .query("searches")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .filter((q) => 
+      .filter((q) =>
         q.or(
           q.eq(q.field("status"), "pending"),
-          q.eq(q.field("status"), "in_progress")
-        )
+          q.eq(q.field("status"), "in_progress"),
+        ),
       )
       .order("desc")
       .take(10);
@@ -126,7 +130,7 @@ export const getSearch = query({
     }
 
     const search = await ctx.db.get(args.searchId);
-    
+
     if (!search || search.userId !== user._id) {
       throw new Error("Search not found or access denied");
     }

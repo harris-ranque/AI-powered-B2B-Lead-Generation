@@ -10,7 +10,7 @@ export const createRequest = mutation({
     type: v.union(
       v.literal("email_generation"),
       v.literal("lead_analysis"),
-      v.literal("bulk_analysis")
+      v.literal("bulk_analysis"),
     ),
     inputData: v.any(),
   },
@@ -31,7 +31,11 @@ export const createRequest = mutation({
       createdAt: Date.now(),
     });
 
-    return { _id: requestId, requestId: args.requestId, inputData: args.inputData };
+    return {
+      _id: requestId,
+      requestId: args.requestId,
+      inputData: args.inputData,
+    };
   },
 });
 
@@ -43,7 +47,7 @@ export const updateRequestStatus = mutation({
       v.literal("pending"),
       v.literal("processing"),
       v.literal("completed"),
-      v.literal("failed")
+      v.literal("failed"),
     ),
     error: v.optional(v.string()),
     outputData: v.optional(v.any()),

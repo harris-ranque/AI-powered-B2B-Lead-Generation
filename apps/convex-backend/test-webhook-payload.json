@@ -1,0 +1,50 @@
+{
+  "request_id": "test_search_123_lead_456",
+  "status": "completed",
+  "result": {
+    "relevance_score": 0.85,
+    "pain_points_identified": ["manual processes", "scaling challenges"],
+    "value_matches": ["automation tools", "efficiency solutions"],
+    "recommendations": ["Implement automated workflow", "Use data analytics"],
+    "lead_analysis": {
+      "company_fit": "high",
+      "decision_maker_identified": true,
+      "budget_likelihood": "medium"
+    },
+    "processing_time": 12.5,
+    "primary_email": {
+      "subject": "Streamline Your Manual Processes with AI Automation",
+      "body": "Hi [Name],\n\nI noticed your company is dealing with manual processes that could be automated...",
+      "personalization_notes": [
+        "References their scaling challenges",
+        "Mentions their current manual processes"
+      ],
+      "estimated_effectiveness": 0.78
+    },
+    "agent_results": [
+      {
+        "agentName": "BusinessIntelligence",
+        "role": "Research and Analysis",
+        "output": "Company shows strong indicators for automation needs",
+        "confidenceScore": 0.9,
+        "executionTime": 4.2
+      },
+      {
+        "agentName": "EmailGeneration",
+        "role": "Content Creation",
+        "output": "Generated personalized email with high relevance",
+        "confidenceScore": 0.85,
+        "executionTime": 6.8
+      },
+      {
+        "agentName": "QualityAssurance",
+        "role": "Quality Control",
+        "output": "Email meets quality standards for personalization and professionalism",
+        "confidenceScore": 0.88,
+        "executionTime": 1.5
+      }
+    ]
+  },
+  "quality_score": 0.82,
+  "approved": true
+}

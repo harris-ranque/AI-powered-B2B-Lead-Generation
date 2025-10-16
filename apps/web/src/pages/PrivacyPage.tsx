@@ -1,6 +1,15 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Bot, Shield, Lock, Eye, UserCheck, Globe, FileText, Mail } from "lucide-react";
+import {
+  Bot,
+  Shield,
+  Lock,
+  Eye,
+  UserCheck,
+  Globe,
+  FileText,
+  Mail,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function PrivacyPage() {
@@ -12,8 +21,8 @@ export default function PrivacyPage() {
         "Account information (name, email, company details)",
         "Usage data (searches, leads generated, features used)",
         "Payment information (processed securely through Stripe)",
-        "Communication preferences and support interactions"
-      ]
+        "Communication preferences and support interactions",
+      ],
     },
     {
       title: "How We Use Your Information",
@@ -23,8 +32,8 @@ export default function PrivacyPage() {
         "Process payments and manage subscriptions",
         "Send important service updates and notifications",
         "Analyze usage patterns to enhance user experience",
-        "Comply with legal obligations"
-      ]
+        "Comply with legal obligations",
+      ],
     },
     {
       title: "Data Security",
@@ -34,8 +43,8 @@ export default function PrivacyPage() {
         "Encrypted storage for sensitive information",
         "Regular security audits and penetration testing",
         "SOC 2 Type II compliance",
-        "Strict access controls and authentication"
-      ]
+        "Strict access controls and authentication",
+      ],
     },
     {
       title: "Data Sharing",
@@ -45,9 +54,9 @@ export default function PrivacyPage() {
         "Third-party services used only for core functionality",
         "Data shared only with your explicit consent",
         "Anonymized aggregate data for analytics",
-        "Legal compliance when required by law"
-      ]
-    }
+        "Legal compliance when required by law",
+      ],
+    },
   ];
 
   return (
@@ -59,15 +68,24 @@ export default function PrivacyPage() {
             <Bot className="h-8 w-8 text-primary" />
             <span className="font-bold text-xl">Lead Eternity</span>
           </Link>
-          
+
           <div className="hidden md:flex items-center space-x-8">
-            <Link to="/" className="text-sm font-medium hover:text-primary transition-colors">
+            <Link
+              to="/"
+              className="text-sm font-medium hover:text-primary transition-colors"
+            >
               Home
             </Link>
-            <Link to="/about" className="text-sm font-medium hover:text-primary transition-colors">
+            <Link
+              to="/about"
+              className="text-sm font-medium hover:text-primary transition-colors"
+            >
               About
             </Link>
-            <Link to="/contact" className="text-sm font-medium hover:text-primary transition-colors">
+            <Link
+              to="/contact"
+              className="text-sm font-medium hover:text-primary transition-colors"
+            >
               Contact
             </Link>
           </div>
@@ -93,10 +111,16 @@ export default function PrivacyPage() {
             Privacy Policy
           </h1>
           <p className="text-xl text-muted-foreground mb-4">
-            Your privacy is important to us. This policy explains how we collect, use, and protect your information.
+            Your privacy is important to us. This policy explains how we
+            collect, use, and protect your information.
           </p>
           <p className="text-sm text-muted-foreground">
-            Last updated: {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+            Last updated:{" "}
+            {new Date().toLocaleDateString("en-US", {
+              month: "long",
+              day: "numeric",
+              year: "numeric",
+            })}
           </p>
         </div>
       </section>
@@ -107,10 +131,14 @@ export default function PrivacyPage() {
           {/* Introduction */}
           <div className="prose prose-gray max-w-none mb-12">
             <p className="text-lg leading-relaxed mb-6">
-              Lead Eternity ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our service.
+              Lead Eternity ("we," "our," or "us") is committed to protecting
+              your privacy. This Privacy Policy explains how we collect, use,
+              disclose, and safeguard your information when you use our service.
             </p>
             <p className="text-lg leading-relaxed mb-6">
-              By using Lead Eternity, you agree to the collection and use of information in accordance with this policy. If you do not agree with the terms of this policy, please do not use our service.
+              By using Lead Eternity, you agree to the collection and use of
+              information in accordance with this policy. If you do not agree
+              with the terms of this policy, please do not use our service.
             </p>
           </div>
 
@@ -141,7 +169,8 @@ export default function PrivacyPage() {
             <div>
               <h2 className="text-2xl font-bold mb-4">Your Rights</h2>
               <p className="text-muted-foreground mb-4">
-                Under applicable privacy laws, you have certain rights regarding your personal information:
+                Under applicable privacy laws, you have certain rights regarding
+                your personal information:
               </p>
               <ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
                 <li>Access your personal data and request a copy</li>
@@ -156,57 +185,89 @@ export default function PrivacyPage() {
             <div>
               <h2 className="text-2xl font-bold mb-4">Data Retention</h2>
               <p className="text-muted-foreground mb-4">
-                We retain your information only as long as necessary to provide our services and fulfill the purposes outlined in this policy:
+                We retain your information only as long as necessary to provide
+                our services and fulfill the purposes outlined in this policy:
               </p>
               <ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
-                <li>Active account data: Retained while your account is active</li>
-                <li>Deleted account data: Removed within 30 days of deletion request</li>
-                <li>Billing records: Retained for 7 years for tax and legal compliance</li>
-                <li>Analytics data: Anonymized and aggregated after 24 months</li>
+                <li>
+                  Active account data: Retained while your account is active
+                </li>
+                <li>
+                  Deleted account data: Removed within 30 days of deletion
+                  request
+                </li>
+                <li>
+                  Billing records: Retained for 7 years for tax and legal
+                  compliance
+                </li>
+                <li>
+                  Analytics data: Anonymized and aggregated after 24 months
+                </li>
               </ul>
             </div>
 
             <div>
               <h2 className="text-2xl font-bold mb-4">Cookies and Tracking</h2>
               <p className="text-muted-foreground mb-4">
-                We use cookies and similar tracking technologies to improve your experience:
+                We use cookies and similar tracking technologies to improve your
+                experience:
               </p>
               <ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
-                <li>Essential cookies: Required for basic site functionality</li>
+                <li>
+                  Essential cookies: Required for basic site functionality
+                </li>
                 <li>Analytics cookies: Help us understand usage patterns</li>
                 <li>Preference cookies: Remember your settings and choices</li>
                 <li>Marketing cookies: Used only with your consent</li>
               </ul>
               <p className="text-muted-foreground mt-4">
-                You can control cookie settings through your browser preferences.
+                You can control cookie settings through your browser
+                preferences.
               </p>
             </div>
 
             <div>
-              <h2 className="text-2xl font-bold mb-4">International Data Transfers</h2>
+              <h2 className="text-2xl font-bold mb-4">
+                International Data Transfers
+              </h2>
               <p className="text-muted-foreground">
-                Lead Eternity operates globally. Your information may be transferred to and processed in countries other than your own. We ensure appropriate safeguards are in place to protect your data in accordance with this policy and applicable laws, including the use of Standard Contractual Clauses for transfers from the EU/EEA.
+                Lead Eternity operates globally. Your information may be
+                transferred to and processed in countries other than your own.
+                We ensure appropriate safeguards are in place to protect your
+                data in accordance with this policy and applicable laws,
+                including the use of Standard Contractual Clauses for transfers
+                from the EU/EEA.
               </p>
             </div>
 
             <div>
               <h2 className="text-2xl font-bold mb-4">Children's Privacy</h2>
               <p className="text-muted-foreground">
-                Lead Eternity is not intended for use by children under 16 years of age. We do not knowingly collect personal information from children. If we learn that we have collected information from a child under 16, we will delete that information promptly.
+                Lead Eternity is not intended for use by children under 16 years
+                of age. We do not knowingly collect personal information from
+                children. If we learn that we have collected information from a
+                child under 16, we will delete that information promptly.
               </p>
             </div>
 
             <div>
-              <h2 className="text-2xl font-bold mb-4">Changes to This Policy</h2>
+              <h2 className="text-2xl font-bold mb-4">
+                Changes to This Policy
+              </h2>
               <p className="text-muted-foreground">
-                We may update this Privacy Policy from time to time. We will notify you of any material changes by posting the new policy on this page and updating the "Last updated" date. For significant changes, we will provide additional notice via email or through the service.
+                We may update this Privacy Policy from time to time. We will
+                notify you of any material changes by posting the new policy on
+                this page and updating the "Last updated" date. For significant
+                changes, we will provide additional notice via email or through
+                the service.
               </p>
             </div>
 
             <div>
               <h2 className="text-2xl font-bold mb-4">Contact Us</h2>
               <p className="text-muted-foreground mb-4">
-                If you have questions about this Privacy Policy or our data practices, please contact us:
+                If you have questions about this Privacy Policy or our data
+                practices, please contact us:
               </p>
               <Card>
                 <CardContent className="p-6">
@@ -222,9 +283,12 @@ export default function PrivacyPage() {
                     <div className="flex items-start gap-3">
                       <Globe className="h-5 w-5 text-primary mt-1" />
                       <div>
-                        Lead Eternity, Inc.<br />
-                        123 Market Street, Suite 500<br />
-                        San Francisco, CA 94105<br />
+                        Lead Eternity, Inc.
+                        <br />
+                        123 Market Street, Suite 500
+                        <br />
+                        San Francisco, CA 94105
+                        <br />
                         United States
                       </div>
                     </div>
@@ -241,12 +305,16 @@ export default function PrivacyPage() {
               GDPR Compliance
             </h3>
             <p className="text-muted-foreground mb-4">
-              For users in the European Union, we comply with the General Data Protection Regulation (GDPR). Our legal bases for processing your data include:
+              For users in the European Union, we comply with the General Data
+              Protection Regulation (GDPR). Our legal bases for processing your
+              data include:
             </p>
             <ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
               <li>Contract: Processing necessary to provide our services</li>
               <li>Consent: Where you have given explicit consent</li>
-              <li>Legitimate interests: For business operations and improvements</li>
+              <li>
+                Legitimate interests: For business operations and improvements
+              </li>
               <li>Legal obligations: When required by law</li>
             </ul>
           </div>
@@ -266,40 +334,91 @@ export default function PrivacyPage() {
                 AI-powered lead generation for modern sales teams.
               </p>
             </div>
-            
+
             <div>
               <h4 className="font-semibold mb-4">Product</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link to="/#features" className="hover:text-primary">Features</Link></li>
-                <li><Link to="/#pricing" className="hover:text-primary">Pricing</Link></li>
-                <li><Link to="/api" className="hover:text-primary">API</Link></li>
-                <li><Link to="/integrations" className="hover:text-primary">Integrations</Link></li>
+                <li>
+                  <Link to="/#features" className="hover:text-primary">
+                    Features
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/#pricing" className="hover:text-primary">
+                    Pricing
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/api" className="hover:text-primary">
+                    API
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/integrations" className="hover:text-primary">
+                    Integrations
+                  </Link>
+                </li>
               </ul>
             </div>
-            
+
             <div>
               <h4 className="font-semibold mb-4">Company</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link to="/about" className="hover:text-primary">About</Link></li>
-                <li><Link to="/blog" className="hover:text-primary">Blog</Link></li>
-                <li><Link to="/careers" className="hover:text-primary">Careers</Link></li>
-                <li><Link to="/contact" className="hover:text-primary">Contact</Link></li>
+                <li>
+                  <Link to="/about" className="hover:text-primary">
+                    About
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/blog" className="hover:text-primary">
+                    Blog
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/careers" className="hover:text-primary">
+                    Careers
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/contact" className="hover:text-primary">
+                    Contact
+                  </Link>
+                </li>
               </ul>
             </div>
-            
+
             <div>
               <h4 className="font-semibold mb-4">Legal</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link to="/privacy" className="hover:text-primary">Privacy Policy</Link></li>
-                <li><Link to="/terms" className="hover:text-primary">Terms of Service</Link></li>
-                <li><Link to="/security" className="hover:text-primary">Security</Link></li>
-                <li><Link to="/gdpr" className="hover:text-primary">GDPR</Link></li>
+                <li>
+                  <Link to="/privacy" className="hover:text-primary">
+                    Privacy Policy
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/terms" className="hover:text-primary">
+                    Terms of Service
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/security" className="hover:text-primary">
+                    Security
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/gdpr" className="hover:text-primary">
+                    GDPR
+                  </Link>
+                </li>
               </ul>
             </div>
           </div>
-          
+
           <div className="mt-8 pt-8 border-t text-center text-sm text-muted-foreground">
-            <p>&copy; {new Date().getFullYear()} Lead Eternity. All rights reserved.</p>
+            <p>
+              &copy; {new Date().getFullYear()} Lead Eternity. All rights
+              reserved.
+            </p>
           </div>
         </div>
       </footer>

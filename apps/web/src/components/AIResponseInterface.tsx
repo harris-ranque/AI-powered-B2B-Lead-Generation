@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { ArrowLeft, Copy, RotateCcw, ThumbsUp, ThumbsDown, Mic } from "lucide-react";
+import {
+  ArrowLeft,
+  Copy,
+  RotateCcw,
+  ThumbsUp,
+  ThumbsDown,
+  Mic,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,7 +16,10 @@ interface AIResponseInterfaceProps {
   onVoiceClick?: () => void;
 }
 
-export function AIResponseInterface({ onBack, onVoiceClick }: AIResponseInterfaceProps) {
+export function AIResponseInterface({
+  onBack,
+  onVoiceClick,
+}: AIResponseInterfaceProps) {
   const [message, setMessage] = useState("");
 
   return (
@@ -34,7 +44,10 @@ export function AIResponseInterface({ onBack, onVoiceClick }: AIResponseInterfac
         {/* User Message */}
         <div className="flex justify-end">
           <Card className="max-w-[80%] p-3 bg-primary text-primary-foreground">
-            <p className="text-sm">What is digital abstract design and find 3 example of abstract design</p>
+            <p className="text-sm">
+              What is digital abstract design and find 3 example of abstract
+              design
+            </p>
             <div className="flex items-center gap-2 mt-2 text-xs opacity-80">
               <ThumbsUp className="h-3 w-3" />
               <Copy className="h-3 w-3" />
@@ -50,13 +63,15 @@ export function AIResponseInterface({ onBack, onVoiceClick }: AIResponseInterfac
                 <div className="w-6 h-6 rounded-full gradient-primary" />
                 <span className="text-sm font-medium">AI</span>
               </div>
-              
+
               <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
                 <p>
-                  Digital abstract design refers to creating artistic compositions using digital tools that 
-                  incorporate abstract shapes, colors, and textures. This type of design typically relies on 
-                  software programs such as Adobe Photoshop, Illustrator, or Sketch to create visual 
-                  representations that are not representational or realistic.
+                  Digital abstract design refers to creating artistic
+                  compositions using digital tools that incorporate abstract
+                  shapes, colors, and textures. This type of design typically
+                  relies on software programs such as Adobe Photoshop,
+                  Illustrator, or Sketch to create visual representations that
+                  are not representational or realistic.
                 </p>
               </div>
             </Card>
@@ -96,16 +111,16 @@ export function AIResponseInterface({ onBack, onVoiceClick }: AIResponseInterfac
               placeholder="Write anything here..."
               className="pr-10 bg-muted/10 border-border/20"
             />
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="icon"
               className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
             >
               <div className="w-4 h-4 rounded-full bg-muted" />
             </Button>
           </div>
-          <Button 
-            size="icon" 
+          <Button
+            size="icon"
             onClick={onVoiceClick}
             className="gradient-primary text-primary-foreground glow-primary"
           >

@@ -1,56 +1,294 @@
-import { mutation } from "../_generated/server";
+import { mutation, action } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
+import { api } from "../_generated/api";
+import Stripe from "stripe";
 
 // Create Stripe checkout session
-export const createCheckoutSession = mutation({
+export const createCheckoutSession = action({
   args: {
     priceId: v.string(),
-    successUrl: v.string(),
-    cancelUrl: v.string(),
+    planId: v.string(),
+    billingCycle: v.union(v.literal("monthly"), v.literal("yearly")),
+    successUrl: v.optional(v.string()),
+    cancelUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    "use node";
     const user = await requireAuth(ctx);
-    
-    // TODO: Implement Stripe checkout session creation
-    // This would integrate with Stripe API to create a checkout session
-    
-    throw new Error("Stripe integration not yet implemented");
-  },
-});
 
-// Purchase credits directly
-export const purchaseCredits = mutation({
-  args: {
-    amount: v.number(),
-    paymentMethodId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
-    
-    if (args.amount <= 0) {
-      throw new Error("Credit amount must be positive");
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      throw new Error("Stripe secret key not configured");
     }
-    
-    // TODO: Implement credit purchase logic
-    // This would process payment and add credits to user account
-    
-    throw new Error("Credit purchase not yet implemented");
+
+    // Ensure success/cancel URLs are properly set
+    const appUrl = process.env.APP_URL;
+    if (!args.successUrl && !appUrl) {
+      throw new Error(
+        "Missing successUrl and APP_URL; cannot construct redirect URLs",
+      );
+    }
+
+    try {
+      const stripe = new Stripe(stripeSecretKey);
+      const session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        payment_method_types: ["card"],
+        line_items: [{ price: args.priceId, quantity: 1 }],
+        success_url:
+          args.successUrl ||
+          `${appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: args.cancelUrl || `${appUrl}/pricing`,
+        customer: user.stripeCustomerId,
+        customer_email: user.stripeCustomerId ? undefined : user.email,
+        metadata: {
+          userId: user._id,
+          planId: args.planId,
+          billingCycle: args.billingCycle,
+        },
+        subscription_data: {
+          metadata: {
+            userId: user._id,
+            planId: args.planId,
+          },
+        },
+      });
+
+      return {
+        sessionId: session.id,
+        url: session.url!,
+      };
+    } catch (error) {
+      console.error("Error creating Stripe checkout session:", error);
+      throw new Error("Failed to create checkout session");
+    }
   },
 });
 
-// Update user subscription
-export const updateSubscription = mutation({
+// Create Stripe checkout session for one-time credit purchase
+export const purchaseCredits = action({
   args: {
-    subscriptionId: v.string(),
-    priceId: v.string(),
+    credits: v.number(),
+    successUrl: v.optional(v.string()),
+    cancelUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    "use node";
     const user = await requireAuth(ctx);
-    
-    // TODO: Implement subscription update logic
-    // This would update the user's subscription plan
-    
-    throw new Error("Subscription update not yet implemented");
+
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      throw new Error("Stripe secret key not configured");
+    }
+
+    // Load admin-configured credit packs
+    const config = await ctx.runQuery(
+      api.admin.queries.getSystemConfiguration,
+      {},
+    );
+    const packs = (config?.creditPacks || []).filter(
+      (p: { active: boolean }) => p.active,
+    );
+    if (packs.length === 0) {
+      throw new Error("No active credit packs configured");
+    }
+    const requested = args.credits;
+    const pack = packs.find(
+      (p: { credits: number }) => p.credits === requested,
+    );
+    if (!pack) {
+      throw new Error("Invalid credits pack selection");
+    }
+
+    // Ensure success/cancel URLs are properly set
+    const appUrl = process.env.APP_URL;
+    if (!args.successUrl && !appUrl) {
+      throw new Error(
+        "Missing successUrl and APP_URL; cannot construct redirect URLs",
+      );
+    }
+
+    try {
+      const stripe = new Stripe(stripeSecretKey);
+      const useStripePriceId = !!pack.stripePriceId;
+      const lineItem: Stripe.Checkout.SessionCreateParams.LineItem =
+        useStripePriceId
+          ? { price: pack.stripePriceId!, quantity: 1 }
+          : {
+              price_data: {
+                currency: "usd",
+                unit_amount: pack.priceCents,
+                product_data: {
+                  name: "Genni Credits Pack",
+                  description: `${requested} credits`,
+                },
+              },
+              quantity: 1,
+            };
+
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        payment_method_types: ["card"],
+        line_items: [lineItem],
+        success_url:
+          args.successUrl ||
+          `${appUrl}/dashboard?credits_purchased=true&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: args.cancelUrl || `${appUrl}/dashboard`,
+        customer: user.stripeCustomerId,
+        customer_email: user.stripeCustomerId ? undefined : user.email,
+        metadata: {
+          userId: user._id,
+          type: "credits_purchase",
+          credits: String(requested),
+        },
+      });
+
+      return {
+        sessionId: session.id,
+        url: session.url!,
+      };
+    } catch (error) {
+      console.error("Error creating Stripe credits checkout:", error);
+      throw new Error("Failed to create credits checkout session");
+    }
+  },
+});
+
+// Create Stripe customer portal session
+export const createPortalSession = action({
+  args: {
+    returnUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    "use node";
+    const user = await requireAuth(ctx);
+
+    if (!user.stripeCustomerId) {
+      throw new Error("No Stripe customer ID found for user");
+    }
+
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      throw new Error("Stripe secret key not configured");
+    }
+
+    try {
+      const stripe = new Stripe(stripeSecretKey);
+      const session = await stripe.billingPortal.sessions.create({
+        customer: user.stripeCustomerId,
+        return_url: args.returnUrl || `${process.env.APP_URL}/billing`,
+      });
+
+      return { url: session.url };
+    } catch (error) {
+      console.error("Error creating Stripe portal session:", error);
+      throw new Error("Failed to create portal session");
+    }
+  },
+});
+
+// Create Stripe customer if doesn't exist
+export const createStripeCustomer = action({
+  args: {},
+  handler: async (ctx, args) => {
+    "use node";
+    const user = await requireAuth(ctx);
+
+    if (user.stripeCustomerId) {
+      return { customerId: user.stripeCustomerId };
+    }
+
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      throw new Error("Stripe secret key not configured");
+    }
+
+    try {
+      const stripe = new Stripe(stripeSecretKey);
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: user.name || undefined,
+        metadata: { userId: user._id },
+      });
+
+      // Update user with Stripe customer ID
+      await ctx.runMutation(api.users.mutations.updateStripeCustomerId, {
+        customerId: customer.id,
+      });
+
+      return {
+        customerId: customer.id,
+      };
+    } catch (error) {
+      console.error("Error creating Stripe customer:", error);
+      throw new Error("Failed to create Stripe customer");
+    }
+  },
+});
+
+// Get current subscription status
+export const getSubscriptionStatus = mutation({
+  args: {},
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+
+    // Get billing record
+    const billing = await ctx.db
+      .query("billing")
+      .filter((q) => q.eq(q.field("userId"), user._id))
+      .unique();
+
+    // Get current usage
+    const usage = await ctx.db
+      .query("usageTracking")
+      .filter((q) => q.eq(q.field("userId"), user._id))
+      .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
+      .unique();
+
+    return {
+      plan: user.plan,
+      billing,
+      usage,
+      hasActiveSubscription: !!billing && billing.status === "active",
+      isTrialing: billing?.isTrialing || false,
+    };
+  },
+});
+
+// Cancel subscription at period end
+export const cancelSubscription = action({
+  args: {
+    cancelAtPeriodEnd: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    "use node";
+    const user = await requireAuth(ctx);
+
+    if (!user.stripeSubscriptionId) {
+      throw new Error("No active subscription found");
+    }
+
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      throw new Error("Stripe secret key not configured");
+    }
+
+    try {
+      const stripe = new Stripe(stripeSecretKey);
+      const subscription = await stripe.subscriptions.update(
+        user.stripeSubscriptionId,
+        { cancel_at_period_end: args.cancelAtPeriodEnd },
+      );
+
+      return {
+        cancelAtPeriodEnd: (subscription as any).cancel_at_period_end,
+        currentPeriodEnd:
+          ((subscription as any).current_period_end || 0) * 1000,
+      };
+    } catch (error) {
+      console.error("Error updating subscription:", error);
+      throw new Error("Failed to update subscription");
+    }
   },
 });

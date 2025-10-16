@@ -1,121 +1,129 @@
 import { query, mutation } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { requireAdmin } from "../auth";
 
-// Get system control status
-export const getSystemControlStatus = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireAdmin(ctx);
-
-    const systemConfig = await ctx.db
-      .query("systemConfiguration")
-      .unique();
-
-    // Get current processing statistics
-    const processingSearches = await ctx.db
-      .query("searches")
-      .filter((q) => q.eq(q.field("status"), "processing"))
-      .collect();
-
-    const queuedSearches = await ctx.db
-      .query("searches")
-      .filter((q) => q.eq(q.field("status"), "queued"))
-      .collect();
-
-    return {
-      maintenanceMode: false, // Not available in current schema
-      leadGenerationPaused: false, // Not available in current schema
-      processingQueue: {
-        processing: processingSearches.length,
-        queued: queuedSearches.length,
-        total: processingSearches.length + queuedSearches.length,
-      },
-      systemLoad: {
-        status: processingSearches.length > 10 ? "high" : processingSearches.length > 5 ? "medium" : "low",
-        activeProcesses: processingSearches.length,
-      },
-    };
-  },
-});
-
-// Get system activity
-export const getSystemActivity = query({
-  args: {
-    limit: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    await requireAdmin(ctx);
-
-    const limit = args.limit || 50;
-    const now = Date.now();
-    const oneHourAgo = now - (60 * 60 * 1000);
-
-    // Get recent system logs
-    const systemLogs = await ctx.db
-      .query("systemLogs")
-      .filter((q) => q.gte(q.field("timestamp"), oneHourAgo))
-      .order("desc")
-      .take(limit);
-
-    // Get recent searches with their status
-    const recentSearches = await ctx.db
-      .query("searches")
-      .filter((q) => q.gte(q.field("createdAt"), oneHourAgo))
-      .order("desc")
-      .take(limit);
-
-    // Get recent failed operations
-    const failedOperations = await ctx.db
-      .query("searches")
-      .filter((q) => q.eq(q.field("status"), "failed"))
-      .filter((q) => q.gte(q.field("createdAt"), oneHourAgo))
-      .collect();
-
-    return {
-      systemLogs: systemLogs.map(log => ({
-        id: log._id,
-        type: log.type,
-        action: log.action,
-        timestamp: log.timestamp,
-        data: log.data,
-      })),
-      recentSearches: recentSearches.map(search => ({
-        id: search._id,
-        userId: search.userId,
-        status: search.status,
-        createdAt: search._creationTime,
-        name: search.name,
-        parameters: search.parameters,
-      })),
-      failedOperations: failedOperations.length,
-      activitySummary: {
-        totalSearches: recentSearches.length,
-        failedSearches: failedOperations.length,
-        successRate: recentSearches.length > 0 
-          ? Math.round(((recentSearches.length - failedOperations.length) / recentSearches.length) * 100)
-          : 100,
-      },
-    };
-  },
-});
+// NOTE: getSystemControlStatus and getSystemActivity have been moved to admin/queries.ts
+// to match frontend expectations. Keep mutations here for logical organization.
 
 // Pause all lead generation
 export const pauseAllLeadGeneration = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
     const adminUser = await requireAdmin(ctx);
 
     // Update system configuration
-    let systemConfig = await ctx.db
-      .query("systemConfiguration")
-      .unique();
+    let systemConfig = await ctx.db.query("systemConfiguration").unique();
 
-    // Note: Current systemConfiguration schema doesn't support lead generation pause settings
-    // This functionality would require schema updates to add a settings field
-    
-    // For now, we'll just log the action but not persist the setting
-    console.log("Lead generation pause requested but not persisted due to schema limitations");
+    if (!systemConfig) {
+      // Create initial config with paused state
+      const configId = await ctx.db.insert("systemConfiguration", {
+        creditCosts: {
+          LEAD_DISCOVERY: 1,
+          EMAIL_ENRICHMENT: 1,
+          AI_ANALYSIS: 2,
+          EMAIL_GENERATION: 3,
+          BULK_ANALYSIS: 5,
+        },
+        planLimits: {
+          free: {
+            monthlyCredits: 100,
+            maxSearches: 10,
+            maxLeadsPerSearch: 50,
+            emailGeneration: true,
+            bulkOperations: false,
+            apiAccess: false,
+          },
+          pro: {
+            monthlyCredits: 1000,
+            maxSearches: 100,
+            maxLeadsPerSearch: 500,
+            emailGeneration: true,
+            bulkOperations: true,
+            apiAccess: true,
+          },
+          enterprise: {
+            monthlyCredits: 10000,
+            maxSearches: 1000,
+            maxLeadsPerSearch: 5000,
+            emailGeneration: true,
+            bulkOperations: true,
+            apiAccess: true,
+          },
+        },
+        orchestrationSettings: {
+          leadGenerationEnabled: false,
+          maintenanceMode: false,
+          maxConcurrentSearches: 10,
+          pauseReason: args.reason || "Emergency stop by administrator",
+          pausedAt: Date.now(),
+          pausedBy: adminUser._id,
+        },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        updatedBy: adminUser._id,
+      });
+
+      systemConfig = await ctx.db.get(configId);
+    } else {
+      // Update existing config to pause
+      await ctx.db.patch(systemConfig._id, {
+        orchestrationSettings: {
+          leadGenerationEnabled: false,
+          maintenanceMode:
+            systemConfig.orchestrationSettings?.maintenanceMode || false,
+          maxConcurrentSearches:
+            systemConfig.orchestrationSettings?.maxConcurrentSearches || 10,
+          pauseReason: args.reason || "Emergency stop by administrator",
+          pausedAt: Date.now(),
+          pausedBy: adminUser._id,
+        },
+        updatedAt: Date.now(),
+        updatedBy: adminUser._id,
+      });
+    }
+
+    // Cancel all active searches
+    const activeSearches = await ctx.db
+      .query("searches")
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("status"), "in_progress"),
+          q.eq(q.field("status"), "pending"),
+          q.eq(q.field("status"), "processing"),
+        ),
+      )
+      .collect();
+
+    let totalRefunded = 0;
+
+    for (const search of activeSearches) {
+      await ctx.db.patch(search._id, {
+        status: "cancelled",
+        error: "Lead generation paused by administrator",
+        completedAt: Date.now(),
+      });
+
+      // Refund credits if any were used
+      if (search.creditsUsed && search.creditsUsed > 0) {
+        const refundResult = await ctx.runMutation(
+          internal.credits.transactions.refundCredits,
+          {
+            userId: search.userId,
+            amount: search.creditsUsed,
+            reason: "Search cancelled due to emergency stop",
+            relatedEntityType: "search",
+            relatedEntityId: search._id,
+          },
+        );
+
+        if (refundResult.success) {
+          totalRefunded += search.creditsUsed;
+        }
+      }
+    }
 
     // Log the action
     await ctx.db.insert("systemLogs", {
@@ -125,10 +133,19 @@ export const pauseAllLeadGeneration = mutation({
       timestamp: Date.now(),
       data: {
         message: "All lead generation has been paused by admin",
+        reason: args.reason || "Emergency stop by administrator",
+        cancelledSearches: activeSearches.length,
+        creditsRefunded: totalRefunded,
+        adminName: adminUser.name || adminUser.email,
       },
     });
 
-    return { success: true, message: "Lead generation paused successfully" };
+    return {
+      success: true,
+      message: "Lead generation paused successfully",
+      cancelledSearches: activeSearches.length,
+      creditsRefunded: totalRefunded,
+    };
   },
 });
 
@@ -139,15 +156,73 @@ export const resumeAllLeadGeneration = mutation({
     const adminUser = await requireAdmin(ctx);
 
     // Update system configuration
-    let systemConfig = await ctx.db
-      .query("systemConfiguration")
-      .unique();
+    let systemConfig = await ctx.db.query("systemConfiguration").unique();
 
-    // Note: Current systemConfiguration schema doesn't support lead generation pause settings
-    // This functionality would require schema updates to add a settings field
-    
-    // For now, we'll just log the action but not persist the setting
-    console.log("Lead generation resume requested but not persisted due to schema limitations");
+    if (!systemConfig) {
+      // Create initial config with enabled state
+      const configId = await ctx.db.insert("systemConfiguration", {
+        creditCosts: {
+          LEAD_DISCOVERY: 1,
+          EMAIL_ENRICHMENT: 1,
+          AI_ANALYSIS: 2,
+          EMAIL_GENERATION: 3,
+          BULK_ANALYSIS: 5,
+        },
+        planLimits: {
+          free: {
+            monthlyCredits: 100,
+            maxSearches: 10,
+            maxLeadsPerSearch: 50,
+            emailGeneration: true,
+            bulkOperations: false,
+            apiAccess: false,
+          },
+          pro: {
+            monthlyCredits: 1000,
+            maxSearches: 100,
+            maxLeadsPerSearch: 500,
+            emailGeneration: true,
+            bulkOperations: true,
+            apiAccess: true,
+          },
+          enterprise: {
+            monthlyCredits: 10000,
+            maxSearches: 1000,
+            maxLeadsPerSearch: 5000,
+            emailGeneration: true,
+            bulkOperations: true,
+            apiAccess: true,
+          },
+        },
+        orchestrationSettings: {
+          leadGenerationEnabled: true,
+          maintenanceMode: false,
+          maxConcurrentSearches: 10,
+          pauseReason: undefined,
+          pausedAt: undefined,
+          pausedBy: undefined,
+        },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        updatedBy: adminUser._id,
+      });
+    } else {
+      // Update existing config to resume
+      await ctx.db.patch(systemConfig._id, {
+        orchestrationSettings: {
+          leadGenerationEnabled: true,
+          maintenanceMode:
+            systemConfig.orchestrationSettings?.maintenanceMode || false,
+          maxConcurrentSearches:
+            systemConfig.orchestrationSettings?.maxConcurrentSearches || 10,
+          pauseReason: undefined,
+          pausedAt: undefined,
+          pausedBy: undefined,
+        },
+        updatedAt: Date.now(),
+        updatedBy: adminUser._id,
+      });
+    }
 
     // Log the action
     await ctx.db.insert("systemLogs", {
@@ -157,6 +232,7 @@ export const resumeAllLeadGeneration = mutation({
       timestamp: Date.now(),
       data: {
         message: "Lead generation has been resumed by admin",
+        adminName: adminUser.name || adminUser.email,
       },
     });
 
@@ -177,10 +253,12 @@ export const clearAllActiveSearches = mutation({
     // Get all processing or queued searches
     const activeSearches = await ctx.db
       .query("searches")
-      .filter((q) => q.or(
-        q.eq(q.field("status"), "processing"),
-        q.eq(q.field("status"), "queued")
-      ))
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("status"), "processing"),
+          q.eq(q.field("status"), "queued"),
+        ),
+      )
       .collect();
 
     let clearedCount = 0;
@@ -228,10 +306,41 @@ export const clearAllActiveSearches = mutation({
       },
     });
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       message: `Cleared ${clearedCount} active searches`,
-      clearedCount 
+      clearedCount,
+    };
+  },
+});
+
+// Manually trigger LangGraph health check
+export const triggerLangGraphHealthCheck = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const adminUser = await requireAdmin(ctx);
+
+    // Trigger health check immediately
+    await ctx.scheduler.runAfter(
+      0,
+      internal.langgraph.health.checkLangGraphHealth,
+    );
+
+    // Log the action
+    await ctx.db.insert("systemLogs", {
+      type: "system_control",
+      action: "trigger_health_check",
+      userId: adminUser._id,
+      timestamp: Date.now(),
+      data: {
+        message: "Manual LangGraph health check triggered",
+        adminName: adminUser.name || adminUser.email,
+      },
+    });
+
+    return {
+      success: true,
+      message: "Health check triggered successfully. Results will be available shortly.",
     };
   },
 });

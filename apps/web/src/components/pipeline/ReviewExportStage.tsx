@@ -1,72 +1,133 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from "react";
+import { useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { usePipeline } from '@/pipeline/context';
-import { 
-  Download, 
-  FileText, 
-  Mail, 
+import { usePipeline } from "@/pipeline/context";
+// types not needed directly here; export uses backend
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@genni/convex-types";
+import {
+  Download,
+  FileText,
+  Mail,
   CheckCircle,
   BarChart3,
   Calendar,
   Share,
   RefreshCw,
   Sparkles,
-  Archive
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useToast } from '@/hooks/use-toast';
+  Archive,
+  Loader2,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { useUser } from "@/hooks/useUser";
 
 const EXPORT_FORMATS = [
   {
-    type: 'csv',
-    name: 'CSV Export',
-    description: 'Spreadsheet-friendly format for CRM import',
+    type: "csv",
+    name: "CSV Export",
+    description: "Spreadsheet-friendly format for CRM import",
     icon: FileText,
     includeEmails: true,
-    size: 'Small',
-  },
-  {
-    type: 'json',
-    name: 'JSON Export', 
-    description: 'Developer-friendly format with full data',
-    icon: FileText,
-    includeEmails: true,
-    size: 'Medium',
-  },
-  {
-    type: 'pdf',
-    name: 'PDF Report',
-    description: 'Professional report with insights and emails',
-    icon: FileText,
-    includeEmails: true,
-    size: 'Large',
+    size: "Small",
   },
 ];
 
 export function ReviewExportStage() {
   const { state, resetPipeline } = usePipeline();
+  const { user } = useUser();
+  const { getToken: getClerkToken } = useClerkAuth();
   const { toast } = useToast();
   const [isExporting, setIsExporting] = useState(false);
   const [exportedFormats, setExportedFormats] = useState<string[]>([]);
 
   const handleExport = async (format: string) => {
     setIsExporting(true);
-    
+
     try {
-      // Mock export - in real implementation this would generate and download files
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      setExportedFormats(prev => [...prev, format]);
-      
+      if (format !== "csv") {
+        throw new Error("Only CSV export is supported at this time");
+      }
+
+      if (!user?._id) throw new Error("Not authenticated");
+
+      // Build Convex HTTP base URL (same logic as SSE)
+      const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
+      if (!convexUrl) throw new Error("Convex URL not configured");
+
+      let baseUrl: string = convexUrl;
+      try {
+        const url = new URL(convexUrl);
+        if (url.hostname.endsWith(".convex.cloud")) {
+          baseUrl = convexUrl.replace(".convex.cloud", ".convex.site");
+        }
+      } catch {
+        // use as-is
+      }
+
+      if (!getClerkToken) {
+        throw new Error("Unable to access session token");
+      }
+
+      const authToken =
+        (await getClerkToken({ template: "convex" })) ||
+        (await getClerkToken());
+      if (!authToken) {
+        throw new Error("Unable to obtain session token");
+      }
+
+      const tokenResponse = await fetch(`${baseUrl}/api/exports/issue-token`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      if (!tokenResponse.ok) {
+        throw new Error("Failed to request export token");
+      }
+
+      const tokenBody = (await tokenResponse.json()) as { token?: string };
+      if (!tokenBody?.token) {
+        throw new Error("Invalid export token response");
+      }
+
+      const params = new URLSearchParams();
+      params.set("userId", user._id);
+      params.set("token", tokenBody.token);
+      if (state.searchId) params.set("searchId", state.searchId);
+
+      const exportUrl = `${baseUrl}/api/exports/leads.csv?${params.toString()}`;
+
+      const res = await fetch(exportUrl, { method: "GET" });
+
+      if (!res.ok) {
+        throw new Error("Export failed");
+      }
+
+      // Create download
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `leads-export-${Date.now()}.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      setExportedFormats((prev) => [...prev, format]);
+
       toast({
         title: "Export Complete",
-        description: `Successfully exported leads and emails as ${format.toUpperCase()}.`,
+        description: `Successfully exported your leads as ${format.toUpperCase()}.`,
       });
     } catch (error) {
+      console.error("Export error:", error);
       toast({
         title: "Export Failed",
         description: "Failed to export data. Please try again.",
@@ -93,8 +154,8 @@ export function ReviewExportStage() {
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h3 className="text-xl font-semibold flex items-center justify-center gap-2">
-          <CheckCircle className="h-5 w-5 text-green-500" />
+        <h3 className="heading-md flex items-center justify-center gap-2">
+          <CheckCircle className="h-6 w-6" style={{ color: 'hsl(var(--primary))' }} />
           Pipeline Complete!
         </h3>
         <p className="text-muted-foreground">
@@ -110,37 +171,45 @@ export function ReviewExportStage() {
         <CardContent>
           <div className="grid md:grid-cols-4 gap-6">
             <div className="text-center space-y-2">
-              <div className="w-12 h-12 mx-auto rounded-full bg-blue-500/20 flex items-center justify-center">
-                <BarChart3 className="h-6 w-6 text-blue-500" />
+              <div className="w-12 h-12 mx-auto rounded-full glow-neon-cyan flex items-center justify-center" style={{ backgroundColor: 'hsl(var(--neon-cyan) / 0.2)' }}>
+                <BarChart3 className="h-6 w-6" style={{ color: 'hsl(var(--neon-cyan))' }} />
               </div>
               <div className="text-2xl font-bold">{totalLeads}</div>
-              <div className="text-sm text-muted-foreground">Leads Discovered</div>
+              <div className="text-sm text-muted-foreground">
+                Leads Discovered
+              </div>
             </div>
-            
+
             <div className="text-center space-y-2">
-              <div className="w-12 h-12 mx-auto rounded-full bg-green-500/20 flex items-center justify-center">
-                <Mail className="h-6 w-6 text-green-500" />
+              <div className="w-12 h-12 mx-auto rounded-full glow-neon-lime flex items-center justify-center" style={{ backgroundColor: 'hsl(var(--neon-lime) / 0.2)' }}>
+                <Mail className="h-6 w-6" style={{ color: 'hsl(var(--neon-lime))' }} />
               </div>
               <div className="text-2xl font-bold">{enrichedLeads}</div>
-              <div className="text-sm text-muted-foreground">Enriched with Emails</div>
+              <div className="text-sm text-muted-foreground">
+                Enriched with Emails
+              </div>
             </div>
-            
+
             <div className="text-center space-y-2">
-              <div className="w-12 h-12 mx-auto rounded-full bg-purple-500/20 flex items-center justify-center">
-                <Sparkles className="h-6 w-6 text-purple-500" />
+              <div className="w-12 h-12 mx-auto rounded-full glow-soft flex items-center justify-center" style={{ backgroundColor: 'hsl(var(--primary) / 0.2)' }}>
+                <Sparkles className="h-6 w-6" style={{ color: 'hsl(var(--primary))' }} />
               </div>
               <div className="text-2xl font-bold">{generatedEmails}</div>
-              <div className="text-sm text-muted-foreground">Personalized Emails</div>
+              <div className="text-sm text-muted-foreground">
+                Personalized Emails
+              </div>
             </div>
-            
+
             <div className="text-center space-y-2">
-              <div className="w-12 h-12 mx-auto rounded-full bg-orange-500/20 flex items-center justify-center">
-                <BarChart3 className="h-6 w-6 text-orange-500" />
+              <div className="w-12 h-12 mx-auto rounded-full glow-neon-yellow flex items-center justify-center" style={{ backgroundColor: 'hsl(var(--neon-yellow) / 0.2)' }}>
+                <BarChart3 className="h-6 w-6" style={{ color: 'hsl(var(--neon-yellow))' }} />
               </div>
               <div className="text-2xl font-bold">
                 {((enrichedLeads / totalLeads) * 100).toFixed(0)}%
               </div>
-              <div className="text-sm text-muted-foreground">Enrichment Rate</div>
+              <div className="text-sm text-muted-foreground">
+                Enrichment Rate
+              </div>
             </div>
           </div>
         </CardContent>
@@ -153,59 +222,77 @@ export function ReviewExportStage() {
           <TabsTrigger value="send">Send Emails</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="export" className="space-y-4">
           <div className="grid md:grid-cols-3 gap-4">
             {EXPORT_FORMATS.map((format) => {
               const IconComponent = format.icon;
               const isExported = exportedFormats.includes(format.type);
-              
+
               return (
-                <Card 
+                <Card
                   key={format.type}
                   className={cn(
                     "glass-card transition-all duration-300 hover-lift",
-                    isExported && "border-green-500/50 bg-green-500/5"
+                    isExported && "neon-border",
                   )}
+                  style={isExported ? {
+                    borderColor: 'hsl(var(--neon-lime) / 0.5)',
+                    backgroundColor: 'hsl(var(--neon-lime) / 0.05)'
+                  } : {}}
                 >
                   <CardHeader>
                     <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "p-2 rounded-lg transition-colors",
-                        isExported ? "bg-green-500/20" : "bg-muted/20"
-                      )}>
-                        <IconComponent className={cn(
-                          "h-5 w-5",
-                          isExported ? "text-green-500" : "text-muted-foreground"
-                        )} />
+                      <div
+                        className={cn(
+                          "p-2 rounded-lg transition-colors glow-neon-lime",
+                          isExported ? "glow-neon-lime" : "bg-muted/20",
+                        )}
+                        style={isExported ? { backgroundColor: 'hsl(var(--neon-lime) / 0.2)' } : {}}
+                      >
+                        <IconComponent
+                          className={cn(
+                            "h-5 w-5",
+                          )}
+                          style={isExported ? { color: 'hsl(var(--neon-lime))' } : {}}
+                        />
                       </div>
                       <div className="flex-1">
-                        <CardTitle className="text-base">{format.name}</CardTitle>
+                        <CardTitle className="text-base">
+                          {format.name}
+                        </CardTitle>
                         <p className="text-xs text-muted-foreground">
                           {format.description}
                         </p>
                       </div>
                     </div>
                   </CardHeader>
-                  
+
                   <CardContent>
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-xs">
                         <span>File Size:</span>
                         <Badge variant="outline">{format.size}</Badge>
                       </div>
-                      
+
                       <div className="flex items-center justify-between text-xs">
                         <span>Includes Emails:</span>
-                        <Badge variant={format.includeEmails ? "default" : "secondary"}>
-                          {format.includeEmails ? 'Yes' : 'No'}
+                        <Badge
+                          variant={
+                            format.includeEmails ? "default" : "secondary"
+                          }
+                        >
+                          {format.includeEmails ? "Yes" : "No"}
                         </Badge>
                       </div>
-                      
+
                       <Button
                         onClick={() => handleExport(format.type)}
                         disabled={isExporting || isExported}
-                        className="w-full"
+                        className={cn(
+                          "w-full transition-neo",
+                          !isExported && "gradient-neon-primary hover-glow"
+                        )}
                         variant={isExported ? "secondary" : "default"}
                       >
                         {isExported ? (
@@ -227,32 +314,33 @@ export function ReviewExportStage() {
             })}
           </div>
         </TabsContent>
-        
+
         <TabsContent value="send" className="space-y-4">
           <Card className="glass-card">
             <CardContent className="p-8 text-center space-y-4">
               <div className="w-16 h-16 mx-auto rounded-full bg-muted/20 flex items-center justify-center">
                 <Mail className="h-8 w-8 text-muted-foreground" />
               </div>
-              
+
               <div className="space-y-2">
                 <h4 className="text-lg font-semibold">Email Sending</h4>
                 <p className="text-muted-foreground">
-                  Email campaign functionality coming soon! For now, export your emails and send through your preferred platform.
+                  Email campaign functionality coming soon! For now, export your
+                  emails and send through your preferred platform.
                 </p>
               </div>
-              
+
               <Alert>
                 <Calendar className="h-4 w-4" />
                 <AlertDescription>
-                  Connect your email provider to send campaigns directly from Genni. 
-                  This feature will be available in the next update.
+                  Connect your email provider to send campaigns directly from
+                  Genni. This feature will be available in the next update.
                 </AlertDescription>
               </Alert>
             </CardContent>
           </Card>
         </TabsContent>
-        
+
         <TabsContent value="analytics" className="space-y-4">
           <Card className="glass-card">
             <CardHeader>
@@ -275,11 +363,11 @@ export function ReviewExportStage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm">Estimated Response Rate</span>
-                      <span className="font-medium text-green-600">24.3%</span>
+                      <span className="font-medium" style={{ color: 'hsl(var(--neon-lime))' }}>24.3%</span>
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="space-y-4">
                   <h5 className="font-medium">Next Steps</h5>
                   <div className="space-y-2 text-sm text-muted-foreground">
@@ -301,16 +389,20 @@ export function ReviewExportStage() {
           onClick={handleStartNewPipeline}
           variant="outline"
           size="lg"
+          className="neon-border transition-neo hover-lift"
         >
           <RefreshCw className="h-4 w-4 mr-2" />
           Start New Pipeline
         </Button>
-        
+
         <Button
-          onClick={() => handleExport('csv')}
-          disabled={exportedFormats.includes('csv')}
+          onClick={() => handleExport("csv")}
+          disabled={exportedFormats.includes("csv")}
           size="lg"
-          className="min-w-48"
+          className={cn(
+            "min-w-48 transition-neo",
+            !exportedFormats.includes("csv") && "gradient-neon-primary hover-glow"
+          )}
         >
           <Download className="h-4 w-4 mr-2" />
           Quick CSV Export

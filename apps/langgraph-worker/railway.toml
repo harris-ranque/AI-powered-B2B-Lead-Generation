@@ -1,6 +1,20 @@
-# Railway LangGraph Worker Configuration  
+# Railway LangGraph Worker Configuration
 [build]
 builder = "DOCKERFILE"
+# Exit on test failures to prevent deployment of broken code
+buildCommand = "echo 'Starting Python build with integrated testing...'"
+
+[build.args]
+OPENAI_API_KEY = "{{ secrets.OPENAI_API_KEY }}"
+WEBHOOK_URL = "{{ secrets.WEBHOOK_URL }}"
+CONVEX_URL = "{{ secrets.CONVEX_URL }}"
+LANGGRAPH_API_KEY = "{{ secrets.LANGGRAPH_API_KEY }}"
+TAVILY_API_KEY = "{{ secrets.TAVILY_API_KEY }}"
+EXA_API_KEY = "{{ secrets.EXA_API_KEY }}"
+PERPLEXITY_API_KEY = "{{ secrets.PERPLEXITY_API_KEY }}"
+MAX_TOKENS = "{{ secrets.MAX_TOKENS }}"
+TEMPERATURE = "{{ secrets.TEMPERATURE }}"
+DEFAULT_MODEL = "{{ secrets.DEFAULT_MODEL }}"
 
 [deploy]
 startCommand = "./start.sh"
@@ -13,3 +27,8 @@ numReplicas = 1
 PYTHONUNBUFFERED = "1"
 PYTHONDONTWRITEBYTECODE = "1"
 PORT = "8080"
+
+# Sentry configuration for error tracking and performance monitoring
+SENTRY_DSN = "https://c148fbf35cc49aa4d9cda79f2b2b97e8@o4510006869360640.ingest.us.sentry.io/4510013918150656"
+SENTRY_TRACES_SAMPLE_RATE = "0.1"
+SENTRY_ENABLE_LOGS = "true"

@@ -1,19 +1,170 @@
 import { internalMutation } from "../_generated/server";
 import { v } from "convex/values";
-import { SSEConnectionManager } from "./sseManager";
+import { Id } from "../_generated/dataModel";
 
-// Global SSE manager instance
-let sseManager: SSEConnectionManager | null = null;
+const DEFAULT_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
 
-// Initialize SSE manager (lazy loading)
-function getSSEManager(): SSEConnectionManager {
-  if (!sseManager) {
-    sseManager = new SSEConnectionManager();
-  }
-  return sseManager;
+type BroadcastPriority = "low" | "normal" | "high" | "urgent" | "critical";
+type BroadcastStatus = "pending" | "delivered" | "failed" | "expired" | "active";
+
+interface BroadcastDocument extends Record<string, unknown> {
+  userId: Id<"users">;
+  entityType: string;
+  entityId?: string;
+  type: string;
+  title: string;
+  message: string;
+  data?: unknown;
+  priority: BroadcastPriority;
+  category: string;
+  tags: string[];
+  status: BroadcastStatus;
+  delivered: boolean;
+  acknowledged: boolean;
+  requiresAck: boolean;
+  createdAt: number;
+  expiresAt: number;
+  error?: string;
+  deliveredAt?: number;
+  acknowledgedAt?: number;
 }
 
-// Broadcast pipeline update to user (SSE-POWERED REAL-TIME)
+function createBroadcastDocument(args: {
+  userId: Id<"users">;
+  entityType: string;
+  entityId?: string;
+  type: string;
+  title: string;
+  message: string;
+  data?: unknown;
+  priority: BroadcastPriority;
+  category: string;
+  requiresAck: boolean;
+  expiresAt: number;
+  tags?: string[];
+  status?: BroadcastStatus;
+  delivered?: boolean;
+  acknowledged?: boolean;
+  error?: string;
+}): BroadcastDocument {
+  const now = Date.now();
+  const status: BroadcastStatus =
+    args.status ?? (args.error ? "failed" : "pending");
+  const delivered = args.delivered ?? false;
+  const acknowledged = args.acknowledged ?? false;
+
+  const doc: BroadcastDocument = {
+    userId: args.userId,
+    entityType: args.entityType,
+    entityId: args.entityId,
+    type: args.type,
+    title: args.title,
+    message: args.message,
+    data: args.data,
+    priority: args.priority,
+    category: args.category,
+    tags: args.tags ?? [],
+    status,
+    delivered,
+    acknowledged,
+    requiresAck: args.requiresAck,
+    createdAt: now,
+    expiresAt: args.expiresAt,
+    error: args.error,
+  };
+
+  if (delivered) {
+    doc.deliveredAt = now;
+  }
+
+  if (acknowledged) {
+    doc.acknowledgedAt = now;
+  }
+
+  return doc;
+}
+
+async function upsertPipelineBroadcast(
+  ctx: any,
+  args: {
+    userId: Id<"users">;
+    searchId: string;
+    stage: string;
+    progress: number;
+    message: string;
+    data?: unknown;
+    error?: string;
+    priority?: BroadcastPriority;
+  },
+) {
+  const now = Date.now();
+  const hasError = Boolean(args.error);
+  const priority: BroadcastPriority =
+    args.priority ?? (hasError ? "high" : "normal");
+  const baseDoc = createBroadcastDocument({
+    userId: args.userId,
+    entityType: "search",
+    entityId: args.searchId,
+    type: "pipeline_update",
+    title: `Pipeline ${args.stage}`,
+    message: args.message,
+    data: {
+      searchId: args.searchId,
+      stage: args.stage,
+      progress: args.progress,
+      ...((args.data as Record<string, unknown>) || {}),
+      error: args.error,
+    },
+    priority,
+    category: "search_update",
+    requiresAck: hasError,
+    expiresAt: now + DEFAULT_EXPIRY_MS,
+    error: args.error,
+    tags: ["pipeline", args.stage],
+    status: hasError ? "failed" : "delivered",
+    delivered: !hasError,
+  });
+
+  const latest = await ctx.db
+    .query("statusBroadcasts")
+    .withIndex("by_entity", (q: any) =>
+      q.eq("entityType", "search").eq("entityId", args.searchId),
+    )
+    .filter((q: any) => q.eq(q.field("type"), "pipeline_update"))
+    .order("desc")
+    .first();
+
+  if (latest && latest.data && typeof latest.data === "object") {
+    const latestStage = (latest.data as Record<string, unknown>).stage;
+    if (latestStage === args.stage) {
+      const patch: Record<string, unknown> = {
+        title: baseDoc.title,
+        message: baseDoc.message,
+        data: baseDoc.data,
+        priority: baseDoc.priority,
+        status: baseDoc.status,
+        requiresAck: baseDoc.requiresAck,
+        expiresAt: baseDoc.expiresAt,
+        error: args.error,
+        tags: baseDoc.tags,
+        category: baseDoc.category,
+      };
+
+      if (baseDoc.delivered) {
+        patch.delivered = true;
+        patch.deliveredAt = now;
+      } else {
+        patch.delivered = false;
+      }
+
+      await ctx.db.patch(latest._id, patch);
+      return;
+    }
+  }
+
+  await ctx.db.insert("statusBroadcasts", baseDoc);
+}
+
 export const broadcastPipelineUpdate = internalMutation({
   args: {
     userId: v.id("users"),
@@ -23,66 +174,30 @@ export const broadcastPipelineUpdate = internalMutation({
     message: v.string(),
     data: v.optional(v.any()),
     error: v.optional(v.string()),
+    priority: v.optional(
+      v.union(
+        v.literal("low"),
+        v.literal("normal"),
+        v.literal("high"),
+        v.literal("urgent"),
+        v.literal("critical"),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
-    const manager = getSSEManager();
-    
-    // Send real-time SSE message to user
-    const broadcastMessage = {
-      type: "pipeline_update",
+    await upsertPipelineBroadcast(ctx, {
+      userId: args.userId,
+      searchId: args.searchId,
+      stage: args.stage,
+      progress: args.progress,
       message: args.message,
-      data: {
-        searchId: args.searchId,
-        stage: args.stage,
-        progress: args.progress,
-        ...args.data,
-      },
-      priority: args.error ? "critical" as const : "normal" as const,
-      timestamp: Date.now(),
+      data: args.data,
       error: args.error,
-    };
-
-    // Send via SSE (will queue if user offline)
-    const sent = manager.broadcast(args.userId, broadcastMessage);
-    
-    // Only store critical messages in database for audit/persistence
-    const shouldStore = args.error || 
-                       args.stage === "completed" || 
-                       args.stage === "failed";
-    
-    if (shouldStore) {
-      // Store only critical updates in database for audit trail
-      await ctx.db.insert("statusBroadcasts", {
-        userId: args.userId,
-        entityType: "search",
-        entityId: args.searchId,
-        type: "pipeline_update",
-        title: `Pipeline ${args.stage}`,
-        message: args.message,
-        data: {
-          stage: args.stage,
-          progress: args.progress,
-          ...args.data,
-        },
-        priority: args.error ? "high" : "normal",
-        category: "search_update",
-        tags: ["pipeline", args.stage],
-        status: sent ? "delivered" : "pending",
-        delivered: sent,
-        acknowledged: false,
-        requiresAck: false,
-        error: args.error,
-        createdAt: Date.now(),
-        expiresAt: Date.now() + 60 * 60 * 1000, // Expire in 1 hour
-      });
-    }
-    
-    // Log for development/debugging
-    console.log(`SSE Broadcasting: ${args.stage} - ${args.progress}% (${sent ? 'delivered' : 'queued'})`);
+      priority: args.priority,
+    });
   },
 });
 
-// Broadcast general status update (SSE-POWERED)
 export const broadcast = internalMutation({
   args: {
     userId: v.id("users"),
@@ -90,71 +205,50 @@ export const broadcast = internalMutation({
     title: v.string(),
     message: v.string(),
     data: v.optional(v.any()),
-    priority: v.optional(v.union(
-      v.literal("low"),
-      v.literal("normal"),
-      v.literal("high"),
-      v.literal("urgent"),
-      v.literal("critical")
-    )),
+    priority: v.optional(
+      v.union(
+        v.literal("low"),
+        v.literal("normal"),
+        v.literal("high"),
+        v.literal("urgent"),
+        v.literal("critical"),
+      ),
+    ),
     category: v.optional(v.string()),
     entityType: v.optional(v.string()),
     entityId: v.optional(v.string()),
     requiresAck: v.optional(v.boolean()),
     expiresIn: v.optional(v.number()), // milliseconds
+    tags: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const manager = getSSEManager();
-    
-    // Send real-time SSE message to user
-    const broadcastMessage = {
+    const expiresAt = Date.now() + (args.expiresIn ?? DEFAULT_EXPIRY_MS);
+    const priority = (args.priority ?? "normal") as BroadcastPriority;
+    const requiresAck = args.requiresAck ?? false;
+    const requiresImmediateAttention =
+      requiresAck || priority === "critical" || priority === "urgent";
+    const doc = createBroadcastDocument({
+      userId: args.userId,
+      entityType: args.entityType || "system",
+      entityId: args.entityId,
       type: args.type,
+      title: args.title,
       message: args.message,
-      data: {
-        title: args.title,
-        category: args.category || "general",
-        entityType: args.entityType,
-        entityId: args.entityId,
-        ...args.data,
-      },
-      priority: (args.priority || "normal") as "low" | "normal" | "high" | "urgent" | "critical",
-      timestamp: Date.now(),
-    };
+      data: args.data,
+      priority,
+      category: args.category || "general",
+      requiresAck,
+      expiresAt,
+      error: undefined,
+      tags: args.tags,
+      status: requiresImmediateAttention ? "pending" : "delivered",
+      delivered: !requiresImmediateAttention,
+    });
 
-    // Send via SSE (will queue if user offline)
-    const sent = manager.broadcast(args.userId, broadcastMessage);
-    
-    // Store in database only if it requires acknowledgment or is critical
-    const shouldStore = args.requiresAck || 
-                       args.priority === "critical" || 
-                       args.priority === "urgent";
-    
-    if (shouldStore) {
-      await ctx.db.insert("statusBroadcasts", {
-        userId: args.userId,
-        entityType: args.entityType || "system",
-        entityId: args.entityId,
-        type: args.type,
-        title: args.title,
-        message: args.message,
-        data: args.data,
-        priority: args.priority || "normal",
-        category: args.category || "general",
-        tags: [],
-        status: sent ? "delivered" : "pending",
-        delivered: sent,
-        acknowledged: false,
-        requiresAck: args.requiresAck || false,
-        createdAt: Date.now(),
-        expiresAt: Date.now() + (args.expiresIn || 3600000), // Default 1 hour
-      });
-    }
-    
-    console.log(`SSE Broadcasting: ${args.type} - ${args.title} (${sent ? 'delivered' : 'queued'})`);
+    await ctx.db.insert("statusBroadcasts", doc);
   },
 });
 
-// Mark broadcast as delivered
 export const markDelivered = internalMutation({
   args: {
     broadcastId: v.id("statusBroadcasts"),
@@ -168,7 +262,6 @@ export const markDelivered = internalMutation({
   },
 });
 
-// Mark broadcast as acknowledged
 export const acknowledge = internalMutation({
   args: {
     broadcastId: v.id("statusBroadcasts"),
@@ -177,11 +270,13 @@ export const acknowledge = internalMutation({
     await ctx.db.patch(args.broadcastId, {
       acknowledged: true,
       acknowledgedAt: Date.now(),
+      delivered: true,
+      deliveredAt: Date.now(),
+      status: "delivered",
     });
   },
 });
 
-// Clean up expired broadcasts
 export const cleanupExpired = internalMutation({
   args: {},
   handler: async (ctx) => {
@@ -191,13 +286,13 @@ export const cleanupExpired = internalMutation({
       .withIndex("by_expires")
       .filter((q) => q.lt(q.field("expiresAt"), now))
       .take(100);
-    
+
     for (const broadcast of expired) {
       await ctx.db.patch(broadcast._id, {
         status: "expired",
       });
     }
-    
+
     return { cleaned: expired.length };
   },
 });

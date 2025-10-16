@@ -1,15 +1,14 @@
 import type { Lead } from "@/lib/api-client";
 import type { Id } from "@genni/convex-types/dataModel";
 
-export type PipelineStage = 
-  | 'source_selection'
-  | 'lead_discovery'
-  | 'enrichment'
-  | 'ai_analysis'
-  | 'email_generation'
-  | 'review_export';
+export type PipelineStage =
+  | "source_selection"
+  | "lead_discovery"
+  | "enrichment"
+  | "ai_personalization"
+  | "review_export";
 
-export type LeadSourceType = 'google_maps' | 'csv_upload' | 'crm_import';
+export type LeadSourceType = "google_maps" | "csv_upload" | "crm_import";
 
 export interface PipelineState {
   currentStage: PipelineStage;
@@ -40,6 +39,9 @@ export interface SourceParams {
   radius?: number;
   minEmployees?: number;
   maxEmployees?: number;
+  includeEmails?: boolean;
+  aiAnalysis?: boolean;
+  roles?: string[];
   file?: File;
   columns?: Record<string, string>;
 }
@@ -63,6 +65,11 @@ export interface LeadSource {
 }
 
 export interface EmailGenerationResult {
+  requestId?: string;
+  leadId?: string;
+  completed_at?: number;
+  quality_score?: number;
+  processing_time?: number;
   primary_email: {
     subject: string;
     body: string;
@@ -78,7 +85,7 @@ export interface EmailGenerationResult {
 }
 
 export interface ExportFormat {
-  type: 'csv' | 'json' | 'pdf' | 'excel';
+  type: "csv" | "json" | "pdf" | "excel";
   name: string;
   description: string;
   icon: string;

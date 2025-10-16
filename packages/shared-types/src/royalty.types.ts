@@ -3,8 +3,8 @@ export interface DeveloperConfig {
   _id: string;
   developerId: string;
   stripeConnectAccountId?: string;
-  stripeConnectStatus?: 'pending' | 'active' | 'rejected';
-  payoutMethod: 'automatic' | 'manual';
+  stripeConnectStatus?: "pending" | "active" | "rejected";
+  payoutMethod: "automatic" | "manual";
   bankDetails?: {
     accountName: string;
     accountNumber: string;
@@ -13,7 +13,7 @@ export interface DeveloperConfig {
     swift?: string;
   };
   paypalEmail?: string;
-  preferredPaymentMethod?: 'bank' | 'paypal' | 'crypto' | 'check';
+  preferredPaymentMethod?: "bank" | "paypal" | "crypto" | "check";
   taxInfo?: {
     taxId: string;
     businessName?: string;
@@ -33,7 +33,7 @@ export interface DeveloperConfig {
 export interface RevenueTracking {
   _id: string;
   date: string; // YYYY-MM-DD
-  type: 'subscription' | 'one_time' | 'addon' | 'refund';
+  type: "subscription" | "one_time" | "addon" | "refund";
   amount: number; // In cents
   currency: string;
   customerId: string;
@@ -54,8 +54,14 @@ export interface RoyaltyPayment {
   royaltyRate: number; // 0.05 for 5%
   royaltyAmount: number; // In cents
   currency: string;
-  status: 'calculating' | 'pending' | 'processing' | 'paid' | 'failed' | 'disputed';
-  paymentMethod?: 'stripe_connect' | 'bank_transfer' | 'paypal' | 'other';
+  status:
+    | "calculating"
+    | "pending"
+    | "processing"
+    | "paid"
+    | "failed"
+    | "disputed";
+  paymentMethod?: "stripe_connect" | "bank_transfer" | "paypal" | "other";
   paymentDetails?: {
     transactionId?: string;
     paidAt?: number;
@@ -75,7 +81,14 @@ export interface RoyaltyPayment {
 export interface RoyaltyAuditLog {
   _id: string;
   timestamp: number;
-  action: 'revenue_recorded' | 'royalty_calculated' | 'payment_initiated' | 'payment_completed' | 'payment_failed' | 'config_updated' | 'manual_adjustment';
+  action:
+    | "revenue_recorded"
+    | "royalty_calculated"
+    | "payment_initiated"
+    | "payment_completed"
+    | "payment_failed"
+    | "config_updated"
+    | "manual_adjustment";
   performedBy: string; // User ID
   details: Record<string, any>;
   ipAddress?: string;
@@ -93,7 +106,7 @@ export interface RoyaltyStats {
 }
 
 // Payment table filter types
-export type PaymentFilter = 'all' | 'pending' | 'paid' | 'failed';
+export type PaymentFilter = "all" | "pending" | "paid" | "failed";
 
 // Stripe Connect OAuth response
 export interface StripeConnectResponse {

@@ -4,16 +4,19 @@ import { auth, getCurrentUser, requireAuth, requireAdmin } from "../auth";
 import { updateUserValidator } from "../lib/validators";
 import { ERROR_CODES } from "../lib/constants";
 import { createError, isAdmin } from "../lib/helpers";
-import { internal } from "../_generated/api";
 
 // Update user profile
 export const updateProfile = mutation({
   args: updateUserValidator,
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
-    
+
     if (!user) {
-      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+      throw createError(
+        "Authentication required",
+        ERROR_CODES.UNAUTHORIZED,
+        401,
+      );
     }
 
     const updateData: any = {
@@ -49,23 +52,34 @@ export const updateProfile = mutation({
 });
 
 // Update user preferences
+const themePreferenceValidator = v.union(
+  v.literal("harborlight"),
+  v.literal("neon-pulse"),
+);
+
 export const updatePreferences = mutation({
   args: {
     emailNotifications: v.optional(v.boolean()),
     language: v.optional(v.string()),
     timezone: v.optional(v.string()),
+    theme: v.optional(themePreferenceValidator),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
-    
+
     if (!user) {
-      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+      throw createError(
+        "Authentication required",
+        ERROR_CODES.UNAUTHORIZED,
+        401,
+      );
     }
 
     const currentPreferences = user.preferences || {
       emailNotifications: true,
       language: "en",
       timezone: "UTC",
+      theme: "neon-pulse",
     };
 
     const newPreferences = {
@@ -87,27 +101,52 @@ export const deductCredits = mutation({
   args: {
     amount: v.number(),
     description: v.string(),
-    relatedEntity: v.optional(v.object({
-      type: v.string(),
-      id: v.string(),
-    })),
+    relatedEntity: v.optional(
+      v.object({
+        type: v.string(),
+        id: v.string(),
+      }),
+    ),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
-    
+
     if (!user) {
-      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+      throw createError(
+        "Authentication required",
+        ERROR_CODES.UNAUTHORIZED,
+        401,
+      );
     }
 
-    // Use atomic transaction system for credit deduction
-    const transactionResult: any = await ctx.runMutation(internal["credits/transactions"].recordTransaction, {
+    // Direct credit deduction implementation
+    const currentBalance = user.credits || 0;
+    if (currentBalance < args.amount) {
+      throw createError(
+        "Insufficient credits",
+        ERROR_CODES.PAYMENT_REQUIRED,
+        402,
+      );
+    }
+
+    const newBalance = currentBalance - args.amount;
+
+    // Record the transaction
+    await ctx.db.insert("creditTransactions", {
       userId: user._id,
-      operation: "usage",
+      type: "usage",
       amount: args.amount,
       description: args.description,
+      balanceAfter: newBalance,
+      relatedEntity: args.relatedEntity,
+      createdAt: Date.now(),
     });
 
-    const newBalance: number = transactionResult.newBalance;
+    // Update user's credit balance
+    await ctx.db.patch(user._id, {
+      credits: newBalance,
+      updatedAt: Date.now(),
+    });
 
     // Check if credits are low and send notification
     if (newBalance <= 10 && newBalance > 0) {
@@ -135,15 +174,19 @@ export const addCredits = mutation({
     type: v.union(
       v.literal("purchase"),
       v.literal("bonus"),
-      v.literal("refund")
+      v.literal("refund"),
     ),
     stripePaymentId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
-    
+
     if (!user) {
-      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+      throw createError(
+        "Authentication required",
+        ERROR_CODES.UNAUTHORIZED,
+        401,
+      );
     }
 
     const newBalance = user.credits + args.amount;
@@ -171,7 +214,7 @@ export const addCredits = mutation({
       type: "system_alert",
       title: "Credits Added",
       message: `${args.amount} credits have been added to your account. New balance: ${newBalance}`,
-      data: { 
+      data: {
         creditsAdded: args.amount,
         newBalance,
         type: args.type,
@@ -188,14 +231,22 @@ export const addCredits = mutation({
 // Upgrade user plan
 export const upgradePlan = mutation({
   args: {
-    plan: v.union(v.literal("pro"), v.literal("enterprise")),
+    plan: v.union(
+      v.literal("professional"),
+      v.literal("business"),
+      v.literal("enterprise"),
+    ),
     stripeSubscriptionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
-    
+
     if (!user) {
-      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+      throw createError(
+        "Authentication required",
+        ERROR_CODES.UNAUTHORIZED,
+        401,
+      );
     }
 
     // Update user plan
@@ -214,9 +265,20 @@ export const upgradePlan = mutation({
         amount: 0, // Will be updated by webhook
         currency: "usd",
         status: "active",
+        isTrialing: false,
         currentPeriodStart: Date.now(),
-        currentPeriodEnd: Date.now() + (30 * 24 * 60 * 60 * 1000), // 30 days
+        currentPeriodEnd: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
         cancelAtPeriodEnd: false,
+        planLimits: {
+          monthlySearches: -1,
+          maxLeadsPerSearch: 100,
+          monthlyEnrichments: -1,
+          monthlyExports: -1,
+          emailGeneration: true,
+          bulkOperations: true,
+          apiAccess: true,
+          requiresOwnApiKeys: false,
+        },
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
@@ -228,7 +290,7 @@ export const upgradePlan = mutation({
       type: "plan_upgraded",
       title: `Welcome to ${args.plan.charAt(0).toUpperCase() + args.plan.slice(1)}!`,
       message: `Your account has been upgraded to ${args.plan}. Enjoy your new features and increased limits!`,
-      data: { 
+      data: {
         newPlan: args.plan,
         previousPlan: user.plan,
       },
@@ -246,9 +308,13 @@ export const deleteAccount = mutation({
   args: {},
   handler: async (ctx) => {
     const user = await getCurrentUser(ctx);
-    
+
     if (!user) {
-      throw createError("Authentication required", ERROR_CODES.UNAUTHORIZED, 401);
+      throw createError(
+        "Authentication required",
+        ERROR_CODES.UNAUTHORIZED,
+        401,
+      );
     }
 
     // Soft delete by deactivating the account
@@ -277,6 +343,31 @@ export const deleteAccount = mutation({
   },
 });
 
+// Update Stripe customer ID
+export const updateStripeCustomerId = mutation({
+  args: {
+    customerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+
+    if (!user) {
+      throw createError(
+        "Authentication required",
+        ERROR_CODES.UNAUTHORIZED,
+        401,
+      );
+    }
+
+    await ctx.db.patch(user._id, {
+      stripeCustomerId: args.customerId,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
 // Reset user password (admin only)
 export const resetUserPassword = mutation({
   args: {
@@ -285,13 +376,13 @@ export const resetUserPassword = mutation({
   },
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUser(ctx);
-    
+
     if (!currentUser || !isAdmin(currentUser)) {
       throw createError("Admin access required", ERROR_CODES.FORBIDDEN, 403);
     }
 
     const targetUser = await ctx.db.get(args.userId);
-    
+
     if (!targetUser) {
       throw createError("User not found", ERROR_CODES.USER_NOT_FOUND, 404);
     }
@@ -307,7 +398,8 @@ export const resetUserPassword = mutation({
       userId: args.userId,
       type: "system_alert",
       title: "Password Reset",
-      message: "Your password has been reset by an administrator. Please check your email for new login instructions.",
+      message:
+        "Your password has been reset by an administrator. Please check your email for new login instructions.",
       read: false,
       sent: false,
       createdAt: Date.now(),

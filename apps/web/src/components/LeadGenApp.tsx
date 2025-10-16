@@ -4,6 +4,7 @@ import { SearchPage } from "./SearchPage";
 import { LeadsPage } from "./LeadsPage";
 import { TemplatesPage } from "./TemplatesPage";
 import { ActivityPanel } from "./ActivityPanel";
+import { UserDataProvider } from "@/contexts/UserDataContext";
 
 export function LeadGenApp() {
   const [currentPage, setCurrentPage] = useState("search");
@@ -64,22 +65,22 @@ export function LeadGenApp() {
   };
 
   return (
-    <div className="relative min-h-screen">
-      <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
-      
-      <div className="lg:ml-64">
-        <div className="flex h-screen">
-          {/* Main Content */}
-          <div className="flex-1 overflow-y-auto p-8">
-            {renderPage()}
-          </div>
-          
-          {/* Activity Panel */}
-          <div className="hidden xl:block w-80 border-l border-border overflow-y-auto p-6 bg-muted/5">
-            <ActivityPanel />
+    <UserDataProvider>
+      <div className="relative min-h-screen">
+        <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
+
+        <div className="lg:ml-64">
+          <div className="flex h-screen">
+            {/* Main Content */}
+            <div className="flex-1 overflow-y-auto p-8">{renderPage()}</div>
+
+            {/* Activity Panel */}
+            <div className="hidden xl:block w-80 border-l border-border overflow-y-auto p-6 bg-muted/5">
+              <ActivityPanel />
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </UserDataProvider>
   );
 }

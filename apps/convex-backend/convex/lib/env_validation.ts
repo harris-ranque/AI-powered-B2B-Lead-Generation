@@ -1,6 +1,6 @@
 /**
  * Environment Variable Validation System
- * 
+ *
  * Ensures all required environment variables are present and valid
  * before application startup to prevent runtime failures.
  */
@@ -133,12 +133,12 @@ export function validateEnvironmentVariables(): ValidationResult {
       if (envVar.required) {
         result.missing.push(envVar.name);
         result.errors.push(
-          `Missing required environment variable: ${envVar.name} - ${envVar.description}`
+          `Missing required environment variable: ${envVar.name} - ${envVar.description}`,
         );
         result.success = false;
       } else {
         result.warnings.push(
-          `Optional environment variable not set: ${envVar.name} - ${envVar.description}`
+          `Optional environment variable not set: ${envVar.name} - ${envVar.description}`,
         );
       }
       continue;
@@ -148,7 +148,7 @@ export function validateEnvironmentVariables(): ValidationResult {
     if (envVar.validate && !envVar.validate(value)) {
       result.invalid.push(envVar.name);
       result.errors.push(
-        `Invalid format for environment variable: ${envVar.name} - ${envVar.description}`
+        `Invalid format for environment variable: ${envVar.name} - ${envVar.description}`,
       );
       result.success = false;
     }
@@ -169,7 +169,7 @@ export function ensureValidEnvironment(): void {
       "",
       "The following environment variables are required but missing or invalid:",
       "",
-      ...validation.errors.map(error => `  • ${error}`),
+      ...validation.errors.map((error) => `  • ${error}`),
       "",
       "Please check your .env.local file and ensure all required variables are set.",
       "",
@@ -182,7 +182,7 @@ export function ensureValidEnvironment(): void {
 
   if (validation.warnings.length > 0) {
     console.warn("⚠️  Environment warnings:");
-    validation.warnings.forEach(warning => console.warn(`  • ${warning}`));
+    validation.warnings.forEach((warning) => console.warn(`  • ${warning}`));
   }
 
   console.log("✅ Environment validation passed");
@@ -210,16 +210,20 @@ export function getOptionalEnvVar(name: string, defaultValue: string): string {
  * Check if we're in production environment
  */
 export function isProduction(): boolean {
-  return process.env.NODE_ENV === "production" || 
-         process.env.CONVEX_CLOUD_URL !== undefined;
+  return (
+    process.env.NODE_ENV === "production" ||
+    process.env.CONVEX_CLOUD_URL !== undefined
+  );
 }
 
 /**
  * Check if we're in development environment
  */
 export function isDevelopment(): boolean {
-  return process.env.NODE_ENV === "development" || 
-         process.env.CONVEX_CLOUD_URL === undefined;
+  return (
+    process.env.NODE_ENV === "development" ||
+    process.env.CONVEX_CLOUD_URL === undefined
+  );
 }
 
 /**
@@ -228,15 +232,15 @@ export function isDevelopment(): boolean {
 export function validateWebhookEnvironment(): void {
   const requiredForWebhooks = [
     "CLERK_WEBHOOK_SECRET",
-    "STRIPE_WEBHOOK_SECRET", 
-    "LANGGRAPH_API_KEY"
+    "STRIPE_WEBHOOK_SECRET",
+    "LANGGRAPH_API_KEY",
   ];
 
-  const missing = requiredForWebhooks.filter(name => !process.env[name]);
-  
+  const missing = requiredForWebhooks.filter((name) => !process.env[name]);
+
   if (missing.length > 0) {
     throw new Error(
-      `Webhook environment validation failed. Missing: ${missing.join(", ")}`
+      `Webhook environment validation failed. Missing: ${missing.join(", ")}`,
     );
   }
 }

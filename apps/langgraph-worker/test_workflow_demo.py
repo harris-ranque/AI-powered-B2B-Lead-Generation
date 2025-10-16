@@ -49,12 +49,15 @@ async def demo_workflow_visualization():
         ),
         "business_profile": BusinessProfile(
             company_name="Genni AI",
-            industry="AI/Technology", 
+            industry="AI/Technology",
             value_proposition="AI-powered lead generation",
             services=["Lead Generation", "Email Automation"],
             target_markets=["B2B SaaS"],
             key_differentiators=["Multi-agent AI"],
-            contact_info={"email": "contact@genni.ai"}
+            contact_info={
+                "name": "Alex Rivera",
+                "email": "contact@genni.ai",
+            }
         ),
         "requirements": EmailRequirements(
             call_to_action="Schedule a demo"

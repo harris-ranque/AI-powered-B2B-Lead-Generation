@@ -2,6 +2,7 @@
 Relevance Analyzer Node for LangGraph workflow
 Determines lead relevance and fit for our services
 """
+
 import time
 from typing import Dict, Any
 from langchain_openai import ChatOpenAI

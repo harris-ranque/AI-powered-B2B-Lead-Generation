@@ -28,7 +28,7 @@ export interface EmailSequence {
   id: string;
   leadId: string;
   emails: EmailTemplate[];
-  status: 'draft' | 'generated' | 'approved' | 'sent';
+  status: "draft" | "generated" | "approved" | "sent";
   createdAt: number;
 }
 

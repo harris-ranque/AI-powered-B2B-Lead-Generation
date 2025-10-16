@@ -55,10 +55,7 @@ export function MobileAIApp() {
 
   return (
     <div className="min-h-screen bg-background">
-      <MobileHeader 
-        title="AI Assistant" 
-        showMenu={false}
-      />
+      <MobileHeader title="AI Assistant" showMenu={false} />
       <ChatInterface onVoiceClick={handleVoiceClick} />
     </div>
   );

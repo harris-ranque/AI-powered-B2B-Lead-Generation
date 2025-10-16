@@ -1,14 +1,13 @@
 import { useState } from "react";
-import { 
-  BarChart3, 
-  User, 
-  Search, 
-  History, 
-  TrendingUp, 
+import {
+  BarChart3,
+  User,
+  Search,
+  History,
   Settings,
   Moon,
   Menu,
-  X
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GenniLogo } from "./GenniLogo";
@@ -44,18 +43,13 @@ export function GenniSidebar({ currentPage, onPageChange }: GenniSidebarProps) {
       title: "Search History",
     },
     {
-      id: "performance",
-      icon: TrendingUp,
-      title: "Performance",
-    },
-    {
       id: "settings",
       icon: Settings,
       title: "Settings",
-    }
+    },
   ];
 
-  const NavItem = ({ item }: { item: typeof navItems[0] }) => {
+  const NavItem = ({ item }: { item: (typeof navItems)[0] }) => {
     const Icon = item.icon;
     const isActive = currentPage === item.id;
 
@@ -67,9 +61,10 @@ export function GenniSidebar({ currentPage, onPageChange }: GenniSidebarProps) {
         }}
         className={`
           w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-smooth relative
-          ${isActive 
-            ? 'bg-primary/10 text-primary' 
-            : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-primary'
+          ${
+            isActive
+              ? "bg-primary/10 text-primary"
+              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-primary"
           }
         `}
       >
@@ -92,10 +87,12 @@ export function GenniSidebar({ currentPage, onPageChange }: GenniSidebarProps) {
       </Button>
 
       {/* Sidebar */}
-      <aside className={`
+      <aside
+        className={`
         fixed left-0 top-0 h-screen w-64 bg-sidebar-background border-r border-sidebar-border z-40 transition-transform
-        ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-      `}>
+        ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
+      `}
+      >
         <div className="p-6">
           {/* Logo */}
           <div className="flex justify-center mb-12">
@@ -115,7 +112,7 @@ export function GenniSidebar({ currentPage, onPageChange }: GenniSidebarProps) {
             <div className="flex items-center justify-center">
               <ClerkUserButton />
             </div>
-            
+
             {/* Dark Mode Toggle */}
             <button className="flex items-center gap-3 px-4 py-3 w-full text-left text-sidebar-foreground hover:bg-sidebar-accent hover:text-primary rounded-lg transition-smooth">
               <Moon className="h-5 w-5" />
@@ -127,7 +124,7 @@ export function GenniSidebar({ currentPage, onPageChange }: GenniSidebarProps) {
 
       {/* Mobile Overlay */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-background/80 backdrop-blur-sm z-30 lg:hidden"
           onClick={() => setIsOpen(false)}
         />

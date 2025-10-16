@@ -20,9 +20,9 @@ export interface SearchSession {
   id: string;
   userId: string;
   query: string;
-  location: SearchRequest['location'];
-  filters: SearchRequest['filters'];
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  location: SearchRequest["location"];
+  filters: SearchRequest["filters"];
+  status: "pending" | "processing" | "completed" | "failed";
   results: SearchResult[];
   totalFound: number;
   creditsUsed: number;

@@ -1,5 +1,7 @@
 import { internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
+import { Doc } from "../_generated/dataModel";
+import { withUpdatedAtIfSupported, isUpdatedAtSchemaError } from "./utils";
 
 // Internal query to get search without auth check
 export const getSearchInternal = internalQuery({
@@ -21,26 +23,32 @@ export const getSearchResults = internalQuery({
         analyzedCount: 0,
       };
     }
-    
+
     // Get all leads for this search
     const leads = await ctx.db
       .query("leads")
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
       .collect();
-    
-    const enrichedLeads = leads.filter(l => 
-      l.enrichmentStatus === "completed" || l.enrichmentStatus === "completed_fallback"
+
+    const enrichedLeads = leads.filter(
+      (l) =>
+        l.enrichmentStatus === "completed" ||
+        l.enrichmentStatus === "completed_fallback",
     );
-    
-    const analyzedLeads = leads.filter(l => l.aiAnalysis !== undefined);
-    
+
+    const analyzedLeads = leads.filter((l) => l.aiAnalysis !== undefined);
+
     return {
       totalFound: leads.length,
       enrichedCount: enrichedLeads.length,
       analyzedCount: analyzedLeads.length,
-      avgRelevanceScore: analyzedLeads.length > 0
-        ? analyzedLeads.reduce((sum, l) => sum + (l.aiAnalysis?.relevanceScore || 0), 0) / analyzedLeads.length
-        : 0,
+      avgRelevanceScore:
+        analyzedLeads.length > 0
+          ? analyzedLeads.reduce(
+              (sum, l) => sum + (l.aiAnalysis?.relevanceScore || 0),
+              0,
+            ) / analyzedLeads.length
+          : 0,
     };
   },
 });
@@ -54,10 +62,98 @@ export const getStuckSearches = internalQuery({
     return await ctx.db
       .query("searches")
       .withIndex("by_status", (q) => q.eq("status", "in_progress"))
-      .filter((q) => 
-        q.lt(q.field("lastOrchestrationAt"), args.stuckThreshold)
-      )
+      .filter((q) => q.lt(q.field("lastOrchestrationAt"), args.stuckThreshold))
       .take(10); // Process max 10 stuck searches at a time
+  },
+});
+
+export const getSearchesByStatusesInternal = internalQuery({
+  args: {
+    statuses: v.array(
+      v.union(
+        v.literal("pending"),
+        v.literal("in_progress"),
+        v.literal("processing"),
+        v.literal("completed"),
+        v.literal("failed"),
+        v.literal("cancelled"),
+      ),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const seen = new Set<string>();
+    const results: Doc<"searches">[] = [];
+
+    for (const status of args.statuses) {
+      const matches = await ctx.db
+        .query("searches")
+        .withIndex("by_status", (q) => q.eq("status", status))
+        .collect();
+
+      for (const search of matches) {
+        if (!seen.has(search._id)) {
+          seen.add(search._id);
+          results.push(search);
+        }
+      }
+    }
+
+    return results;
+  },
+});
+
+// Internal mutation to update search status without auth
+export const updateSearchStatusInternal = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("in_progress"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("cancelled"),
+    ),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      throw new Error("Search not found");
+    }
+
+    const now = Date.now();
+
+    let updates: Record<string, any> = {
+      status: args.status,
+    };
+
+    if (args.error) {
+      updates.error = args.error;
+    }
+
+    if (args.status === "in_progress" && !search.startedAt) {
+      updates.startedAt = now;
+    }
+
+    if (args.status === "completed" || args.status === "failed") {
+      updates.completedAt = now;
+    }
+
+    updates = withUpdatedAtIfSupported(updates, search, now);
+
+    try {
+      await ctx.db.patch(args.searchId, updates);
+    } catch (error) {
+      if (!isUpdatedAtSchemaError(error)) {
+        throw error;
+      }
+      // Retry without updatedAt field for backward compatibility
+      const { updatedAt, ...updatesWithoutTimestamp } = updates;
+      await ctx.db.patch(args.searchId, updatesWithoutTimestamp);
+    }
+
+    return { success: true };
   },
 });
 
@@ -73,15 +169,17 @@ export const logCorrelation = internalMutation({
       v.literal("debug"),
       v.literal("info"),
       v.literal("warn"),
-      v.literal("error")
+      v.literal("error"),
     ),
     message: v.string(),
     data: v.optional(v.any()),
-    error: v.optional(v.object({
-      message: v.string(),
-      stack: v.optional(v.string()),
-      name: v.optional(v.string()),
-    })),
+    error: v.optional(
+      v.object({
+        message: v.string(),
+        stack: v.optional(v.string()),
+        name: v.optional(v.string()),
+      }),
+    ),
   },
   handler: async (ctx, args) => {
     await ctx.db.insert("correlationLogs", {
@@ -91,5 +189,95 @@ export const logCorrelation = internalMutation({
       },
       createdAt: Date.now(),
     });
+  },
+});
+
+// Internal mutation to update search results and progress
+export const updateSearchResults = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    results: v.any(),
+    progress: v.any(),
+    creditsUsed: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      throw new Error("Search not found");
+    }
+
+    const now = Date.now();
+
+    let updates: Record<string, any> = {
+      results: args.results,
+      progress: args.progress,
+    };
+
+    if (typeof args.creditsUsed === "number") {
+      updates.creditsUsed = args.creditsUsed;
+    }
+
+    updates = withUpdatedAtIfSupported(updates, search, now);
+
+    try {
+      await ctx.db.patch(args.searchId, updates);
+    } catch (error) {
+      if (!isUpdatedAtSchemaError(error)) {
+        throw error;
+      }
+      // Retry without updatedAt field for backward compatibility
+      const { updatedAt, ...updatesWithoutTimestamp } = updates;
+      await ctx.db.patch(args.searchId, updatesWithoutTimestamp);
+    }
+  },
+});
+
+// Internal mutation to update search progress without auth
+export const updateSearchProgressInternal = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    progress: v.object({
+      discovered: v.number(),
+      enriched: v.number(),
+      analyzed: v.number(),
+      total: v.number(),
+    }),
+    partialResults: v.optional(v.boolean()),
+    requestedCount: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      throw new Error("Search not found");
+    }
+
+    const now = Date.now();
+
+    let updateData: Record<string, any> = {
+      progress: args.progress,
+      lastOrchestrationAt: now,
+    };
+
+    // Add partial results metadata if provided
+    if (args.partialResults !== undefined) {
+      updateData.partialResults = args.partialResults;
+    }
+    if (args.requestedCount !== undefined) {
+      updateData.requestedCount = args.requestedCount;
+    }
+
+    const updates = withUpdatedAtIfSupported(updateData, search, now);
+
+    try {
+      await ctx.db.patch(args.searchId, updates);
+    } catch (error) {
+      if (!isUpdatedAtSchemaError(error)) {
+        throw error;
+      }
+      // Retry without updatedAt field for backward compatibility
+      const { updatedAt: _unused, ...updatesWithoutTimestamp } = updates as typeof updates & { updatedAt?: number };
+      await ctx.db.patch(args.searchId, updatesWithoutTimestamp);
+    }
+    return { success: true };
   },
 });

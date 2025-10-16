@@ -1,64 +1,88 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { usePipeline } from '@/pipeline/context';
-import { 
-  PenTool, 
-  Mail, 
+import { usePipeline } from "@/pipeline/context";
+import type { Lead } from "@/lib/types";
+import { useAction } from "convex/react";
+import { api } from "@genni/convex-types";
+import { useToast } from "@/hooks/use-toast";
+import {
+  PenTool,
+  Mail,
   ArrowRight,
   Sparkles,
   Bot,
   CheckCircle,
   Eye,
-  Edit
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
+  Edit,
+  Loader2,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface EmailGenerationStageProps {
   onGenerateEmail?: (lead: Lead) => void;
 }
 
-export function EmailGenerationStage({ onGenerateEmail }: EmailGenerationStageProps) {
-  const { state, setEmails, markStageComplete, progressToNextStage } = usePipeline();
-  const [selectedLead, setSelectedLead] = useState(state.enrichedLeads[0] || null);
+export function EmailGenerationStage({
+  onGenerateEmail,
+}: EmailGenerationStageProps) {
+  const { state, setEmails, markStageComplete, progressToNextStage } =
+    usePipeline();
+  const [selectedLead, setSelectedLead] = useState(
+    state.enrichedLeads[0] || null,
+  );
   const [isGenerating, setIsGenerating] = useState(false);
-  
+  const [generateProgress, setGenerateProgress] = useState(0);
+  const { toast } = useToast();
+
+  // Use real LangGraph email generation
+  const generateEmailAction = useAction(api.langgraph.actions.generateEmail);
+
   const handleGenerateEmails = async () => {
     setIsGenerating(true);
-    
+    setGenerateProgress(0);
+
     try {
-      // Mock email generation - in real implementation this would call LangGraph
-      const mockEmails = state.enrichedLeads.map(lead => ({
-        leadId: lead.id,
-        primary_email: {
-          subject: `Partnership opportunity for ${lead.company_name}`,
-          body: `Hi there,\n\nI noticed ${lead.company_name} and thought there might be a great opportunity to collaborate...\n\nBest regards`,
-        },
-        follow_up_emails: [
-          {
-            subject: `Following up on ${lead.company_name} partnership`,
-            body: `Hi again,\n\nJust wanted to follow up on my previous message...\n\nBest`,
-            delay_days: 3,
-          }
-        ],
-        relevance_score: Math.random() * 0.3 + 0.7,
-        personalization_notes: ['Industry-specific messaging', 'Location-based reference'],
-        estimated_response_rate: Math.random() * 0.1 + 0.15,
-      }));
-      
-      setEmails(mockEmails);
-      markStageComplete('email_generation');
-      
-      // Simulate generation time
+      const totalLeads = state.enrichedLeads.length;
+      // Kick off generation requests for each lead (backend will persist via webhook)
+      for (let i = 0; i < state.enrichedLeads.length; i++) {
+        const lead = state.enrichedLeads[i];
+        try {
+          await generateEmailAction({
+            leadId: lead.id,
+            emailType: "initial",
+            customInstructions:
+              "Generate a professional, personalized outreach email",
+          });
+        } catch (leadError) {
+          console.error(
+            `Failed to start generation for lead ${lead.id}:`,
+            leadError,
+          );
+        }
+        setGenerateProgress(Math.round(((i + 1) / totalLeads) * 100));
+      }
+
+      markStageComplete("email_generation");
+      toast({
+        title: "Generation Started",
+        description: `Queued ${totalLeads} leads for AI-powered email generation. Results will populate automatically.`,
+      });
+
       setTimeout(() => {
         setIsGenerating(false);
         progressToNextStage();
-      }, 3000);
-      
+      }, 800);
     } catch (error) {
+      console.error("Email generation failed:", error);
       setIsGenerating(false);
+      toast({
+        title: "Generation Failed",
+        description: "Failed to start email generation. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -90,10 +114,11 @@ export function EmailGenerationStage({ onGenerateEmail }: EmailGenerationStagePr
                 Email Generation
               </h4>
               <p className="text-sm text-muted-foreground">
-                Generate personalized emails for {state.enrichedLeads.length} enriched leads
+                Generate personalized emails for {state.enrichedLeads.length}{" "}
+                enriched leads
               </p>
             </div>
-            
+
             {state.generatedEmails.length === 0 ? (
               <Button
                 onClick={handleGenerateEmails}
@@ -131,19 +156,19 @@ export function EmailGenerationStage({ onGenerateEmail }: EmailGenerationStagePr
               <div className="w-16 h-16 mx-auto rounded-full bg-primary/20 flex items-center justify-center animate-neon-pulse">
                 <Bot className="h-8 w-8 text-primary" />
               </div>
-              
+
               <div className="space-y-2">
                 <h4 className="font-semibold">AI Agents at Work</h4>
                 <p className="text-sm text-muted-foreground">
                   Creating personalized emails based on analysis insights...
                 </p>
               </div>
-              
+
               <div className="grid grid-cols-3 gap-4 max-w-md mx-auto">
                 {[
-                  'Analyzing pain points',
-                  'Matching value props', 
-                  'Writing personalized copy'
+                  "Analyzing pain points",
+                  "Matching value props",
+                  "Writing personalized copy",
                 ].map((step, index) => (
                   <div key={step} className="text-xs text-muted-foreground">
                     <div className="w-2 h-2 rounded-full bg-primary mx-auto mb-1 animate-pulse" />
@@ -163,34 +188,49 @@ export function EmailGenerationStage({ onGenerateEmail }: EmailGenerationStagePr
             <TabsTrigger value="preview">Email Preview</TabsTrigger>
             <TabsTrigger value="leads">Lead List</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="preview" className="space-y-4">
             <Card className="glass-card">
               <CardHeader>
-                <CardTitle className="text-lg">Email Sequences Generated</CardTitle>
+                <CardTitle className="text-lg">
+                  Email Sequences Generated
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   {state.generatedEmails.slice(0, 3).map((email, index) => {
-                    const lead = state.enrichedLeads.find(l => l.id === email.leadId);
+                    const lead = state.enrichedLeads.find(
+                      (l) => l.id === email.leadId,
+                    );
                     return (
-                      <div key={index} className="p-4 rounded-lg border border-border bg-muted/5">
+                      <div
+                        key={index}
+                        className="p-4 rounded-lg border border-border bg-muted/5"
+                      >
                         <div className="flex items-center justify-between mb-3">
-                          <div className="font-medium">{lead?.company_name}</div>
+                          <div className="font-medium">
+                            {lead?.company_name}
+                          </div>
                           <div className="flex items-center gap-2">
                             <Badge variant="outline" className="text-xs">
-                              {(email.relevance_score * 100).toFixed(0)}% relevance
+                              {(email.relevance_score * 100).toFixed(0)}%
+                              relevance
                             </Badge>
-                            <Button variant="ghost" size="sm" onClick={() => handlePreviewEmail(lead)}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handlePreviewEmail(lead)}
+                            >
                               <Eye className="h-3 w-3 mr-1" />
                               Preview
                             </Button>
                           </div>
                         </div>
-                        
+
                         <div className="space-y-2">
                           <div className="text-sm">
-                            <span className="font-medium">Subject:</span> {email.primary_email.subject}
+                            <span className="font-medium">Subject:</span>{" "}
+                            {email.primary_email.subject}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {email.primary_email.body.substring(0, 100)}...
@@ -206,34 +246,39 @@ export function EmailGenerationStage({ onGenerateEmail }: EmailGenerationStagePr
               </CardContent>
             </Card>
           </TabsContent>
-          
+
           <TabsContent value="leads" className="space-y-4">
             <Card className="glass-card">
               <CardHeader>
-                <CardTitle className="text-lg">Leads with Generated Emails</CardTitle>
+                <CardTitle className="text-lg">
+                  Leads with Generated Emails
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
                   {state.enrichedLeads.map((lead, index) => (
-                    <div 
+                    <div
                       key={lead.id}
                       className="flex items-center gap-4 p-3 rounded-lg bg-muted/10 hover:bg-muted/20 transition-all duration-300"
                     >
                       <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
                         <CheckCircle className="h-4 w-4 text-green-500" />
                       </div>
-                      
+
                       <div className="flex-1 min-w-0">
                         <div className="font-medium">{lead.company_name}</div>
-                        <div className="text-sm text-muted-foreground">{lead.email}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {lead.contactInfo?.emails?.[0]?.email ||
+                            "No email available"}
+                        </div>
                       </div>
-                      
+
                       <div className="flex gap-2">
                         <Badge variant="outline" className="text-xs">
                           Primary + 2 Follow-ups
                         </Badge>
-                        <Button 
-                          variant="ghost" 
+                        <Button
+                          variant="ghost"
                           size="sm"
                           onClick={() => handlePreviewEmail(lead)}
                         >
@@ -253,11 +298,7 @@ export function EmailGenerationStage({ onGenerateEmail }: EmailGenerationStagePr
       {/* Continue Button */}
       {state.generatedEmails.length > 0 && (
         <div className="text-center">
-          <Button
-            onClick={progressToNextStage}
-            size="lg"
-            className="min-w-48"
-          >
+          <Button onClick={progressToNextStage} size="lg" className="min-w-48">
             <CheckCircle className="h-4 w-4 mr-2" />
             Review & Export Results
             <ArrowRight className="h-4 w-4 ml-2" />

@@ -5,8 +5,18 @@ import { MapPin, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 // Google Places types
 interface PlacePrediction {
@@ -40,33 +50,60 @@ let googleMapsLoader: Loader | null = null;
 let autocompleteService: google.maps.places.AutocompleteService | null = null;
 
 // Initialize Google Maps API
-const initializeGoogleMaps = async (): Promise<google.maps.places.AutocompleteService> => {
-  if (autocompleteService) {
-    return autocompleteService;
-  }
+const initializeGoogleMaps =
+  async (): Promise<google.maps.places.AutocompleteService> => {
+    if (autocompleteService) {
+      return autocompleteService;
+    }
 
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-  if (!apiKey) {
-    throw new Error("Google Maps API key not configured. Please set VITE_GOOGLE_MAPS_API_KEY in your environment variables.");
-  }
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-  if (!googleMapsLoader) {
-    googleMapsLoader = new Loader({
-      apiKey,
-      version: "weekly",
-      libraries: ["places"],
-    });
-  }
+    // Debug logging - secure logging without exposing API key
+    if (import.meta.env.MODE === "development") {
+      console.log("Google Maps API Key check:", {
+        mode: import.meta.env.MODE,
+        hasKey: !!apiKey,
+        keyLength: apiKey?.length,
+        isValidFormat: apiKey?.startsWith("AIza") && apiKey.length === 39,
+        envKeysCount: Object.keys(import.meta.env).filter((key) =>
+          key.startsWith("VITE_"),
+        ).length,
+      });
+    }
 
-  try {
-    await googleMapsLoader.load();
-    autocompleteService = new google.maps.places.AutocompleteService();
-    return autocompleteService;
-  } catch (error) {
-    console.error("Failed to initialize Google Maps:", error);
-    throw new Error("Failed to load Google Maps API");
-  }
-};
+    if (
+      !apiKey ||
+      apiKey === "undefined" ||
+      apiKey === "your_google_maps_api_key_here"
+    ) {
+      const error = new Error(
+        "Google Maps API key not configured. Please set VITE_GOOGLE_MAPS_API_KEY in your environment variables.",
+      );
+      if (import.meta.env.MODE === "development") {
+        console.error(
+          "API Key validation failed - key missing or placeholder value",
+        );
+      }
+      throw error;
+    }
+
+    if (!googleMapsLoader) {
+      googleMapsLoader = new Loader({
+        apiKey,
+        version: "weekly",
+        libraries: ["places"],
+      });
+    }
+
+    try {
+      await googleMapsLoader.load();
+      autocompleteService = new google.maps.places.AutocompleteService();
+      return autocompleteService;
+    } catch (error) {
+      console.error("Failed to initialize Google Maps:", error);
+      throw new Error("Failed to load Google Maps API");
+    }
+  };
 
 export const LocationAutocomplete = React.forwardRef<
   HTMLInputElement,
@@ -82,16 +119,18 @@ export const LocationAutocomplete = React.forwardRef<
       disabled = false,
       ...props
     },
-    ref
+    ref,
   ) => {
     const [inputValue, setInputValue] = useState(value);
     const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    
+
     const debounceRef = useRef<NodeJS.Timeout>();
-    const serviceRef = useRef<google.maps.places.AutocompleteService | null>(null);
+    const serviceRef = useRef<google.maps.places.AutocompleteService | null>(
+      null,
+    );
 
     // Initialize Google Maps service
     useEffect(() => {
@@ -99,10 +138,14 @@ export const LocationAutocomplete = React.forwardRef<
         try {
           serviceRef.current = await initializeGoogleMaps();
         } catch (err) {
-          setError(err instanceof Error ? err.message : "Failed to initialize location service");
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to initialize location service",
+          );
         }
       };
-      
+
       initService();
     }, []);
 
@@ -119,26 +162,34 @@ export const LocationAutocomplete = React.forwardRef<
       try {
         const request: google.maps.places.AutocompletionRequest = {
           input: query,
-          types: ['(cities)'], // Focus on cities and administrative areas
-          fields: ['place_id', 'description', 'types'],
+          types: ["(cities)"], // Focus on cities and administrative areas
+          fields: ["place_id", "description", "types"],
         };
 
-        serviceRef.current.getPlacePredictions(request, (predictions, status) => {
-          setIsLoading(false);
-          
-          if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
-            setPredictions(predictions);
-            setIsOpen(true);
-          } else if (status === google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
-            setPredictions([]);
-            setIsOpen(false);
-          } else {
-            console.error("Places service error:", status);
-            setError("Failed to fetch location suggestions");
-            setPredictions([]);
-            setIsOpen(false);
-          }
-        });
+        serviceRef.current.getPlacePredictions(
+          request,
+          (predictions, status) => {
+            setIsLoading(false);
+
+            if (
+              status === google.maps.places.PlacesServiceStatus.OK &&
+              predictions
+            ) {
+              setPredictions(predictions);
+              setIsOpen(true);
+            } else if (
+              status === google.maps.places.PlacesServiceStatus.ZERO_RESULTS
+            ) {
+              setPredictions([]);
+              setIsOpen(false);
+            } else {
+              console.error("Places service error:", status);
+              setError("Failed to fetch location suggestions");
+              setPredictions([]);
+              setIsOpen(false);
+            }
+          },
+        );
       } catch (err) {
         setIsLoading(false);
         setError("Failed to search locations");
@@ -147,37 +198,43 @@ export const LocationAutocomplete = React.forwardRef<
     }, []);
 
     // Handle input change with debouncing
-    const handleInputChange = useCallback((newValue: string) => {
-      setInputValue(newValue);
-      onValueChange?.(newValue);
+    const handleInputChange = useCallback(
+      (newValue: string) => {
+        setInputValue(newValue);
+        onValueChange?.(newValue);
 
-      // Clear previous timeout
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
+        // Clear previous timeout
+        if (debounceRef.current) {
+          clearTimeout(debounceRef.current);
+        }
 
-      // Debounce the search
-      debounceRef.current = setTimeout(() => {
-        searchPredictions(newValue);
-      }, 300);
-    }, [onValueChange, searchPredictions]);
+        // Debounce the search
+        debounceRef.current = setTimeout(() => {
+          searchPredictions(newValue);
+        }, 300);
+      },
+      [onValueChange, searchPredictions],
+    );
 
     // Handle location selection
-    const handleLocationSelect = useCallback((prediction: PlacePrediction) => {
-      const locationDetails: LocationDetails = {
-        placeId: prediction.place_id,
-        description: prediction.description,
-        mainText: prediction.structured_formatting.main_text,
-        secondaryText: prediction.structured_formatting.secondary_text,
-        types: prediction.types,
-      };
+    const handleLocationSelect = useCallback(
+      (prediction: PlacePrediction) => {
+        const locationDetails: LocationDetails = {
+          placeId: prediction.place_id,
+          description: prediction.description,
+          mainText: prediction.structured_formatting.main_text,
+          secondaryText: prediction.structured_formatting.secondary_text,
+          types: prediction.types,
+        };
 
-      setInputValue(prediction.description);
-      setIsOpen(false);
-      setPredictions([]);
-      onValueChange?.(prediction.description);
-      onLocationSelect?.(locationDetails);
-    }, [onLocationSelect, onValueChange]);
+        setInputValue(prediction.description);
+        setIsOpen(false);
+        setPredictions([]);
+        onValueChange?.(prediction.description);
+        onLocationSelect?.(locationDetails);
+      },
+      [onLocationSelect, onValueChange],
+    );
 
     // Clear input
     const handleClear = useCallback(() => {
@@ -245,13 +302,11 @@ export const LocationAutocomplete = React.forwardRef<
                 )}
               </div>
             </div>
-            {error && (
-              <p className="mt-1 text-sm text-destructive">{error}</p>
-            )}
+            {error && <p className="mt-1 text-sm text-destructive">{error}</p>}
           </div>
         </PopoverTrigger>
-        <PopoverContent 
-          className="w-[var(--radix-popover-trigger-width)] p-0" 
+        <PopoverContent
+          className="w-[var(--radix-popover-trigger-width)] p-0"
           align="start"
           sideOffset={4}
         >
@@ -259,7 +314,9 @@ export const LocationAutocomplete = React.forwardRef<
             <CommandList>
               {predictions.length === 0 && !isLoading ? (
                 <CommandEmpty>
-                  {inputValue.trim() ? "No locations found." : "Start typing to search locations"}
+                  {inputValue.trim()
+                    ? "No locations found."
+                    : "Start typing to search locations"}
                 </CommandEmpty>
               ) : (
                 <CommandGroup>
@@ -290,7 +347,7 @@ export const LocationAutocomplete = React.forwardRef<
         </PopoverContent>
       </Popover>
     );
-  }
+  },
 );
 
 LocationAutocomplete.displayName = "LocationAutocomplete";

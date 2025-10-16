@@ -5,17 +5,20 @@ Complete testing and visualization setup for the LangGraph email generation work
 ## 🎯 What's Included
 
 ### 🎨 LangGraph Studio (Visual UI)
+
 - **Visual workflow editor** with interactive graph
-- **Real-time execution** monitoring  
+- **Real-time execution** monitoring
 - **Step-by-step debugging** capabilities
 - **State inspection** at each node
 
 ### 🧪 Test Suites
+
 1. **Demo Test** - No API calls, pure workflow validation
 2. **Integration Test** - Comprehensive testing without OpenAI credits
 3. **OpenAI Verification** - Full workflow with real AI responses
 
 ### 📊 Detailed Logging
+
 - Step-by-step execution tracking
 - Agent performance metrics
 - Confidence scores and timing
@@ -24,6 +27,7 @@ Complete testing and visualization setup for the LangGraph email generation work
 ## 🚀 Quick Start
 
 ### 1. Launch LangGraph Studio (Visual UI)
+
 ```bash
 # Easy launcher with setup
 python launch_langgraph_studio.py
@@ -33,18 +37,21 @@ python launch_langgraph_studio.py
 ```
 
 ### 2. Run Demo Test (No Credits)
+
 ```bash
 # Creates workflow and sample data
 python test_workflow_demo.py
 ```
 
 ### 3. Run Integration Tests
+
 ```bash
 # Comprehensive testing (may fail on OpenAI quota)
 python test_integration_comprehensive.py
 ```
 
 ### 4. Run OpenAI Verification (Uses Credits)
+
 ```bash
 # Full workflow with real OpenAI API calls
 python test_with_openai_credits.py
@@ -53,19 +60,22 @@ python test_with_openai_credits.py
 ## 🎨 LangGraph Studio Features
 
 ### Visual Workflow
+
 ```
-START → Supervisor → Relevance Analyzer → Supervisor → Pain Point Researcher → 
-Supervisor → Value Matcher → Supervisor → Email Writer → Supervisor → 
+START → Supervisor → Relevance Analyzer → Supervisor → Pain Point Researcher →
+Supervisor → Value Matcher → Supervisor → Email Writer → Supervisor →
 Aggregator → Supervisor → END
 ```
 
 ### Interactive Features
+
 - **Node Inspection**: Click any agent to see details
-- **State Visualization**: View data flow between agents  
+- **State Visualization**: View data flow between agents
 - **Execution Tracking**: Watch workflow run in real-time
 - **Input/Output Editor**: Test with custom data
 
 ### Debug Tools
+
 - **Step-by-step execution**: Run one node at a time
 - **State inspection**: See state at each step
 - **Error tracking**: Debug failed executions
@@ -74,33 +84,41 @@ Aggregator → Supervisor → END
 ## 📋 Test Data Examples
 
 ### High-Quality Lead (Good for Testing)
+
 ```json
 {
   "company_name": "CloudScale Technologies",
-  "industry": "Cloud Infrastructure", 
+  "industry": "Cloud Infrastructure",
   "company_size": "100-250",
   "description": "Rapidly growing cloud infrastructure company serving Fortune 500 clients..."
 }
 ```
 
 ### Business Profile
+
 ```json
 {
   "company_name": "Genni AI",
   "value_proposition": "AI-powered lead generation with 300% conversion improvement",
-  "services": ["AI Lead Generation", "Email Personalization", "Sales Automation"]
+  "services": [
+    "AI Lead Generation",
+    "Email Personalization",
+    "Sales Automation"
+  ]
 }
 ```
 
 ## 🧪 Test Suite Details
 
 ### 1. Demo Test (`test_workflow_demo.py`)
+
 - ✅ **No API calls** - Safe to run anytime
 - ✅ **Workflow validation** - Ensures structure is correct
 - ✅ **Sample data generation** - Creates test data for Studio
 - ✅ **Configuration setup** - Prepares LangGraph Studio
 
-**Output**: 
+**Output**:
+
 ```
 ✅ Workflow created successfully!
 📊 Workflow type: <class 'langgraph.graph.state.CompiledStateGraph'>
@@ -108,24 +126,28 @@ Aggregator → Supervisor → END
 ```
 
 ### 2. Integration Test (`test_integration_comprehensive.py`)
+
 - 🔍 **Health checks** - Server and service validation
-- 📊 **Workflow info** - Agent and engine information  
+- 📊 **Workflow info** - Agent and engine information
 - 🧪 **Multiple scenarios** - High/medium/low relevance testing
 - ⚡ **Performance metrics** - Execution timing and success rates
 
 **Test Scenarios**:
+
 - **High Relevance**: B2B SaaS company (should score 0.8+)
-- **Medium Relevance**: Creative agency (should score 0.5-0.7)  
+- **Medium Relevance**: Creative agency (should score 0.5-0.7)
 - **Low Relevance**: Local hardware store (should score <0.5)
 - **Error Handling**: Tests recovery and graceful failure
 
 ### 3. OpenAI Verification (`test_with_openai_credits.py`)
+
 - 💳 **Uses real OpenAI credits** - Full workflow validation
 - 🤖 **All agents execute** - Complete 7-agent workflow
 - 📧 **Email generation** - Actual personalized email output
 - 📊 **Detailed results** - Comprehensive success metrics
 
 **Verification Steps**:
+
 1. OpenAI API key validation
 2. Server startup with AI connection
 3. Lead analysis with real AI
@@ -135,6 +157,7 @@ Aggregator → Supervisor → END
 ## 📊 Sample Output Logs
 
 ### Integration Test Output
+
 ```
 2025-08-17 15:30:45.123 | INFO  | [REQUEST] 🚀 Sending email generation request...
 2025-08-17 15:30:47.456 | INFO  | [RESPONSE] ⏱️ Request completed in 2.33 seconds
@@ -145,7 +168,8 @@ Aggregator → Supervisor → END
 2025-08-17 15:30:47.461 | INFO  | [RESULT]      2. Pain Point Researcher - Confidence: 0.88, Time: 0.52s
 ```
 
-### OpenAI Test Output  
+### OpenAI Test Output
+
 ```
 🎉 EMAIL GENERATION SUCCESSFUL!
 📊 WORKFLOW METRICS:
@@ -162,6 +186,7 @@ Aggregator → Supervisor → END
 ## 🔧 Configuration Files
 
 ### `langgraph.json` (Auto-generated)
+
 ```json
 {
   "dependencies": ["."],
@@ -173,6 +198,7 @@ Aggregator → Supervisor → END
 ```
 
 ### `.env` (Required)
+
 ```bash
 API_KEY=test-api-key
 OPENAI_API_KEY=your-openai-key  # For OpenAI tests
@@ -183,6 +209,7 @@ WEBHOOK_URL=http://localhost:3000/api/webhook
 ## 🎯 Usage Scenarios
 
 ### 1. Development & Debugging
+
 ```bash
 # Visual debugging in Studio
 python launch_langgraph_studio.py
@@ -190,6 +217,7 @@ python launch_langgraph_studio.py
 ```
 
 ### 2. CI/CD Testing
+
 ```bash
 # Automated testing without credits
 python test_integration_comprehensive.py
@@ -197,6 +225,7 @@ python test_integration_comprehensive.py
 ```
 
 ### 3. Production Validation
+
 ```bash
 # Full OpenAI workflow verification
 python test_with_openai_credits.py
@@ -204,6 +233,7 @@ python test_with_openai_credits.py
 ```
 
 ### 4. Performance Monitoring
+
 ```bash
 # Track workflow performance over time
 python test_integration_comprehensive.py > test_$(date +%Y%m%d_%H%M%S).log
@@ -212,12 +242,14 @@ python test_integration_comprehensive.py > test_$(date +%Y%m%d_%H%M%S).log
 ## 📈 Success Metrics
 
 ### Integration Test Success Criteria
+
 - ✅ **Health Check**: Server responds with "healthy" status
 - ✅ **Workflow Info**: All 7 agents are configured correctly
 - ✅ **Lead Analysis**: Returns relevance scores and assessments
 - ✅ **Email Generation**: Completes workflow (may have OpenAI errors)
 
-### OpenAI Test Success Criteria  
+### OpenAI Test Success Criteria
+
 - ✅ **API Key**: Valid OpenAI API key with available credits
 - ✅ **Lead Analysis**: Real AI analysis with confidence scores >0.7
 - ✅ **Email Generation**: Complete personalized email with effectiveness >0.8
@@ -228,22 +260,27 @@ python test_integration_comprehensive.py > test_$(date +%Y%m%d_%H%M%S).log
 ### Common Issues
 
 #### "OpenAI quota exceeded"
+
 - **Issue**: API credits exhausted
 - **Solution**: Add credits to OpenAI account or use demo tests
 
 #### "Server failed to start"
+
 - **Issue**: Port 8080 in use or dependency missing
 - **Solution**: Kill existing processes, check requirements.txt
 
 #### "Workflow compilation failed"
+
 - **Issue**: LangGraph configuration error
 - **Solution**: Run `python test_workflow_demo.py` to regenerate config
 
 #### "No agents info returned"
+
 - **Issue**: Authentication or server error
 - **Solution**: Check API_KEY in .env file
 
 ### Debug Steps
+
 1. **Check Health**: `curl http://localhost:8080/health`
 2. **Verify Config**: Ensure `langgraph.json` exists
 3. **Test Auth**: `curl -H "Authorization: Bearer test-api-key" http://localhost:8080/agents/info`
@@ -255,7 +292,7 @@ python test_integration_comprehensive.py > test_$(date +%Y%m%d_%H%M%S).log
 Your LangGraph workflow now has comprehensive testing and visualization capabilities:
 
 1. **🎨 Visual debugging** with LangGraph Studio
-2. **🧪 Automated testing** with detailed logging  
+2. **🧪 Automated testing** with detailed logging
 3. **💳 OpenAI verification** with real AI responses
 4. **📊 Performance monitoring** with metrics and timing
 

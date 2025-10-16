@@ -7,35 +7,39 @@ const templates = [
   {
     id: 1,
     name: "SaaS Partnership Outreach",
-    description: "Perfect for reaching out to SaaS companies for potential partnerships and collaborations.",
+    description:
+      "Perfect for reaching out to SaaS companies for potential partnerships and collaborations.",
     openRate: "24%",
     responseRate: "8%",
-    category: "Partnership"
+    category: "Partnership",
   },
   {
     id: 2,
     name: "Agency Service Proposal",
-    description: "Tailored template for marketing agencies offering specialized services to prospects.",
+    description:
+      "Tailored template for marketing agencies offering specialized services to prospects.",
     openRate: "31%",
     responseRate: "12%",
-    category: "Services"
+    category: "Services",
   },
   {
     id: 3,
     name: "Tech Startup Introduction",
-    description: "Engaging introduction template specifically designed for tech startup outreach.",
+    description:
+      "Engaging introduction template specifically designed for tech startup outreach.",
     openRate: "28%",
     responseRate: "9%",
-    category: "Introduction"
+    category: "Introduction",
   },
   {
     id: 4,
     name: "Follow-up Sequence",
-    description: "Professional follow-up template for nurturing leads that haven't responded yet.",
+    description:
+      "Professional follow-up template for nurturing leads that haven't responded yet.",
     openRate: "19%",
     responseRate: "6%",
-    category: "Follow-up"
-  }
+    category: "Follow-up",
+  },
 ];
 
 export function TemplatesPage() {
@@ -52,10 +56,15 @@ export function TemplatesPage() {
       {/* Templates Grid */}
       <div className="space-y-4">
         {templates.map((template) => (
-          <Card key={template.id} className="glass-card p-5 hover-scale transition-smooth cursor-pointer hover-accent">
+          <Card
+            key={template.id}
+            className="glass-card p-5 hover-scale transition-smooth cursor-pointer hover-accent"
+          >
             <div className="flex justify-between items-start mb-3">
               <div>
-                <h3 className="font-semibold text-base mb-2">{template.name}</h3>
+                <h3 className="font-semibold text-base mb-2">
+                  {template.name}
+                </h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   {template.description}
                 </p>
@@ -107,9 +116,7 @@ export function TemplatesPage() {
               Build a custom email template from scratch
             </p>
           </div>
-          <Button className="gradient-primary">
-            Get Started
-          </Button>
+          <Button className="gradient-primary">Get Started</Button>
         </div>
       </Card>
     </div>

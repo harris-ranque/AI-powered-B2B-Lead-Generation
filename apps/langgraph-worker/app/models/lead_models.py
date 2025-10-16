@@ -2,6 +2,7 @@
 Pydantic models for Genni CrewAI Worker
 """
 from pydantic import BaseModel, Field
+from pydantic import ConfigDict
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from enum import Enum
@@ -16,24 +17,26 @@ class LeadStatus(str, Enum):
     UNQUALIFIED = "unqualified"
 
 class ContactInfo(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
     """Contact information model"""
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    linkedin: Optional[str] = None
-    website: Optional[str] = None
+    email: Optional[str] = Field(default=None, alias="email")
+    phone: Optional[str] = Field(default=None, alias="phone")
+    linkedin: Optional[str] = Field(default=None, alias="linkedinUrl")
+    website: Optional[str] = Field(default=None, alias="website")
 
 class Lead(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
     """Lead data model"""
-    id: str = Field(..., description="Unique lead identifier")
-    company_name: str = Field(..., description="Company name")
-    contact_name: Optional[str] = Field(None, description="Primary contact name")
+    id: Optional[str] = Field(default=None, description="Unique lead identifier")
+    company_name: str = Field(..., alias="company", description="Company name")
+    contact_name: Optional[str] = Field(None, alias="name", description="Primary contact name")
     title: Optional[str] = Field(None, description="Contact title/position")
     industry: Optional[str] = Field(None, description="Industry classification")
     company_size: Optional[str] = Field(None, description="Company size (employees)")
     location: Optional[str] = Field(None, description="Company location")
     description: Optional[str] = Field(None, description="Company description")
-    website: Optional[str] = Field(None, description="Company website")
-    contact_info: Optional[ContactInfo] = Field(None, description="Contact details")
+    website: Optional[str] = Field(None, alias="websiteUrl", description="Company website")
+    contact_info: Optional[ContactInfo] = Field(None, alias="contactInfo", description="Contact details")
     status: LeadStatus = Field(LeadStatus.NEW, description="Lead status")
     
     # Business intelligence fields
@@ -47,39 +50,76 @@ class Lead(BaseModel):
     source: Optional[str] = Field(None, description="Lead source")
 
 class BusinessProfile(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
     """Business profile for personalization context"""
-    company_name: str = Field(..., description="Our company name")
+    company_name: str = Field(..., alias="companyName", description="Our company name")
     industry: str = Field(..., description="Our industry")
-    value_proposition: str = Field(..., description="Our core value proposition")
+    value_proposition: str = Field(..., alias="valueProposition", description="Our core value proposition")
     services: List[str] = Field(..., description="Our services/products")
-    target_markets: List[str] = Field(..., description="Our target markets")
-    key_differentiators: List[str] = Field(..., description="What makes us unique")
+    target_markets: List[str] = Field(..., alias="targetMarkets", description="Our target markets")
+    key_differentiators: List[str] = Field(..., alias="keyDifferentiators", description="What makes us unique")
     case_studies: List[Dict[str, Any]] = Field(default_factory=list, description="Success stories")
     contact_info: Dict[str, str] = Field(..., description="Our contact information")
 
+
+class CompetitorInsight(BaseModel):
+    """Structured competitor insight used in AI-generated analyses"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., description="Competitor company name")
+    website: Optional[str] = Field(default=None, description="Competitor website")
+    relevance_score: Optional[float] = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="Relative relevance score from 0-1 if provided",
+    )
+    summary: Optional[str] = Field(
+        default=None,
+        description="Short summary of the competitor's positioning",
+    )
+    key_strengths: List[str] = Field(
+        default_factory=list,
+        description="Notable strengths or differentiators for the competitor",
+    )
+    key_weaknesses: List[str] = Field(
+        default_factory=list,
+        description="Observed weaknesses or gaps for the competitor",
+    )
+    notes: Optional[str] = Field(
+        default=None,
+        description="Additional contextual notes about the competitor",
+    )
+
 class EmailRequirements(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
     """Email generation requirements"""
     tone: str = Field("professional", description="Email tone (professional, casual, friendly)")
     length: str = Field("medium", description="Email length (short, medium, long)")
-    call_to_action: str = Field(..., description="Desired call to action")
-    include_case_study: bool = Field(False, description="Include relevant case study")
+    call_to_action: str = Field("Schedule a call", alias="callToAction", description="Desired call to action")
+    include_case_study: bool = Field(False, alias="includeCaseStudy", description="Include relevant case study")
     personalization_level: str = Field("high", description="Personalization depth")
-    follow_up_sequence: bool = Field(False, description="Generate follow-up sequence")
+    follow_up_sequence: bool = Field(True, alias="followUpSequence", description="Generate follow-up sequence")
 
 class EmailGenerationRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
     """Request model for email generation"""
-    request_id: str = Field(..., description="Unique request identifier")
+    request_id: str = Field(..., alias="requestId", description="Unique request identifier")
     lead: Lead = Field(..., description="Lead information")
-    business_profile: BusinessProfile = Field(..., description="Our business context")
-    requirements: EmailRequirements = Field(..., description="Email requirements")
+    business_profile: BusinessProfile = Field(..., alias="businessProfile", description="Our business context")
+    requirements: EmailRequirements = Field(default_factory=EmailRequirements, description="Email requirements")
 
 class AgentResult(BaseModel):
     """Individual agent result"""
-    agent_name: str = Field(..., description="Agent name")
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    agent_name: str = Field(..., alias="agentName", description="Agent name")
     role: str = Field(..., description="Agent role")
     output: str = Field(..., description="Agent output")
-    confidence_score: float = Field(..., description="Confidence in result (0-1)")
-    execution_time: float = Field(..., description="Execution time in seconds")
+    confidence_score: float = Field(..., alias="confidenceScore", description="Confidence in result (0-1)")
+    execution_time: float = Field(..., alias="executionTime", description="Execution time in seconds")
 
 class EmailContent(BaseModel):
     """Generated email content"""
@@ -107,6 +147,13 @@ class EmailGenerationResult(BaseModel):
     agent_results: List[AgentResult] = Field(..., description="Individual agent outputs")
     processing_time: float = Field(..., description="Total processing time")
     recommendations: List[str] = Field(..., description="Strategic recommendations")
+    
+    # Deep research metadata
+    deep_research_used: bool = Field(default=False, description="Whether deep research (Perplexity) was used")
+    deep_research_reason: Optional[str] = Field(None, description="Reason for triggering deep research")
+    additional_credits_used: int = Field(default=0, description="Additional credits used for deep research")
+    missing_data_points: List[str] = Field(default_factory=list, description="Missing data points that triggered deep research")
+    data_completeness_score: float = Field(default=1.0, description="Base data completeness score (0-1)")
 
 class EmailGenerationResponse(BaseModel):
     """API response for email generation"""

@@ -2,6 +2,7 @@
   "name": "genni-app",
   "version": "1.0.0",
   "description": "AI-powered lead generation platform with intelligent email sequences",
+  "packageManager": "pnpm@10.5.2",
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
@@ -16,15 +17,24 @@
     "clean": "turbo clean",
     "type-check": "turbo type-check",
     "lint": "turbo lint",
-    "test": "turbo test",
+    "test": "./scripts/run-all-tests.sh",
+    "test:unit": "./scripts/run-all-tests.sh --unit-only",
+    "test:integration": "./scripts/run-all-tests.sh --integration-only",
+    "test:api": "./scripts/run-all-tests.sh --api-only",
+    "test:e2e": "./scripts/run-all-tests.sh --e2e-only",
+    "test:performance": "./scripts/run-all-tests.sh --performance",
+    "test:web": "turbo test --filter=@genni/web",
+    "test:worker": "turbo test --filter=@genni/langgraph-worker",
+    "test:watch": "turbo test:watch",
+    "test:ci": "turbo test:ci",
     "install-deps": "turbo install-deps",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
   },
   "devDependencies": {
-    "@turbo/gen": "^1.10.0",
-    "turbo": "^1.10.0",
-    "prettier": "^3.0.0",
-    "typescript": "^5.0.0"
+    "@turbo/gen": "^2.5.6",
+    "prettier": "^3.6.2",
+    "turbo": "^2.5.6",
+    "typescript": "^5.9.2"
   },
   "workspaces": [
     "apps/*",

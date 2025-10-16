@@ -5,23 +5,22 @@ interface CircularProgressProps {
   className?: string;
 }
 
-export function CircularProgress({ 
-  value, 
-  size = 60, 
+export function CircularProgress({
+  value,
+  size = 60,
   strokeWidth = 3,
-  className = "" 
+  className = "",
 }: CircularProgressProps) {
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const offset = circumference - (value / 100) * circumference;
 
   return (
-    <div className={`relative ${className}`} style={{ width: size, height: size }}>
-      <svg
-        width={size}
-        height={size}
-        className="transform -rotate-90"
-      >
+    <div
+      className={`relative ${className}`}
+      style={{ width: size, height: size }}
+    >
+      <svg width={size} height={size} className="transform -rotate-90">
         {/* Background circle */}
         <circle
           cx={size / 2}

@@ -1,18 +1,28 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
+import { requireAuth } from "../auth";
 
 export const markAsRead = mutation({
-  args: { 
-    notificationId: v.id("notifications") 
+  args: {
+    notificationId: v.id("notifications"),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
+    const user = await requireAuth(ctx);
+
+    const notification = await ctx.db.get(args.notificationId);
+    if (!notification || notification.userId !== user._id) {
+      throw new Error("Notification not found or access denied");
     }
 
-    // Placeholder for marking notifications as read
-    // Will be implemented when notification system is fully built
+    if (notification.read) {
+      return { success: true, alreadyRead: true };
+    }
+
+    await ctx.db.patch(args.notificationId, {
+      read: true,
+      readAt: Date.now(),
+    });
+
     return { success: true };
   },
 });
@@ -20,28 +30,38 @@ export const markAsRead = mutation({
 export const markAllAsRead = mutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
+    const user = await requireAuth(ctx);
+
+    const unreadNotifications = await ctx.db
+      .query("notifications")
+      .withIndex("by_user_read", (q) => q.eq("userId", user._id).eq("read", false))
+      .collect();
+
+    for (const notification of unreadNotifications) {
+      await ctx.db.patch(notification._id, {
+        read: true,
+        readAt: Date.now(),
+      });
     }
 
-    // Placeholder for marking all notifications as read
-    return { success: true };
+    return { success: true, updated: unreadNotifications.length };
   },
 });
 
 export const deleteNotification = mutation({
-  args: { 
-    notificationId: v.id("notifications") 
+  args: {
+    notificationId: v.id("notifications"),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
+    const user = await requireAuth(ctx);
+
+    const notification = await ctx.db.get(args.notificationId);
+    if (!notification || notification.userId !== user._id) {
+      throw new Error("Notification not found or access denied");
     }
 
-    // Placeholder for deleting a specific notification
-    // Will be implemented when notification system is fully built
+    await ctx.db.delete(args.notificationId);
+
     return { success: true };
   },
 });

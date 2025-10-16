@@ -5,6 +5,7 @@ Complete guide for visualizing and testing the LangGraph email generation workfl
 ## 🎯 Overview
 
 This guide shows you how to:
+
 1. **Visualize** the workflow in LangGraph Studio UI
 2. **Run comprehensive tests** with detailed logging
 3. **Debug** workflow execution step-by-step
@@ -13,6 +14,7 @@ This guide shows you how to:
 ## 🚀 Quick Start
 
 ### 1. Install Dependencies
+
 ```bash
 # Install LangGraph CLI (if not already installed)
 pip install langgraph-cli
@@ -22,6 +24,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. Launch LangGraph Studio
+
 ```bash
 # Easy launcher with setup
 python launch_langgraph_studio.py
@@ -31,11 +34,13 @@ langgraph studio --port 3001
 ```
 
 ### 3. Access the UI
+
 - **Studio URL**: http://localhost:3001
 - **Workflow**: Select `email_generation` from dropdown
 - **Visualization**: See complete agent workflow graph
 
 ### 4. Run Integration Tests
+
 ```bash
 # Comprehensive test suite
 python test_integration_comprehensive.py
@@ -47,18 +52,21 @@ python test_workflow_demo.py
 ## 🎨 LangGraph Studio Features
 
 ### Visual Workflow Editor
+
 - **Graph Visualization**: See all agents and connections
 - **Interactive Nodes**: Click to inspect agent details
 - **State Flow**: Track data flow between agents
 - **Real-time Updates**: Watch workflow execution live
 
 ### Debugging Tools
+
 - **Step-by-Step Execution**: Run workflow node by node
 - **State Inspection**: View state at each step
 - **Agent Outputs**: See individual agent results
 - **Error Tracking**: Debug failed executions
 
 ### Testing Interface
+
 - **Input Editor**: Provide custom test data
 - **Output Viewer**: See formatted results
 - **Performance Metrics**: Track execution times
@@ -69,12 +77,13 @@ python test_workflow_demo.py
 Our email generation workflow consists of:
 
 ```
-START → Supervisor → Relevance Analyzer → Supervisor → Pain Point Researcher → 
-Supervisor → Value Matcher → Supervisor → Email Writer → Supervisor → 
+START → Supervisor → Relevance Analyzer → Supervisor → Pain Point Researcher →
+Supervisor → Value Matcher → Supervisor → Email Writer → Supervisor →
 Follow-up Strategist (optional) → Supervisor → Aggregator → Supervisor → END
 ```
 
 ### Agent Roles:
+
 1. **Supervisor**: Routes between agents based on workflow stage
 2. **Relevance Analyzer**: Evaluates lead fit and qualification
 3. **Pain Point Researcher**: Identifies customer challenges
@@ -88,25 +97,30 @@ Follow-up Strategist (optional) → Supervisor → Aggregator → Supervisor →
 ### Test Scenarios
 
 #### 1. High Relevance Lead
+
 - **Company**: TechScale Solutions (B2B SaaS)
 - **Expected**: High relevance score, detailed email
 - **Agents**: All agents should execute successfully
 
-#### 2. Medium Relevance Lead  
+#### 2. Medium Relevance Lead
+
 - **Company**: Creative Design Studio (Services)
 - **Expected**: Medium relevance, simpler email
 - **Agents**: Standard workflow execution
 
 #### 3. Low Relevance Lead
+
 - **Company**: Local Hardware Store (Retail)
 - **Expected**: Low relevance, basic template
 - **Agents**: May skip advanced personalization
 
 #### 4. Error Handling
+
 - **Purpose**: Test error recovery and graceful failure
 - **Expected**: Proper error handling, minimal results
 
 #### 5. Follow-up Sequence
+
 - **Company**: Enterprise Corp (Large)
 - **Expected**: Multi-email sequence generation
 - **Agents**: Includes Follow-up Strategist
@@ -114,6 +128,7 @@ Follow-up Strategist (optional) → Supervisor → Aggregator → Supervisor →
 ### Test Outputs
 
 Each test provides detailed logging:
+
 ```
 2025-08-17 15:30:45.123 | INFO  | [REQUEST] 🚀 Sending email generation request...
 2025-08-17 15:30:47.456 | INFO  | [RESPONSE] ⏱️ Request completed in 2.33 seconds
@@ -129,16 +144,19 @@ Each test provides detailed logging:
 ### Common Issues
 
 #### 1. "unhashable type: 'dict'" Error
+
 - **Cause**: State serialization issues
 - **Fix**: Ensure datetime objects are stored as strings
 - **Status**: ✅ Fixed in latest version
 
 #### 2. JSON Serialization Errors
+
 - **Cause**: Webhook datetime serialization
 - **Fix**: Use `model_dump(mode='json')`
 - **Status**: ✅ Fixed in latest version
 
 #### 3. Routing Failures
+
 - **Cause**: Supervisor returning wrong type
 - **Fix**: Separate node function from router function
 - **Status**: ✅ Fixed in latest version
@@ -154,6 +172,7 @@ Each test provides detailed logging:
 ## 📈 Performance Monitoring
 
 ### Key Metrics
+
 - **Total Processing Time**: End-to-end workflow duration
 - **Agent Execution Times**: Individual agent performance
 - **Confidence Scores**: Agent result quality
@@ -161,6 +180,7 @@ Each test provides detailed logging:
 - **Success Rate**: Workflow completion rate
 
 ### Optimization Tips
+
 - Monitor relevance analyzer performance (often bottleneck)
 - Track OpenAI API response times
 - Watch memory usage for large workflows
@@ -169,6 +189,7 @@ Each test provides detailed logging:
 ## 🛠️ Configuration
 
 ### LangGraph Studio Config (`langgraph.json`)
+
 ```json
 {
   "dependencies": ["."],
@@ -180,6 +201,7 @@ Each test provides detailed logging:
 ```
 
 ### Environment Variables (`.env`)
+
 ```bash
 API_KEY=test-api-key
 OPENAI_API_KEY=your-openai-key
@@ -190,6 +212,7 @@ WEBHOOK_URL=http://localhost:3000/api/webhook
 ## 🎯 Testing Workflows
 
 ### 1. Visual Testing in Studio
+
 ```bash
 # Launch studio
 python launch_langgraph_studio.py
@@ -203,6 +226,7 @@ python launch_langgraph_studio.py
 ```
 
 ### 2. Automated Testing
+
 ```bash
 # Full test suite (requires OpenAI API key)
 python test_integration_comprehensive.py
@@ -212,6 +236,7 @@ python test_workflow_demo.py
 ```
 
 ### 3. Manual API Testing
+
 ```bash
 # Health check
 curl http://localhost:8080/health
@@ -232,6 +257,7 @@ curl -X POST http://localhost:8080/generate-email \
 ## 📋 Sample Test Data
 
 ### High-Quality Lead
+
 ```json
 {
   "id": "demo-lead-001",
@@ -246,6 +272,7 @@ curl -X POST http://localhost:8080/generate-email \
 ```
 
 ### Business Profile
+
 ```json
 {
   "company_name": "Genni AI",

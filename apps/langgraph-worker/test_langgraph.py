@@ -38,7 +38,11 @@ async def test_email_generation():
         services=["Lead Generation", "Email Personalization", "Sales Automation", "CRM Integration"],
         target_markets=["B2B SaaS", "Professional Services", "E-commerce"],
         key_differentiators=["AI-powered personalization", "Multi-agent analysis", "Real-time insights"],
-        contact_info={"email": "contact@genni.com", "phone": "+1-555-0123"}
+        contact_info={
+            "name": "Alex Rivera",
+            "email": "contact@genni.com",
+            "phone": "+1-555-0123",
+        }
     )
     
     requirements = EmailRequirements(

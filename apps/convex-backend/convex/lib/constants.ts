@@ -10,7 +10,7 @@ export const API_CONFIG = {
     MAX_RESULTS_PER_REQUEST: 20,
     MAX_RADIUS: 50000, // 50km in meters
   },
-  
+
   FINDYMAIL: {
     BASE_URL: "https://app.findymail.com/api",
     ENDPOINTS: {
@@ -23,7 +23,25 @@ export const API_CONFIG = {
     RATE_LIMIT: 300, // concurrent requests limit per documentation
     TIMEOUT: 30000, // 30 seconds for domain search, 15 seconds for name search
   },
-  
+
+  ICYPEAS: {
+    BASE_URL: "https://app.icypeas.com/api",
+    ENDPOINTS: {
+      EMAIL_SEARCH: "/email-search",
+      BULK_SEARCH: "/bulk-search",
+      READ_RESULTS: "/bulk-single-searchs/read",
+      GET_CREDITS: "/credits",
+      DOMAIN_SEARCH: "/sync/domain-search",
+      EMAIL_VERIFICATION: "/sync/email-verification",
+    },
+    RATE_LIMIT_SINGLE: 10, // 10 requests per second for single search
+    RATE_LIMIT_BULK: 1, // 1 request per second for bulk search
+    TIMEOUT: 15000, // 15 seconds
+    POLL_INTERVAL: 1000, // 1 second between polls
+    MAX_POLL_ATTEMPTS: 15, // Maximum 15 attempts (15 seconds)
+    BATCH_SIZE: 10, // Process in batches of 10
+  },
+
   LANGGRAPH_WORKER: {
     ENDPOINTS: {
       GENERATE_EMAIL: "/generate-email",
@@ -33,7 +51,7 @@ export const API_CONFIG = {
     },
     TIMEOUT: 120000, // 2 minutes
   },
-  
+
   STRIPE: {
     WEBHOOK_TOLERANCE: 300, // 5 minutes
     PRODUCTS: {
@@ -45,14 +63,8 @@ export const API_CONFIG = {
   },
 } as const;
 
-// Credit Costs
-export const CREDIT_COSTS = {
-  SEARCH: 1,
-  LEAD_ENRICHMENT: 2,
-  EMAIL_GENERATION: 3,
-  EMAIL_SEQUENCE: 5,
-  AI_ANALYSIS: 2,
-} as const;
+// Credit Costs - Import from environment-based config
+export { CREDIT_COSTS } from './config';
 
 // Business Rules
 export const BUSINESS_RULES = {
@@ -65,27 +77,27 @@ export const BUSINESS_RULES = {
     MAX_RESULTS_PRO: 100,
     MAX_RESULTS_ENTERPRISE: 500,
   },
-  
+
   CREDITS: {
     FREE_TRIAL_AMOUNT: 50,
     LOW_CREDIT_THRESHOLD: 10,
     MONTHLY_REFRESH_DAY: 1, // 1st of each month
   },
-  
+
   EMAIL: {
     MAX_SUBJECT_LENGTH: 100,
     MAX_BODY_LENGTH: 5000,
     MAX_PERSONALIZATION_NOTES: 10,
     FOLLOW_UP_DELAY_HOURS: 72,
   },
-  
+
   PROFILE: {
     MAX_SERVICES: 20,
     MAX_TARGET_MARKETS: 15,
     MAX_DIFFERENTIATORS: 10,
     MAX_CASE_STUDIES: 5,
   },
-  
+
   RATE_LIMITS: {
     SEARCH_PER_HOUR: 10,
     EMAIL_GENERATION_PER_HOUR: 50,
@@ -102,7 +114,7 @@ export const STATUS = {
     FAILED: "failed",
     CANCELLED: "cancelled",
   },
-  
+
   LEAD: {
     NEW: "new",
     QUALIFIED: "qualified",
@@ -111,28 +123,28 @@ export const STATUS = {
     CONVERTED: "converted",
     UNQUALIFIED: "unqualified",
   },
-  
+
   ENRICHMENT: {
     PENDING: "pending",
     IN_PROGRESS: "in_progress",
     COMPLETED: "completed",
     FAILED: "failed",
   },
-  
+
   EMAIL: {
     GENERATED: "generated",
     REVIEWED: "reviewed",
     SENT: "sent",
     RESPONDED: "responded",
   },
-  
+
   BILLING: {
     ACTIVE: "active",
     CANCELLED: "cancelled",
     PAST_DUE: "past_due",
     UNPAID: "unpaid",
   },
-  
+
   LANGGRAPH: {
     PENDING: "pending",
     PROCESSING: "processing",
@@ -147,41 +159,42 @@ export const ERROR_CODES = {
   UNAUTHORIZED: "UNAUTHORIZED",
   FORBIDDEN: "FORBIDDEN",
   INVALID_TOKEN: "INVALID_TOKEN",
-  
+
   // User Management
   USER_NOT_FOUND: "USER_NOT_FOUND",
   EMAIL_ALREADY_EXISTS: "EMAIL_ALREADY_EXISTS",
   INVALID_USER_DATA: "INVALID_USER_DATA",
-  
+
   // Credits & Billing
   INSUFFICIENT_CREDITS: "INSUFFICIENT_CREDITS",
+  PAYMENT_REQUIRED: "PAYMENT_REQUIRED",
   PLAN_LIMIT_EXCEEDED: "PLAN_LIMIT_EXCEEDED",
   PAYMENT_FAILED: "PAYMENT_FAILED",
   SUBSCRIPTION_INVALID: "SUBSCRIPTION_INVALID",
-  
+
   // Search & Leads
   INVALID_SEARCH_PARAMS: "INVALID_SEARCH_PARAMS",
   GOOGLE_MAPS_ERROR: "GOOGLE_MAPS_ERROR",
   LEAD_NOT_FOUND: "LEAD_NOT_FOUND",
   ENRICHMENT_FAILED: "ENRICHMENT_FAILED",
-  
+
   // AI & Email Generation
   LANGGRAPH_TIMEOUT: "LANGGRAPH_TIMEOUT",
   LANGGRAPH_ERROR: "LANGGRAPH_ERROR",
   EMAIL_GENERATION_FAILED: "EMAIL_GENERATION_FAILED",
   INVALID_EMAIL_PARAMS: "INVALID_EMAIL_PARAMS",
-  
+
   // External APIs
   FINDYMAIL_ERROR: "FINDYMAIL_ERROR",
   STRIPE_WEBHOOK_ERROR: "STRIPE_WEBHOOK_ERROR",
   RATE_LIMIT_EXCEEDED: "RATE_LIMIT_EXCEEDED",
-  
+
   // General
   VALIDATION_ERROR: "VALIDATION_ERROR",
   INTERNAL_ERROR: "INTERNAL_ERROR",
   RESOURCE_NOT_FOUND: "RESOURCE_NOT_FOUND",
   CONCURRENT_UPDATE: "CONCURRENT_UPDATE",
-  
+
   // System Control
   SYSTEM_MAINTENANCE: "SYSTEM_MAINTENANCE",
 } as const;
@@ -192,51 +205,38 @@ export const EMAIL_TEMPLATES = {
     subject: "Welcome to Genni! 🚀",
     template: "welcome",
   },
-  
+
   SEARCH_COMPLETED: {
     subject: "Your lead search is complete! {{leadCount}} leads found",
     template: "search_completed",
   },
-  
+
   CREDITS_LOW: {
     subject: "Running low on credits - {{creditsLeft}} remaining",
     template: "credits_low",
   },
-  
+
   PLAN_UPGRADED: {
     subject: "Welcome to {{planName}}! Your account has been upgraded",
     template: "plan_upgraded",
   },
-  
+
   MONTHLY_SUMMARY: {
     subject: "Your monthly Genni summary",
     template: "monthly_summary",
   },
 } as const;
 
-// AI Configuration
-export const AI_CONFIG = {
-  LANGGRAPH_AGENTS: {
-    RELEVANCE_ANALYZER: "relevance_analyzer",
-    PAIN_POINT_RESEARCHER: "pain_point_researcher",
-    VALUE_MATCHER: "value_matcher",
-    EMAIL_WRITER: "email_writer",
-    FOLLOW_UP_STRATEGIST: "follow_up_strategist",
-    SUPERVISOR: "supervisor",
-    AGGREGATOR: "aggregator",
-  },
-  
-  CONFIDENCE_THRESHOLDS: {
-    LOW: 0.3,
-    MEDIUM: 0.6,
-    HIGH: 0.8,
-  },
-  
-  RELEVANCE_WEIGHTS: {
-    PAIN_POINTS: 0.4,
-    VALUE_MATCHES: 0.3,
-    CONFIDENCE: 0.3,
-  },
+// AI Configuration - Import configurable parts from config
+export { AI_CONFIG } from './config';
+
+// Static AI constants that don't need configuration
+export const LANGGRAPH_AGENTS = {
+  BUSINESS_INTELLIGENCE: "business_intelligence",
+  EMAIL_GENERATION: "email_generation",
+  QUALITY_ASSURANCE: "quality_assurance",
+  RELEVANCE_ANALYZER: "relevance_analyzer",
+  AGGREGATOR: "aggregator",
 } as const;
 
 // Webhook Events
@@ -248,7 +248,7 @@ export const WEBHOOK_EVENTS = {
     INVOICE_PAYMENT_SUCCEEDED: "invoice.payment_succeeded",
     INVOICE_PAYMENT_FAILED: "invoice.payment_failed",
   },
-  
+
   LANGGRAPH: {
     EMAIL_GENERATION_COMPLETED: "email_generation_completed",
     LEAD_ANALYSIS_COMPLETED: "lead_analysis_completed",

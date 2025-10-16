@@ -1,19 +1,18 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { auth, getCurrentUser, requireAuth, requireAdmin } from "../auth";
+import { auth, requireAuth, requireAdmin } from "../auth";
 
 // Get current user profile
 export const getCurrentUserData = query({
   args: {},
   handler: async (ctx) => {
-    const user = await getCurrentUser(ctx);
-    
-    if (!user) {
-      return null;
-    }
-
-    // Return user data (excluding sensitive fields if needed)
-    return user;
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+    return user || null;
   },
 });
 
@@ -24,7 +23,7 @@ export const getUserById = query({
     await requireAdmin(ctx);
 
     const user = await ctx.db.get(args.userId);
-    
+
     if (!user) {
       throw new Error("User not found");
     }
@@ -68,16 +67,21 @@ export const getUserStats = query({
       .take(5);
 
     // Calculate completion rate
-    const completedSearches = searches.filter(s => s.status === "completed");
-    const completionRate = searches.length > 0 ? 
-      (completedSearches.length / searches.length) * 100 : 0;
+    const completedSearches = searches.filter((s) => s.status === "completed");
+    const completionRate =
+      searches.length > 0
+        ? (completedSearches.length / searches.length) * 100
+        : 0;
 
     // Calculate average relevance score
-    const leadsWithAnalysis = leads.filter(l => l.aiAnalysis?.relevanceScore);
-    const avgRelevanceScore = leadsWithAnalysis.length > 0 ?
-      leadsWithAnalysis.reduce((sum, lead) => 
-        sum + (lead.aiAnalysis?.relevanceScore || 0), 0
-      ) / leadsWithAnalysis.length : 0;
+    const leadsWithAnalysis = leads.filter((l) => l.aiAnalysis?.relevanceScore);
+    const avgRelevanceScore =
+      leadsWithAnalysis.length > 0
+        ? leadsWithAnalysis.reduce(
+            (sum, lead) => sum + (lead.aiAnalysis?.relevanceScore || 0),
+            0,
+          ) / leadsWithAnalysis.length
+        : 0;
 
     return {
       totalSearches: searches.length,
@@ -85,7 +89,7 @@ export const getUserStats = query({
       totalEmailSequences: emailSequences.length,
       completionRate: Math.round(completionRate),
       avgRelevanceScore: Math.round(avgRelevanceScore * 100),
-      recentSearches: recentSearches.map(search => ({
+      recentSearches: recentSearches.map((search) => ({
         _id: search._id,
         name: search.name,
         status: search.status,
@@ -100,7 +104,7 @@ export const getUserStats = query({
 
 // Get user activity timeline
 export const getUserActivity = query({
-  args: { 
+  args: {
     limit: v.optional(v.number()),
     offset: v.optional(v.number()),
   },
@@ -136,19 +140,19 @@ export const getUserActivity = query({
 
     // Combine and sort all activities
     const activities = [
-      ...creditTransactions.map(tx => ({
+      ...creditTransactions.map((tx) => ({
         type: "credit_transaction" as const,
         id: tx._id,
         timestamp: tx.createdAt,
         data: tx,
       })),
-      ...searches.map(search => ({
+      ...searches.map((search) => ({
         type: "search" as const,
         id: search._id,
         timestamp: search.createdAt,
         data: search,
       })),
-      ...notifications.map(notif => ({
+      ...notifications.map((notif) => ({
         type: "notification" as const,
         id: notif._id,
         timestamp: notif.createdAt,
@@ -189,11 +193,14 @@ export const getUserPreferences = query({
       throw new Error("Authentication required");
     }
 
-    return user.preferences || {
-      emailNotifications: true,
-      language: "en",
-      timezone: "UTC",
-    };
+    return (
+      user.preferences || {
+        emailNotifications: true,
+        language: "en",
+        timezone: "UTC",
+        theme: "neon-pulse",
+      }
+    );
   },
 });
 

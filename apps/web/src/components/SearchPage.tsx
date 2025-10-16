@@ -20,15 +20,15 @@ export function SearchPage({ onSearch }: SearchPageProps) {
 
   const quickSearches = [
     "Tech Startups in Austin",
-    "Marketing Agencies NYC", 
-    "SaaS Companies Bay Area"
+    "Marketing Agencies NYC",
+    "SaaS Companies Bay Area",
   ];
 
   const handleSearch = () => {
     const searchParams = {
       businessType,
       location,
-      resultCount
+      resultCount,
     };
     onSearch?.(searchParams);
   };
@@ -86,7 +86,7 @@ export function SearchPage({ onSearch }: SearchPageProps) {
           />
         </div>
 
-        <Button 
+        <Button
           onClick={handleSearch}
           className="w-full gradient-primary glow-primary hover:opacity-90 transition-smooth"
           size="lg"
@@ -98,7 +98,9 @@ export function SearchPage({ onSearch }: SearchPageProps) {
 
       {/* Quick Searches */}
       <div className="space-y-4">
-        <h3 className="text-base font-medium text-muted-foreground">Quick Searches</h3>
+        <h3 className="text-base font-medium text-muted-foreground">
+          Quick Searches
+        </h3>
         <div className="flex flex-wrap gap-2">
           {quickSearches.map((search, index) => (
             <Button
@@ -108,9 +110,9 @@ export function SearchPage({ onSearch }: SearchPageProps) {
               className="rounded-full bg-secondary hover:bg-secondary/80 transition-smooth"
               onClick={() => {
                 // Parse quick search and populate fields
-                setBusinessType(search.split(' in ')[0]);
-                if (search.includes(' in ')) {
-                  setLocation(search.split(' in ')[1]);
+                setBusinessType(search.split(" in ")[0]);
+                if (search.includes(" in ")) {
+                  setLocation(search.split(" in ")[1]);
                 }
               }}
             >

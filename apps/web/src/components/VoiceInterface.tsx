@@ -9,11 +9,11 @@ interface VoiceInterfaceProps {
   onClose?: () => void;
 }
 
-export function VoiceInterface({ 
-  isListening = false, 
-  onStartListening, 
+export function VoiceInterface({
+  isListening = false,
+  onStartListening,
   onStopListening,
-  onClose 
+  onClose,
 }: VoiceInterfaceProps) {
   const [isRecording, setIsRecording] = useState(isListening);
 
@@ -48,21 +48,41 @@ export function VoiceInterface({
         {/* Outer glow rings */}
         {isRecording && (
           <>
-            <div className="absolute inset-0 rounded-full border-2 border-primary/30 voice-pulse" style={{ width: '200px', height: '200px', left: '-25px', top: '-25px' }} />
-            <div className="absolute inset-0 rounded-full border border-primary/20 voice-pulse" style={{ width: '240px', height: '240px', left: '-45px', top: '-45px', animationDelay: '0.5s' }} />
+            <div
+              className="absolute inset-0 rounded-full border-2 border-primary/30 voice-pulse"
+              style={{
+                width: "200px",
+                height: "200px",
+                left: "-25px",
+                top: "-25px",
+              }}
+            />
+            <div
+              className="absolute inset-0 rounded-full border border-primary/20 voice-pulse"
+              style={{
+                width: "240px",
+                height: "240px",
+                left: "-45px",
+                top: "-45px",
+                animationDelay: "0.5s",
+              }}
+            />
           </>
         )}
-        
+
         {/* Main circle */}
-        <div className={`
+        <div
+          className={`
           relative w-[150px] h-[150px] rounded-full
           flex items-center justify-center
           transition-all duration-300
-          ${isRecording 
-            ? 'bg-gradient-to-br from-primary to-accent glow-primary' 
-            : 'glass border-primary/20'
+          ${
+            isRecording
+              ? "bg-gradient-to-br from-primary to-accent glow-primary"
+              : "glass border-primary/20"
           }
-        `}>
+        `}
+        >
           {/* Inner circle with waveform effect */}
           {isRecording && (
             <div className="w-20 h-20 rounded-full bg-background/20 flex items-center justify-center">
@@ -81,17 +101,22 @@ export function VoiceInterface({
 
       {/* Controls */}
       <div className="flex items-center gap-6">
-        <Button variant="ghost" size="icon" className="w-12 h-12 rounded-full glass">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="w-12 h-12 rounded-full glass"
+        >
           <div className="w-6 h-6 bg-muted rounded-sm" />
         </Button>
-        
-        <Button 
-          size="icon" 
+
+        <Button
+          size="icon"
           className={`
             w-16 h-16 rounded-full transition-all duration-300
-            ${isRecording 
-              ? 'bg-red-500 hover:bg-red-600 glow-voice' 
-              : 'gradient-primary glow-primary'
+            ${
+              isRecording
+                ? "bg-red-500 hover:bg-red-600 glow-voice"
+                : "gradient-primary glow-primary"
             }
           `}
           onClick={handleToggleRecording}
@@ -102,8 +127,12 @@ export function VoiceInterface({
             <Mic className="h-6 w-6" />
           )}
         </Button>
-        
-        <Button variant="ghost" size="icon" className="w-12 h-12 rounded-full glass">
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="w-12 h-12 rounded-full glass"
+        >
           <X className="h-5 w-5" />
         </Button>
       </div>

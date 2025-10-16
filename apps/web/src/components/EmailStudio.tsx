@@ -5,15 +5,16 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Mail, Send, Edit, Copy, Trash2, Plus, Bot, Sparkles } from "lucide-react";
-import { AIEmailGenerator } from "./AIEmailGenerator";
+import { Mail, Send, Edit, Copy, Trash2, Plus, Sparkles } from "lucide-react";
 import type { EmailGenerationResult } from "@/lib/api-client";
 
 export function EmailStudio() {
-  const [aiGeneratedEmails, setAiGeneratedEmails] = useState<EmailGenerationResult[]>([]);
-  
+  const [aiGeneratedEmails, setAiGeneratedEmails] = useState<
+    EmailGenerationResult[]
+  >([]);
+
   const handleEmailGenerated = (result: EmailGenerationResult) => {
-    setAiGeneratedEmails(prev => [result, ...prev]);
+    setAiGeneratedEmails((prev) => [result, ...prev]);
   };
 
   const templates = [
@@ -21,26 +22,26 @@ export function EmailStudio() {
       id: 1,
       name: "Partnership Outreach",
       subject: "Partnership opportunity with {{company}}",
-      openRate: "32%",
-      responseRate: "8%",
-      category: "Partnership"
+      openRate: "-", // TODO: Connect to real template performance data
+      responseRate: "-",
+      category: "Partnership",
     },
     {
       id: 2,
       name: "SaaS Introduction",
       subject: "Quick question about {{company}}'s workflow",
-      openRate: "28%",
-      responseRate: "12%",
-      category: "Sales"
+      openRate: "-", // TODO: Connect to real template performance data
+      responseRate: "-",
+      category: "Sales",
     },
     {
       id: 3,
       name: "Follow Up",
       subject: "Following up on our conversation",
-      openRate: "45%",
-      responseRate: "15%",
-      category: "Follow-up"
-    }
+      openRate: "-", // TODO: Connect to real template performance data
+      responseRate: "-",
+      category: "Follow-up",
+    },
   ];
 
   return (
@@ -50,8 +51,13 @@ export function EmailStudio() {
           <div className="mb-8">
             <div className="flex justify-between items-center">
               <div>
-                <h1 className="text-4xl font-bold text-foreground mb-2">Email Studio</h1>
-                <p className="text-muted-foreground">AI-powered email creation and template management for lead outreach.</p>
+                <h1 className="text-4xl font-bold text-foreground mb-2">
+                  Email Studio
+                </h1>
+                <p className="text-muted-foreground">
+                  AI-powered email creation and template management for lead
+                  outreach.
+                </p>
               </div>
               <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
                 <Plus className="h-4 w-4 mr-2" />
@@ -60,134 +66,186 @@ export function EmailStudio() {
             </div>
           </div>
 
-          <Tabs defaultValue="ai-generator" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="ai-generator" className="flex items-center gap-2">
-                <Bot className="h-4 w-4" />
-                AI Email Generator
-              </TabsTrigger>
-              <TabsTrigger value="templates" className="flex items-center gap-2">
+          <Tabs defaultValue="templates" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger
+                value="templates"
+                className="flex items-center gap-2"
+              >
                 <Mail className="h-4 w-4" />
                 Templates
               </TabsTrigger>
-              <TabsTrigger value="performance" className="flex items-center gap-2">
+              <TabsTrigger
+                value="performance"
+                className="flex items-center gap-2"
+              >
                 <Sparkles className="h-4 w-4" />
                 Performance
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="ai-generator" className="mt-6">
-              <AIEmailGenerator onEmailGenerated={handleEmailGenerated} />
-            </TabsContent>
-
             <TabsContent value="templates" className="mt-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Template List */}
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground mb-4">
+                    Email Templates
+                  </h3>
+                  <div className="space-y-4">
+                    {templates.map((template) => (
+                      <Card
+                        key={template.id}
+                        className="p-4 bg-card border-border hover:border-primary/30 transition-colors cursor-pointer"
+                      >
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <h4 className="font-medium text-foreground">
+                              {template.name}
+                            </h4>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {template.subject}
+                            </p>
+                          </div>
+                          <Badge
+                            variant="secondary"
+                            className="bg-primary/10 text-primary"
+                          >
+                            {template.category}
+                          </Badge>
+                        </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Template List */}
-            <div>
-              <h3 className="text-lg font-semibold text-foreground mb-4">Email Templates</h3>
-              <div className="space-y-4">
-                {templates.map((template) => (
-                  <Card key={template.id} className="p-4 bg-card border-border hover:border-primary/30 transition-colors cursor-pointer">
-                    <div className="flex justify-between items-start mb-3">
+                        <div className="flex justify-between items-center">
+                          <div className="flex gap-4 text-xs text-muted-foreground">
+                            <span>Open: {template.openRate}</span>
+                            <span>Response: {template.responseRate}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-destructive"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Email Composer */}
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground mb-4">
+                    Compose Email
+                  </h3>
+                  <Card className="p-6 bg-card border-border">
+                    <div className="space-y-4">
                       <div>
-                        <h4 className="font-medium text-foreground">{template.name}</h4>
-                        <p className="text-sm text-muted-foreground mt-1">{template.subject}</p>
+                        <label className="text-sm font-medium text-foreground mb-2 block">
+                          Template Name
+                        </label>
+                        <Input
+                          placeholder="Enter template name..."
+                          className="bg-input border-border"
+                        />
                       </div>
-                      <Badge variant="secondary" className="bg-primary/10 text-primary">
-                        {template.category}
-                      </Badge>
-                    </div>
-                    
-                    <div className="flex justify-between items-center">
-                      <div className="flex gap-4 text-xs text-muted-foreground">
-                        <span>Open: {template.openRate}</span>
-                        <span>Response: {template.responseRate}</span>
+
+                      <div>
+                        <label className="text-sm font-medium text-foreground mb-2 block">
+                          Subject Line
+                        </label>
+                        <Input
+                          placeholder="Email subject..."
+                          className="bg-input border-border"
+                        />
                       </div>
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
-                          <Edit className="h-3 w-3" />
+
+                      <div>
+                        <label className="text-sm font-medium text-foreground mb-2 block">
+                          Email Body
+                        </label>
+                        <Textarea
+                          placeholder="Hi {{firstName}},&#10;&#10;I hope this email finds you well..."
+                          className="bg-input border-border min-h-[200px]"
+                        />
+                      </div>
+
+                      <div className="bg-muted/20 p-3 rounded-lg">
+                        <h4 className="text-sm font-medium text-foreground mb-2">
+                          Available Variables:
+                        </h4>
+                        <div className="text-xs text-muted-foreground space-y-1">
+                          <div>{"{{firstName}}"} - Lead's first name</div>
+                          <div>{"{{lastName}}"} - Lead's last name</div>
+                          <div>{"{{company}}"} - Company name</div>
+                          <div>{"{{position}}"} - Job title</div>
+                          <div>{"{{yourName}}"} - Your name</div>
+                          <div>{"{{yourCompany}}"} - Your company</div>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3">
+                        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground flex-1">
+                          <Mail className="h-4 w-4 mr-2" />
+                          Save Template
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive">
-                          <Trash2 className="h-3 w-3" />
+                        <Button variant="outline" className="border-border">
+                          <Send className="h-4 w-4 mr-2" />
+                          Test Send
                         </Button>
                       </div>
                     </div>
                   </Card>
-                ))}
-              </div>
-            </div>
-
-            {/* Email Composer */}
-            <div>
-              <h3 className="text-lg font-semibold text-foreground mb-4">Compose Email</h3>
-              <Card className="p-6 bg-card border-border">
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-foreground mb-2 block">Template Name</label>
-                    <Input placeholder="Enter template name..." className="bg-input border-border" />
-                  </div>
-                  
-                  <div>
-                    <label className="text-sm font-medium text-foreground mb-2 block">Subject Line</label>
-                    <Input placeholder="Email subject..." className="bg-input border-border" />
-                  </div>
-                  
-                  <div>
-                    <label className="text-sm font-medium text-foreground mb-2 block">Email Body</label>
-                    <Textarea 
-                      placeholder="Hi {{firstName}},&#10;&#10;I hope this email finds you well..."
-                      className="bg-input border-border min-h-[200px]"
-                    />
-                  </div>
-                  
-                  <div className="bg-muted/20 p-3 rounded-lg">
-                    <h4 className="text-sm font-medium text-foreground mb-2">Available Variables:</h4>
-                    <div className="text-xs text-muted-foreground space-y-1">
-                      <div>{"{{firstName}}"} - Lead's first name</div>
-                      <div>{"{{lastName}}"} - Lead's last name</div>
-                      <div>{"{{company}}"} - Company name</div>
-                      <div>{"{{position}}"} - Job title</div>
-                      <div>{"{{yourName}}"} - Your name</div>
-                      <div>{"{{yourCompany}}"} - Your company</div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex gap-3">
-                    <Button className="bg-primary hover:bg-primary/90 text-primary-foreground flex-1">
-                      <Mail className="h-4 w-4 mr-2" />
-                      Save Template
-                    </Button>
-                    <Button variant="outline" className="border-border">
-                      <Send className="h-4 w-4 mr-2" />
-                      Test Send
-                    </Button>
-                  </div>
                 </div>
-              </Card>
-            </div>
-          </div>
+              </div>
             </TabsContent>
 
             <TabsContent value="performance" className="mt-6">
               {/* AI Generated Emails */}
               {aiGeneratedEmails.length > 0 && (
                 <Card className="p-6 mb-6">
-                  <h3 className="text-lg font-semibold text-foreground mb-4">Recent AI Generated Emails</h3>
+                  <h3 className="text-lg font-semibold text-foreground mb-4">
+                    Recent AI Generated Emails
+                  </h3>
                   <div className="space-y-3">
                     {aiGeneratedEmails.slice(0, 3).map((email, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
+                      >
                         <div>
-                          <div className="font-medium text-sm">{email.primary_email.subject}</div>
+                          <div className="font-medium text-sm">
+                            {email.primary_email.subject}
+                          </div>
                           <div className="text-xs text-muted-foreground">
-                            Relevance: {(email.relevance_score * 100).toFixed(0)}% • 
-                            Effectiveness: {(email.primary_email.estimated_effectiveness * 100).toFixed(0)}%
+                            Relevance:{" "}
+                            {(email.relevance_score * 100).toFixed(0)}% •
+                            Effectiveness:{" "}
+                            {(
+                              email.primary_email.estimated_effectiveness * 100
+                            ).toFixed(0)}
+                            %
                           </div>
                         </div>
-                        <Badge variant="secondary" className="bg-green-100 text-green-800">
+                        <Badge
+                          variant="secondary"
+                          className="bg-green-100 text-green-800"
+                        >
                           AI Generated
                         </Badge>
                       </div>
@@ -198,23 +256,33 @@ export function EmailStudio() {
 
               {/* Email Performance */}
               <Card className="p-6 bg-card border-border">
-                <h3 className="text-lg font-semibold text-foreground mb-4">Email Performance</h3>
+                <h3 className="text-lg font-semibold text-foreground mb-4">
+                  Email Performance
+                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-primary">1,247</div>
-                    <div className="text-sm text-muted-foreground">Emails Sent</div>
+                    <div className="text-sm text-muted-foreground">
+                      Emails Sent
+                    </div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-primary">34%</div>
-                    <div className="text-sm text-muted-foreground">Open Rate</div>
+                    <div className="text-sm text-muted-foreground">
+                      Open Rate
+                    </div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-primary">12%</div>
-                    <div className="text-sm text-muted-foreground">Response Rate</div>
+                    <div className="text-sm text-muted-foreground">
+                      Response Rate
+                    </div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-primary">2.8%</div>
-                    <div className="text-sm text-muted-foreground">Conversion Rate</div>
+                    <div className="text-sm text-muted-foreground">
+                      Conversion Rate
+                    </div>
                   </div>
                 </div>
               </Card>

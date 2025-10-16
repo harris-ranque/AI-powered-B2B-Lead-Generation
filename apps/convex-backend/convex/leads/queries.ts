@@ -29,13 +29,15 @@ export const getLeadsBySearch = query({
 
 // Export leads (internal function)
 export const exportLeads = query({
-  args: { 
+  args: {
     userId: v.id("users"),
     searchId: v.optional(v.id("searches")),
   },
   handler: async (ctx, args) => {
     // This is an internal export function, used by other backend functions
-    let query = ctx.db.query("leads").withIndex("by_user", (q) => q.eq("userId", args.userId));
+    let query = ctx.db
+      .query("leads")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId));
 
     if (args.searchId) {
       const searchId = args.searchId;
@@ -48,7 +50,7 @@ export const exportLeads = query({
     const leads = await query.collect();
 
     // Format leads for export
-    return leads.map(lead => ({
+    return leads.map((lead) => ({
       id: lead._id,
       name: lead.businessName,
       address: lead.location.formattedAddress,
@@ -67,7 +69,7 @@ export const exportLeads = query({
 
 // Get user leads with pagination (OPTIMIZED)
 export const getUserLeads = query({
-  args: { 
+  args: {
     limit: v.optional(v.number()),
     offset: v.optional(v.number()),
     searchId: v.optional(v.id("searches")),
@@ -94,9 +96,7 @@ export const getUserLeads = query({
         .filter((q) => q.eq(q.field("userId"), user._id));
     }
 
-    const leads = await query
-      .order("desc")
-      .take(limit + offset);
+    const leads = await query.order("desc").take(limit + offset);
 
     return leads.slice(offset);
   },
@@ -144,7 +144,7 @@ export const getEmailSequences = query({
       .collect();
 
     // Format as email sequences
-    return emailRequests.map(request => ({
+    return emailRequests.map((request) => ({
       id: request._id,
       requestId: request.requestId,
       status: request.status,
@@ -185,30 +185,31 @@ export const getLeadStats = query({
     // Single pass through leads for all calculations
     for (const lead of leads) {
       totalLeads++;
-      
+
       if (lead.enrichmentStatus === "completed") {
         enrichedLeads++;
       }
-      
+
       if (lead.aiAnalysis) {
         analyzedLeads++;
-        
+
         if (lead.aiAnalysis.relevanceScore) {
           relevanceSum += lead.aiAnalysis.relevanceScore;
           relevanceCount++;
         }
       }
-      
+
       if (lead.status === "qualified") {
         qualifiedLeads++;
       }
-      
+
       if (lead.status === "contacted") {
         contactedLeads++;
       }
     }
 
-    const avgRelevanceScore = relevanceCount > 0 ? relevanceSum / relevanceCount : 0;
+    const avgRelevanceScore =
+      relevanceCount > 0 ? relevanceSum / relevanceCount : 0;
 
     return {
       totalLeads,
@@ -216,13 +217,13 @@ export const getLeadStats = query({
       analyzedLeads,
       qualifiedLeads,
       contactedLeads,
-      enrichmentRate: totalLeads > 0 ? 
-        Math.round((enrichedLeads / totalLeads) * 100) : 0,
-      analysisRate: totalLeads > 0 ? 
-        Math.round((analyzedLeads / totalLeads) * 100) : 0,
+      enrichmentRate:
+        totalLeads > 0 ? Math.round((enrichedLeads / totalLeads) * 100) : 0,
+      analysisRate:
+        totalLeads > 0 ? Math.round((analyzedLeads / totalLeads) * 100) : 0,
       avgRelevanceScore: Math.round(avgRelevanceScore * 100),
-      conversionRate: totalLeads > 0 ? 
-        Math.round((qualifiedLeads / totalLeads) * 100) : 0,
+      conversionRate:
+        totalLeads > 0 ? Math.round((qualifiedLeads / totalLeads) * 100) : 0,
     };
   },
 });

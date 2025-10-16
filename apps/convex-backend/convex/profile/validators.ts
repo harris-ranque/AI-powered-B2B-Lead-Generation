@@ -15,7 +15,11 @@ export const profileCompletenessValidator = v.object({
 
 // Profile import validation
 export const importDataValidator = v.object({
-  source: v.union(v.literal("linkedin"), v.literal("website"), v.literal("manual")),
+  source: v.union(
+    v.literal("linkedin"),
+    v.literal("website"),
+    v.literal("manual"),
+  ),
   companyName: v.optional(v.string()),
   industry: v.optional(v.string()),
   description: v.optional(v.string()),
@@ -37,36 +41,38 @@ export const sectionUpdateValidator = v.union(
     industry: v.optional(v.string()),
     valueProposition: v.optional(v.string()),
   }),
-  
+
   // Services section
   v.object({
     section: v.literal("services"),
     services: v.array(v.string()),
   }),
-  
+
   // Targeting section
   v.object({
     section: v.literal("targeting"),
     targetMarkets: v.array(v.string()),
   }),
-  
+
   // Differentiators section
   v.object({
     section: v.literal("differentiators"),
     keyDifferentiators: v.array(v.string()),
   }),
-  
+
   // Case studies section
   v.object({
     section: v.literal("case_studies"),
-    caseStudies: v.array(v.object({
-      title: v.string(),
-      client: v.string(),
-      results: v.string(),
-      metrics: v.any(),
-    })),
+    caseStudies: v.array(
+      v.object({
+        title: v.string(),
+        client: v.string(),
+        results: v.string(),
+        metrics: v.any(),
+      }),
+    ),
   }),
-  
+
   // Contact info section
   v.object({
     section: v.literal("contact_info"),
@@ -74,7 +80,7 @@ export const sectionUpdateValidator = v.union(
     phone: v.optional(v.string()),
     website: v.optional(v.string()),
     linkedin: v.optional(v.string()),
-  })
+  }),
 );
 
 // Profile quality scoring
@@ -103,8 +109,10 @@ export const profileAnalytics = v.object({
   emailsGenerated: v.number(),
   avgRelevanceScore: v.number(),
   lastUsed: v.number(),
-  topPerformingElements: v.array(v.object({
-    element: v.string(),
-    impact: v.number(),
-  })),
+  topPerformingElements: v.array(
+    v.object({
+      element: v.string(),
+      impact: v.number(),
+    }),
+  ),
 });

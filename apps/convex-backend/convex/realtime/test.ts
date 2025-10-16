@@ -4,14 +4,16 @@ import { internal } from "../_generated/api";
 
 // Test the broadcasting system integration
 export const testBroadcastSystem = mutation({
-  args: { 
-    userId: v.id("users"), 
-    message: v.string() 
+  args: {
+    userId: v.id("users"),
+    message: v.string(),
   },
   handler: async (ctx, args) => {
-    console.log(`Testing broadcast system for user ${args.userId}: ${args.message}`);
-    
-    // Test real-time broadcasting  
+    console.log(
+      `Testing broadcast system for user ${args.userId}: ${args.message}`,
+    );
+
+    // Test real-time broadcasting
     await ctx.runMutation(internal.realtime.broadcaster.broadcast, {
       userId: args.userId,
       type: "test_message",
@@ -31,10 +33,10 @@ export const testSSEConnections = query({
   args: {},
   handler: async (ctx, args) => {
     // This would normally access the SSE manager, but for now just return test data
-    return { 
+    return {
       message: "SSE test endpoint reached",
       timestamp: Date.now(),
-      status: "functional"
+      status: "functional",
     };
   },
 });
@@ -50,7 +52,7 @@ export const testBroadcastPriorities = mutation({
     ];
 
     const priorityMap = { 1: "low", 3: "normal", 5: "high" } as const;
-    
+
     for (const test of testMessages) {
       await ctx.runMutation(internal.realtime.broadcaster.broadcast, {
         userId: args.userId,

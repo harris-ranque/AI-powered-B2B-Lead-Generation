@@ -139,7 +139,12 @@ class IntegrationTestSuite:
                 "Scalable automation",
                 "Advanced analytics"
             ],
-            contact_info={"email": "contact@genni.ai", "phone": "555-GENNI-AI", "website": "https://genni.ai"}
+            contact_info={
+                "name": "Alex Rivera",
+                "email": "contact@genni.ai",
+                "phone": "555-GENNI-AI",
+                "website": "https://genni.ai",
+            }
         )
         
         if scenario == TestScenario.HIGH_RELEVANCE:
