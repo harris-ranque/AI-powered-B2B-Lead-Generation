@@ -103,6 +103,8 @@ Thumbs.db
 
 # Railway
 .railway/
+.env.railway
+*.env.railway
 
 # Convex
 .env.local

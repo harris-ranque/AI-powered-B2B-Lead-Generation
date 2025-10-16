@@ -8,7 +8,9 @@
       "Bash(npx convex env:*)",
       "Bash(pnpm type-check:*)",
       "Bash(git pull:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(git log:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

@@ -24,10 +24,12 @@ export const validateApiKey = action({
       );
     }
 
-    // TODO: Replace with proper query when available
-    const apiKey: any = await ctx.runQuery(
-      api.userApiKeys.queries.getUserApiKeys,
-      {},
+    // Get the API key with full details using internal query
+    const apiKey = await ctx.runQuery(
+      internal.userApiKeys.internal.getApiKeyById,
+      {
+        keyId: args.keyId,
+      },
     );
 
     if (!apiKey) {
@@ -109,10 +111,12 @@ export const validateAllApiKeys = action({
       return { success: true, results: [] };
     }
 
-    // TODO: Replace with proper query when available
+    // Get all API keys using internal query with full details
     const apiKeys = await ctx.runQuery(
-      api.userApiKeys.queries.getUserApiKeys,
-      {},
+      internal.userApiKeys.internal.getUserApiKeysInternal,
+      {
+        userId: user._id,
+      },
     );
 
     const results: any[] = [];

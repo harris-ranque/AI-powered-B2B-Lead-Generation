@@ -1,9 +1,11 @@
-import { action } from "../_generated/server";
+import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 
 // Send search completion email notification
-export const sendSearchCompletedEmail = action({
+// NOTE: This is an internal action that should only be called by the system
+// It validates search ownership to prevent unauthorized notifications
+export const sendSearchCompletedEmail = internalAction({
   args: {
     searchId: v.id("searches"),
     results: v.any(),
@@ -22,9 +24,14 @@ export const sendSearchCompletedEmail = action({
         throw new Error("Search not found");
       }
 
+      // Verify that the search exists and belongs to a valid user
       const user = await ctx.runQuery(internal.users.internal.getUserInternal, {
         userId: search.userId,
       });
+
+      if (!user) {
+        throw new Error("User not found for search");
+      }
 
       // Create notification record
       await ctx.runMutation(

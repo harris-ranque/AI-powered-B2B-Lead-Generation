@@ -1061,7 +1061,7 @@ export const completeSearch: any = action({
       // Send completion notification
       try {
         await ctx.runAction(
-          "notifications/actions:sendSearchCompletedEmail" as any,
+          internal.notifications.actions.sendSearchCompletedEmail,
           {
             searchId: args.searchId,
             results: results,

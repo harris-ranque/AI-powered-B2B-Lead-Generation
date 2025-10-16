@@ -30,10 +30,19 @@ function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
 }
 
-/** Copy file preserving structure */
+/** Copy file preserving structure with path traversal protection */
 function copyFile(src, destRoot, srcRoot) {
   const rel = path.relative(srcRoot, src);
   const dest = path.join(destRoot, rel);
+
+  // Prevent path traversal attacks
+  const resolvedDest = path.resolve(dest);
+  const resolvedDestRoot = path.resolve(destRoot);
+
+  if (!resolvedDest.startsWith(resolvedDestRoot)) {
+    throw new Error(`Path traversal detected: ${src}`);
+  }
+
   ensureDir(path.dirname(dest));
   fs.copyFileSync(src, dest);
 }
