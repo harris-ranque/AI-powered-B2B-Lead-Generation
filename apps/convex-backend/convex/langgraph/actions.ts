@@ -2,7 +2,6 @@ import { action } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
-import { resolveUserKeys } from "../lib/keyResolver";
 
 // Generate personalized email using LangGraph
 export const generateEmail: unknown = action({
@@ -96,7 +95,9 @@ export const generateEmail: unknown = action({
 
     const providerKeys =
       user.plan === "enterprise"
-        ? await resolveUserKeys(ctx, user._id)
+        ? await ctx.runQuery(api.userApiKeys.queries.resolveUserProviderKeys, {
+            userId: user._id,
+          })
         : {};
 
     const serializedProviderKeys = Object.fromEntries(
