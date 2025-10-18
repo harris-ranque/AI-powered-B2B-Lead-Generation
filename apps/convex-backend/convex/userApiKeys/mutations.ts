@@ -98,8 +98,12 @@ export const upsertApiKey = mutation({
 
     const existingKey = await ctx.db
       .query("userApiKeys")
-      .filter((q) => q.eq(q.field("userId"), user._id))
-      .filter((q) => q.eq(q.field("provider"), args.provider))
+      .withIndex("by_user_provider_active", (q) =>
+        q
+          .eq("userId", user._id)
+          .eq("provider", args.provider)
+          .eq("isActive", true),
+      )
       .unique();
 
     const encryptedKey = encryptApiKey(args.apiKey);
