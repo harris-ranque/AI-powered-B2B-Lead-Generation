@@ -268,8 +268,27 @@ export const searchGoogleMaps: any = action({
         }
       }
 
-      // Get Google Maps API key
-      const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+      // Get Google Maps API key (use user's key for enterprise users)
+      let googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+
+      if (user?.plan === "enterprise") {
+        try {
+          const keyResult = await ctx.runAction(
+            "userApiKeys/actions:getDecryptedApiKey" as any,
+            {
+              provider: "google_maps",
+              userId: search.userId,
+            },
+          );
+          googleMapsApiKey = keyResult.apiKey;
+        } catch (error) {
+          // For enterprise users, API keys are required
+          throw new Error(
+            "Enterprise users must provide their own Google Maps API key. Please add your API key in Settings."
+          );
+        }
+      }
+
       if (!googleMapsApiKey) {
         throw new Error("Google Maps API key not configured");
       }

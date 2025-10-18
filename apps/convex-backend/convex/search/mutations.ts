@@ -103,6 +103,35 @@ export const createSearch = mutation({
 
         const user = await requireAuth(ctx);
 
+        // Validate enterprise users have required API keys
+        if (user.plan === "enterprise") {
+          const apiKeys = await ctx.db
+            .query("userApiKeys")
+            .withIndex("by_user", (q) => q.eq("userId", user._id))
+            .filter((q) => q.eq(q.field("isActive"), true))
+            .filter((q) => q.eq(q.field("validated"), true))
+            .collect();
+
+          const hasOpenAI = apiKeys.some((key) => key.provider === "openai");
+          const hasGoogleMaps = apiKeys.some((key) => key.provider === "google_maps");
+          const hasFindyMail = apiKeys.some((key) => key.provider === "findymail");
+          const hasTavily = apiKeys.some((key) => key.provider === "tavily");
+          const hasPerplexity = apiKeys.some((key) => key.provider === "perplexity");
+
+          const missingKeys: string[] = [];
+          if (!hasOpenAI) missingKeys.push("OpenAI");
+          if (!hasGoogleMaps) missingKeys.push("Google Maps");
+          if (!hasFindyMail) missingKeys.push("FindyMail");
+          if (!hasTavily) missingKeys.push("Tavily");
+          if (!hasPerplexity) missingKeys.push("Perplexity");
+
+          if (missingKeys.length > 0) {
+            throw new Error(
+              `Enterprise users must provide their own API keys. Missing: ${missingKeys.join(", ")}. Please add your API keys in Settings before starting a search.`
+            );
+          }
+        }
+
         const now = Date.now();
 
         const baseSearchDoc = {
@@ -200,6 +229,35 @@ export const createSearchCompleted = mutation({
         };
 
         const user = await requireAuth(ctx);
+
+        // Validate enterprise users have required API keys
+        if (user.plan === "enterprise") {
+          const apiKeys = await ctx.db
+            .query("userApiKeys")
+            .withIndex("by_user", (q) => q.eq("userId", user._id))
+            .filter((q) => q.eq(q.field("isActive"), true))
+            .filter((q) => q.eq(q.field("validated"), true))
+            .collect();
+
+          const hasOpenAI = apiKeys.some((key) => key.provider === "openai");
+          const hasGoogleMaps = apiKeys.some((key) => key.provider === "google_maps");
+          const hasFindyMail = apiKeys.some((key) => key.provider === "findymail");
+          const hasTavily = apiKeys.some((key) => key.provider === "tavily");
+          const hasPerplexity = apiKeys.some((key) => key.provider === "perplexity");
+
+          const missingKeys: string[] = [];
+          if (!hasOpenAI) missingKeys.push("OpenAI");
+          if (!hasGoogleMaps) missingKeys.push("Google Maps");
+          if (!hasFindyMail) missingKeys.push("FindyMail");
+          if (!hasTavily) missingKeys.push("Tavily");
+          if (!hasPerplexity) missingKeys.push("Perplexity");
+
+          if (missingKeys.length > 0) {
+            throw new Error(
+              `Enterprise users must provide their own API keys. Missing: ${missingKeys.join(", ")}. Please add your API keys in Settings before starting a search.`
+            );
+          }
+        }
 
         const now = Date.now();
 

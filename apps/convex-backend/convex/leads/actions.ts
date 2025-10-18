@@ -398,15 +398,9 @@ export const enrichLeads: any = action({
           );
           userApiKey = keyResult.apiKey;
         } catch (error) {
-          // Will fallback to system API key in EnrichmentService
-          logWithCorrelation(
-            "warn",
-            correlation,
-            "Enterprise user API key not available, falling back to system key",
-            {
-              provider: providerType,
-              userId: user._id,
-            },
+          // For enterprise users, API keys are required
+          throw new Error(
+            `Enterprise users must provide their own ${providerType} API key. Please add your API key in Settings.`
           );
         }
       }
