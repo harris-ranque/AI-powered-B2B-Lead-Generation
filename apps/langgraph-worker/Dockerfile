@@ -49,7 +49,8 @@ RUN pip install --no-cache-dir \
     requests==2.31.0 \
     python-multipart==0.0.6 \
     aiohttp==3.9.0 \
-    psutil==5.9.0
+    psutil==5.9.0 \
+    "googlemaps>=4.10.0,<5.0.0"
 
 # Install newer compatible versions of AI libraries
 RUN pip install --no-cache-dir \
