@@ -1153,8 +1153,12 @@ export default defineSchema({
   // User API Keys - For Starter tier users who bring their own API keys
   userApiKeys: defineTable({
     userId: v.id("users"),
-    service: v.union(
+    provider: v.union(
       v.literal("openai"),
+      v.literal("tavily"),
+      v.literal("perplexity"),
+      v.literal("google_places"),
+      // Legacy enrichment providers still supported for backwards compatibility
       v.literal("google_maps"),
       v.literal("findymail"),
       v.literal("icypeas"),
@@ -1165,9 +1169,9 @@ export default defineSchema({
     keyHash: v.string(), // Hash for quick lookup/validation
 
     // Validation status
-    isValid: v.boolean(),
-    lastValidated: v.optional(v.number()),
-    validationError: v.optional(v.string()),
+    validated: v.boolean(),
+    validatedAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
 
     // Usage tracking
     usageCount: v.number(),
@@ -1181,13 +1185,13 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
-    .index("by_user_service", ["userId", "service"])
+    .index("by_user_and_provider", ["userId", "provider"])
     .index("by_hash", ["keyHash"])
-    .index("by_service", ["service"])
+    .index("by_provider", ["provider"])
     .index("by_active", ["isActive"])
     // Compound indexes for API key validation queries
-    .index("by_user_service_active", ["userId", "service", "isActive"])
-    .index("by_user_active_valid", ["userId", "isActive", "isValid"]),
+    .index("by_user_provider_active", ["userId", "provider", "isActive"])
+    .index("by_user_active_valid", ["userId", "isActive", "validated"]),
 
   // Usage Tracking - Track user activity per billing period
   usageTracking: defineTable({

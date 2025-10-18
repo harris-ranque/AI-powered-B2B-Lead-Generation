@@ -5,11 +5,11 @@ with rich business intelligence integration.
 """
 import time
 from typing import Dict, Any, List
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field, ConfigDict
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
+from ...utils.research_clients import ClientRegistry
 from ...models.lead_models import (
     AgentResult,
     BusinessProfile,
@@ -188,6 +188,9 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
     requirements = state["requirements"]
     business_intelligence = state.get("business_intelligence", {})
     
+    provider_keys = state.get("provider_keys") or {}
+    registry = ClientRegistry.get_instance()
+
     logger.info(f"Starting email generation for {lead.company_name}")
     
     try:
@@ -246,12 +249,12 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         
         # Initialize LLM for email generation
         # gpt-5-nano uses max_completion_tokens instead of max_tokens
-        llm = ChatOpenAI(
+        llm = registry.get_openai_client(
+            api_key=provider_keys.get("openai"),
             model=settings.default_model,
-            temperature=0.4,  # Slightly higher for creative email writing
-            max_completion_tokens=settings.max_tokens,  # Use Railway MAX_TOKENS_OPTIONAL config (10000)
-            reasoning_effort="minimal",  # Optimize for speed with gpt-5-nano
-            openai_api_key=settings.openai_api_key
+            temperature=0.4,
+            max_completion_tokens=settings.max_tokens,
+            reasoning_effort="minimal",
         ).with_structured_output(EmailSequence)
         
         # Create comprehensive email generation prompt

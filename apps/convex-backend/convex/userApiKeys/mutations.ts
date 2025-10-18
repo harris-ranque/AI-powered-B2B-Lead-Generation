@@ -1,57 +1,105 @@
+import crypto from "node:crypto";
+
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 
-// Simple encryption/decryption functions (in production, use proper encryption)
-function encryptApiKey(key: string): string {
-  // In production, use proper encryption like AES
-  return Buffer.from(key).toString("base64");
+export const SUPPORTED_PROVIDERS = [
+  "openai",
+  "tavily",
+  "perplexity",
+  "google_places",
+  // Legacy enrichment providers remain for backwards compatibility
+  "google_maps",
+  "findymail",
+  "icypeas",
+  "apify",
+] as const;
+
+export const providerValidator = v.union(
+  ...SUPPORTED_PROVIDERS.map((provider) => v.literal(provider)),
+);
+
+const AES_ALGORITHM = "aes-256-gcm";
+const IV_LENGTH = 12; // Recommended IV size for GCM
+
+function resolveEncryptionKey(): Buffer {
+  const secret =
+    process.env.USER_API_KEY_SECRET ||
+    process.env.CONVEX_SITE_SECRET ||
+    (process.env.NODE_ENV === "production" ? undefined : "development-secret");
+
+  if (!secret) {
+    throw new Error("USER_API_KEY_SECRET environment variable is required");
+  }
+
+  if (secret === "development-secret") {
+    console.warn(
+      "Using fallback encryption key. Set USER_API_KEY_SECRET for production environments.",
+    );
+  }
+
+  // Derive a 32-byte key for AES-256 from the secret
+  return crypto.createHash("sha256").update(secret).digest();
 }
 
-function decryptApiKey(encryptedKey: string): string {
-  // In production, use proper decryption
-  return Buffer.from(encryptedKey, "base64").toString("utf8");
+function encryptApiKey(key: string): string {
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(AES_ALGORITHM, resolveEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(key, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  return Buffer.concat([iv, authTag, encrypted]).toString("base64");
+}
+
+export function decryptApiKey(encryptedKey: string): string {
+  const payload = Buffer.from(encryptedKey, "base64");
+  const iv = payload.subarray(0, IV_LENGTH);
+  const authTag = payload.subarray(IV_LENGTH, IV_LENGTH + 16);
+  const ciphertext = payload.subarray(IV_LENGTH + 16);
+
+  const decipher = crypto.createDecipheriv(
+    AES_ALGORITHM,
+    resolveEncryptionKey(),
+    iv,
+  );
+  decipher.setAuthTag(authTag);
+
+  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  return decrypted.toString("utf8");
 }
 
 function hashApiKey(key: string): string {
-  // Simple hash for lookup (in production, use proper hashing)
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) {
-    const char = key.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32-bit integer
+  return crypto.createHash("sha256").update(key).digest("hex");
+}
+
+export function ensureUserCanManageKeys(plan: string) {
+  if (!plan) {
+    throw new Error("User plan missing for API key operation");
   }
-  return Math.abs(hash).toString(16);
+
+  // Starter historically supported BYOK for enrichment, enterprise requires it.
+  const allowedPlans = new Set(["starter", "enterprise", "business"]);
+  if (!allowedPlans.has(plan)) {
+    throw new Error("API key management is not enabled for this plan");
+  }
 }
 
 // Add or update API key
 export const upsertApiKey = mutation({
   args: {
-    service: v.union(
-      v.literal("openai"),
-      v.literal("google_maps"),
-      v.literal("findymail"),
-      v.literal("icypeas"),
-      v.literal("apify"),
-    ),
+    provider: providerValidator,
     keyName: v.string(),
     apiKey: v.string(),
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
+    ensureUserCanManageKeys(user.plan);
 
-    // Only starter tier users can manage their own API keys
-    if (user.plan !== "starter") {
-      throw new Error(
-        "API key management is only available for Starter tier users",
-      );
-    }
-
-    // Check if key already exists for this service
     const existingKey = await ctx.db
       .query("userApiKeys")
       .filter((q) => q.eq(q.field("userId"), user._id))
-      .filter((q) => q.eq(q.field("service"), args.service))
+      .filter((q) => q.eq(q.field("provider"), args.provider))
       .unique();
 
     const encryptedKey = encryptApiKey(args.apiKey);
@@ -59,18 +107,17 @@ export const upsertApiKey = mutation({
 
     const keyData = {
       userId: user._id,
-      service: args.service,
+      provider: args.provider,
       keyName: args.keyName,
       encryptedKey,
       keyHash,
-      isValid: false, // Will be validated separately
-      usageCount: 0,
+      validated: false, // Must be validated explicitly
+      usageCount: existingKey?.usageCount ?? 0,
       isActive: true,
       updatedAt: Date.now(),
     };
 
     if (existingKey) {
-      // Update existing key
       await ctx.db.patch(existingKey._id, keyData);
 
       return {
@@ -78,19 +125,18 @@ export const upsertApiKey = mutation({
         keyId: existingKey._id,
         action: "updated",
       };
-    } else {
-      // Create new key
-      const keyId = await ctx.db.insert("userApiKeys", {
-        ...keyData,
-        createdAt: Date.now(),
-      });
-
-      return {
-        success: true,
-        keyId,
-        action: "created",
-      };
     }
+
+    const keyId = await ctx.db.insert("userApiKeys", {
+      ...keyData,
+      createdAt: Date.now(),
+    });
+
+    return {
+      success: true,
+      keyId,
+      action: "created",
+    };
   },
 });
 
@@ -101,13 +147,7 @@ export const deleteApiKey = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-
-    // Only starter tier users can manage their own API keys
-    if (user.plan !== "starter") {
-      throw new Error(
-        "API key management is only available for Starter tier users",
-      );
-    }
+    ensureUserCanManageKeys(user.plan);
 
     const apiKey = await ctx.db.get(args.keyId);
 
@@ -133,13 +173,7 @@ export const toggleApiKey = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-
-    // Only starter tier users can manage their own API keys
-    if (user.plan !== "starter") {
-      throw new Error(
-        "API key management is only available for Starter tier users",
-      );
-    }
+    ensureUserCanManageKeys(user.plan);
 
     const apiKey = await ctx.db.get(args.keyId);
 
@@ -163,21 +197,14 @@ export const toggleApiKey = mutation({
 // Update API key usage (internal use)
 export const recordApiKeyUsage = mutation({
   args: {
-    service: v.union(
-      v.literal("openai"),
-      v.literal("google_maps"),
-      v.literal("findymail"),
-      v.literal("icypeas"),
-      v.literal("apify"),
-    ),
+    provider: providerValidator,
     userId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    // Find the active API key for this service and user
     const apiKey = await ctx.db
       .query("userApiKeys")
       .filter((q) => q.eq(q.field("userId"), args.userId))
-      .filter((q) => q.eq(q.field("service"), args.service))
+      .filter((q) => q.eq(q.field("provider"), args.provider))
       .filter((q) => q.eq(q.field("isActive"), true))
       .unique();
 
@@ -197,8 +224,8 @@ export const recordApiKeyUsage = mutation({
 export const updateValidationStatus = mutation({
   args: {
     keyId: v.id("userApiKeys"),
-    isValid: v.boolean(),
-    validationError: v.optional(v.string()),
+    validated: v.boolean(),
+    lastError: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const apiKey = await ctx.db.get(args.keyId);
@@ -208,9 +235,9 @@ export const updateValidationStatus = mutation({
     }
 
     await ctx.db.patch(args.keyId, {
-      isValid: args.isValid,
-      lastValidated: Date.now(),
-      validationError: args.validationError || undefined,
+      validated: args.validated,
+      validatedAt: Date.now(),
+      lastError: args.lastError || undefined,
       updatedAt: Date.now(),
     });
 

@@ -11,12 +11,12 @@ from typing import List, Dict, Any, Optional
 
 # Initialize Sentry SDK before other imports
 import sentry_sdk
-from .utils.config import get_settings, validate_required_settings
+from .utils.config import get_settings, validate_optional_settings
 
 # Get settings first to configure Sentry
 settings = get_settings()
 try:
-    validate_required_settings()
+    validate_optional_settings()
 except ValueError as config_error:
     logging.getLogger(__name__).critical(
         "LangGraph worker configuration invalid: %s",
@@ -50,13 +50,20 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .models.lead_models import Lead, EmailGenerationRequest, EmailGenerationResponse
+from .models.lead_models import (
+    Lead,
+    EmailGenerationRequest,
+    EmailGenerationResponse,
+    ProviderKeyValidationRequest,
+    ProviderKeyValidationResponse,
+)
 from .langgraph.state import EmailGenerationState
 from .langgraph.workflow import create_email_generation_workflow, execute_email_generation, execute_with_streaming
 from .utils.webhook import WebhookClient
 from .utils.performance import single_replica_optimizer
 from .utils.concurrent_handler import concurrent_handler
 from .utils.logger import setup_logger, log_request_details, log_response_details, log_error_details
+from .utils.key_validation import validate_user_key
 
 # Configure logging
 logger = setup_logger(__name__)
@@ -226,6 +233,19 @@ async def health_check():
     logger.info(f"Health check: Memory={health_response['performance']['memory_percent']}%, Queue={health_response['performance']['queue_size']}, Active={health_response['performance']['active_tasks']}")
     return health_response
 
+
+@app.post("/validate-key", response_model=ProviderKeyValidationResponse)
+async def validate_key_endpoint(
+    request: ProviderKeyValidationRequest,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """Validate provider API keys for BYOK flows."""
+
+    logger.info("Validating provider key", extra={"provider": request.provider})
+    result = await validate_user_key(request.provider, request.key)
+    return ProviderKeyValidationResponse(**result)
+
+
 @app.get("/stats")
 async def get_stats():
     """Get concurrent handler and system statistics"""
@@ -348,14 +368,26 @@ async def generate_email(
             })
 
             logger.info(f"[LangGraph] Processing email generation for lead: {request.lead.company_name} (client: {client_id})")
-            log_request_details(logger, request.dict(), "/generate-email")
+            log_request_details(
+                logger,
+                request.model_dump(exclude={"provider_keys"}, exclude_none=True),
+                "/generate-email",
+            )
+
+            provider_keys_payload = (
+                request.provider_keys.model_dump(exclude_none=True)
+                if request.provider_keys
+                else {}
+            )
 
             # Execute LangGraph workflow
             result = await execute_email_generation(
                 lead=request.lead,
                 business_profile=request.business_profile,
                 requirements=request.requirements,
-                request_id=request.request_id
+                request_id=request.request_id,
+                provider_keys=provider_keys_payload,
+                user_id=request.user_id,
             )
 
             return result

@@ -4,11 +4,20 @@ Supports three tiers: Tavily (fast), Exa (semantic), Perplexity (comprehensive).
 """
 
 import asyncio
+import hashlib
+import os
+import threading
 import time
-from typing import Dict, Any, List, Optional, Literal
+from collections import OrderedDict
+from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Callable, Dict, List, Optional, Tuple, Literal
+
 import aiohttp
+import googlemaps
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
+
 from ..utils.config import get_settings
 from ..utils.logger import setup_logger
 from ..utils.tavily_tool import TavilySearchTool, TavilySearchResult
@@ -48,7 +57,7 @@ class TavilyClient:
     Target: 2-3 seconds response time, basic business information.
     """
     
-    def __init__(self):
+    def __init__(self, api_key: Optional[str] = None):
         # Initialize with Tavily-specific configuration optimized for business research
         tavily_config = {
             'max_results': getattr(settings, 'tavily_max_results', 5),
@@ -62,9 +71,11 @@ class TavilyClient:
             'timeout': getattr(settings, 'tavily_timeout', 10.0)  # Changed from 5.0s
         }
         
-        self.tavily_tool = TavilySearchTool(**tavily_config)
+        resolved_key = api_key or getattr(settings, 'tavily_api_key', None)
+        self.tavily_tool = TavilySearchTool(tavily_api_key=resolved_key, **tavily_config)
         self.timeout = tavily_config['timeout']
-        
+        self.api_key = resolved_key
+
         # Check if tool initialized successfully
         if not self.tavily_tool.tool:
             logger.warning("Tavily tool not initialized - check API key configuration")
@@ -471,8 +482,8 @@ class PerplexityClient:
     Target: 10-15 seconds response time, comprehensive analysis with citations.
     """
     
-    def __init__(self):
-        self.api_key = getattr(settings, 'perplexity_api_key', None)
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or getattr(settings, 'perplexity_api_key', None)
         self.base_url = "https://api.perplexity.ai"
         self.timeout = 20.0  # Longer timeout for comprehensive analysis
         
@@ -635,7 +646,7 @@ class PerplexityClient:
     def _calculate_perplexity_confidence(self, content: str, citations: List[Dict]) -> float:
         """Calculate confidence score for Perplexity results"""
         score = 0.0
-        
+
         # Base score for content length and quality
         if content:
             word_count = len(content.split())
@@ -645,7 +656,7 @@ class PerplexityClient:
                 score += 0.4
             elif word_count > 100:
                 score += 0.2
-                
+
         # Score for citations
         if len(citations) >= 5:
             score += 0.3
@@ -653,7 +664,7 @@ class PerplexityClient:
             score += 0.2
         elif len(citations) >= 1:
             score += 0.1
-            
+
         # Bonus for comprehensive coverage (check for key business topics)
         business_keywords = [
             "business model", "revenue", "market", "competitive", "customers",
@@ -661,13 +672,148 @@ class PerplexityClient:
         ]
         content_lower = content.lower() if content else ""
         keyword_coverage = sum(1 for keyword in business_keywords if keyword in content_lower)
-        
+
         if keyword_coverage >= 7:
             score += 0.1
         elif keyword_coverage >= 5:
             score += 0.05
-            
+
         return min(1.0, score)
+
+
+@dataclass(frozen=True)
+class CacheKey:
+    provider: str
+    identifier: Tuple[Any, ...]
+
+
+class ClientRegistry:
+    """Thread-safe registry for external provider clients."""
+
+    _instance: Optional["ClientRegistry"] = None
+    _instance_lock = threading.Lock()
+
+    def __init__(self, max_cache_size: int = 100, ttl_seconds: int = 3600):
+        self._max_cache_size = max_cache_size
+        self._ttl_seconds = ttl_seconds
+        self._cache: "OrderedDict[CacheKey, Any]" = OrderedDict()
+        self._timestamps: Dict[CacheKey, float] = {}
+        self._lock = threading.Lock()
+        self._logger = setup_logger(__name__)
+
+    @classmethod
+    def get_instance(cls) -> "ClientRegistry":
+        with cls._instance_lock:
+            if cls._instance is None:
+                cls._instance = cls()
+            return cls._instance
+
+    def clear(self) -> None:
+        with self._lock:
+            self._cache.clear()
+            self._timestamps.clear()
+
+    def clear_stale(self, max_age_seconds: Optional[int] = None) -> None:
+        ttl = max_age_seconds or self._ttl_seconds
+        cutoff = time.time() - ttl
+        with self._lock:
+            stale_keys = [key for key, ts in self._timestamps.items() if ts < cutoff]
+            for key in stale_keys:
+                self._cache.pop(key, None)
+                self._timestamps.pop(key, None)
+
+    def invalidate(self, provider: str, api_key: Optional[str]) -> None:
+        identifier = self._build_identifier(api_key)
+        cache_key = CacheKey(provider, identifier)
+        with self._lock:
+            self._cache.pop(cache_key, None)
+            self._timestamps.pop(cache_key, None)
+
+    def get_openai_client(
+        self,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        **kwargs: Any,
+    ) -> ChatOpenAI:
+        settings = get_settings()
+        resolved_key = api_key or settings.openai_api_key or os.getenv("OPENAI_API_KEY")
+        if not resolved_key:
+            raise ValueError("OpenAI API key is required to create a client")
+
+        model_name = model or settings.default_model
+        identifier = self._build_identifier(resolved_key, model_name, tuple(sorted(kwargs.items())))
+        cache_key = CacheKey("openai", identifier)
+
+        def factory() -> ChatOpenAI:
+            client_kwargs = {
+                "model": model_name,
+                "openai_api_key": resolved_key,
+            }
+            client_kwargs.update(kwargs)
+            return ChatOpenAI(**client_kwargs)
+
+        return self._get_or_create(cache_key, factory)
+
+    def get_tavily_client(self, api_key: Optional[str] = None) -> TavilyClient:
+        resolved_key = api_key or getattr(get_settings(), "tavily_api_key", None)
+        identifier = self._build_identifier(resolved_key)
+        cache_key = CacheKey("tavily", identifier)
+
+        def factory() -> TavilyClient:
+            return TavilyClient(api_key=resolved_key)
+
+        return self._get_or_create(cache_key, factory)
+
+    def get_perplexity_client(self, api_key: Optional[str] = None) -> PerplexityClient:
+        resolved_key = api_key or getattr(get_settings(), "perplexity_api_key", None)
+        identifier = self._build_identifier(resolved_key)
+        cache_key = CacheKey("perplexity", identifier)
+
+        def factory() -> PerplexityClient:
+            return PerplexityClient(api_key=resolved_key)
+
+        return self._get_or_create(cache_key, factory)
+
+    def get_google_places_client(self, api_key: Optional[str] = None) -> googlemaps.Client:
+        resolved_key = api_key or os.getenv("GOOGLE_PLACES_API_KEY")
+        if not resolved_key:
+            raise ValueError("Google Places API key is required")
+
+        identifier = self._build_identifier(resolved_key)
+        cache_key = CacheKey("google_places", identifier)
+
+        def factory() -> googlemaps.Client:
+            return googlemaps.Client(key=resolved_key)
+
+        return self._get_or_create(cache_key, factory)
+
+    def _get_or_create(self, cache_key: CacheKey, factory: Callable[[], Any]):
+        now = time.time()
+        with self._lock:
+            if cache_key in self._cache:
+                self._cache.move_to_end(cache_key)
+                self._timestamps[cache_key] = now
+                return self._cache[cache_key]
+
+        client = factory()
+        with self._lock:
+            self._evict_if_needed()
+            self._cache[cache_key] = client
+            self._timestamps[cache_key] = now
+        return client
+
+    def _evict_if_needed(self) -> None:
+        while len(self._cache) >= self._max_cache_size:
+            key, _ = self._cache.popitem(last=False)
+            self._timestamps.pop(key, None)
+
+    def _build_identifier(self, api_key: Optional[str], *extra: Any) -> Tuple[Any, ...]:
+        if api_key:
+            key_hash = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+        else:
+            key_hash = "system"
+        return (key_hash, *extra)
+
 
 class ResearchOrchestrator:
     """
@@ -675,10 +821,9 @@ class ResearchOrchestrator:
     Tavily (fast basic research) → Exa (semantic deepening) → Perplexity (comprehensive analysis)
     """
 
-    def __init__(self):
-        self.tavily = TavilyClient()
+    def __init__(self, client_registry: Optional[ClientRegistry] = None):
+        self.client_registry = client_registry or ClientRegistry.get_instance()
         self.exa = ExaClient()
-        self.perplexity = PerplexityClient()
         self.data_validator = BaseDataValidator()
         
         # Configuration thresholds - use environment variables
@@ -691,7 +836,8 @@ class ResearchOrchestrator:
                              domain: str = "",
                              user_tier: str = "free",
                              lead_value: float = 0.0,
-                             force_tier: Optional[ResearchTier] = None) -> ResearchResult:
+                             force_tier: Optional[ResearchTier] = None,
+                             provider_keys: Optional[Dict[str, str]] = None) -> ResearchResult:
         """
         Orchestrate 3-tier research with intelligent escalation.
         Tavily (basic research) → Exa (semantic research) → Perplexity (deep research when needed)
@@ -708,8 +854,13 @@ class ResearchOrchestrator:
         """
         logger.info(f"Starting 3-tier research for {company_name}")
 
+        provider_keys = provider_keys or {}
+
         # TIER 1: Always start with Tavily (fast basic research)
-        tier1_result = await self.tavily.search(company_name, domain)
+        tavily_client = self.client_registry.get_tavily_client(
+            api_key=provider_keys.get("tavily")
+        )
+        tier1_result = await tavily_client.search(company_name, domain)
 
         if force_tier == ResearchTier.TAVILY:
             return tier1_result
@@ -807,7 +958,10 @@ class ResearchOrchestrator:
             f"Escalating to deep research for {company_name}: {escalation_reason}"
         )
 
-        deep_research_result = await self.perplexity.comprehensive_research(
+        perplexity_client = self.client_registry.get_perplexity_client(
+            api_key=provider_keys.get("perplexity")
+        )
+        deep_research_result = await perplexity_client.comprehensive_research(
             company_name,
             domain,
             combined_result.company_overview,

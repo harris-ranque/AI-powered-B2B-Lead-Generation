@@ -4,6 +4,7 @@ Logging utility for CrewAI worker with environment-based configuration.
 
 import logging
 import os
+import re
 import sys
 from datetime import datetime
 from typing import Any, Optional
@@ -25,6 +26,35 @@ class ColoredFormatter(logging.Formatter):
         if record.levelname in self.COLORS:
             record.levelname = f"{self.COLORS[record.levelname]}{record.levelname}{self.RESET}"
         return super().format(record)
+
+class SensitiveDataFilter(logging.Filter):
+    """Logging filter that masks known API key patterns."""
+
+    PATTERNS = [
+        re.compile(r"sk-[a-zA-Z0-9]{16,}", re.IGNORECASE),
+        re.compile(r"sk-proj-[a-zA-Z0-9]{16,}", re.IGNORECASE),
+        re.compile(r"AIza[0-9A-Za-z-_]{35}"),
+    ]
+
+    MASK = "***KEY***"
+
+    def filter(self, record: logging.LogRecord) -> bool:  # type: ignore[override]
+        record.msg = self._sanitize(record.msg)
+        if isinstance(record.args, tuple):
+            record.args = tuple(self._sanitize(arg) for arg in record.args)
+        return True
+
+    def _sanitize(self, value: Any) -> Any:
+        if isinstance(value, str):
+            sanitized = value
+            for pattern in self.PATTERNS:
+                sanitized = pattern.sub(self.MASK, sanitized)
+            return sanitized
+        if isinstance(value, dict):
+            return {k: self._sanitize(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return type(value)(self._sanitize(v) for v in value)
+        return value
 
 
 def setup_logger(name: str = __name__) -> logging.Logger:
@@ -58,6 +88,7 @@ def setup_logger(name: str = __name__) -> logging.Logger:
     # Create console handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(log_level)
+    console_handler.addFilter(SensitiveDataFilter())
     
     # Create formatter
     if is_development:

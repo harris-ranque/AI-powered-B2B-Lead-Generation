@@ -71,14 +71,6 @@ class StartupValidator:
         missing_keys = []
         invalid_keys = []
 
-        # Check OpenAI API Key
-        if not self.settings.openai_api_key:
-            missing_keys.append("OPENAI_API_KEY")
-        elif self.settings.openai_api_key == "test-openai-key":
-            invalid_keys.append("OPENAI_API_KEY (using placeholder value)")
-        elif not self.settings.openai_api_key.startswith(("sk-", "sk-proj-")):
-            invalid_keys.append("OPENAI_API_KEY (invalid format)")
-
         # Check LangGraph API Key (standardized to LANGGRAPH_API_KEY)
         if not self.settings.api_key:
             missing_keys.append("LANGGRAPH_API_KEY")
@@ -87,16 +79,21 @@ class StartupValidator:
         elif len(self.settings.api_key) < 32:
             invalid_keys.append("LANGGRAPH_API_KEY (too short, likely invalid)")
 
-        # Check optional research API keys (warn but don't fail)
+        # Log optional provider keys
+        if not self.settings.openai_api_key:
+            logger.warning("OpenAI API key not configured; BYOK clients must supply keys per request.")
+        elif self.settings.openai_api_key == "test-openai-key":
+            logger.warning("OpenAI API key is using a test value; BYOK clients must supply keys per request.")
+
         optional_keys = {
             "TAVILY_API_KEY": self.settings.tavily_api_key,
             "EXA_API_KEY": self.settings.exa_api_key,
-            "PERPLEXITY_API_KEY": self.settings.perplexity_api_key
+            "PERPLEXITY_API_KEY": self.settings.perplexity_api_key,
         }
 
-        missing_optional = [key for key, value in optional_keys.items() if not value]
-        if missing_optional:
-            logger.warning(f"⚠️  Optional research API keys missing: {', '.join(missing_optional)}")
+        for key, value in optional_keys.items():
+            if not value:
+                logger.warning(f"{key} not configured; BYOK clients must supply keys per request.")
 
         errors = []
         if missing_keys:
@@ -169,6 +166,9 @@ class StartupValidator:
 
     async def validate_openai_connection(self):
         """Test OpenAI API connectivity and model availability"""
+        if not self.settings.openai_api_key or self.settings.openai_api_key == "test-openai-key":
+            logger.info("Skipping OpenAI connectivity check - no system-level key configured.")
+            return
         try:
             # Test basic OpenAI connection with a minimal request
             # gpt-5-nano uses max_completion_tokens instead of max_tokens

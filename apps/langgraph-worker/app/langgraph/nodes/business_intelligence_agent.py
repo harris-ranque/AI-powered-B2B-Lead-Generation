@@ -6,12 +6,16 @@ into a single comprehensive intelligence gathering agent.
 import time
 import asyncio
 from typing import Dict, Any, List
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field, ConfigDict
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
-from ...utils.research_clients import ResearchOrchestrator, ResearchResult, ResearchTier
+from ...utils.research_clients import (
+    ResearchOrchestrator,
+    ResearchResult,
+    ResearchTier,
+    ClientRegistry,
+)
 from ...utils.data_validation import BaseDataValidator
 from ...models.lead_models import AgentResult, CompetitorInsight
 from ..state import EmailGenerationState
@@ -96,6 +100,9 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
     
     logger.info(f"Starting comprehensive business intelligence analysis for {lead.company_name}")
     
+    provider_keys = state.get("provider_keys") or {}
+    registry = ClientRegistry.get_instance()
+
     try:
         # Phase 1: Execute tiered business context research
         logger.info(f"Phase 1: Business context research for {lead.company_name}")
@@ -111,12 +118,13 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         lead_value = float(getattr(lead, 'estimated_value', 0))
         
         # Perform tiered research
-        orchestrator = ResearchOrchestrator()
+        orchestrator = ResearchOrchestrator(client_registry=registry)
         research_result = await orchestrator.research_company(
             company_name=lead.company_name,
             domain=domain,
             user_tier=user_tier,
-            lead_value=lead_value
+            lead_value=lead_value,
+            provider_keys=provider_keys,
         )
         
         research_time = time.time() - research_start
@@ -145,12 +153,12 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         
         # Initialize LLM for comprehensive analysis
         # gpt-5-nano uses max_completion_tokens instead of max_tokens
-        llm = ChatOpenAI(
+        llm = registry.get_openai_client(
+            api_key=provider_keys.get("openai"),
             model=settings.default_model,
             temperature=0.3,
             max_completion_tokens=settings.max_tokens,
-            reasoning_effort="minimal",  # Optimize for speed with gpt-5-nano
-            openai_api_key=settings.openai_api_key
+            reasoning_effort="minimal",
         ).with_structured_output(BusinessIntelligence)
         
         # Create comprehensive analysis prompt

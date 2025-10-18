@@ -79,6 +79,8 @@ async def execute_email_generation(
     business_profile: Any,
     requirements: Any,
     request_id: str,
+    provider_keys: Optional[Any] = None,
+    user_id: Optional[str] = None,
     checkpointer: Optional[MemorySaver] = None
 ) -> Dict[str, Any]:
     """
@@ -114,6 +116,8 @@ async def execute_email_generation(
         "processing_times": {},
         "confidence_scores": {},
         "quality_gates_passed": {},
+        "provider_keys": provider_keys,
+        "user_id": user_id,
         # New fields for 3-agent architecture
         "business_intelligence": {},
         "primary_email": None,
@@ -126,7 +130,9 @@ async def execute_email_generation(
     # Configuration for execution
     config = {
         "configurable": {
-            "thread_id": request_id  # Use request ID as thread ID for persistence
+            "thread_id": request_id,  # Use request ID as thread ID for persistence
+            "provider_keys": provider_keys or {},
+            "user_id": user_id,
         }
     }
     
@@ -177,6 +183,8 @@ async def execute_with_streaming(
     business_profile: Any,
     requirements: Any,
     request_id: str,
+    provider_keys: Optional[Any] = None,
+    user_id: Optional[str] = None,
     checkpointer: Optional[MemorySaver] = None
 ):
     """
@@ -226,7 +234,9 @@ async def execute_with_streaming(
     # Configuration
     config = {
         "configurable": {
-            "thread_id": request_id
+            "thread_id": request_id,
+            "provider_keys": provider_keys or {},
+            "user_id": user_id,
         }
     }
     
