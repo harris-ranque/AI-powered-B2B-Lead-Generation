@@ -646,7 +646,7 @@ export function LeadDiscoveryStage({
               )}
 
               {state.selectedSource === "csv_upload" && (
-                <Alert>
+                <Alert className="border border-amber-500/40 bg-amber-500/10 text-amber-200">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
                     CSV Upload is temporarily disabled while we roll out
@@ -664,7 +664,7 @@ export function LeadDiscoveryStage({
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
-              className="mt-4 flex gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-700"
+              className="mt-4 flex gap-2 rounded-xl border border-red-500/50 bg-red-500/10 p-3 text-red-200"
             >
               <AlertTriangle className="h-4 w-4 shrink-0" />
               <div>
@@ -679,7 +679,7 @@ export function LeadDiscoveryStage({
           )}
 
           {validation.warnings.length > 0 && (
-            <Alert>
+            <Alert className="border border-amber-500/40 bg-amber-500/10 text-amber-200">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
                 <div className="space-y-1">

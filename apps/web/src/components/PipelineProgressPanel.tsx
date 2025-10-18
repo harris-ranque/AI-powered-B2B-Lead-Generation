@@ -100,10 +100,11 @@ const StageMarker = ({
         onClick={interactive ? onClick : undefined}
         disabled={!interactive}
         className={cn(
-          "relative flex h-12 w-12 items-center justify-center rounded-full border-2 bg-white text-sm font-semibold text-slate-500 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-genniBlue focus-visible:ring-offset-2 disabled:cursor-default",
-          status === "completed" && "border-emerald-500 bg-emerald-500 text-white",
-          status === "current" && "border-genniBlue text-genniBlue",
-          status === "upcoming" && "border-slate-200/70 text-slate-400",
+          "relative flex h-12 w-12 items-center justify-center rounded-full border-2 bg-slate-900/80 text-sm font-semibold text-slate-300 shadow-[0_0_18px_rgba(0,255,204,0.08)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-default",
+          status === "completed" &&
+            "border-emerald-400 bg-emerald-500/20 text-emerald-100",
+          status === "current" && "border-cyan-400 text-cyan-200",
+          status === "upcoming" && "border-slate-700 text-slate-600",
           interactive && "cursor-pointer hover:scale-[1.04]",
         )}
         aria-current={status === "current" ? "step" : undefined}
@@ -116,9 +117,9 @@ const StageMarker = ({
       </motion.button>
       <span
         className={cn(
-          "text-xs font-medium text-slate-500",
-          status === "current" && "text-genniBlue",
-          status === "completed" && "text-emerald-600",
+          "text-xs	font-medium text-slate-500",
+          status === "current" && "text-cyan-200",
+          status === "completed" && "text-emerald-200",
         )}
       >
         {STAGE_CONFIGS[stage].title}

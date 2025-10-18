@@ -1,14 +1,17 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useAuth as useClerkAuth } from "@clerk/clerk-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { usePipeline } from "@/pipeline/context";
-// types not needed directly here; export uses backend
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@genni/convex-types";
 import {
   Download,
   FileText,
@@ -16,15 +19,37 @@ import {
   CheckCircle,
   BarChart3,
   Calendar,
-  Share,
   RefreshCw,
   Sparkles,
-  Archive,
   Loader2,
+  Send,
+  MailCheck,
+  MailX,
+  Activity,
+  Target,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/useUser";
+import { useSearch } from "@/hooks/useSearches";
+import { useLeads } from "@/hooks/useLeads";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  ReferenceLine,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 const EXPORT_FORMATS = [
   {
@@ -37,194 +62,614 @@ const EXPORT_FORMATS = [
   },
 ];
 
-export function ReviewExportStage() {
+const numberFormatter = new Intl.NumberFormat();
+const percentFormatter = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 1,
+});
+
+const getString = (
+  source: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined =>
+  source && typeof source[key] === "string"
+    ? (source[key] as string)
+    : undefined;
+
+const getNumber = (
+  source: Record<string, unknown> | undefined,
+  key: string,
+): number | undefined =>
+  source && typeof source[key] === "number"
+    ? (source[key] as number)
+    : undefined;
+
+type EmailSummary = {
+  subject: string;
+  body: string;
+  responseRate: number | null;
+};
+
+function normalizeRate(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  if (value === 0) {
+    return 0;
+  }
+  return value <= 1 ? value * 100 : value;
+}
+
+function extractEmailDetails(entry: unknown): EmailSummary | null {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const data = entry as Record<string, unknown>;
+  const primaryCandidate =
+    (typeof data.primary_email === "object" && data.primary_email !== null
+      ? (data.primary_email as Record<string, unknown>)
+      : undefined) ??
+    (typeof data.primaryEmail === "object" && data.primaryEmail !== null
+      ? (data.primaryEmail as Record<string, unknown>)
+      : undefined);
+
+  const emailContent =
+    typeof data.emailContent === "object" && data.emailContent !== null
+      ? (data.emailContent as Record<string, unknown>)
+      : undefined;
+
+  const subject =
+    (typeof data.subject === "string" ? data.subject : undefined) ??
+    getString(primaryCandidate, "subject") ??
+    getString(emailContent, "subject") ??
+    "Personalized Email";
+
+  const body =
+    (typeof data.body === "string" ? data.body : undefined) ??
+    getString(primaryCandidate, "body") ??
+    getString(emailContent, "body") ??
+    "";
+
+  const responseCandidate =
+    (typeof data.estimated_response_rate === "number"
+      ? data.estimated_response_rate
+      : undefined) ??
+    (typeof data.estimatedEffectiveness === "number"
+      ? data.estimatedEffectiveness
+      : undefined) ??
+    getNumber(primaryCandidate, "estimated_effectiveness") ??
+    getNumber(primaryCandidate, "estimatedEffectiveness") ??
+    getNumber(emailContent, "estimatedEffectiveness") ??
+    null;
+
+  return {
+    subject,
+    body,
+    responseRate: normalizeRate(responseCandidate),
+  };
+}
+
+function summarizeBody(body: string, limit = 160): string {
+  const trimmed = body.trim();
+  if (!trimmed) {
+    return "Personalized email ready to send.";
+  }
+  if (trimmed.length <= limit) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, limit).trimEnd()}…`;
+}
+
+const formatNumber = (value: number) =>
+  numberFormatter.format(Math.max(0, Math.round(value)));
+const formatPercent = (value: number) =>
+  `${percentFormatter.format(Math.max(0, value))}%`;
+
+interface ReviewExportStageProps {
+  onViewResults?: () => void;
+}
+
+export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
   const { state, resetPipeline } = usePipeline();
   const { user } = useUser();
   const { getToken: getClerkToken } = useClerkAuth();
   const { toast } = useToast();
+  const { search } = useSearch(state.searchId || undefined);
+  const { leads: searchLeads, updateLeadStatus } = useLeads(
+    state.searchId || undefined,
+  );
+
   const [isExporting, setIsExporting] = useState(false);
+  const [isSendingEmails, setIsSendingEmails] = useState(false);
   const [exportedFormats, setExportedFormats] = useState<string[]>([]);
+  const [sentLeadIds, setSentLeadIds] = useState<string[]>([]);
 
-  const handleExport = async (format: string) => {
-    setIsExporting(true);
+  const leads = useMemo(
+    () => (state.searchId && searchLeads ? searchLeads : state.leads),
+    [searchLeads, state.leads, state.searchId],
+  );
 
-    try {
-      if (format !== "csv") {
-        throw new Error("Only CSV export is supported at this time");
-      }
+  const leadsWithEmails = useMemo(
+    () => leads.filter((lead) => lead.contactInfo?.emails?.length),
+    [leads],
+  );
 
-      if (!user?._id) throw new Error("Not authenticated");
+  const generatedEmailMap = useMemo(() => {
+    const map = new Map<string, unknown>();
+    state.generatedEmails.forEach((entry) => {
+      if (!entry || typeof entry !== "object") return;
+      const record = entry as Record<string, unknown>;
 
-      // Build Convex HTTP base URL (same logic as SSE)
-      const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
-      if (!convexUrl) throw new Error("Convex URL not configured");
+      let leadIdValue: string | undefined;
 
-      let baseUrl: string = convexUrl;
-      try {
-        const url = new URL(convexUrl);
-        if (url.hostname.endsWith(".convex.cloud")) {
-          baseUrl = convexUrl.replace(".convex.cloud", ".convex.site");
+      if (typeof record.leadId === "string") {
+        leadIdValue = record.leadId;
+      } else if (typeof record.lead_id === "string") {
+        leadIdValue = record.lead_id;
+      } else if (
+        typeof record.lead === "object" &&
+        record.lead !== null
+      ) {
+        const leadRecord = record.lead as Record<string, unknown>;
+        if (typeof leadRecord.id === "string") {
+          leadIdValue = leadRecord.id;
+        } else if (typeof leadRecord._id === "string") {
+          leadIdValue = leadRecord._id;
         }
-      } catch {
-        // use as-is
       }
 
-      if (!getClerkToken) {
-        throw new Error("Unable to access session token");
+      if (leadIdValue) {
+        map.set(leadIdValue, entry);
       }
+    });
+    return map;
+  }, [state.generatedEmails]);
 
-      const authToken =
-        (await getClerkToken({ template: "convex" })) ||
-        (await getClerkToken());
-      if (!authToken) {
-        throw new Error("Unable to obtain session token");
+  const emailDetailsByLead = useMemo(() => {
+    const map = new Map<string, EmailSummary>();
+    leads.forEach((lead) => {
+      const key = String(lead._id);
+      const source = generatedEmailMap.get(key) ?? lead.emailContent;
+      if (!source) {
+        return;
       }
-
-      const tokenResponse = await fetch(`${baseUrl}/api/exports/issue-token`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      });
-
-      if (!tokenResponse.ok) {
-        throw new Error("Failed to request export token");
+      const details = extractEmailDetails(source);
+      if (!details || !details.body.trim()) {
+        return;
       }
+      map.set(key, details);
+    });
+    return map;
+  }, [generatedEmailMap, leads]);
 
-      const tokenBody = (await tokenResponse.json()) as { token?: string };
-      if (!tokenBody?.token) {
-        throw new Error("Invalid export token response");
+  const readyToSendLeads = useMemo(
+    () =>
+      leads.filter(
+        (lead) =>
+          lead.contactInfo?.emails?.length &&
+          emailDetailsByLead.has(String(lead._id)),
+      ),
+    [emailDetailsByLead, leads],
+  );
+
+  const awaitingPersonalization = useMemo(
+    () =>
+      leads.filter(
+        (lead) =>
+          lead.contactInfo?.emails?.length &&
+          !emailDetailsByLead.has(String(lead._id)),
+      ),
+    [emailDetailsByLead, leads],
+  );
+
+  const missingContact = useMemo(
+    () => leads.filter((lead) => !lead.contactInfo?.emails?.length),
+    [leads],
+  );
+
+  const discoveredCount = Math.max(
+    search?.progress?.discovered ?? 0,
+    search?.results?.totalFound ?? 0,
+    leads.length,
+  );
+
+  const enrichedCount = Math.max(
+    search?.progress?.enriched ?? 0,
+    search?.results?.enrichedCount ?? 0,
+    leadsWithEmails.length,
+    state.enrichedLeads.length,
+  );
+
+  const personalizedCount = Math.max(
+    search?.progress?.analyzed ?? 0,
+    state.generatedEmails.length,
+    emailDetailsByLead.size,
+  );
+
+  const enrichmentRate =
+    discoveredCount > 0 ? (enrichedCount / discoveredCount) * 100 : 0;
+
+  const readyToSendCount = readyToSendLeads.length;
+  const awaitingPersonalizationCount = awaitingPersonalization.length;
+  const missingContactCount = missingContact.length;
+
+  const unsentReadyLeads = useMemo(
+    () =>
+      readyToSendLeads.filter(
+        (lead) => !sentLeadIds.includes(String(lead._id)),
+      ),
+    [readyToSendLeads, sentLeadIds],
+  );
+
+  const relevanceScores = useMemo(
+    () =>
+      leads
+        .map((lead) => lead.aiAnalysis?.relevanceScore)
+        .filter(
+          (score): score is number =>
+            typeof score === "number" && Number.isFinite(score),
+        ),
+    [leads],
+  );
+
+  const avgRelevanceScore = relevanceScores.length
+    ? relevanceScores.reduce((sum, score) => sum + score, 0) /
+      relevanceScores.length
+    : 0;
+
+  const responseRates = useMemo(
+    () =>
+      Array.from(emailDetailsByLead.values())
+        .map((details) => details.responseRate)
+        .filter(
+          (rate): rate is number =>
+            typeof rate === "number" && Number.isFinite(rate),
+        ),
+    [emailDetailsByLead],
+  );
+
+  const averageResponseRate = responseRates.length
+    ? responseRates.reduce((sum, rate) => sum + rate, 0) / responseRates.length
+    : 0;
+
+  const pipelineCompletion =
+    discoveredCount > 0 ? (personalizedCount / discoveredCount) * 100 : 0;
+
+  const stageChartData = useMemo(
+    () => [
+      {
+        label: "Discovered",
+        metric: discoveredCount,
+        fill: "hsl(var(--neon-cyan))",
+      },
+      {
+        label: "Enriched",
+        metric: enrichedCount,
+        fill: "hsl(var(--neon-lime))",
+      },
+      {
+        label: "Personalized",
+        metric: personalizedCount,
+        fill: "hsl(var(--primary))",
+      },
+    ],
+    [discoveredCount, enrichedCount, personalizedCount],
+  );
+
+  const responseTrendData = useMemo(
+    () =>
+      state.generatedEmails
+        .map((entry, index) => {
+          const details = extractEmailDetails(entry);
+          if (!details || details.responseRate === null) {
+            return null;
+          }
+          return {
+            index: index + 1,
+            rate: Number(details.responseRate.toFixed(1)),
+          };
+        })
+        .filter(Boolean) as Array<{ index: number; rate: number }>,
+    [state.generatedEmails],
+  );
+
+  const topLeads = useMemo(
+    () =>
+      [...leads]
+        .filter(
+          (lead) =>
+            typeof lead.aiAnalysis?.relevanceScore === "number" &&
+            Number.isFinite(lead.aiAnalysis.relevanceScore),
+        )
+        .sort(
+          (a, b) =>
+            (b.aiAnalysis?.relevanceScore ?? 0) -
+            (a.aiAnalysis?.relevanceScore ?? 0),
+        )
+        .slice(0, 4),
+    [leads],
+  );
+
+  const stageChartConfig = useMemo(
+    () => ({
+      metric: {
+        label: "Leads",
+        color: "hsl(var(--neon-cyan))",
+      },
+    }),
+    [],
+  );
+
+  const responseChartConfig = useMemo(
+    () => ({
+      rate: {
+        label: "Est. Response %",
+        color: "hsl(var(--neon-lime))",
+      },
+    }),
+    [],
+  );
+
+  const lastUpdatedAt =
+    search?.updatedAt ?? search?.completedAt ?? search?.createdAt ?? null;
+  const lastUpdatedLabel = lastUpdatedAt
+    ? new Date(lastUpdatedAt).toLocaleString()
+    : null;
+
+  const enrichmentRateLabel =
+    discoveredCount > 0 ? formatPercent(enrichmentRate) : "—";
+  const avgRelevanceLabel = relevanceScores.length
+    ? formatPercent(avgRelevanceScore * 100)
+    : "—";
+  const avgResponseLabel = responseRates.length
+    ? formatPercent(averageResponseRate)
+    : "—";
+  const pipelineCompletionLabel =
+    discoveredCount > 0 ? formatPercent(pipelineCompletion) : "—";
+
+  const handleExport = useCallback(
+    async (format: string) => {
+      setIsExporting(true);
+
+      try {
+        if (format !== "csv") {
+          throw new Error("Only CSV export is supported at this time");
+        }
+
+        if (!user?._id) throw new Error("Not authenticated");
+
+        const convexUrl = import.meta.env.VITE_CONVEX_URL as
+          | string
+          | undefined;
+        if (!convexUrl) throw new Error("Convex URL not configured");
+
+        let baseUrl: string = convexUrl;
+        try {
+          const url = new URL(convexUrl);
+          if (url.hostname.endsWith(".convex.cloud")) {
+            baseUrl = convexUrl.replace(".convex.cloud", ".convex.site");
+          }
+        } catch {
+          // use as-is
+        }
+
+        if (!getClerkToken) {
+          throw new Error("Unable to access session token");
+        }
+
+        const authToken =
+          (await getClerkToken({ template: "convex" })) ||
+          (await getClerkToken());
+        if (!authToken) {
+          throw new Error("Unable to obtain session token");
+        }
+
+        const tokenResponse = await fetch(
+          `${baseUrl}/api/exports/issue-token`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          },
+        );
+
+        if (!tokenResponse.ok) {
+          throw new Error("Failed to request export token");
+        }
+
+        const tokenBody = (await tokenResponse.json()) as { token?: string };
+        if (!tokenBody?.token) {
+          throw new Error("Invalid export token response");
+        }
+
+        const params = new URLSearchParams();
+        params.set("userId", user._id);
+        params.set("token", tokenBody.token);
+        if (state.searchId) params.set("searchId", state.searchId);
+
+        const exportUrl = `${baseUrl}/api/exports/leads.csv?${params.toString()}`;
+
+        const res = await fetch(exportUrl, { method: "GET" });
+
+        if (!res.ok) {
+          throw new Error("Export failed");
+        }
+
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `leads-export-${Date.now()}.${format}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+        setExportedFormats((prev) => [...prev, format]);
+
+        toast({
+          title: "Export Complete",
+          description: `Successfully exported your leads as ${format.toUpperCase()}.`,
+        });
+      } catch (error) {
+        console.error("Export error:", error);
+        toast({
+          title: "Export Failed",
+          description: "Failed to export data. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsExporting(false);
       }
+    },
+    [getClerkToken, state.searchId, toast, user?._id],
+  );
 
-      const params = new URLSearchParams();
-      params.set("userId", user._id);
-      params.set("token", tokenBody.token);
-      if (state.searchId) params.set("searchId", state.searchId);
-
-      const exportUrl = `${baseUrl}/api/exports/leads.csv?${params.toString()}`;
-
-      const res = await fetch(exportUrl, { method: "GET" });
-
-      if (!res.ok) {
-        throw new Error("Export failed");
-      }
-
-      // Create download
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `leads-export-${Date.now()}.${format}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      setExportedFormats((prev) => [...prev, format]);
-
-      toast({
-        title: "Export Complete",
-        description: `Successfully exported your leads as ${format.toUpperCase()}.`,
-      });
-    } catch (error) {
-      console.error("Export error:", error);
-      toast({
-        title: "Export Failed",
-        description: "Failed to export data. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const handleStartNewPipeline = () => {
+  const handleStartNewPipeline = useCallback(() => {
     resetPipeline();
     toast({
       title: "New Pipeline Started",
       description: "Ready to discover new leads!",
     });
-  };
+  }, [resetPipeline, toast]);
 
-  const totalLeads = state.leads.length;
-  const enrichedLeads = state.enrichedLeads.length;
-  const generatedEmails = state.generatedEmails.length;
+  const handleSendEmails = useCallback(async () => {
+    if (unsentReadyLeads.length === 0) {
+      toast({
+        title: "Nothing to send yet",
+        description:
+          "Emails will appear here once enrichment and personalization finish.",
+      });
+      return;
+    }
+
+    setIsSendingEmails(true);
+
+    try {
+      if (state.searchId && unsentReadyLeads.length && updateLeadStatus) {
+        await Promise.allSettled(
+          unsentReadyLeads
+            .filter((lead) => lead._id)
+            .map((lead) =>
+              updateLeadStatus({
+                leadId: lead._id,
+                status: "contacted",
+              }),
+            ),
+        );
+      }
+
+      setSentLeadIds((prev) => {
+        const next = new Set(prev);
+        unsentReadyLeads.forEach((lead) => next.add(String(lead._id)));
+        return Array.from(next);
+      });
+
+      toast({
+        title: "Emails queued",
+        description: `Marked ${unsentReadyLeads.length} ${unsentReadyLeads.length === 1 ? "lead" : "leads"} as contacted.`,
+      });
+    } catch (error) {
+      console.error("Send emails error:", error);
+      toast({
+        title: "Send failed",
+        description: "Unable to mark emails as sent right now.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingEmails(false);
+    }
+  }, [state.searchId, toast, unsentReadyLeads, updateLeadStatus]);
+
+  const handleViewResults = useCallback(() => {
+    if (onViewResults) {
+      onViewResults();
+      return;
+    }
+    window.location.hash = "lead-history";
+  }, [onViewResults]);
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="text-center space-y-2">
-        <h3 className="heading-md flex items-center justify-center gap-2">
-          <CheckCircle className="h-6 w-6" style={{ color: 'hsl(var(--primary))' }} />
+    <div className="mx-auto max-w-6xl space-y-6">
+      <div className="space-y-2 text-center">
+        <h3 className="flex items-center justify-center gap-2 text-2xl font-semibold text-slate-100">
+          <CheckCircle className="h-6 w-6 text-emerald-400" />
           Pipeline Complete!
         </h3>
-        <p className="text-muted-foreground">
-          Review your results and export your leads and personalized emails
+        <p className="text-sm text-muted-foreground">
+          Review your results and export your leads and personalized emails.
         </p>
       </div>
 
-      {/* Results Summary */}
-      <Card className="glass-card">
+      <Card className="glass-card border border-slate-800/70 bg-slate-900/60 shadow-[0_20px_70px_-40px_rgba(0,255,204,0.35)]">
         <CardHeader>
-          <CardTitle className="text-lg">Campaign Results Summary</CardTitle>
+          <CardTitle className="text-lg text-slate-100">
+            Campaign Results Summary
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid md:grid-cols-4 gap-6">
-            <div className="text-center space-y-2">
-              <div className="w-12 h-12 mx-auto rounded-full glow-neon-cyan flex items-center justify-center" style={{ backgroundColor: 'hsl(var(--neon-cyan) / 0.2)' }}>
-                <BarChart3 className="h-6 w-6" style={{ color: 'hsl(var(--neon-cyan))' }} />
+          <div className="grid gap-6 md:grid-cols-4">
+            <div className="rounded-xl border border-cyan-500/30 bg-slate-900/60 p-5 text-center shadow-[0_0_24px_rgba(0,255,204,0.12)]">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-cyan-500/40 bg-cyan-500/10">
+                <BarChart3 className="h-6 w-6 text-cyan-300" />
               </div>
-              <div className="text-2xl font-bold">{totalLeads}</div>
-              <div className="text-sm text-muted-foreground">
+              <div className="mt-3 text-2xl font-semibold text-slate-100">
+                {formatNumber(discoveredCount)}
+              </div>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">
                 Leads Discovered
-              </div>
+              </p>
             </div>
 
-            <div className="text-center space-y-2">
-              <div className="w-12 h-12 mx-auto rounded-full glow-neon-lime flex items-center justify-center" style={{ backgroundColor: 'hsl(var(--neon-lime) / 0.2)' }}>
-                <Mail className="h-6 w-6" style={{ color: 'hsl(var(--neon-lime))' }} />
+            <div className="rounded-xl border border-emerald-500/30 bg-slate-900/60 p-5 text-center shadow-[0_0_24px_rgba(0,255,65,0.12)]">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-emerald-500/40 bg-emerald-500/10">
+                <Mail className="h-6 w-6 text-emerald-300" />
               </div>
-              <div className="text-2xl font-bold">{enrichedLeads}</div>
-              <div className="text-sm text-muted-foreground">
+              <div className="mt-3 text-2xl font-semibold text-slate-100">
+                {formatNumber(enrichedCount)}
+              </div>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">
                 Enriched with Emails
-              </div>
+              </p>
             </div>
 
-            <div className="text-center space-y-2">
-              <div className="w-12 h-12 mx-auto rounded-full glow-soft flex items-center justify-center" style={{ backgroundColor: 'hsl(var(--primary) / 0.2)' }}>
-                <Sparkles className="h-6 w-6" style={{ color: 'hsl(var(--primary))' }} />
+            <div className="rounded-xl border border-purple-500/30 bg-slate-900/60 p-5 text-center shadow-[0_0_24px_rgba(97,76,255,0.12)]">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-purple-500/40 bg-purple-500/10">
+                <Sparkles className="h-6 w-6 text-purple-300" />
               </div>
-              <div className="text-2xl font-bold">{generatedEmails}</div>
-              <div className="text-sm text-muted-foreground">
+              <div className="mt-3 text-2xl font-semibold text-slate-100">
+                {formatNumber(personalizedCount)}
+              </div>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">
                 Personalized Emails
-              </div>
+              </p>
             </div>
 
-            <div className="text-center space-y-2">
-              <div className="w-12 h-12 mx-auto rounded-full glow-neon-yellow flex items-center justify-center" style={{ backgroundColor: 'hsl(var(--neon-yellow) / 0.2)' }}>
-                <BarChart3 className="h-6 w-6" style={{ color: 'hsl(var(--neon-yellow))' }} />
+            <div className="rounded-xl border border-teal-500/30 bg-slate-900/60 p-5 text-center shadow-[0_0_24px_rgba(0,255,204,0.12)]">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-teal-500/40 bg-teal-500/10">
+                <Target className="h-6 w-6 text-teal-300" />
               </div>
-              <div className="text-2xl font-bold">
-                {((enrichedLeads / totalLeads) * 100).toFixed(0)}%
+              <div className="mt-3 text-2xl font-semibold text-slate-100">
+                {enrichmentRateLabel}
               </div>
-              <div className="text-sm text-muted-foreground">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">
                 Enrichment Rate
-              </div>
+              </p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Export Options */}
       <Tabs defaultValue="export" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 glass-card">
+        <TabsList className="grid w-full grid-cols-3 rounded-xl border border-slate-800/60 bg-slate-900/60 p-1">
           <TabsTrigger value="export">Export Data</TabsTrigger>
           <TabsTrigger value="send">Send Emails</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="export" className="space-y-4">
-          <div className="grid md:grid-cols-3 gap-4">
+        <TabsContent value="export" className="space-y-4 pt-4">
+          <div className="grid gap-4 md:grid-cols-3">
             {EXPORT_FORMATS.map((format) => {
               const IconComponent = format.icon;
               const isExported = exportedFormats.includes(format.type);
@@ -233,32 +678,28 @@ export function ReviewExportStage() {
                 <Card
                   key={format.type}
                   className={cn(
-                    "glass-card transition-all duration-300 hover-lift",
-                    isExported && "neon-border",
+                    "glass-card border border-slate-800/60 bg-slate-900/60 transition-all duration-300",
+                    isExported &&
+                      "border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_32px_rgba(0,255,65,0.18)]",
                   )}
-                  style={isExported ? {
-                    borderColor: 'hsl(var(--neon-lime) / 0.5)',
-                    backgroundColor: 'hsl(var(--neon-lime) / 0.05)'
-                  } : {}}
                 >
                   <CardHeader>
                     <div className="flex items-center gap-3">
                       <div
                         className={cn(
-                          "p-2 rounded-lg transition-colors glow-neon-lime",
-                          isExported ? "glow-neon-lime" : "bg-muted/20",
+                          "rounded-lg border border-slate-700/70 bg-slate-800/70 p-2 transition-colors",
+                          isExported && "border-emerald-500/60 bg-emerald-500/10",
                         )}
-                        style={isExported ? { backgroundColor: 'hsl(var(--neon-lime) / 0.2)' } : {}}
                       >
                         <IconComponent
                           className={cn(
-                            "h-5 w-5",
+                            "h-5 w-5 text-slate-200",
+                            isExported && "text-emerald-300",
                           )}
-                          style={isExported ? { color: 'hsl(var(--neon-lime))' } : {}}
                         />
                       </div>
                       <div className="flex-1">
-                        <CardTitle className="text-base">
+                        <CardTitle className="text-base text-slate-100">
                           {format.name}
                         </CardTitle>
                         <p className="text-xs text-muted-foreground">
@@ -269,17 +710,26 @@ export function ReviewExportStage() {
                   </CardHeader>
 
                   <CardContent>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between text-xs">
-                        <span>File Size:</span>
-                        <Badge variant="outline">{format.size}</Badge>
+                    <div className="space-y-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">File Size</span>
+                        <Badge variant="outline" className="border-cyan-500/40">
+                          {format.size}
+                        </Badge>
                       </div>
 
-                      <div className="flex items-center justify-between text-xs">
-                        <span>Includes Emails:</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">
+                          Includes Emails
+                        </span>
                         <Badge
                           variant={
                             format.includeEmails ? "default" : "secondary"
+                          }
+                          className={
+                            format.includeEmails
+                              ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-200"
+                              : undefined
                           }
                         >
                           {format.includeEmails ? "Yes" : "No"}
@@ -290,19 +740,19 @@ export function ReviewExportStage() {
                         onClick={() => handleExport(format.type)}
                         disabled={isExporting || isExported}
                         className={cn(
-                          "w-full transition-neo",
-                          !isExported && "gradient-neon-primary hover-glow"
+                          "w-full border border-cyan-500/40 bg-slate-900 text-cyan-200 transition-neo hover:bg-cyan-500/20 hover:text-cyan-50",
+                          isExported &&
+                            "border-emerald-500/40 bg-emerald-500/20 text-emerald-100",
                         )}
-                        variant={isExported ? "secondary" : "default"}
                       >
                         {isExported ? (
                           <>
-                            <CheckCircle className="h-3 w-3 mr-2" />
+                            <CheckCircle className="mr-2 h-4 w-4" />
                             Downloaded
                           </>
                         ) : (
                           <>
-                            <Download className="h-3 w-3 mr-2" />
+                            <Download className="mr-2 h-4 w-4" />
                             Export {format.type.toUpperCase()}
                           </>
                         )}
@@ -315,97 +765,423 @@ export function ReviewExportStage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="send" className="space-y-4">
-          <Card className="glass-card">
-            <CardContent className="p-8 text-center space-y-4">
-              <div className="w-16 h-16 mx-auto rounded-full bg-muted/20 flex items-center justify-center">
-                <Mail className="h-8 w-8 text-muted-foreground" />
+        <TabsContent value="send" className="space-y-4 pt-4">
+          <Card className="glass-card border border-slate-800/60 bg-slate-900/60">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg text-slate-100">
+                Send Personalized Emails
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground">
+                Review which leads are ready for outreach and queue emails in a
+                single click.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
+                  <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wider text-emerald-200">
+                    Ready to Send
+                    <MailCheck className="h-4 w-4" />
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-emerald-100">
+                    {formatNumber(readyToSendCount)}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-purple-500/30 bg-purple-500/10 p-4">
+                  <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wider text-purple-200">
+                    Personalization Running
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-purple-100">
+                    {formatNumber(awaitingPersonalizationCount)}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-4">
+                  <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wider text-rose-200">
+                    Missing Contacts
+                    <MailX className="h-4 w-4" />
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-rose-100">
+                    {formatNumber(missingContactCount)}
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <h4 className="text-lg font-semibold">Email Sending</h4>
-                <p className="text-muted-foreground">
-                  Email campaign functionality coming soon! For now, export your
-                  emails and send through your preferred platform.
-                </p>
-              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  onClick={handleSendEmails}
+                  disabled={isSendingEmails || unsentReadyLeads.length === 0}
+                  size="lg"
+                  className="flex-1 justify-center gap-2 border border-cyan-500/50 bg-slate-900 text-cyan-200 transition-neo hover:bg-cyan-500/20 hover:text-cyan-50 sm:flex-none sm:px-6"
+                >
+                  {isSendingEmails ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  {isSendingEmails
+                    ? "Sending..."
+                    : `Send ${formatNumber(
+                        unsentReadyLeads.length || readyToSendCount,
+                      )} Emails`}
+                </Button>
 
-              <Alert>
-                <Calendar className="h-4 w-4" />
-                <AlertDescription>
-                  Connect your email provider to send campaigns directly from
-                  Genni. This feature will be available in the next update.
-                </AlertDescription>
-              </Alert>
+                {sentLeadIds.length > 0 && (
+                  <Badge className="border border-emerald-500/40 bg-emerald-500/10 text-emerald-200">
+                    {formatNumber(sentLeadIds.length)} marked contacted
+                  </Badge>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card border border-slate-800/60 bg-slate-900/60">
+            <CardHeader>
+              <CardTitle className="text-lg text-slate-100">
+                Email Preview Queue
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground">
+                Highlights from the first six emails ready to leave the inbox.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {readyToSendLeads.length ? (
+                readyToSendLeads.slice(0, 6).map((lead) => {
+                  const key = String(lead._id);
+                  const details = emailDetailsByLead.get(key);
+                  const isSent = sentLeadIds.includes(key);
+                  const contactEmail =
+                    lead.contactInfo?.emails?.[0]?.email ?? "Email available";
+
+                  return (
+                    <div
+                      key={key}
+                      className="flex flex-col gap-3 rounded-xl border border-slate-800/60 bg-slate-900/50 p-4 md:flex-row md:items-center md:justify-between"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold text-slate-100">
+                          {lead.businessName}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {contactEmail}
+                        </p>
+                      </div>
+
+                      <div className="flex-1 text-sm text-slate-200 md:px-6">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          {details?.subject || "Personalized email"}
+                        </p>
+                        <p className="mt-1 text-sm leading-relaxed text-slate-300">
+                          {summarizeBody(details?.body ?? "")}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {details?.responseRate !== null && (
+                          <Badge className="border border-emerald-500/40 bg-emerald-500/15 text-emerald-200">
+                            {formatPercent(details.responseRate)}
+                          </Badge>
+                        )}
+                        <Badge
+                          variant={isSent ? "default" : "secondary"}
+                          className={cn(
+                            isSent
+                              ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-200"
+                              : "border-cyan-500/40 bg-transparent text-cyan-200",
+                          )}
+                        >
+                          {isSent ? "Sent" : "Ready"}
+                        </Badge>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="rounded-lg border border-dashed border-slate-800/60 bg-slate-900/50 p-6 text-center text-sm text-muted-foreground">
+                  Personalization is still running. As soon as emails are ready,
+                  they will appear here with full previews.
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="analytics" className="space-y-4">
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle className="text-lg">Campaign Analytics</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h5 className="font-medium">Quality Metrics</h5>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-sm">Enrichment Success Rate</span>
-                      <span className="font-medium">
-                        {((enrichedLeads / totalLeads) * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Avg Relevance Score</span>
-                      <span className="font-medium">8.7/10</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Estimated Response Rate</span>
-                      <span className="font-medium" style={{ color: 'hsl(var(--neon-lime))' }}>24.3%</span>
-                    </div>
-                  </div>
+        <TabsContent value="analytics" className="space-y-4 pt-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card className="glass-card border border-slate-800/60 bg-slate-900/60">
+              <CardContent className="flex items-center justify-between p-5">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Avg Relevance
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-100">
+                    {avgRelevanceLabel}
+                  </p>
                 </div>
+                <div className="rounded-full border border-emerald-500/40 bg-emerald-500/10 p-3 text-emerald-200">
+                  <Target className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
 
-                <div className="space-y-4">
-                  <h5 className="font-medium">Next Steps</h5>
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    <div>• Export your leads and emails</div>
-                    <div>• Import to your CRM or email platform</div>
-                    <div>• Schedule your email sequences</div>
-                    <div>• Track response rates and optimize</div>
-                  </div>
+            <Card className="glass-card border border-slate-800/60 bg-slate-900/60">
+              <CardContent className="flex items-center justify-between p-5">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Estimated Response
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-100">
+                    {avgResponseLabel}
+                  </p>
                 </div>
-              </div>
+                <div className="rounded-full border border-cyan-500/40 bg-cyan-500/10 p-3 text-cyan-200">
+                  <TrendingUp className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card border border-slate-800/60 bg-slate-900/60">
+              <CardContent className="flex items-center justify-between p-5">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Pipeline Completion
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-100">
+                    {pipelineCompletionLabel}
+                  </p>
+                </div>
+                <div className="rounded-full border border-purple-500/40 bg-purple-500/10 p-3 text-purple-200">
+                  <Activity className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card border border-slate-800/60 bg-slate-900/60">
+              <CardContent className="flex items-center justify-between p-5">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Ready Emails
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-100">
+                    {formatNumber(readyToSendCount)}
+                  </p>
+                </div>
+                <div className="rounded-full border border-emerald-500/40 bg-emerald-500/10 p-3 text-emerald-200">
+                  <MailCheck className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card className="glass-card border border-slate-800/60 bg-slate-900/60">
+              <CardHeader>
+                <CardTitle className="text-base text-slate-100">
+                  Pipeline Volume
+                </CardTitle>
+                <CardDescription className="text-xs text-muted-foreground">
+                  Stage-by-stage totals across the current campaign.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer config={stageChartConfig} className="h-[260px]">
+                  <BarChart data={stageChartData}>
+                    <CartesianGrid
+                      stroke="hsl(var(--border) / 0.4)"
+                      strokeDasharray="3 3"
+                    />
+                    <XAxis
+                      dataKey="label"
+                      stroke="hsl(var(--muted-foreground) / 0.7)"
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      stroke="hsl(var(--muted-foreground) / 0.7)"
+                    />
+                    <ChartTooltip
+                      content={<ChartTooltipContent hideIndicator />}
+                    />
+                    <Bar dataKey="metric" radius={6}>
+                      {stageChartData.map((item) => (
+                        <Cell key={item.label} fill={item.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card border border-slate-800/60 bg-slate-900/60">
+              <CardHeader>
+                <CardTitle className="text-base text-slate-100">
+                  Estimated Response Trend
+                </CardTitle>
+                <CardDescription className="text-xs text-muted-foreground">
+                  Confidence scores generated by the personalization agents.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="h-[260px]">
+                {responseTrendData.length ? (
+                  <ChartContainer config={responseChartConfig}>
+                    <LineChart data={responseTrendData}>
+                      <CartesianGrid
+                        stroke="hsl(var(--border) / 0.4)"
+                        strokeDasharray="3 3"
+                      />
+                      <XAxis
+                        dataKey="index"
+                        stroke="hsl(var(--muted-foreground) / 0.7)"
+                        tickFormatter={(value) => `#${value}`}
+                      />
+                      <YAxis
+                        stroke="hsl(var(--muted-foreground) / 0.7)"
+                        domain={[
+                          0,
+                          (dataMax: number) =>
+                            Math.min(100, Math.max(40, dataMax + 10)),
+                        ]}
+                      />
+                      <ChartTooltip
+                        content={<ChartTooltipContent hideLabel />}
+                      />
+                      {averageResponseRate > 0 && (
+                        <ReferenceLine
+                          y={Number(averageResponseRate.toFixed(1))}
+                          stroke="hsl(var(--neon-lime) / 0.6)"
+                          strokeDasharray="4 4"
+                        />
+                      )}
+                      <Line
+                        type="monotone"
+                        dataKey="rate"
+                        stroke="hsl(var(--neon-lime))"
+                        strokeWidth={2}
+                        dot={{
+                          strokeWidth: 1.5,
+                          fill: "hsl(var(--background))",
+                        }}
+                        activeDot={{ r: 5 }}
+                      />
+                    </LineChart>
+                  </ChartContainer>
+                ) : (
+                  <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-800/60 bg-slate-900/50 text-sm text-muted-foreground">
+                    Response estimates will appear as soon as personalization
+                    completes.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="glass-card border border-slate-800/60 bg-slate-900/60">
+            <CardHeader>
+              <CardTitle className="text-base text-slate-100">
+                Top Matching Leads
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground">
+                Highest AI relevance scores with available contact information.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {topLeads.length ? (
+                topLeads.map((lead) => {
+                  const key = String(lead._id);
+                  const details = emailDetailsByLead.get(key);
+                  const relevance = lead.aiAnalysis?.relevanceScore ?? 0;
+                  const contactName =
+                    lead.contactInfo?.contacts?.[0]?.name ??
+                    lead.contactInfo?.emails?.[0]?.email ??
+                    "Primary contact";
+
+                  return (
+                    <div
+                      key={key}
+                      className="flex flex-col gap-2 rounded-lg border border-slate-800/60 bg-slate-900/50 p-4 md:flex-row md:items-center md:justify-between"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold text-slate-100">
+                          {lead.businessName}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {contactName}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Badge className="border border-purple-500/40 bg-purple-500/15 text-purple-200">
+                          {formatPercent(relevance * 100)}
+                        </Badge>
+                        {details?.responseRate !== null && (
+                          <Badge className="border border-emerald-500/40 bg-emerald-500/15 text-emerald-200">
+                            {formatPercent(details.responseRate)}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="rounded-lg border border-dashed border-slate-800/60 bg-slate-900/50 p-6 text-center text-sm text-muted-foreground">
+                  Complete enrichment and personalization to unlock lead quality
+                  insights.
+                </div>
+              )}
             </CardContent>
           </Card>
+
+          {lastUpdatedLabel && (
+            <p className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Calendar className="h-3.5 w-3.5" />
+              Data refreshed {lastUpdatedLabel}
+            </p>
+          )}
         </TabsContent>
       </Tabs>
 
-      {/* Actions */}
-      <div className="flex items-center justify-center gap-4">
+      <div className="flex flex-wrap items-center justify-center gap-4">
         <Button
           onClick={handleStartNewPipeline}
           variant="outline"
           size="lg"
-          className="neon-border transition-neo hover-lift"
+          className="neon-border border-cyan-500/40 bg-transparent text-cyan-200 hover:bg-cyan-500/20 hover:text-cyan-50"
         >
-          <RefreshCw className="h-4 w-4 mr-2" />
+          <RefreshCw className="mr-2 h-4 w-4" />
           Start New Pipeline
         </Button>
 
         <Button
           onClick={() => handleExport("csv")}
-          disabled={exportedFormats.includes("csv")}
+          disabled={isExporting || exportedFormats.includes("csv")}
           size="lg"
           className={cn(
-            "min-w-48 transition-neo",
-            !exportedFormats.includes("csv") && "gradient-neon-primary hover-glow"
+            "min-w-48 border border-cyan-500/40 bg-slate-900 text-cyan-200 transition-neo hover:bg-cyan-500/20 hover:text-cyan-50",
+            !exportedFormats.includes("csv") && "hover-glow",
           )}
         >
-          <Download className="h-4 w-4 mr-2" />
-          Quick CSV Export
+          {isExporting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Preparing CSV...
+            </>
+          ) : (
+            <>
+              <Download className="mr-2 h-4 w-4" />
+              Quick CSV Export
+            </>
+          )}
+        </Button>
+
+        <Button
+          onClick={handleViewResults}
+          variant="ghost"
+          size="lg"
+          className="text-cyan-200 hover:text-cyan-50"
+        >
+          <FileText className="mr-2 h-4 w-4" />
+          View Results
         </Button>
       </div>
     </div>
