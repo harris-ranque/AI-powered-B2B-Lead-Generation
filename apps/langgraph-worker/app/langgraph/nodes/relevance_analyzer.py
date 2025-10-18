@@ -5,11 +5,11 @@ Determines lead relevance and fit for our services
 
 import time
 from typing import Dict, Any
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
+from ...utils.research_clients import ClientRegistry
 from ...models.lead_models import AgentResult
 from ..state import EmailGenerationState
 
@@ -48,12 +48,15 @@ async def relevance_analyzer_node(state: EmailGenerationState) -> Dict[str, Any]
     logger.info(f"Starting relevance analysis for {state['lead'].company_name}")
     
     try:
+        provider_keys = state.get("provider_keys") or {}
+        registry = ClientRegistry.get_instance()
+
         # Initialize LLM with structured output
-        llm = ChatOpenAI(
+        llm = registry.get_openai_client(
+            api_key=provider_keys.get("openai"),
             model=settings.default_model,
             temperature=settings.temperature,
             max_tokens=settings.max_tokens,
-            openai_api_key=settings.openai_api_key
         ).with_structured_output(RelevanceAnalysis)
         
         # Create analysis prompt

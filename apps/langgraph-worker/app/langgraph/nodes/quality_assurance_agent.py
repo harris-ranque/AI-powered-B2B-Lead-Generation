@@ -6,11 +6,11 @@ to ensure high standards before final output.
 import time
 import re
 from typing import Dict, Any, List
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
+from ...utils.research_clients import ClientRegistry
 from ...models.lead_models import AgentResult
 from ..state import EmailGenerationState
 
@@ -76,6 +76,9 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
     primary_email = state.get("primary_email")
     email_metadata = state.get("email_metadata", {})
     
+    provider_keys = state.get("provider_keys") or {}
+    registry = ClientRegistry.get_instance()
+
     logger.info(f"Starting quality assurance for {lead.company_name}")
     
     try:
@@ -106,12 +109,12 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         # Initialize LLM for quality assessment
         # gpt-5-nano uses max_completion_tokens instead of max_tokens
         # Use medium reasoning effort for QA - we need accurate scoring, not just speed
-        llm = ChatOpenAI(
+        llm = registry.get_openai_client(
+            api_key=provider_keys.get("openai"),
             model=settings.default_model,
-            temperature=0.2,  # Low temperature for consistent assessment
+            temperature=0.2,
             max_completion_tokens=settings.max_tokens,
-            reasoning_effort="medium",  # Use medium for better quality assessment
-            openai_api_key=settings.openai_api_key
+            reasoning_effort="medium",
         ).with_structured_output(QualityAssessment)
         
         # Create comprehensive quality assessment prompt

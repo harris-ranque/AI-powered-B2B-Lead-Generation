@@ -20,6 +20,7 @@ import {
   Mail,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ProviderKeyManager } from "@/components/settings/ProviderKeyManager";
 import {
   APP_THEME_OPTIONS,
   DEFAULT_APP_THEME,
@@ -285,6 +286,7 @@ export function Settings() {
     <div className="flex h-screen">
       <div className="flex-1 p-8 overflow-y-auto">
         <div className="max-w-4xl">
+          <ProviderKeyManager plan={userData?.plan} />
           {/* Account Settings */}
           <Card className="p-6 bg-card border-border mb-6">
             <div className="flex items-center gap-3 mb-6">

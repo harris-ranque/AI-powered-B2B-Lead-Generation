@@ -5,12 +5,13 @@ Enhanced with research progress tracking and tiered research support
 from typing import TypedDict, Dict, Any, List, Optional, Literal
 from datetime import datetime
 from ..models.lead_models import (
-    Lead, 
-    BusinessProfile, 
+    Lead,
+    BusinessProfile,
     EmailRequirements,
     EmailContent,
     AgentResult,
-    FollowUpSequence
+    FollowUpSequence,
+    ProviderKeys,
 )
 
 class EmailGenerationState(TypedDict):
@@ -23,6 +24,8 @@ class EmailGenerationState(TypedDict):
     lead: Lead
     business_profile: BusinessProfile
     requirements: EmailRequirements
+    provider_keys: Optional[ProviderKeys]
+    user_id: Optional[str]
     
     # Workflow control (simplified for 3-agent flow)
     current_stage: Literal[

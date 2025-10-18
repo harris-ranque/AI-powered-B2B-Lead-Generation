@@ -4,7 +4,7 @@ Configuration management for Genni LangGraph Worker
 import logging
 import os
 from functools import lru_cache
-from typing import Optional
+from typing import Dict, Optional
 from urllib.parse import urlparse, urlunparse
 
 from pydantic import Field, model_validator
@@ -189,12 +189,14 @@ def get_settings() -> Settings:
     """Get cached settings instance"""
     return Settings()
 
-def validate_required_settings():
-    """Validate that required settings are present and secure"""
+def validate_optional_settings() -> Dict[str, bool]:
+    """Validate critical settings and report available provider credentials."""
     settings = get_settings()
-    missing = []
+    logger = logging.getLogger(__name__)
 
-    # Validate API key (LANGGRAPH_API_KEY)
+    missing_required = []
+    available: Dict[str, bool] = {}
+
     if getattr(settings, "api_key_placeholder_used", False):
         raise ValueError(
             "LANGGRAPH_API_KEY is still set to the default insecure value. "
@@ -202,7 +204,7 @@ def validate_required_settings():
         )
 
     if not settings.api_key:
-        missing.append(
+        missing_required.append(
             "LANGGRAPH_WEBHOOK_SECRET or LANGGRAPH_API_KEY is required for webhook authentication"
         )
     elif len(settings.api_key) < 32:
@@ -211,19 +213,35 @@ def validate_required_settings():
             "For security, please use at least 32 characters."
         )
 
-    if not settings.openai_api_key:
-        missing.append("OPENAI_API_KEY is required for AI operations")
+    if settings.webhook_url or settings.convex_url:
+        available["webhook"] = True
+    else:
+        missing_required.append("Either WEBHOOK_URL or CONVEX_URL is required for result callbacks")
+
+    if settings.openai_api_key and settings.openai_api_key != "test-openai-key":
+        available["openai"] = True
     elif settings.openai_api_key == "test-openai-key":
-        raise ValueError(
-            "OPENAI_API_KEY is still set to a test value. "
-            "Please set your actual OpenAI API key."
-        )
+        logger.warning("OPENAI_API_KEY is using a test value; BYOK clients must supply their own key.")
+    else:
+        logger.warning("OPENAI_API_KEY not configured; BYOK clients must supply keys per request.")
 
-    # Check that either webhook_url or convex_url is provided
-    if not settings.webhook_url and not settings.convex_url:
-        missing.append("Either WEBHOOK_URL or CONVEX_URL is required for result callbacks")
+    if settings.tavily_api_key:
+        available["tavily"] = True
+    else:
+        logger.warning("Tavily API key not configured; BYOK clients must supply keys per request.")
 
-    if missing:
-        raise ValueError(f"Missing required configuration: {', '.join(missing)}")
+    if settings.perplexity_api_key:
+        available["perplexity"] = True
+    else:
+        logger.warning("Perplexity API key not configured; BYOK clients must supply keys per request.")
 
-    return settings
+    google_key = os.getenv("GOOGLE_PLACES_API_KEY")
+    if google_key:
+        available["google_places"] = True
+    else:
+        logger.warning("Google Places API key not configured; BYOK clients must supply keys per request.")
+
+    if missing_required:
+        raise ValueError(f"Missing required configuration: {', '.join(missing_required)}")
+
+    return available

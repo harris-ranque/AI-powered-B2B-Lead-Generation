@@ -392,7 +392,7 @@ export const enrichLeads: any = action({
           const keyResult = await ctx.runAction(
             "userApiKeys/actions:getDecryptedApiKey" as any,
             {
-              service: providerType, // Use configured provider
+              provider: providerType, // Use configured provider
               userId: user._id,
             },
           );

@@ -2,6 +2,7 @@ import { action } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
+import { resolveUserKeys } from "../lib/keyResolver";
 
 // Generate personalized email using LangGraph
 export const generateEmail: unknown = action({
@@ -93,6 +94,25 @@ export const generateEmail: unknown = action({
       },
     );
 
+    const providerKeys =
+      user.plan === "enterprise"
+        ? await resolveUserKeys(ctx, user._id)
+        : {};
+
+    const serializedProviderKeys = Object.fromEntries(
+      Object.entries(providerKeys).map(([provider, key]) => {
+        if (!key) {
+          return [provider, key];
+        }
+
+        if (provider === "google_places") {
+          return ["googlePlaces", key];
+        }
+
+        return [provider, key];
+      }),
+    );
+
     // Call LangGraph worker service
     try {
       const langgraphUrl = process.env.LANGGRAPH_URL;
@@ -142,6 +162,11 @@ export const generateEmail: unknown = action({
             personalization_level: "high",
             followUpSequence: (args.emailType ?? "initial") !== "final",
           },
+          providerKeys:
+            Object.keys(serializedProviderKeys).length > 0
+              ? serializedProviderKeys
+              : undefined,
+          userId: user._id,
         }),
       });
 
