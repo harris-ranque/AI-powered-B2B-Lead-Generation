@@ -388,6 +388,8 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_status", ["status"])
     .index("by_place_id", ["placeId"])
+    .index("by_user_place", ["userId", "placeId"]) // User-level deduplication (across all searches)
+    .index("by_search_place", ["searchId", "placeId"]) // Per-search deduplication (for spatial tiling)
     .index("by_enrichment_status", ["enrichmentStatus"])
     .index("by_analysis_status", ["analysisStatus"])
     .index("by_analysis_scheduled", ["analysisScheduledAt"])

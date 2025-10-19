@@ -1,13 +1,69 @@
+"use node";
+
+import crypto from "node:crypto";
 import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 import { api, internal } from "../_generated/api";
 import {
-  decryptApiKey,
   ensureUserCanManageKeys,
   providerValidator,
   SUPPORTED_PROVIDERS,
 } from "./mutations";
+
+// Crypto helper functions for API key encryption
+const AES_ALGORITHM = "aes-256-gcm";
+const IV_LENGTH = 12; // Recommended IV size for GCM
+
+function resolveEncryptionKey(): Buffer {
+  const secret =
+    process.env.USER_API_KEY_SECRET ||
+    process.env.CONVEX_SITE_SECRET ||
+    (process.env.NODE_ENV === "production" ? undefined : "development-secret");
+
+  if (!secret) {
+    throw new Error("USER_API_KEY_SECRET environment variable is required");
+  }
+
+  if (secret === "development-secret") {
+    console.warn(
+      "Using fallback encryption key. Set USER_API_KEY_SECRET for production environments.",
+    );
+  }
+
+  // Derive a 32-byte key for AES-256 from the secret
+  return crypto.createHash("sha256").update(secret).digest();
+}
+
+function encryptApiKey(key: string): string {
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(AES_ALGORITHM, resolveEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(key, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  return Buffer.concat([iv, authTag, encrypted]).toString("base64");
+}
+
+function decryptApiKey(encryptedKey: string): string {
+  const payload = Buffer.from(encryptedKey, "base64");
+  const iv = payload.subarray(0, IV_LENGTH);
+  const authTag = payload.subarray(IV_LENGTH, IV_LENGTH + 16);
+  const ciphertext = payload.subarray(IV_LENGTH + 16);
+
+  const decipher = crypto.createDecipheriv(
+    AES_ALGORITHM,
+    resolveEncryptionKey(),
+    iv,
+  );
+  decipher.setAuthTag(authTag);
+
+  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  return decrypted.toString("utf8");
+}
+
+function hashApiKey(key: string): string {
+  return crypto.createHash("sha256").update(key).digest("hex");
+}
 
 const ENTERPRISE_VALIDATION_PROVIDERS = new Set([
   "openai",
@@ -85,6 +141,39 @@ async function validateLegacyProvider(
       return { valid: false, error: "Unsupported provider for legacy validation" };
   }
 }
+
+// Add or update API key (action with crypto operations)
+export const upsertApiKey = action({
+  args: {
+    provider: providerValidator,
+    keyName: v.string(),
+    apiKey: v.string(),
+  },
+  handler: async (ctx, args): Promise<{
+    success: boolean;
+    keyId: any;
+    action: "updated" | "created";
+  }> => {
+    const user = await requireAuth(ctx);
+    ensureUserCanManageKeys(user.plan);
+
+    // Crypto operations in action (allowed with "use node" in crypto.ts)
+    const encryptedKey = encryptApiKey(args.apiKey);
+    const keyHash = hashApiKey(args.apiKey);
+
+    // Call internal mutation for DB operations
+    return await ctx.runMutation(
+      internal.userApiKeys.internal.upsertApiKeyInternal,
+      {
+        userId: user._id,
+        provider: args.provider,
+        keyName: args.keyName,
+        encryptedKey,
+        keyHash,
+      }
+    );
+  },
+});
 
 // Validate API key by testing it with the actual service
 export const validateApiKey = action({
@@ -231,6 +320,44 @@ export const getDecryptedApiKey: any = action({
       keyId: apiKey._id,
       provider: args.provider,
     };
+  },
+});
+
+// Resolve user provider keys for use in actions
+export const resolveUserProviderKeys = action({
+  args: {
+    userId: v.id("users"),
+    includeInactive: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const includeInactive = args.includeInactive ?? false;
+
+    const keys = await ctx.runQuery(
+      internal.userApiKeys.internal.getUserApiKeysInternal,
+      {
+        userId: args.userId,
+      },
+    );
+
+    const providerKeys: Record<string, string> = {};
+
+    for (const key of keys) {
+      if (!includeInactive && (!key.isActive || !key.validated)) {
+        continue;
+      }
+
+      try {
+        providerKeys[key.provider] = decryptApiKey((key as any).encryptedKey || "");
+      } catch (error) {
+        console.warn("Failed to decrypt provider key", {
+          provider: key.provider,
+          userId: args.userId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return providerKeys;
   },
 });
 

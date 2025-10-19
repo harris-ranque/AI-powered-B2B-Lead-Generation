@@ -95,7 +95,7 @@ export const generateEmail: unknown = action({
 
     const providerKeys =
       user.plan === "enterprise"
-        ? await ctx.runQuery(api.userApiKeys.queries.resolveUserProviderKeys, {
+        ? await ctx.runAction(api.userApiKeys.actions.resolveUserProviderKeys, {
             userId: user._id,
           })
         : {};

@@ -1,5 +1,3 @@
-import crypto from "node:crypto";
-
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
@@ -20,59 +18,6 @@ export const providerValidator = v.union(
   ...SUPPORTED_PROVIDERS.map((provider) => v.literal(provider)),
 );
 
-const AES_ALGORITHM = "aes-256-gcm";
-const IV_LENGTH = 12; // Recommended IV size for GCM
-
-function resolveEncryptionKey(): Buffer {
-  const secret =
-    process.env.USER_API_KEY_SECRET ||
-    process.env.CONVEX_SITE_SECRET ||
-    (process.env.NODE_ENV === "production" ? undefined : "development-secret");
-
-  if (!secret) {
-    throw new Error("USER_API_KEY_SECRET environment variable is required");
-  }
-
-  if (secret === "development-secret") {
-    console.warn(
-      "Using fallback encryption key. Set USER_API_KEY_SECRET for production environments.",
-    );
-  }
-
-  // Derive a 32-byte key for AES-256 from the secret
-  return crypto.createHash("sha256").update(secret).digest();
-}
-
-function encryptApiKey(key: string): string {
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const cipher = crypto.createCipheriv(AES_ALGORITHM, resolveEncryptionKey(), iv);
-  const encrypted = Buffer.concat([cipher.update(key, "utf8"), cipher.final()]);
-  const authTag = cipher.getAuthTag();
-
-  return Buffer.concat([iv, authTag, encrypted]).toString("base64");
-}
-
-export function decryptApiKey(encryptedKey: string): string {
-  const payload = Buffer.from(encryptedKey, "base64");
-  const iv = payload.subarray(0, IV_LENGTH);
-  const authTag = payload.subarray(IV_LENGTH, IV_LENGTH + 16);
-  const ciphertext = payload.subarray(IV_LENGTH + 16);
-
-  const decipher = crypto.createDecipheriv(
-    AES_ALGORITHM,
-    resolveEncryptionKey(),
-    iv,
-  );
-  decipher.setAuthTag(authTag);
-
-  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-  return decrypted.toString("utf8");
-}
-
-function hashApiKey(key: string): string {
-  return crypto.createHash("sha256").update(key).digest("hex");
-}
-
 export function ensureUserCanManageKeys(plan: string) {
   if (!plan) {
     throw new Error("User plan missing for API key operation");
@@ -85,64 +30,8 @@ export function ensureUserCanManageKeys(plan: string) {
   }
 }
 
-// Add or update API key
-export const upsertApiKey = mutation({
-  args: {
-    provider: providerValidator,
-    keyName: v.string(),
-    apiKey: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
-    ensureUserCanManageKeys(user.plan);
-
-    const existingKey = await ctx.db
-      .query("userApiKeys")
-      .withIndex("by_user_provider_active", (q) =>
-        q
-          .eq("userId", user._id)
-          .eq("provider", args.provider)
-          .eq("isActive", true),
-      )
-      .unique();
-
-    const encryptedKey = encryptApiKey(args.apiKey);
-    const keyHash = hashApiKey(args.apiKey);
-
-    const keyData = {
-      userId: user._id,
-      provider: args.provider,
-      keyName: args.keyName,
-      encryptedKey,
-      keyHash,
-      validated: false, // Must be validated explicitly
-      usageCount: existingKey?.usageCount ?? 0,
-      isActive: true,
-      updatedAt: Date.now(),
-    };
-
-    if (existingKey) {
-      await ctx.db.patch(existingKey._id, keyData);
-
-      return {
-        success: true,
-        keyId: existingKey._id,
-        action: "updated",
-      };
-    }
-
-    const keyId = await ctx.db.insert("userApiKeys", {
-      ...keyData,
-      createdAt: Date.now(),
-    });
-
-    return {
-      success: true,
-      keyId,
-      action: "created",
-    };
-  },
-});
+// NOTE: upsertApiKey has been moved to actions.ts to support Node.js crypto operations
+// See convex/userApiKeys/actions.ts for the implementation
 
 // Delete API key
 export const deleteApiKey = mutation({

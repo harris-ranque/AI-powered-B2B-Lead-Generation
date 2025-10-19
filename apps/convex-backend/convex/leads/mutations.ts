@@ -38,16 +38,31 @@ export const createLead = mutation({
       throw new Error("Search not found or access denied");
     }
 
-    // Check for duplicate placeId within this search
-    const existingLead = await ctx.db
+    // FIRST: Check for duplicate within THIS search (for spatial tiling deduplication)
+    const duplicateInSearch = await ctx.db
       .query("leads")
-      .withIndex("by_place_id", (q) => q.eq("placeId", args.leadData.placeId))
-      .filter((q) => q.eq(q.field("searchId"), args.searchId))
+      .withIndex("by_search_place", (q) =>
+        q.eq("searchId", args.searchId).eq("placeId", args.leadData.placeId)
+      )
       .first();
 
-    if (existingLead) {
+    if (duplicateInSearch) {
       throw new Error(
-        `Lead with this location already exists in this search. Cannot create duplicate.`
+        `This location is already in this search. Cannot create duplicate tile.`
+      );
+    }
+
+    // SECOND: Check for duplicate at USER level (across all searches)
+    const duplicateAcrossSearches = await ctx.db
+      .query("leads")
+      .withIndex("by_user_place", (q) =>
+        q.eq("userId", user._id).eq("placeId", args.leadData.placeId)
+      )
+      .first();
+
+    if (duplicateAcrossSearches) {
+      throw new Error(
+        `Lead with this location already exists in another search (${duplicateAcrossSearches.searchId}). Cannot create duplicate.`
       );
     }
 

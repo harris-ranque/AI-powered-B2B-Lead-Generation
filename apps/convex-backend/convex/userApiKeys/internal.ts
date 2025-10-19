@@ -1,5 +1,6 @@
-import { internalQuery } from "../_generated/server";
+import { internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
+import { providerValidator } from "./mutations";
 
 // Internal query to fetch a user's API key for a specific provider
 export const getApiKeyForUserAndProvider = internalQuery({
@@ -43,5 +44,60 @@ export const getUserApiKeysInternal = internalQuery({
       .collect();
 
     return apiKeys;
+  },
+});
+
+// Internal mutation to upsert API key (DB operations only, no crypto)
+export const upsertApiKeyInternal = internalMutation({
+  args: {
+    userId: v.id("users"),
+    provider: providerValidator,
+    keyName: v.string(),
+    encryptedKey: v.string(),
+    keyHash: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const existingKey = await ctx.db
+      .query("userApiKeys")
+      .withIndex("by_user_provider_active", (q) =>
+        q
+          .eq("userId", args.userId)
+          .eq("provider", args.provider)
+          .eq("isActive", true),
+      )
+      .unique();
+
+    const keyData = {
+      userId: args.userId,
+      provider: args.provider,
+      keyName: args.keyName,
+      encryptedKey: args.encryptedKey,
+      keyHash: args.keyHash,
+      validated: false, // Must be validated explicitly
+      usageCount: existingKey?.usageCount ?? 0,
+      isActive: true,
+      updatedAt: Date.now(),
+    };
+
+    if (existingKey) {
+      await ctx.db.patch(existingKey._id, keyData);
+
+      return {
+        success: true,
+        keyId: existingKey._id,
+        action: "updated" as const,
+      };
+    }
+
+    const keyId = await ctx.db.insert("userApiKeys", {
+      ...keyData,
+      createdAt: Date.now(),
+    });
+
+    return {
+      success: true,
+      keyId,
+      action: "created" as const,
+    };
   },
 });

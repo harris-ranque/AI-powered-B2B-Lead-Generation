@@ -154,18 +154,34 @@ export const createLeadInternal = internalMutation({
   handler: async (ctx, args) => {
     // Trust caller to ensure search exists and belongs to user
 
-    // Check for duplicate placeId within this search
-    const existingLead = await ctx.db
+    // FIRST: Check for duplicate within THIS search (for spatial tiling deduplication)
+    const duplicateInSearch = await ctx.db
       .query("leads")
-      .withIndex("by_place_id", (q) => q.eq("placeId", args.leadData.placeId))
-      .filter((q) => q.eq(q.field("searchId"), args.searchId))
+      .withIndex("by_search_place", (q) =>
+        q.eq("searchId", args.searchId).eq("placeId", args.leadData.placeId)
+      )
       .first();
 
-    if (existingLead) {
+    if (duplicateInSearch) {
       console.log(
-        `Duplicate lead detected for placeId ${args.leadData.placeId} in search ${args.searchId}, skipping to prevent re-processing`
+        `Duplicate tile detected for placeId ${args.leadData.placeId} in search ${args.searchId}, skipping to prevent duplicate tiles`
       );
-      return null; // Skip duplicate, don't re-process
+      return null; // Skip duplicate tile in this search
+    }
+
+    // SECOND: Check for duplicate at USER level (across all searches)
+    const duplicateAcrossSearches = await ctx.db
+      .query("leads")
+      .withIndex("by_user_place", (q) =>
+        q.eq("userId", args.userId).eq("placeId", args.leadData.placeId)
+      )
+      .first();
+
+    if (duplicateAcrossSearches) {
+      console.log(
+        `Duplicate lead detected for placeId ${args.leadData.placeId} for user ${args.userId} (existing in search ${duplicateAcrossSearches.searchId}), skipping to prevent re-processing`
+      );
+      return null; // Skip duplicate, don't re-process business user already has
     }
 
     const leadId = await ctx.db.insert("leads", {

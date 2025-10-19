@@ -5,7 +5,6 @@ import {
   ensureUserCanManageKeys,
   providerValidator,
   SUPPORTED_PROVIDERS,
-  decryptApiKey,
 } from "./mutations";
 
 // Get all API keys for current user
@@ -120,41 +119,5 @@ export const hasApiKeyForService = query({
       lastValidated: apiKey?.validatedAt,
       usageCount: apiKey?.usageCount || 0,
     };
-  },
-});
-
-// Resolve user provider keys for use in actions
-export const resolveUserProviderKeys = query({
-  args: {
-    userId: v.id("users"),
-    includeInactive: v.optional(v.boolean()),
-  },
-  handler: async (ctx, args) => {
-    const includeInactive = args.includeInactive ?? false;
-
-    const keys = await ctx.db
-      .query("userApiKeys")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
-
-    const providerKeys: Record<string, string> = {};
-
-    for (const key of keys) {
-      if (!includeInactive && (!key.isActive || !key.validated)) {
-        continue;
-      }
-
-      try {
-        providerKeys[key.provider] = decryptApiKey(key.encryptedKey);
-      } catch (error) {
-        console.warn("Failed to decrypt provider key", {
-          provider: key.provider,
-          userId: args.userId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    return providerKeys;
   },
 });

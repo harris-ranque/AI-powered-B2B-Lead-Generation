@@ -1,4 +1,4 @@
-import { mutation } from "./_generated/server";
+import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "./auth";
 import { api } from "./_generated/api";
@@ -6,6 +6,7 @@ import {
   ensureUserCanManageKeys,
   providerValidator,
 } from "./userApiKeys/mutations";
+import type { Id } from "./_generated/dataModel";
 
 interface ValidationResponse {
   valid: boolean;
@@ -13,7 +14,13 @@ interface ValidationResponse {
   quotaRemaining?: number | null;
 }
 
-export const validateKey = mutation({
+interface UpsertResult {
+  success: boolean;
+  keyId: Id<"userApiKeys">;
+  action: "updated" | "created";
+}
+
+export const validateKey = action({
   args: {
     provider: providerValidator,
     apiKey: v.string(),
@@ -55,7 +62,7 @@ export const validateKey = mutation({
       throw new Error(payload.error || "Provider validation failed");
     }
 
-    const upsertResult = await ctx.runMutation(api.userApiKeys.mutations.upsertApiKey, {
+    const upsertResult: UpsertResult = await ctx.runAction(api.userApiKeys.actions.upsertApiKey, {
       provider: args.provider,
       keyName: args.keyName ?? `${args.provider.toUpperCase()} key`,
       apiKey: args.apiKey,

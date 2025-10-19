@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@genni/convex-types";
 import {
   Card,
@@ -66,7 +66,7 @@ interface ProviderKeyManagerProps {
 export function ProviderKeyManager({ plan }: ProviderKeyManagerProps) {
   const userApiKeys = useQuery(api.userApiKeys.queries.getUserApiKeys);
   const status = useQuery(api.userApiKeys.queries.getApiKeyStatus);
-  const validateKey = useMutation(api.apiKeys.validateKey);
+  const validateKey = useAction(api.apiKeys.validateKey);
 
   const [keyInputs, setKeyInputs] = useState<Record<ProviderId, string>>(() => ({
     openai: "",

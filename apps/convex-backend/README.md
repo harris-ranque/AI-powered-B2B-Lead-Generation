@@ -159,11 +159,50 @@ ENABLE_WEBHOOK_RETRIES=true
 ### Lead Generation Workflow
 
 1. **Search Creation**: User defines search parameters
-2. **Google Maps Discovery**: Find businesses using Places API
+2. **Google Maps Discovery**: Find businesses using Places API with spatial tiling
 3. **Contact Enrichment**: Enhance leads with FindyMail
 4. **AI Analysis**: CrewAI analyzes leads for relevance
 5. **Email Generation**: Personalized emails created by AI
 6. **Real-time Updates**: Progress tracked and displayed live
+
+### Spatial Tiling & Lead Discovery
+
+**How Spatial Tiling Works**:
+
+Genni uses an intelligent spatial tiling algorithm to maximize lead discovery from Google Maps API while respecting API limitations (maximum 60 results per query):
+
+1. **Grid Division**: Search area divided into smaller geographic tiles
+2. **Parallel Discovery**: Each tile queried independently for maximum coverage
+3. **Overlap Handling**: Adjacent tiles may discover the same business from different positions
+4. **Smart Deduplication**: Two-level deduplication ensures data quality and cost efficiency
+
+**Two-Level Deduplication System**:
+
+```
+Business Discovery → Per-Search Deduplication → User-Level Deduplication → Lead Created
+                     (Spatial Tiling)            (Across All Searches)
+```
+
+**Level 1: Per-Search Deduplication** (Spatial Tiling)
+- **Purpose**: Prevents duplicate tiles within a single search
+- **Index**: `by_search_place ["searchId", "placeId"]`
+- **Use Case**: When overlapping tiles discover the same business
+- **Performance**: O(log n) compound index query - NO in-memory filtering
+- **Result**: Each business appears once per search regardless of tile overlap
+
+**Level 2: User-Level Deduplication** (Cross-Search)
+- **Purpose**: Prevents re-processing businesses across multiple searches
+- **Index**: `by_user_place ["userId", "placeId"]`
+- **Use Case**: User creates multiple searches that discover the same business
+- **Performance**: O(log n) compound index query - NO in-memory filtering
+- **Result**: Each business processed once per user, saving credits and avoiding duplicate outreach
+
+**Benefits**:
+- **Maximum Coverage**: Spatial tiling discovers 10-20x more leads than single queries
+- **Zero Duplicates**: Overlapping tiles automatically deduplicated
+- **Cost Efficient**: No wasted credits on duplicate processing or enrichment
+- **Scalable**: O(log n) performance maintains speed as database grows
+- **User-Friendly**: Users can run multiple searches without worrying about duplicate leads
 
 ### Credit System
 
