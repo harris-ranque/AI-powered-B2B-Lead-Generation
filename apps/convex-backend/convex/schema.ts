@@ -1195,6 +1195,46 @@ export default defineSchema({
     .index("by_user_provider_active", ["userId", "provider", "isActive"])
     .index("by_user_active_valid", ["userId", "isActive", "validated"]),
 
+  // API Key Audit Log - Security audit trail for API key access
+  apiKeyAuditLog: defineTable({
+    userId: v.id("users"),
+    keyId: v.id("userApiKeys"),
+    action: v.union(
+      v.literal("decrypted"),
+      v.literal("validated"),
+      v.literal("created"),
+      v.literal("deleted"),
+    ),
+    purpose: v.string(), // e.g., "system_use", "enrichment", "validation"
+    success: v.boolean(),
+    errorMessage: v.optional(v.string()),
+    timestamp: v.number(),
+  })
+    .index("by_key", ["keyId"])
+    .index("by_user", ["userId"])
+    .index("by_action", ["action"])
+    .index("by_timestamp", ["timestamp"])
+    .index("by_user_action", ["userId", "action"]),
+
+  // Duplicate Metrics - Track prevented duplicates for analytics
+  duplicateMetrics: defineTable({
+    userId: v.id("users"),
+    searchId: v.id("searches"),
+    placeId: v.string(),
+    duplicateType: v.union(
+      v.literal("search_level"), // Duplicate within same search (spatial tiling)
+      v.literal("user_level"), // Duplicate across user's searches
+    ),
+    preventedAt: v.number(),
+    originalLeadId: v.optional(v.id("leads")), // Reference to original lead
+    businessName: v.string(), // For reporting purposes
+  })
+    .index("by_user", ["userId"])
+    .index("by_search", ["searchId"])
+    .index("by_date", ["preventedAt"])
+    .index("by_type", ["duplicateType"])
+    .index("by_user_type", ["userId", "duplicateType"]),
+
   // Usage Tracking - Track user activity per billing period
   usageTracking: defineTable({
     userId: v.id("users"),

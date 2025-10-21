@@ -166,6 +166,18 @@ export const createLeadInternal = internalMutation({
       console.log(
         `Duplicate tile detected for placeId ${args.leadData.placeId} in search ${args.searchId}, skipping to prevent duplicate tiles`
       );
+
+      // Track duplicate prevention for analytics
+      await ctx.db.insert("duplicateMetrics", {
+        userId: args.userId,
+        searchId: args.searchId,
+        placeId: args.leadData.placeId,
+        duplicateType: "search_level",
+        originalLeadId: duplicateInSearch._id,
+        businessName: args.leadData.businessName,
+        preventedAt: Date.now(),
+      });
+
       return null; // Skip duplicate tile in this search
     }
 
@@ -181,29 +193,80 @@ export const createLeadInternal = internalMutation({
       console.log(
         `Duplicate lead detected for placeId ${args.leadData.placeId} for user ${args.userId} (existing in search ${duplicateAcrossSearches.searchId}), skipping to prevent re-processing`
       );
+
+      // Track duplicate prevention for analytics
+      await ctx.db.insert("duplicateMetrics", {
+        userId: args.userId,
+        searchId: args.searchId,
+        placeId: args.leadData.placeId,
+        duplicateType: "user_level",
+        originalLeadId: duplicateAcrossSearches._id,
+        businessName: args.leadData.businessName,
+        preventedAt: Date.now(),
+      });
+
       return null; // Skip duplicate, don't re-process business user already has
     }
 
-    const leadId = await ctx.db.insert("leads", {
-      userId: args.userId,
-      searchId: args.searchId,
-      businessName: args.leadData.businessName,
-      address: args.leadData.address,
-      placeId: args.leadData.placeId,
-      location: args.leadData.location,
-      phone: args.leadData.phone,
-      website: args.leadData.website,
-      rating: args.leadData.rating,
-      reviewCount: args.leadData.reviewCount,
-      category: args.leadData.category,
-      enrichmentStatus: "pending",
-      status: "new",
-      tags: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+    // Atomic insert with race condition protection
+    try {
+      const leadId = await ctx.db.insert("leads", {
+        userId: args.userId,
+        searchId: args.searchId,
+        businessName: args.leadData.businessName,
+        address: args.leadData.address,
+        placeId: args.leadData.placeId,
+        location: args.leadData.location,
+        phone: args.leadData.phone,
+        website: args.leadData.website,
+        rating: args.leadData.rating,
+        reviewCount: args.leadData.reviewCount,
+        category: args.leadData.category,
+        enrichmentStatus: "pending",
+        status: "new",
+        tags: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
 
-    return leadId;
+      return leadId;
+    } catch (error: any) {
+      // Handle potential race condition - if duplicate was created between check and insert
+      console.warn(
+        `Potential race condition during lead creation for placeId ${args.leadData.placeId}`,
+        error
+      );
+
+      // Double-check for duplicate that might have been created concurrently
+      const raceDuplicate = await ctx.db
+        .query("leads")
+        .withIndex("by_user_place", (q) =>
+          q.eq("userId", args.userId).eq("placeId", args.leadData.placeId)
+        )
+        .first();
+
+      if (raceDuplicate) {
+        console.log(
+          `Race condition detected: duplicate created concurrently for placeId ${args.leadData.placeId}`
+        );
+
+        // Track the race condition duplicate
+        await ctx.db.insert("duplicateMetrics", {
+          userId: args.userId,
+          searchId: args.searchId,
+          placeId: args.leadData.placeId,
+          duplicateType: "user_level",
+          originalLeadId: raceDuplicate._id,
+          businessName: args.leadData.businessName,
+          preventedAt: Date.now(),
+        });
+
+        return null; // Duplicate caught by race condition handling
+      }
+
+      // If not a duplicate issue, re-throw the error
+      throw error;
+    }
   },
 });
 

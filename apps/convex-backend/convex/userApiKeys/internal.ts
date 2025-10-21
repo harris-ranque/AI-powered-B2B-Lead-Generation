@@ -101,3 +101,31 @@ export const upsertApiKeyInternal = internalMutation({
     };
   },
 });
+
+// Internal mutation to log API key access for security audit trail
+export const logApiKeyAccess = internalMutation({
+  args: {
+    userId: v.id("users"),
+    keyId: v.id("userApiKeys"),
+    action: v.union(
+      v.literal("decrypted"),
+      v.literal("validated"),
+      v.literal("created"),
+      v.literal("deleted"),
+    ),
+    purpose: v.string(), // e.g., "system_use", "enrichment", "user_validation"
+    success: v.boolean(),
+    errorMessage: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("apiKeyAuditLog", {
+      userId: args.userId,
+      keyId: args.keyId,
+      action: args.action,
+      purpose: args.purpose,
+      success: args.success,
+      errorMessage: args.errorMessage,
+      timestamp: Date.now(),
+    });
+  },
+});

@@ -16,18 +16,21 @@ const AES_ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // Recommended IV size for GCM
 
 function resolveEncryptionKey(): Buffer {
-  const secret =
-    process.env.USER_API_KEY_SECRET ||
-    process.env.CONVEX_SITE_SECRET ||
-    (process.env.NODE_ENV === "production" ? undefined : "development-secret");
+  const secret = process.env.USER_API_KEY_SECRET || process.env.CONVEX_SITE_SECRET;
 
   if (!secret) {
-    throw new Error("USER_API_KEY_SECRET environment variable is required");
+    throw new Error(
+      "CRITICAL SECURITY ERROR: USER_API_KEY_SECRET environment variable is required. " +
+      "API key encryption cannot proceed without a secure secret. " +
+      "Set USER_API_KEY_SECRET in your environment configuration."
+    );
   }
 
-  if (secret === "development-secret") {
-    console.warn(
-      "Using fallback encryption key. Set USER_API_KEY_SECRET for production environments.",
+  // Validate secret strength (minimum 32 characters for AES-256 security)
+  if (secret.length < 32) {
+    throw new Error(
+      "CRITICAL SECURITY ERROR: USER_API_KEY_SECRET must be at least 32 characters " +
+      "to ensure AES-256 encryption security. Current length: " + secret.length
     );
   }
 
@@ -106,15 +109,33 @@ async function validateWithWorker(
   try {
     payload = (await response.json()) as ValidationResult;
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unable to parse validation response";
-    throw new Error(message);
+    // Log full error internally for debugging
+    console.error("LangGraph validation response parsing error:", {
+      provider,
+      error: error instanceof Error ? error.message : String(error),
+      timestamp: Date.now(),
+    });
+
+    // Return generic error to user
+    throw new Error(
+      `Unable to validate ${provider} API key. Please verify your key is correct and try again.`
+    );
   }
 
   if (!response.ok) {
-    const message =
-      payload.error || `${response.status} ${response.statusText} validation failure`;
-    throw new Error(message);
+    // Log full error internally for debugging
+    console.error("LangGraph validation failed:", {
+      provider,
+      status: response.status,
+      statusText: response.statusText,
+      error: payload.error,
+      timestamp: Date.now(),
+    });
+
+    // Return generic error to user
+    throw new Error(
+      `Unable to validate ${provider} API key. Please verify your key is correct and try again.`
+    );
   }
 
   return {
@@ -162,7 +183,7 @@ export const upsertApiKey = action({
     const keyHash = hashApiKey(args.apiKey);
 
     // Call internal mutation for DB operations
-    return await ctx.runMutation(
+    const result = await ctx.runMutation(
       internal.userApiKeys.internal.upsertApiKeyInternal,
       {
         userId: user._id,
@@ -172,6 +193,17 @@ export const upsertApiKey = action({
         keyHash,
       }
     );
+
+    // Log key creation/update
+    await ctx.runMutation(internal.userApiKeys.internal.logApiKeyAccess, {
+      userId: user._id,
+      keyId: result.keyId,
+      action: "created",
+      purpose: result.action === "created" ? "new_key" : "key_update",
+      success: true,
+    });
+
+    return result;
   },
 });
 
@@ -201,6 +233,9 @@ export const validateApiKey = action({
       throw new Error("Not authorized to validate this API key");
     }
 
+    let validationSuccess = false;
+    let validationError: string | undefined;
+
     try {
       const decryptedKey = decryptApiKey((apiKey as any).encryptedKey || "");
       const provider = apiKey.provider as Provider;
@@ -209,10 +244,23 @@ export const validateApiKey = action({
         ? await validateWithWorker(provider, decryptedKey)
         : await validateLegacyProvider(provider, decryptedKey);
 
+      validationSuccess = validation.valid;
+      validationError = validation.error;
+
       await ctx.runMutation(api.userApiKeys.mutations.updateValidationStatus, {
         keyId: args.keyId,
         validated: validation.valid,
-        lastError: validation.valid ? undefined : validation.error || "Validation failed",
+        lastError: validation.valid ? undefined : "API key validation failed",
+      });
+
+      // Log successful validation
+      await ctx.runMutation(internal.userApiKeys.internal.logApiKeyAccess, {
+        userId: user._id,
+        keyId: args.keyId,
+        action: "validated",
+        purpose: "user_validation",
+        success: validation.valid,
+        errorMessage: validation.valid ? undefined : "Validation failed",
       });
 
       return {
@@ -220,24 +268,42 @@ export const validateApiKey = action({
         isValid: validation.valid,
         provider,
         quotaRemaining: validation.quotaRemaining ?? null,
-        validationError: validation.error,
+        validationError: validation.valid ? undefined : "API key validation failed. Please verify your key is correct.",
       };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown validation error";
+      const sanitizedError = "API key validation failed. Please verify your key is correct.";
+
+      // Log detailed error internally
+      console.error("API key validation error:", {
+        keyId: args.keyId,
+        provider: apiKey.provider,
+        userId: user._id,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: Date.now(),
+      });
 
       // Update with error status
       await ctx.runMutation(api.userApiKeys.mutations.updateValidationStatus, {
         keyId: args.keyId,
         validated: false,
-        lastError: errorMessage,
+        lastError: sanitizedError,
+      });
+
+      // Log failed validation attempt
+      await ctx.runMutation(internal.userApiKeys.internal.logApiKeyAccess, {
+        userId: user._id,
+        keyId: args.keyId,
+        action: "validated",
+        purpose: "user_validation",
+        success: false,
+        errorMessage: error instanceof Error ? error.message : String(error),
       });
 
       return {
         success: false,
         isValid: false,
         provider: apiKey.provider,
-        validationError: errorMessage,
+        validationError: sanitizedError,
       };
     }
   },
@@ -307,7 +373,32 @@ export const getDecryptedApiKey: any = action({
       throw new Error(`No valid ${args.provider} API key found for user`);
     }
 
-    const decryptedKey = decryptApiKey((apiKey as any).encryptedKey || "");
+    let decryptedKey: string;
+
+    try {
+      decryptedKey = decryptApiKey((apiKey as any).encryptedKey || "");
+
+      // Log successful decryption
+      await ctx.runMutation(internal.userApiKeys.internal.logApiKeyAccess, {
+        userId: args.userId,
+        keyId: apiKey._id,
+        action: "decrypted",
+        purpose: "system_use",
+        success: true,
+      });
+    } catch (error) {
+      // Log failed decryption attempt
+      await ctx.runMutation(internal.userApiKeys.internal.logApiKeyAccess, {
+        userId: args.userId,
+        keyId: apiKey._id,
+        action: "decrypted",
+        purpose: "system_use",
+        success: false,
+        errorMessage: error instanceof Error ? error.message : "Decryption failed",
+      });
+
+      throw error;
+    }
 
     // Record usage
     await ctx.runMutation(api.userApiKeys.mutations.recordApiKeyUsage, {

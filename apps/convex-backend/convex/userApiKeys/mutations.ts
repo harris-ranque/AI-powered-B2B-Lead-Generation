@@ -1,6 +1,7 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
+import { internal } from "../_generated/api";
 
 export const SUPPORTED_PROVIDERS = [
   "openai",
@@ -52,6 +53,15 @@ export const deleteApiKey = mutation({
       throw new Error("Not authorized to delete this API key");
     }
 
+    // Log deletion before deleting the key
+    await ctx.scheduler.runAfter(0, internal.userApiKeys.internal.logApiKeyAccess, {
+      userId: user._id,
+      keyId: args.keyId,
+      action: "deleted",
+      purpose: "user_deletion",
+      success: true,
+    });
+
     await ctx.db.delete(args.keyId);
 
     return { success: true };
@@ -94,12 +104,15 @@ export const recordApiKeyUsage = mutation({
     userId: v.id("users"),
   },
   handler: async (ctx, args) => {
+    // Use compound index for O(log n) performance instead of O(n) filtering
     const apiKey = await ctx.db
       .query("userApiKeys")
-      .filter((q) => q.eq(q.field("userId"), args.userId))
-      .filter((q) => q.eq(q.field("provider"), args.provider))
-      .filter((q) => q.eq(q.field("isActive"), true))
-      .unique();
+      .withIndex("by_user_provider_active", (q) =>
+        q.eq("userId", args.userId)
+         .eq("provider", args.provider)
+         .eq("isActive", true)
+      )
+      .first();
 
     if (apiKey) {
       await ctx.db.patch(apiKey._id, {

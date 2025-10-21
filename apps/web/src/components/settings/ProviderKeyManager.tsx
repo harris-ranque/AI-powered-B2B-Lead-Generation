@@ -22,8 +22,8 @@ const PROVIDERS = [
     required: true,
   },
   {
-    id: "google_maps" as const,
-    name: "Google Maps",
+    id: "google_places" as const,
+    name: "Google Places",
     description: "Required for lead discovery and business search. Get your API key from Google Cloud Console.",
     required: true,
   },
@@ -45,6 +45,25 @@ const PROVIDERS = [
     description: "Required for deep research and business intelligence.",
     required: true,
   },
+  // Commented out - can be reactivated later if needed
+  // {
+  //   id: "google_maps" as const,
+  //   name: "Google Maps (Legacy)",
+  //   description: "Legacy Google Maps provider. Use Google Places instead.",
+  //   required: false,
+  // },
+  // {
+  //   id: "icypeas" as const,
+  //   name: "IcyPeas",
+  //   description: "Alternative email enrichment provider.",
+  //   required: false,
+  // },
+  // {
+  //   id: "apify" as const,
+  //   name: "Apify",
+  //   description: "Web scraping and data extraction.",
+  //   required: false,
+  // },
 ];
 
 const providerOrder = PROVIDERS.map((provider) => provider.id);
@@ -70,10 +89,13 @@ export function ProviderKeyManager({ plan }: ProviderKeyManagerProps) {
 
   const [keyInputs, setKeyInputs] = useState<Record<ProviderId, string>>(() => ({
     openai: "",
-    google_maps: "",
+    google_places: "",
     findymail: "",
     tavily: "",
     perplexity: "",
+    // google_maps: "", // Commented out - legacy
+    // icypeas: "", // Commented out
+    // apify: "", // Commented out
   }));
   const [validating, setValidating] = useState<ProviderId | null>(null);
 
@@ -97,10 +119,13 @@ export function ProviderKeyManager({ plan }: ProviderKeyManagerProps) {
   const providerState = useMemo(() => {
     const states: Record<ProviderId, ProviderKeyState> = {
       openai: { validated: false, usageCount: 0, hasKey: false },
-      google_maps: { validated: false, usageCount: 0, hasKey: false },
+      google_places: { validated: false, usageCount: 0, hasKey: false },
       findymail: { validated: false, usageCount: 0, hasKey: false },
       tavily: { validated: false, usageCount: 0, hasKey: false },
       perplexity: { validated: false, usageCount: 0, hasKey: false },
+      // google_maps: { validated: false, usageCount: 0, hasKey: false }, // Commented out - legacy
+      // icypeas: { validated: false, usageCount: 0, hasKey: false }, // Commented out
+      // apify: { validated: false, usageCount: 0, hasKey: false }, // Commented out
     };
 
     for (const key of userApiKeys ?? []) {
@@ -174,7 +199,7 @@ export function ProviderKeyManager({ plan }: ProviderKeyManagerProps) {
         <CardTitle>Enterprise API Keys (Required)</CardTitle>
         <CardDescription>
           As an Enterprise customer, you must provide your own API keys for all providers.
-          All five API keys (OpenAI, Google Maps, FindyMail, Tavily, Perplexity) are required before you can run any lead generation workflows.
+          All five API keys (OpenAI, Google Places, FindyMail, Tavily, Perplexity) are required before you can run any lead generation workflows.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
