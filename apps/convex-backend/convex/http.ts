@@ -110,12 +110,15 @@ function extractCompanyProfile(lead: LeadDoc): string {
   }
 
   const record = analysis as Record<string, unknown>;
-  const sections: string[] = [];
+  const bullets: string[] = [];
 
-  // Helper to format array values
-  const formatArray = (arr: unknown): string => {
+  // Helper to format array values - take first 2-3 items for conciseness
+  const formatArrayConcise = (arr: unknown, maxItems: number = 2): string => {
     if (!Array.isArray(arr)) return "";
-    return arr.filter(item => typeof item === "string" && item.trim()).join("; ");
+    const items = arr
+      .filter(item => typeof item === "string" && item.trim())
+      .slice(0, maxItems);
+    return items.join(", ");
   };
 
   // Helper to get string value
@@ -125,48 +128,72 @@ function extractCompanyProfile(lead: LeadDoc): string {
     return "";
   };
 
-  // Extract comprehensive company profile data from Exa/Business Intelligence
+  // Helper to truncate long text to keep it concise
+  const truncate = (text: string, maxLength: number = 100): string => {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength).trim() + "...";
+  };
+
+  // Extract and create concise bullet-point summary (prioritize most important info)
+
+  // Company overview - truncate to keep it brief
   const overview = getString("company_overview") || getString("companyOverview") || getString("overview");
-  if (overview) sections.push(`OVERVIEW: ${overview}`);
+  if (overview) {
+    bullets.push(`• ${truncate(overview, 120)}`);
+  }
 
+  // Industry and business model
   const industry = getString("industry_focus") || getString("industryFocus");
-  if (industry) sections.push(`INDUSTRY: ${industry}`);
-
   const businessModel = getString("business_model") || getString("businessModel");
-  if (businessModel) sections.push(`BUSINESS MODEL: ${businessModel}`);
+  if (industry && businessModel) {
+    bullets.push(`• ${industry} company using ${businessModel} model`);
+  } else if (industry) {
+    bullets.push(`• ${industry} sector`);
+  } else if (businessModel) {
+    bullets.push(`• ${businessModel} business model`);
+  }
 
-  const keyServices = formatArray(record.key_services || record.keyServices);
-  if (keyServices) sections.push(`SERVICES: ${keyServices}`);
-
-  const targetCustomers = getString("target_customers") || getString("targetCustomers");
-  if (targetCustomers) sections.push(`TARGET CUSTOMERS: ${targetCustomers}`);
-
-  const competitive = getString("competitive_landscape") || getString("competitiveLandscape");
-  if (competitive) sections.push(`COMPETITIVE POSITION: ${competitive}`);
-
+  // Growth stage and size indicators
   const growthStage = getString("growth_stage") || getString("growthStage");
-  if (growthStage) sections.push(`GROWTH STAGE: ${growthStage}`);
+  if (growthStage) {
+    bullets.push(`• ${growthStage}`);
+  }
 
-  const techStack = formatArray(record.technology_stack || record.technologyStack);
-  if (techStack) sections.push(`TECH STACK: ${techStack}`);
+  // Key services/products - limit to top 2
+  const keyServices = formatArrayConcise(record.key_services || record.keyServices, 2);
+  if (keyServices) {
+    bullets.push(`• Offers: ${keyServices}`);
+  }
 
-  const recentNews = formatArray(record.recent_news || record.recentNews);
-  if (recentNews) sections.push(`RECENT NEWS: ${recentNews}`);
+  // Target customers
+  const targetCustomers = getString("target_customers") || getString("targetCustomers");
+  if (targetCustomers) {
+    bullets.push(`• Targets: ${truncate(targetCustomers, 80)}`);
+  }
 
-  const industryInsights = getString("industry_insights") || getString("industryInsights");
-  if (industryInsights) sections.push(`INDUSTRY INSIGHTS: ${industryInsights}`);
+  // Tech stack - limit to top 2 technologies
+  const techStack = formatArrayConcise(record.technology_stack || record.technologyStack, 2);
+  if (techStack) {
+    bullets.push(`• Tech: ${techStack}`);
+  }
 
-  const painPoints = formatArray(record.pain_points || record.painPoints);
-  if (painPoints) sections.push(`PAIN POINTS: ${painPoints}`);
+  // Recent news - most recent only
+  const recentNewsArray = record.recent_news || record.recentNews;
+  if (Array.isArray(recentNewsArray) && recentNewsArray.length > 0) {
+    const latestNews = recentNewsArray[0];
+    if (typeof latestNews === "string" && latestNews.trim()) {
+      bullets.push(`• Recent: ${truncate(latestNews, 100)}`);
+    }
+  }
 
-  const valueMatches = formatArray(record.value_matches || record.valueMatches);
-  if (valueMatches) sections.push(`VALUE MATCHES: ${valueMatches}`);
-
-  const opportunities = formatArray(record.opportunities);
-  if (opportunities) sections.push(`OPPORTUNITIES: ${opportunities}`);
+  // Pain points - top 2 only
+  const painPoints = formatArrayConcise(record.pain_points || record.painPoints, 2);
+  if (painPoints) {
+    bullets.push(`• Challenges: ${painPoints}`);
+  }
 
   // If no structured data found, try fallback to any string value
-  if (sections.length === 0) {
+  if (bullets.length === 0) {
     const candidateKeys = [
       "company_profile", "companyProfile",
       "company_analysis", "companyAnalysis",
@@ -176,23 +203,24 @@ function extractCompanyProfile(lead: LeadDoc): string {
 
     for (const key of candidateKeys) {
       const value = getString(key);
-      if (value) return value;
+      if (value) return `• ${truncate(value, 150)}`;
     }
 
     const fallbackValue = Object.values(record).find(
       (value) => typeof value === "string" && value.trim(),
     );
     if (typeof fallbackValue === "string") {
-      return fallbackValue.trim();
+      return `• ${truncate(fallbackValue.trim(), 150)}`;
     }
   }
 
   // If still no data, try notes
-  if (sections.length === 0 && typeof lead.notes === "string" && lead.notes.trim()) {
-    return lead.notes.trim();
+  if (bullets.length === 0 && typeof lead.notes === "string" && lead.notes.trim()) {
+    return `• ${truncate(lead.notes.trim(), 150)}`;
   }
 
-  return sections.join(" | ");
+  // Return bullet-point summary (newlines for CSV cell readability)
+  return bullets.join("\n");
 }
 
 function deriveFirstNameFromEmail(email: string): string {
