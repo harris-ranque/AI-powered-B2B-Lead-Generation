@@ -279,9 +279,9 @@ Your emails consistently achieve exceptional results because they:
 Email best practices:
 
 SUBJECT LINES (CRITICAL - HIGHEST PRIORITY):
-- Format: MUST start with "Hi {FirstName}" then add curiosity-provoking content
+- Format: MUST start with "Hi [FirstName]" then add curiosity-provoking content
 - NEVER use hyphens in subject lines
-- Use comma or colon after name: "Hi {FirstName}, [statement]" or "Hi {FirstName}: [statement]"
+- Use comma or colon after name: "Hi [FirstName], [statement]" or "Hi [FirstName]: [statement]"
 - Create strong curiosity gaps that make recipients want to open
 - Use specific numbers, stats, and concrete details from research
 - Reference competitors, peers, or insider insights when relevant
@@ -289,12 +289,12 @@ SUBJECT LINES (CRITICAL - HIGHEST PRIORITY):
 - Never use generic phrases: "touching base", "following up", "checking in", "quick question"
 
 Subject Line Patterns (Choose based on context):
-  1. Specific Discovery: "Hi {name}, spotted 3 pipeline gaps at {company}"
-  2. What If Scenario: "Hi {name}, what if {company} could cut churn by 30%?"
-  3. Competitive Intelligence: "Hi {name}, why {company}'s competitors switched from {tool}"
-  4. Hidden Insight: "Hi {name}: the overlooked fix for {company}'s {challenge}"
-  5. Contrarian/Pattern Interrupt: "Hi {name}, {company} + this = {outcome}"
-  6. Peer Proof: "Hi {name}, what companies like {company} are doing now"
+  1. Specific Discovery: "Hi [Name], spotted 3 pipeline gaps at [Company]"
+  2. What If Scenario: "Hi [Name], what if [Company] could cut churn by 30%?"
+  3. Competitive Intelligence: "Hi [Name], why [Company]'s competitors switched from [Tool]"
+  4. Hidden Insight: "Hi [Name]: the overlooked fix for [Company]'s [Challenge]"
+  5. Contrarian/Pattern Interrupt: "Hi [Name], [Company] + this = [Outcome]"
+  6. Peer Proof: "Hi [Name], what companies like [Company] are doing now"
 
 Curiosity Triggers to Use:
   - Specific numbers/stats from research (3 quick wins, 40% faster, 15hrs/week saved)
@@ -397,7 +397,7 @@ Natural, Human Language:
 NO HYPHENS RULE (CRITICAL):
 - NEVER use hyphens anywhere in subject lines or email body
 - This is non-negotiable
-- Subject format: "Hi {Name}, {statement}" or "Hi {Name}: {statement}"
+- Subject format: "Hi [Name], [statement]" or "Hi [Name]: [statement]"
 - In body: use commas, periods, or separate sentences instead
 - Examples:
   GOOD: "The agent runs 24/7, finds leads matching your ICP, and verifies contact info"
@@ -426,7 +426,7 @@ Avoid Dated/Hype Language:
 - Never use "10x" language (sounds like 2022 hype)
 - Avoid Grant Cardone style exaggeration
 - Use realistic, credible multipliers (2x, 3x, 5x with context)
-- Prefer: "What would it mean if {Company} could double revenue by increasing lead gen 5 fold?"
+- Prefer: "What would it mean if [Company] could double revenue by increasing lead gen 5 fold?"
 - Avoid: "10x your lead gen without hiring"
 
 Grammar and Sentence Structure:
@@ -542,9 +542,9 @@ You have access to comprehensive business intelligence. USE IT EXCLUSIVELY.
    - Don't assume situations not in the data
    - NEVER use hyphens in subject lines
    - Format options:
-     * "Hi {contact_first_name}, {statement}"
-     * "Hi {contact_first_name}: {statement}"
-     * "Hi {contact_first_name} {question}?"
+     * "Hi {contact_first_name}, [statement]"
+     * "Hi {contact_first_name}: [statement]"
+     * "Hi {contact_first_name} [question]?"
 
 4. Numbers and Statistics:
    - Use REAL metrics from business intelligence when available
@@ -559,8 +559,8 @@ You have access to comprehensive business intelligence. USE IT EXCLUSIVELY.
    - Keep numbers and quantities VAGUE unless you have exact real data
    - Never use specific placeholder numbers in P.S. statements
    - Examples of valid P.S. approaches:
-     GOOD: "I can share the competitor analysis I pulled on {actual_competitors}"
-     GOOD: "I have the breakdown of how {actual_competitor} approaches this"
+     GOOD: "I can share the competitor analysis I pulled on [ActualCompetitors]"
+     GOOD: "I have the breakdown of how [ActualCompetitor] approaches this"
      GOOD: "Happy to send over the industry benchmark data I found"
      GOOD: "The system identified prospects matching your criteria. Want to see some examples?"
      GOOD: "I found several companies in your space using this approach. Want the details?"
@@ -607,7 +607,7 @@ You have access to comprehensive business intelligence. USE IT EXCLUSIVELY.
 
 9. NO HYPHENS RULE (CRITICAL):
    - NEVER use hyphens anywhere in the email (subject or body)
-   - Subject line format: "Hi {contact_first_name}, {statement}" or "Hi {contact_first_name}: {statement}"
+   - Subject line format: "Hi {contact_first_name}, [statement]" or "Hi {contact_first_name}: [statement]"
    - In body: use commas, periods, or separate sentences
    - This is non-negotiable
    - Examples:
@@ -636,24 +636,24 @@ Pattern 1 - Specific Discovery:
 "Hi {contact_first_name}: found 2 pipeline gaps at {company_name}"
 
 Pattern 2 - What If Scenario:
-"Hi {contact_first_name}, what if {company_name} could cut {metric} by 30%?"
+"Hi {contact_first_name}, what if {company_name} could cut [Metric] by 30%?"
 "Hi {contact_first_name}, what if {company_name} could double pipeline in 60 days?"
 
 Pattern 3 - Competitive Intelligence:
-"Hi {contact_first_name}, why {company_name}'s competitors switched from {competitor}"
-"Hi {contact_first_name}: what {competitor_customer} learned about {pain_point}"
+"Hi {contact_first_name}, why {company_name}'s competitors switched from [Competitor]"
+"Hi {contact_first_name}: what [CompetitorCustomer] learned about [PainPoint]"
 
 Pattern 4 - Hidden Insight:
-"Hi {contact_first_name}, the overlooked fix for {company_name}'s {pain_point}"
-"Hi {contact_first_name}: unconventional {solution} for {company_name}"
+"Hi {contact_first_name}, the overlooked fix for {company_name}'s [PainPoint]"
+"Hi {contact_first_name}: unconventional [Solution] for {company_name}"
 
 Pattern 5 - Contrarian/Pattern Interrupt:
-"Hi {contact_first_name}, {company_name} + this = {specific_outcome}"
-"Hi {contact_first_name}: why {industry} teams are ditching {old_approach}"
+"Hi {contact_first_name}, {company_name} + this = [SpecificOutcome]"
+"Hi {contact_first_name}: why [Industry] teams are ditching [OldApproach]"
 
 Pattern 6 - Peer Proof:
 "Hi {contact_first_name}, what companies like {company_name} are doing now"
-"Hi {contact_first_name}: how teams like {company_name} solved {pain_point}"
+"Hi {contact_first_name}: how teams like {company_name} solved [PainPoint]"
 
 EMAIL GENERATION REQUIREMENTS:
 
@@ -695,8 +695,8 @@ Opening (1-2 sentences):
   BAD: "Saw your blog post"
 - Must be immediately relevant
 - Examples of openings:
-  * "I noticed {company} closed a Series A last month"
-  * "I saw {company} posted several SDR roles recently"
+  * "I noticed [Company] closed a Series A last month"
+  * "I saw [Company] posted several SDR roles recently"
   * "I read your earnings call transcript mentioning pipeline challenges"
 
 Body Paragraph 1 (1-2 sentences):
@@ -1146,14 +1146,52 @@ Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excludin
         }
         
     except Exception as e:
-        logger.error(f"Error in email generation agent: {str(e)}")
+        import traceback
+        import sentry_sdk
         execution_time = time.time() - start_time
-        
+
+        # Comprehensive error logging with full context
+        error_details = {
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "lead_company": lead.company_name if lead else "Unknown",
+            "lead_id": getattr(lead, 'id', 'Unknown'),
+            "request_id": state.get('request_id', 'Unknown'),
+            "execution_time": execution_time,
+            "stack_trace": traceback.format_exc()
+        }
+
+        # Send structured context to Sentry
+        sentry_sdk.set_context("email_generation_error", {
+            "agent": "Email Generation Agent",
+            "error_type": error_details['error_type'],
+            "lead_company": error_details['lead_company'],
+            "lead_id": error_details['lead_id'],
+            "request_id": error_details['request_id'],
+            "execution_time_seconds": error_details['execution_time'],
+            "has_business_intelligence": state.get('business_intelligence') is not None,
+            "has_requirements": requirements is not None,
+            "has_business_profile": business_profile is not None
+        })
+
+        # Capture exception in Sentry with full context
+        sentry_sdk.capture_exception(e)
+
+        logger.error(
+            f"CRITICAL ERROR in Email Generation Agent:\n"
+            f"  Error Type: {error_details['error_type']}\n"
+            f"  Error Message: {error_details['error_message']}\n"
+            f"  Lead: {error_details['lead_company']} (ID: {error_details['lead_id']})\n"
+            f"  Request ID: {error_details['request_id']}\n"
+            f"  Execution Time: {error_details['execution_time']:.2f}s\n"
+            f"  Full Stack Trace:\n{error_details['stack_trace']}"
+        )
+
         # Create error result
         agent_result = AgentResult(
             agent_name="Email Generation Agent",
             role="Personalized email writing and sequence strategy",
-            output=f"Error during email generation: {str(e)}",
+            output=f"Error during email generation: {error_details['error_type']}: {error_details['error_message']}",
             confidence_score=0.1,
             execution_time=execution_time
         )

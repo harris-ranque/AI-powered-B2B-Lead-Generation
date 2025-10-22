@@ -370,14 +370,51 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         }
         
     except Exception as e:
-        logger.error(f"Error in business intelligence agent: {str(e)}")
+        import traceback
+        import sentry_sdk
         execution_time = time.time() - start_time
-        
+
+        # Comprehensive error logging with full context
+        error_details = {
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "lead_company": lead.company_name if lead else "Unknown",
+            "lead_id": getattr(lead, 'id', 'Unknown'),
+            "request_id": state.get('request_id', 'Unknown'),
+            "execution_time": execution_time,
+            "stack_trace": traceback.format_exc()
+        }
+
+        # Send structured context to Sentry
+        sentry_sdk.set_context("business_intelligence_error", {
+            "agent": "Business Intelligence Agent",
+            "error_type": error_details['error_type'],
+            "lead_company": error_details['lead_company'],
+            "lead_id": error_details['lead_id'],
+            "request_id": error_details['request_id'],
+            "execution_time_seconds": error_details['execution_time'],
+            "has_business_profile": business_profile is not None,
+            "has_requirements": requirements is not None
+        })
+
+        # Capture exception in Sentry with full context
+        sentry_sdk.capture_exception(e)
+
+        logger.error(
+            f"CRITICAL ERROR in Business Intelligence Agent:\n"
+            f"  Error Type: {error_details['error_type']}\n"
+            f"  Error Message: {error_details['error_message']}\n"
+            f"  Lead: {error_details['lead_company']} (ID: {error_details['lead_id']})\n"
+            f"  Request ID: {error_details['request_id']}\n"
+            f"  Execution Time: {error_details['execution_time']:.2f}s\n"
+            f"  Full Stack Trace:\n{error_details['stack_trace']}"
+        )
+
         # Create error result
         agent_result = AgentResult(
             agent_name="Business Intelligence Agent",
             role="Comprehensive business intelligence and analysis",
-            output=f"Error during business intelligence analysis: {str(e)}",
+            output=f"Error during business intelligence analysis: {error_details['error_type']}: {error_details['error_message']}",
             confidence_score=0.1,
             execution_time=execution_time
         )
