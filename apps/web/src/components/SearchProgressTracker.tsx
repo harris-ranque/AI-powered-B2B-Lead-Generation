@@ -135,6 +135,22 @@ export function SearchProgressTracker({
     Math.max(discoveredCount, enrichedCount, analyzedCount);
   const researchSources = search.researchSourcesAnalyzed ?? undefined;
   const creditsEstimate = search.creditsReserved ?? search.creditsUsed ?? totalCount;
+  const duplicateStats = {
+    placeId: search.duplicatesFilteredPlaceId ?? 0,
+    placeName: search.duplicatesFilteredPlaceName ?? 0,
+    address: search.duplicatesFilteredAddress ?? 0,
+    email: search.duplicatesFilteredEmail ?? 0,
+  };
+  const totalDuplicatesFiltered =
+    duplicateStats.placeId +
+    duplicateStats.placeName +
+    duplicateStats.address +
+    duplicateStats.email;
+  const finalRadiusMiles =
+    search.finalSearchRadius && search.finalSearchRadius > 0
+      ? (search.finalSearchRadius / 1609.34).toFixed(1)
+      : null;
+  const discoveryMetadata = search.discoveryMetadata;
 
   const researchTierDisplay = getResearchTierDisplay(search.researchTier);
   const analysisStageIcon: LucideIcon =
@@ -722,6 +738,60 @@ export function SearchProgressTracker({
                   <p className="font-medium text-foreground">{search.results?.totalFound ?? 0} leads</p>
                 </div>
               </div>
+
+              {discoveryMetadata && (
+                <div className="mt-6 space-y-3 rounded-md border border-border/60 bg-muted/10 p-4 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-foreground">
+                        {discoveryMetadata.expanded
+                          ? `Expanded search (${search.expansionIterations ?? 0} iterations)`
+                          : "Original search area"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {discoveryMetadata.expansionMessage}
+                      </p>
+                    </div>
+                    <Badge variant={discoveryMetadata.expanded ? "outline" : "secondary"}>
+                      {discoveryMetadata.delivered} / {discoveryMetadata.requested} leads
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 text-xs text-muted-foreground md:grid-cols-3">
+                    <div className="rounded-md bg-background/70 p-3">
+                      <p className="text-sm font-semibold text-foreground">
+                        {discoveryMetadata.originalAreaLeads}
+                      </p>
+                      <p className="uppercase tracking-wide">Original area</p>
+                    </div>
+                    <div className="rounded-md bg-background/70 p-3">
+                      <p className="text-sm font-semibold text-foreground">
+                        {discoveryMetadata.expansionAreaLeads}
+                      </p>
+                      <p className="uppercase tracking-wide">Expansion area</p>
+                    </div>
+                    <div className="rounded-md bg-background/70 p-3">
+                      <p className="text-sm font-semibold text-foreground">
+                        {finalRadiusMiles ? `${finalRadiusMiles} mi` : "-"}
+                      </p>
+                      <p className="uppercase tracking-wide">Final radius</p>
+                    </div>
+                  </div>
+                  <div className="rounded-md bg-background/70 p-3 text-xs text-muted-foreground">
+                    <div className="flex items-center justify-between">
+                      <p className="uppercase tracking-wide">Duplicates filtered</p>
+                      <span className="text-sm font-semibold text-foreground">
+                        {totalDuplicatesFiltered}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                      <span>Place IDs {duplicateStats.placeId}</span>
+                      <span>Names {duplicateStats.placeName}</span>
+                      <span>Addresses {duplicateStats.address}</span>
+                      <span>Emails {duplicateStats.email}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {(search.researchConfidence ||
                 search.researchDataPoints ||

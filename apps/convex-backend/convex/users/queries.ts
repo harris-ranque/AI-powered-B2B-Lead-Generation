@@ -199,6 +199,11 @@ export const getUserPreferences = query({
         language: "en",
         timezone: "UTC",
         theme: "neon-pulse",
+        enablePlaceNameDedup: false,
+        enableEmailDedup: true,
+        enableAddressDedup: true,
+        maxSearchExpansionIterations: 5,
+        searchExpansionMultiplier: 1.5,
       }
     );
   },

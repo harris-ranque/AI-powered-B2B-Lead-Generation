@@ -591,6 +591,14 @@ export const enrichLeads: any = action({
                 },
               );
               enrichedCount++;
+              await ctx.runMutation(
+                internal.leads.internal.checkEmailDuplication,
+                {
+                  leadId: (lead as any)._id,
+                  userId: (lead as any).userId,
+                  searchId: (lead as any).searchId,
+                },
+              );
             } else {
               // No emails found, add to fallback list
               domainsNeedingFallback.push(domain);
@@ -651,6 +659,14 @@ export const enrichLeads: any = action({
                     },
                   );
                   enrichedCount++;
+                  await ctx.runMutation(
+                    internal.leads.internal.checkEmailDuplication,
+                    {
+                      leadId: (lead as any)._id,
+                      userId: (lead as any).userId,
+                      searchId: (lead as any).searchId,
+                    },
+                  );
 
                   logWithCorrelation(
                     "info",

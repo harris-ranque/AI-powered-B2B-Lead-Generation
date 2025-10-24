@@ -43,6 +43,8 @@ export default defineSchema({
         enablePlaceNameDedup: v.optional(v.boolean()), // Search-level place name dedup
         enableEmailDedup: v.optional(v.boolean()),     // User-level email dedup (default: ON)
         enableAddressDedup: v.optional(v.boolean()),   // User-level address dedup (default: ON)
+        maxSearchExpansionIterations: v.optional(v.number()), // Max automatic radius expansions (default 5)
+        searchExpansionMultiplier: v.optional(v.number()),    // Radius multiplier per expansion (default 1.5)
       }),
     ),
     createdAt: v.number(),
@@ -194,6 +196,26 @@ export default defineSchema({
       }),
     ),
     researchCompletedAt: v.optional(v.number()),
+
+    // Discovery diagnostics & dedup metrics
+    initialSearchRadius: v.optional(v.number()), // In meters
+    finalSearchRadius: v.optional(v.number()),   // In meters
+    expansionIterations: v.optional(v.number()),
+    duplicatesFilteredPlaceName: v.optional(v.number()),
+    duplicatesFilteredEmail: v.optional(v.number()),
+    duplicatesFilteredAddress: v.optional(v.number()),
+    duplicatesFilteredPlaceId: v.optional(v.number()),
+    discoveryMetadata: v.optional(
+      v.object({
+        requested: v.number(),
+        delivered: v.number(),
+        shortfall: v.number(),
+        expanded: v.boolean(),
+        originalAreaLeads: v.number(),
+        expansionAreaLeads: v.number(),
+        expansionMessage: v.string(),
+      }),
+    ),
 
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),

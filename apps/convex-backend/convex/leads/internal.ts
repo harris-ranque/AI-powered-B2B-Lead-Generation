@@ -94,7 +94,11 @@ export const checkEmailDuplication = internalMutation({
 
     // Get user preferences
     const user = await ctx.db.get(args.userId);
-    const enableEmailDedup = user?.preferences?.enableEmailDedup ?? true;
+    const search = await ctx.db.get(args.searchId);
+    const enableEmailDedup =
+      search?.parameters?.deduplication?.enableEmailDedup ??
+      user?.preferences?.enableEmailDedup ??
+      true;
 
     if (!enableEmailDedup) {
       return { isDuplicate: false };
@@ -138,6 +142,14 @@ export const checkEmailDuplication = internalMutation({
         businessName: lead.businessName,
         preventedAt: Date.now(),
       });
+
+      if (search) {
+        const currentEmailDuplicates = search.duplicatesFilteredEmail || 0;
+        await ctx.db.patch(search._id, {
+          duplicatesFilteredEmail: currentEmailDuplicates + 1,
+          updatedAt: Date.now(),
+        });
+      }
 
       // Mark this lead with a flag to skip in UI/exports
       await ctx.db.patch(args.leadId, {
@@ -213,6 +225,13 @@ export const createLeadInternal = internalMutation({
   args: {
     userId: v.id("users"),
     searchId: v.id("searches"),
+    deduplication: v.optional(
+      v.object({
+        enablePlaceNameDedup: v.optional(v.boolean()),
+        enableEmailDedup: v.optional(v.boolean()),
+        enableAddressDedup: v.optional(v.boolean()),
+      }),
+    ),
     leadData: v.object({
       businessName: v.string(),
       address: v.string(),
@@ -260,7 +279,11 @@ export const createLeadInternal = internalMutation({
         preventedAt: Date.now(),
       });
 
-      return null; // Skip duplicate tile in this search
+      return {
+        status: "skipped" as const,
+        reason: "search_level" as const,
+        duplicateLeadId: duplicateInSearch._id,
+      };
     }
 
     // SECOND: Check for duplicate at USER level (across all searches)
@@ -287,7 +310,11 @@ export const createLeadInternal = internalMutation({
         preventedAt: Date.now(),
       });
 
-      return null; // Skip duplicate, don't re-process business user already has
+      return {
+        status: "skipped" as const,
+        reason: "user_level" as const,
+        duplicateLeadId: duplicateAcrossSearches._id,
+      };
     }
 
     // ============================================================================
@@ -296,9 +323,18 @@ export const createLeadInternal = internalMutation({
 
     // Get user preferences for deduplication settings
     const user = await ctx.db.get(args.userId);
-    const enablePlaceNameDedup = user?.preferences?.enablePlaceNameDedup ?? false;
-    const enableEmailDedup = user?.preferences?.enableEmailDedup ?? true; // Default ON
-    const enableAddressDedup = user?.preferences?.enableAddressDedup ?? true; // Default ON
+    const enablePlaceNameDedup =
+      args.deduplication?.enablePlaceNameDedup ??
+      user?.preferences?.enablePlaceNameDedup ??
+      false;
+    const enableEmailDedup =
+      args.deduplication?.enableEmailDedup ??
+      user?.preferences?.enableEmailDedup ??
+      true; // Default ON
+    const enableAddressDedup =
+      args.deduplication?.enableAddressDedup ??
+      user?.preferences?.enableAddressDedup ??
+      true; // Default ON
 
     // THIRD: Check for duplicate place name within THIS search (if enabled)
     if (enablePlaceNameDedup && args.leadData.businessName) {
@@ -330,7 +366,11 @@ export const createLeadInternal = internalMutation({
           preventedAt: Date.now(),
         });
 
-        return null; // Skip duplicate place name
+        return {
+          status: "skipped" as const,
+          reason: "place_name" as const,
+          duplicateLeadId: duplicateByName._id,
+        };
       }
     }
 
@@ -370,7 +410,11 @@ export const createLeadInternal = internalMutation({
             preventedAt: Date.now(),
           });
 
-          return null; // Skip duplicate address
+          return {
+            status: "skipped" as const,
+            reason: "address" as const,
+            duplicateLeadId: duplicateByAddress._id,
+          };
         }
       }
     }
@@ -400,7 +444,7 @@ export const createLeadInternal = internalMutation({
         updatedAt: Date.now(),
       });
 
-      return leadId;
+      return { status: "created" as const, leadId };
     } catch (error: any) {
       // Handle potential race condition - if duplicate was created between check and insert
       console.warn(
@@ -432,7 +476,11 @@ export const createLeadInternal = internalMutation({
           preventedAt: Date.now(),
         });
 
-        return null; // Duplicate caught by race condition handling
+        return {
+          status: "skipped" as const,
+          reason: "user_level" as const,
+          duplicateLeadId: raceDuplicate._id,
+        };
       }
 
       // If not a duplicate issue, re-throw the error

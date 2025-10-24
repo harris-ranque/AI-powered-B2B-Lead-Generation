@@ -623,7 +623,7 @@ export function LeadDiscoveryStage({
                 </div>
               </div>
 
-              {/* Filtering Options */}
+              {/* Deduplication Options */}
               <div className="space-y-4 p-4 rounded-lg bg-muted/20">
                 <Collapsible
                   open={filteringExpanded}
@@ -636,7 +636,7 @@ export function LeadDiscoveryStage({
                   >
                     <div className="flex items-center gap-2">
                       <Filter className="h-4 w-4 text-primary" />
-                      <h4 className="text-sm font-semibold">Filtering Options</h4>
+                      <h4 className="text-sm font-semibold">Deduplication Options</h4>
                     </div>
                     {filteringExpanded ? (
                       <ChevronUp className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />

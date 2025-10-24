@@ -27,8 +27,12 @@ export function normalizeAddress(address: string): string {
   return address
     .toLowerCase()
     .trim()
+    // Convert hash-based unit indicators before punctuation removal so "#200" === "unit 200"
+    .replace(/\s*#\s*/g, ' unit ')
     // Remove extra spaces
     .replace(/\s+/g, ' ')
+    // Remove commas that don't change address meaning
+    .replace(/,/g, ' ')
     // Normalize common street type abbreviations
     .replace(/\bstreet\b/gi, 'st')
     .replace(/\bavenue\b/gi, 'ave')
@@ -49,8 +53,17 @@ export function normalizeAddress(address: string): string {
     .replace(/\bnorthwest\b/gi, 'nw')
     .replace(/\bsoutheast\b/gi, 'se')
     .replace(/\bsouthwest\b/gi, 'sw')
+    // Normalize unit/suite indicators
+    .replace(/\b(apartment|apt)\b/gi, 'apt')
+    .replace(/\b(suite|ste)\b/gi, 'ste')
+    .replace(/\bunit\b/gi, 'unit')
+    // Normalize PO Box variations
+    .replace(/\bpo\s?box\b/gi, 'pobox')
     // Remove trailing periods (e.g., "St." → "st")
-    .replace(/\./g, '');
+    .replace(/\./g, '')
+    // Final whitespace cleanup after replacements
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
