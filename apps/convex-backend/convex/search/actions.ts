@@ -805,8 +805,12 @@ export const searchGoogleMaps: any = action({
         let nextPageToken: string | undefined = undefined;
         const maxPages = 3;
         let currentPage = 0;
+        const paginationTarget = Math.ceil(
+          requestedResults * INITIAL_FETCH_MULTIPLIER,
+        );
+        const simpleFetchCap = Math.max(requestedResults, paginationTarget);
 
-        while (currentPage < maxPages && places.length < params.maxResults) {
+        while (currentPage < maxPages && places.length < simpleFetchCap) {
           const placesUrl = new URL(
             "https://maps.googleapis.com/maps/api/place/textsearch/json",
           );
@@ -862,7 +866,7 @@ export const searchGoogleMaps: any = action({
           nextPageToken = data.next_page_token;
           currentPage++;
 
-          if (!nextPageToken || places.length >= params.maxResults) {
+          if (!nextPageToken || places.length >= simpleFetchCap) {
             break;
           }
 
@@ -925,7 +929,6 @@ export const searchGoogleMaps: any = action({
       finalRadiusMeters = radius;
 
       if (
-        useTiling &&
         hasValidCenter &&
         leadIds.length < requestedResults &&
         maxExpansionIterations > 0
