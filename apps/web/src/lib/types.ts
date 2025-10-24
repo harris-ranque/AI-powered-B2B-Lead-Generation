@@ -54,6 +54,15 @@ export interface SearchParams {
   roles?: string[];
   minRating?: number;
   maxResults: number;
+  filters?: {
+    minEmployees?: number;
+    maxEmployees?: number;
+  };
+  deduplication?: {
+    enablePlaceNameDedup?: boolean;
+    enableEmailDedup?: boolean;
+    enableAddressDedup?: boolean;
+  };
 }
 
 // Lead types

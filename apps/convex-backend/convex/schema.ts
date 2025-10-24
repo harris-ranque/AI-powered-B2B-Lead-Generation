@@ -106,6 +106,13 @@ export default defineSchema({
           maxEmployees: v.optional(v.number()),
         }),
       ),
+      deduplication: v.optional(
+        v.object({
+          enablePlaceNameDedup: v.optional(v.boolean()),
+          enableEmailDedup: v.optional(v.boolean()),
+          enableAddressDedup: v.optional(v.boolean()),
+        }),
+      ),
     }),
     status: v.union(
       v.literal("pending"),

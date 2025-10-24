@@ -67,6 +67,13 @@ export const createSearch = mutation({
           maxEmployees: v.optional(v.number()),
         }),
       ),
+      deduplication: v.optional(
+        v.object({
+          enablePlaceNameDedup: v.optional(v.boolean()),
+          enableEmailDedup: v.optional(v.boolean()),
+          enableAddressDedup: v.optional(v.boolean()),
+        }),
+      ),
     }),
     autoStart: v.optional(v.boolean()),
   },
@@ -192,6 +199,13 @@ export const createSearchCompleted = mutation({
         v.object({
           minEmployees: v.optional(v.number()),
           maxEmployees: v.optional(v.number()),
+        }),
+      ),
+      deduplication: v.optional(
+        v.object({
+          enablePlaceNameDedup: v.optional(v.boolean()),
+          enableEmailDedup: v.optional(v.boolean()),
+          enableAddressDedup: v.optional(v.boolean()),
         }),
       ),
     }),
