@@ -115,6 +115,18 @@ export function LeadDiscoveryStage({
   const [customRole, setCustomRole] = useState("");
   const [roleError, setRoleError] = useState<string | null>(null);
 
+  // Filtering options state
+  const [filteringExpanded, setFilteringExpanded] = useState(false);
+  const [filterPlaceNames, setFilterPlaceNames] = useState(
+    userPreferences?.enablePlaceNameDedup ?? false
+  );
+  const [filterEmails, setFilterEmails] = useState(
+    userPreferences?.enableEmailDedup ?? true
+  );
+  const [filterAddresses, setFilterAddresses] = useState(
+    userPreferences?.enableAddressDedup ?? true
+  );
+
   // Upload form state
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>(
@@ -130,6 +142,15 @@ export function LeadDiscoveryStage({
       setShowConfiguration(false);
     }
   }, [hasActiveSearch]);
+
+  // Sync filtering options with user preferences
+  useEffect(() => {
+    if (userPreferences) {
+      setFilterPlaceNames(userPreferences.enablePlaceNameDedup ?? false);
+      setFilterEmails(userPreferences.enableEmailDedup ?? true);
+      setFilterAddresses(userPreferences.enableAddressDedup ?? true);
+    }
+  }, [userPreferences]);
 
   const canAddMoreRoles = selectedRoles.length < MAX_SELECTED_ROLES;
 
@@ -290,6 +311,11 @@ export function LeadDiscoveryStage({
             filters: {
               minEmployees: employeeRange[0],
               maxEmployees: employeeRange[1],
+            },
+            deduplication: {
+              enablePlaceNameDedup: filterPlaceNames,
+              enableEmailDedup: filterEmails,
+              enableAddressDedup: filterAddresses,
             },
           },
           autoStart: true, // This will trigger the orchestrator automatically
@@ -597,119 +623,141 @@ export function LeadDiscoveryStage({
                 </div>
               </div>
 
-              {/* Deduplication Settings */}
+              {/* Filtering Options */}
               <div className="space-y-4 p-4 rounded-lg bg-muted/20">
-                <div className="flex items-center gap-2 mb-2">
-                  <Filter className="h-4 w-4 text-primary" />
-                  <h4 className="text-sm font-semibold">Deduplication Options</h4>
-                </div>
-
-                {/* Place Name Deduplication */}
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Label className="text-sm font-medium">
-                        Filter duplicate place names
-                      </Label>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button type="button" className="inline-flex">
-                              <Info className="h-4 w-4 text-muted-foreground" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <p>
-                              Removes businesses with identical names from search results.
-                              Useful for filtering out franchise locations (e.g., multiple
-                              State Farm or McDonald's locations). Only keeps the first
-                              occurrence found.
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                <Collapsible
+                  open={filteringExpanded}
+                  onOpenChange={setFilteringExpanded}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setFilteringExpanded(!filteringExpanded)}
+                    className="flex w-full items-center justify-between gap-2 cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Filter className="h-4 w-4 text-primary" />
+                      <h4 className="text-sm font-semibold">Filtering Options</h4>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Search-level only (not user history)
-                    </p>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {userPreferences?.enablePlaceNameDedup ?? false ? "On" : "Off"}
-                  </div>
-                </div>
+                    {filteringExpanded ? (
+                      <ChevronUp className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                    )}
+                  </button>
 
-                <Separator />
-
-                {/* Email Deduplication */}
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Label className="text-sm font-medium">
-                        Avoid duplicate email addresses
-                      </Label>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button type="button" className="inline-flex">
-                              <Info className="h-4 w-4 text-muted-foreground" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <p>
-                              Prevents sending emails to the same email address across
-                              all your searches. Checks against your historical lead
-                              database.
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                  <CollapsibleContent className="space-y-4 mt-4">
+                    {/* Place Name Deduplication */}
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Label className="text-sm font-medium">
+                            Filter duplicate place names
+                          </Label>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button type="button" className="inline-flex">
+                                  <Info className="h-4 w-4 text-muted-foreground" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p>
+                                  Removes businesses with identical names from search results.
+                                  Useful for filtering out franchise locations (e.g., multiple
+                                  State Farm or McDonald's locations). Only keeps the first
+                                  occurrence found.
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Search-level only (not user history)
+                        </p>
+                      </div>
+                      <Switch
+                        checked={filterPlaceNames}
+                        onCheckedChange={setFilterPlaceNames}
+                      />
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Checks all previous leads (recommended)
-                    </p>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {userPreferences?.enableEmailDedup ?? true ? "On" : "Off"}
-                  </div>
-                </div>
 
-                <Separator />
+                    <Separator />
 
-                {/* Address Deduplication */}
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Label className="text-sm font-medium">
-                        Filter duplicate addresses
-                      </Label>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button type="button" className="inline-flex">
-                              <Info className="h-4 w-4 text-muted-foreground" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <p>
-                              Removes locations with addresses you've already targeted.
-                              Checks against your historical lead database.
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                    {/* Email Deduplication */}
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Label className="text-sm font-medium">
+                            Avoid duplicate email addresses
+                          </Label>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button type="button" className="inline-flex">
+                                  <Info className="h-4 w-4 text-muted-foreground" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p>
+                                  Prevents sending emails to the same email address across
+                                  all your searches. Checks against your historical lead
+                                  database.
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Checks all previous leads (recommended)
+                        </p>
+                      </div>
+                      <Switch
+                        checked={filterEmails}
+                        onCheckedChange={setFilterEmails}
+                      />
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Checks all previous leads (recommended)
-                    </p>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {userPreferences?.enableAddressDedup ?? true ? "On" : "Off"}
-                  </div>
-                </div>
 
-                <p className="text-xs text-muted-foreground mt-2">
-                  Configure these settings in your <a href="/settings" className="text-primary hover:underline">account settings</a>.
-                </p>
+                    <Separator />
+
+                    {/* Address Deduplication */}
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Label className="text-sm font-medium">
+                            Filter duplicate addresses
+                          </Label>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button type="button" className="inline-flex">
+                                  <Info className="h-4 w-4 text-muted-foreground" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p>
+                                  Removes locations with addresses you've already targeted.
+                                  Checks against your historical lead database.
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Checks all previous leads (recommended)
+                        </p>
+                      </div>
+                      <Switch
+                        checked={filterAddresses}
+                        onCheckedChange={setFilterAddresses}
+                      />
+                    </div>
+
+                    <p className="text-xs text-muted-foreground mt-2">
+                      These settings will apply to this search. You can set defaults in your{" "}
+                      <a href="/settings" className="text-primary hover:underline">account settings</a>.
+                    </p>
+                  </CollapsibleContent>
+                </Collapsible>
               </div>
                 </>
               )}
