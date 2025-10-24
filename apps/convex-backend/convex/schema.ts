@@ -39,6 +39,10 @@ export default defineSchema({
         language: v.string(),
         timezone: v.string(),
         theme: v.optional(themePreferenceValidator),
+        // Deduplication preferences
+        enablePlaceNameDedup: v.optional(v.boolean()), // Search-level place name dedup
+        enableEmailDedup: v.optional(v.boolean()),     // User-level email dedup (default: ON)
+        enableAddressDedup: v.optional(v.boolean()),   // User-level address dedup (default: ON)
       }),
     ),
     createdAt: v.number(),
@@ -390,6 +394,7 @@ export default defineSchema({
     .index("by_place_id", ["placeId"])
     .index("by_user_place", ["userId", "placeId"]) // User-level deduplication (across all searches)
     .index("by_search_place", ["searchId", "placeId"]) // Per-search deduplication (for spatial tiling)
+    .index("by_user_address", ["userId", "address"]) // User-level address deduplication
     .index("by_enrichment_status", ["enrichmentStatus"])
     .index("by_analysis_status", ["analysisStatus"])
     .index("by_analysis_scheduled", ["analysisScheduledAt"])
@@ -1223,7 +1228,10 @@ export default defineSchema({
     placeId: v.string(),
     duplicateType: v.union(
       v.literal("search_level"), // Duplicate within same search (spatial tiling)
-      v.literal("user_level"), // Duplicate across user's searches
+      v.literal("user_level"),   // Duplicate across user's searches
+      v.literal("place_name"),   // Duplicate place name within search
+      v.literal("email"),        // Duplicate email across user's searches
+      v.literal("address"),      // Duplicate address across user's searches
     ),
     preventedAt: v.number(),
     originalLeadId: v.optional(v.id("leads")), // Reference to original lead

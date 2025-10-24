@@ -63,6 +63,10 @@ export const updatePreferences = mutation({
     language: v.optional(v.string()),
     timezone: v.optional(v.string()),
     theme: v.optional(themePreferenceValidator),
+    // Deduplication preferences
+    enablePlaceNameDedup: v.optional(v.boolean()),
+    enableEmailDedup: v.optional(v.boolean()),
+    enableAddressDedup: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);

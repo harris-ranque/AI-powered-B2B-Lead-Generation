@@ -18,9 +18,17 @@ import {
   Download,
   AlertCircle,
   Mail,
+  Filter,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ProviderKeyManager } from "@/components/settings/ProviderKeyManager";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   APP_THEME_OPTIONS,
   DEFAULT_APP_THEME,
@@ -33,6 +41,10 @@ type PreferencesState = {
   language: string;
   timezone: string;
   theme: AppThemeKey;
+  // Deduplication preferences
+  enablePlaceNameDedup?: boolean;
+  enableEmailDedup?: boolean;
+  enableAddressDedup?: boolean;
 };
 
 export function Settings() {
@@ -495,6 +507,133 @@ export function Settings() {
                 Genni automatically prepares two follow-up emails for each
                 outreach sequence by default.
               </p>
+            </div>
+          </Card>
+
+          {/* Deduplication Options */}
+          <Card className="p-6 bg-card border-border mb-6">
+            <div className="flex items-center gap-3 mb-6">
+              <Filter className="h-5 w-5 text-primary" />
+              <h3 className="text-lg font-semibold text-foreground">
+                Deduplication Options
+              </h3>
+            </div>
+
+            <div className="space-y-6">
+              {/* Place Name Deduplication */}
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="font-medium text-foreground">
+                      Filter duplicate place names
+                    </div>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button type="button" className="inline-flex">
+                            <Info className="h-4 w-4 text-muted-foreground" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>
+                            Removes businesses with identical names from search results.
+                            Useful for filtering out franchise locations (e.g., multiple
+                            State Farm or McDonald's locations). Only keeps the first
+                            occurrence found.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Search-level only (not user history)
+                  </div>
+                </div>
+                <Switch
+                  checked={preferences.enablePlaceNameDedup ?? false}
+                  onCheckedChange={(checked) =>
+                    handlePreferencesUpdate({ enablePlaceNameDedup: checked })
+                  }
+                  disabled={isLoading}
+                />
+              </div>
+
+              <Separator className="bg-border" />
+
+              {/* Email Deduplication */}
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="font-medium text-foreground">
+                      Avoid duplicate email addresses
+                    </div>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button type="button" className="inline-flex">
+                            <Info className="h-4 w-4 text-muted-foreground" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>
+                            Prevents sending emails to the same email address across
+                            all your searches. Checks against your historical lead
+                            database.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Checks all previous leads (recommended)
+                  </div>
+                </div>
+                <Switch
+                  checked={preferences.enableEmailDedup ?? true}
+                  onCheckedChange={(checked) =>
+                    handlePreferencesUpdate({ enableEmailDedup: checked })
+                  }
+                  disabled={isLoading}
+                />
+              </div>
+
+              <Separator className="bg-border" />
+
+              {/* Address Deduplication */}
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="font-medium text-foreground">
+                      Filter duplicate addresses
+                    </div>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button type="button" className="inline-flex">
+                            <Info className="h-4 w-4 text-muted-foreground" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>
+                            Removes locations with addresses you've already targeted.
+                            Checks against your historical lead database.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Checks all previous leads (recommended)
+                  </div>
+                </div>
+                <Switch
+                  checked={preferences.enableAddressDedup ?? true}
+                  onCheckedChange={(checked) =>
+                    handlePreferencesUpdate({ enableAddressDedup: checked })
+                  }
+                  disabled={isLoading}
+                />
+              </div>
             </div>
           </Card>
 

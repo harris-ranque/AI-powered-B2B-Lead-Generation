@@ -1,5 +1,10 @@
 import { internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
+import {
+  normalizeAddress,
+  normalizePlaceName,
+  extractPrimaryEmail,
+} from "../lib/deduplication";
 
 // Internal query to get lead without auth check
 export const getLeadInternal = internalQuery({
@@ -70,6 +75,83 @@ export const updateEnrichmentStatus = internalMutation({
     }
 
     await ctx.db.patch(args.leadId, updateData);
+  },
+});
+
+// Internal mutation to check for email duplicates after enrichment
+export const checkEmailDuplication = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+    userId: v.id("users"),
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    // Get the lead with enrichment data
+    const lead = await ctx.db.get(args.leadId);
+    if (!lead || !lead.contactInfo) {
+      return { isDuplicate: false };
+    }
+
+    // Get user preferences
+    const user = await ctx.db.get(args.userId);
+    const enableEmailDedup = user?.preferences?.enableEmailDedup ?? true;
+
+    if (!enableEmailDedup) {
+      return { isDuplicate: false };
+    }
+
+    // Extract primary email from contact info
+    const primaryEmail = extractPrimaryEmail(lead.contactInfo);
+    if (!primaryEmail) {
+      return { isDuplicate: false };
+    }
+
+    // Check for duplicate email across all user's leads (excluding this one)
+    const allUserLeads = await ctx.db
+      .query("leads")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    const duplicateByEmail = allUserLeads.find(existingLead => {
+      // Skip comparing with itself
+      if (existingLead._id === args.leadId) {
+        return false;
+      }
+
+      // Check if this lead has the same email
+      const existingEmail = extractPrimaryEmail(existingLead.contactInfo);
+      return existingEmail && existingEmail === primaryEmail;
+    });
+
+    if (duplicateByEmail) {
+      console.log(
+        `Duplicate email detected after enrichment: ${primaryEmail} for lead ${args.leadId}, marking as duplicate`
+      );
+
+      // Track duplicate prevention for analytics
+      await ctx.db.insert("duplicateMetrics", {
+        userId: args.userId,
+        searchId: args.searchId,
+        placeId: lead.placeId,
+        duplicateType: "email",
+        originalLeadId: duplicateByEmail._id,
+        businessName: lead.businessName,
+        preventedAt: Date.now(),
+      });
+
+      // Mark this lead with a flag to skip in UI/exports
+      await ctx.db.patch(args.leadId, {
+        tags: [...(lead.tags || []), "duplicate_email"],
+        notes: lead.notes
+          ? `${lead.notes}\n\nDuplicate email detected: ${primaryEmail}`
+          : `Duplicate email detected: ${primaryEmail}`,
+        updatedAt: Date.now(),
+      });
+
+      return { isDuplicate: true, duplicateEmail: primaryEmail };
+    }
+
+    return { isDuplicate: false };
   },
 });
 
@@ -207,6 +289,95 @@ export const createLeadInternal = internalMutation({
 
       return null; // Skip duplicate, don't re-process business user already has
     }
+
+    // ============================================================================
+    // NEW: Additional Deduplication Checks Based on User Preferences
+    // ============================================================================
+
+    // Get user preferences for deduplication settings
+    const user = await ctx.db.get(args.userId);
+    const enablePlaceNameDedup = user?.preferences?.enablePlaceNameDedup ?? false;
+    const enableEmailDedup = user?.preferences?.enableEmailDedup ?? true; // Default ON
+    const enableAddressDedup = user?.preferences?.enableAddressDedup ?? true; // Default ON
+
+    // THIRD: Check for duplicate place name within THIS search (if enabled)
+    if (enablePlaceNameDedup && args.leadData.businessName) {
+      const normalizedName = normalizePlaceName(args.leadData.businessName);
+
+      // Query all leads in this search and check for name match
+      const allSearchLeads = await ctx.db
+        .query("leads")
+        .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+        .collect();
+
+      const duplicateByName = allSearchLeads.find(lead =>
+        normalizePlaceName(lead.businessName) === normalizedName
+      );
+
+      if (duplicateByName) {
+        console.log(
+          `Duplicate place name detected: "${args.leadData.businessName}" in search ${args.searchId}, skipping`
+        );
+
+        // Track duplicate prevention for analytics
+        await ctx.db.insert("duplicateMetrics", {
+          userId: args.userId,
+          searchId: args.searchId,
+          placeId: args.leadData.placeId,
+          duplicateType: "place_name",
+          originalLeadId: duplicateByName._id,
+          businessName: args.leadData.businessName,
+          preventedAt: Date.now(),
+        });
+
+        return null; // Skip duplicate place name
+      }
+    }
+
+    // FOURTH: Check for duplicate email at USER level (if enabled)
+    // Note: This check needs enrichment data which isn't available at lead creation time
+    // We'll implement this as a post-enrichment filter instead
+    // For now, we'll add a placeholder that can be used after enrichment
+
+    // FIFTH: Check for duplicate address at USER level (if enabled)
+    if (enableAddressDedup && args.leadData.address) {
+      const normalizedAddress = normalizeAddress(args.leadData.address);
+
+      if (normalizedAddress) {
+        // Query all user leads and check for address match
+        const allUserLeads = await ctx.db
+          .query("leads")
+          .withIndex("by_user", (q) => q.eq("userId", args.userId))
+          .collect();
+
+        const duplicateByAddress = allUserLeads.find(lead =>
+          normalizeAddress(lead.address) === normalizedAddress
+        );
+
+        if (duplicateByAddress) {
+          console.log(
+            `Duplicate address detected: "${args.leadData.address}" for user ${args.userId}, skipping`
+          );
+
+          // Track duplicate prevention for analytics
+          await ctx.db.insert("duplicateMetrics", {
+            userId: args.userId,
+            searchId: args.searchId,
+            placeId: args.leadData.placeId,
+            duplicateType: "address",
+            originalLeadId: duplicateByAddress._id,
+            businessName: args.leadData.businessName,
+            preventedAt: Date.now(),
+          });
+
+          return null; // Skip duplicate address
+        }
+      }
+    }
+
+    // ============================================================================
+    // End of Additional Deduplication Checks
+    // ============================================================================
 
     // Atomic insert with race condition protection
     try {
