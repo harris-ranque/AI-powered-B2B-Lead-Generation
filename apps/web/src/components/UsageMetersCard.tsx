@@ -96,17 +96,12 @@ export function UsageMetersCard() {
               <span className="text-sm font-medium">Searches</span>
             </div>
             <div className="text-right">
-              <span
-                className={`text-sm font-medium ${getUsageColor(searchesPercentage)}`}
-              >
-                {usage.searchesUsed} /{" "}
-                {hasUnlimitedSearches ? "∞" : usage.limits.monthlySearches}
+              <span className={`text-lg font-semibold ${getUsageColor(searchesPercentage)}`}>
+                {usage.searchesUsed}
               </span>
-              {!hasUnlimitedSearches && (
-                <p className="text-xs text-muted-foreground">
-                  {searchesPercentage}% used
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                {hasUnlimitedSearches ? "Unlimited" : `${searchesPercentage}% used`}
+              </p>
             </div>
           </div>
           {!hasUnlimitedSearches && (
@@ -131,19 +126,12 @@ export function UsageMetersCard() {
               <span className="text-sm font-medium">Lead Enrichments</span>
             </div>
             <div className="text-right">
-              <span
-                className={`text-sm font-medium ${getUsageColor(enrichmentsPercentage)}`}
-              >
-                {usage.leadsEnriched.toLocaleString()} /{" "}
-                {hasUnlimitedEnrichments
-                  ? "∞"
-                  : usage.limits.monthlyEnrichments.toLocaleString()}
+              <span className={`text-lg font-semibold ${getUsageColor(enrichmentsPercentage)}`}>
+                {usage.leadsEnriched.toLocaleString()}
               </span>
-              {!hasUnlimitedEnrichments && (
-                <p className="text-xs text-muted-foreground">
-                  {enrichmentsPercentage}% used
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                {hasUnlimitedEnrichments ? "Unlimited" : `${enrichmentsPercentage}% used`}
+              </p>
             </div>
           </div>
           {!hasUnlimitedEnrichments && (
@@ -168,17 +156,12 @@ export function UsageMetersCard() {
               <span className="text-sm font-medium">Exports</span>
             </div>
             <div className="text-right">
-              <span
-                className={`text-sm font-medium ${getUsageColor(exportsPercentage)}`}
-              >
-                {usage.exportsCompleted} /{" "}
-                {hasUnlimitedExports ? "∞" : usage.limits.monthlyExports}
+              <span className={`text-lg font-semibold ${getUsageColor(exportsPercentage)}`}>
+                {usage.exportsCompleted}
               </span>
-              {!hasUnlimitedExports && (
-                <p className="text-xs text-muted-foreground">
-                  {exportsPercentage}% used
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                {hasUnlimitedExports ? "Unlimited" : `${exportsPercentage}% used`}
+              </p>
             </div>
           </div>
           {!hasUnlimitedExports && (
@@ -203,19 +186,14 @@ export function UsageMetersCard() {
               <span className="text-sm font-medium">Emails Generated</span>
             </div>
             <div className="text-right">
-              <span className="text-sm font-medium text-green-600">
+              <span className="text-lg font-semibold text-green-600">
                 {usage.emailsGenerated}
               </span>
               <p className="text-xs text-muted-foreground">
-                {usage.limits.emailGeneration ? "Unlimited" : "Not available"}
+                {usage.limits.emailGeneration ? "Unlimited" : "Upgrade to unlock"}
               </p>
             </div>
           </div>
-          {!usage.limits.emailGeneration && (
-            <p className="text-xs text-muted-foreground">
-              Upgrade your plan to unlock AI email generation
-            </p>
-          )}
         </div>
 
         {/* Upgrade prompt if near limits */}
