@@ -5,7 +5,6 @@ import {
   useEffect,
   useMemo,
   useReducer,
-  useRef,
   type ReactNode,
 } from "react";
 import type { Id } from "@genni/convex-types/dataModel";
@@ -109,17 +108,10 @@ export function PipelineProgressProvider({
     readInitialCollapsed,
   );
 
-  // Track if we're syncing from parent to prevent circular updates
-  const isSyncingFromParentRef = useRef(false);
-
+  // Sync collapsed prop from parent to local state
   useEffect(() => {
     if (typeof collapsed === "boolean" && collapsed !== isCollapsed) {
-      isSyncingFromParentRef.current = true;
       dispatch({ type: "set", value: collapsed });
-      // Reset the flag after the update
-      setTimeout(() => {
-        isSyncingFromParentRef.current = false;
-      }, 0);
     }
   }, [collapsed, isCollapsed]);
 
@@ -273,12 +265,12 @@ export function PipelineProgressProvider({
   );
 
   useEffect(() => {
-    // Only notify parent if the change didn't originate from parent
-    // This prevents circular updates that cause infinite flickering
-    if (!isSyncingFromParentRef.current) {
+    // Only notify parent if isCollapsed differs from the collapsed prop
+    // This prevents circular updates: if they match, the change came from parent sync
+    if (typeof collapsed === "boolean" && isCollapsed !== collapsed) {
       onCollapseChange?.(isCollapsed);
     }
-  }, [isCollapsed, onCollapseChange]);
+  }, [isCollapsed, collapsed, onCollapseChange]);
 
   return (
     <PipelineProgressContext.Provider value={value}>
