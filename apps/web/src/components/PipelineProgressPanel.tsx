@@ -259,7 +259,6 @@ export function PipelineProgressPanel({
     progress,
     isCollapsed,
     toggleCollapsed,
-    stageOrder,
     currentStage,
   } = usePipelineProgress();
 
@@ -295,7 +294,7 @@ export function PipelineProgressPanel({
   }, [progress.health]);
 
   const metrics = useMemo(() => {
-  return Object.entries(progress.metrics)
+    return Object.entries(progress.metrics)
       .filter(([_, value]) => typeof value === "number" && value >= 0)
       .map(([key, value]) => {
         const meta = METRIC_LABELS[key] ?? {
@@ -310,6 +309,10 @@ export function PipelineProgressPanel({
         };
       });
   }, [progress.metrics]);
+
+  const warnings = progress.warnings ?? [];
+  const showMetrics = !isCollapsed && metrics.length > 0;
+  const showWarnings = !isCollapsed && warnings.length > 0;
 
   if (layout === "compact") {
     const StageIcon = STAGE_ICONS[
@@ -401,9 +404,9 @@ export function PipelineProgressPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-6 pt-0">
-        <StageRail inlinePanel={inlinePanel} />
+        <StageRail inlinePanel={!isCollapsed ? inlinePanel : undefined} />
 
-        {metrics.length > 0 && (
+        {showMetrics && (
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Activity className="h-4 w-4" /> Live metrics
@@ -431,13 +434,13 @@ export function PipelineProgressPanel({
           </div>
         )}
 
-        {progress.warnings && progress.warnings.length > 0 && (
+        {showWarnings && (
           <div className="space-y-2 rounded-lg border border-amber-300/70 bg-amber-50/70 p-3 text-amber-900 dark:border-amber-500/60 dark:bg-amber-950/30 dark:text-amber-200">
             <div className="flex items-center gap-2 text-sm font-semibold">
               <AlertTriangle className="h-4 w-4" /> Pipeline warnings
             </div>
             <ul className="space-y-1 text-xs">
-              {progress.warnings.map((warning) => (
+              {warnings.map((warning) => (
                 <li key={warning}>{warning}</li>
               ))}
             </ul>
