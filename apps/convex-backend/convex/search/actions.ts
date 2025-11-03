@@ -11,7 +11,6 @@ import {
   formatCorrelationForLogging,
 } from "../lib/correlation";
 import { CREDIT_COSTS } from "../lib/helpers";
-import { shouldBypassCredits } from "../lib/creditHelpers";
 import {
   searchPlacesWithTiling,
   Bounds,
@@ -1364,7 +1363,11 @@ export const completeSearch: any = action({
       );
 
       // BYOK: Check if enterprise user with own API keys (skip credit charging)
-      const bypassCredits = await shouldBypassCredits(ctx, search.userId);
+      // Use internal query since action contexts don't have ctx.db
+      const bypassCredits = await ctx.runQuery(
+        internal.lib.creditHelpers.shouldBypassCreditsQuery,
+        { userId: search.userId }
+      );
 
       if (creditsToCharge > 0 && !bypassCredits) {
         await ctx.runMutation(internal.credits.transactions.recordTransaction, {
