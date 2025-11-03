@@ -1,6 +1,7 @@
 import { internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
+import { shouldBypassCredits } from "../lib/creditHelpers";
 
 // Record credit transaction
 export const recordTransaction = internalMutation({
@@ -24,6 +25,24 @@ export const recordTransaction = internalMutation({
       const user = await ctx.db.get(args.userId);
       if (!user) {
         throw new Error("User not found");
+      }
+
+      // BYOK: Skip credit operations for enterprise users with own API keys
+      if (args.operation === "usage") {
+        const bypassCredits = await shouldBypassCredits(ctx, args.userId);
+        if (bypassCredits) {
+          console.log(
+            `BYOK: Skipping credit deduction for enterprise user ${args.userId} - ${args.description}`
+          );
+          return {
+            success: true,
+            bypassed: true,
+            reason: "Enterprise BYOK - credits not charged",
+            operation: args.operation,
+            amount: args.amount,
+            newBalance: user.credits || 0,
+          };
+        }
       }
 
       // Calculate new balance first
@@ -109,6 +128,21 @@ export const reserveCredits = internalMutation({
         throw new Error("User not found");
       }
 
+      // BYOK: Skip credit reservation for enterprise users with own API keys
+      const bypassCredits = await shouldBypassCredits(ctx, args.userId);
+      if (bypassCredits) {
+        console.log(
+          `BYOK: Skipping credit reservation for enterprise user ${args.userId} - ${args.operation}`
+        );
+        return {
+          success: true,
+          bypassed: true,
+          reservationId: "bypassed" as any, // Dummy ID for compatibility
+          amount: 0,
+          expiresAt: Date.now() + 30 * 60 * 1000,
+        };
+      }
+
       const currentBalance = user.credits || 0;
       if (currentBalance < args.amount) {
         return {
@@ -163,9 +197,37 @@ export const commitReservation = internalMutation({
   },
   handler: async (ctx, args) => {
     try {
+      // BYOK: Handle bypassed reservations (when reservationId is "bypassed")
+      if (args.reservationId === "bypassed" as any) {
+        console.log("BYOK: Skipping reservation commit for bypassed enterprise reservation");
+        return {
+          success: true,
+          bypassed: true,
+          message: "Enterprise BYOK - no credits committed",
+          newBalance: 0,
+        };
+      }
+
       const reservation = await ctx.db.get(args.reservationId);
       if (!reservation) {
         throw new Error("Reservation not found");
+      }
+
+      // BYOK: Check if user should bypass (in case reservation was created before BYOK)
+      const bypassCredits = await shouldBypassCredits(ctx, reservation.userId);
+      if (bypassCredits) {
+        console.log(
+          `BYOK: Skipping credit commit for enterprise user ${reservation.userId}`
+        );
+        await ctx.db.patch(args.reservationId, {
+          status: "committed",
+          completedAt: Date.now(),
+        });
+        return {
+          success: true,
+          bypassed: true,
+          newBalance: 0,
+        };
       }
 
       if (reservation.status !== "pending") {

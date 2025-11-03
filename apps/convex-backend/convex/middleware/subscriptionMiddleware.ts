@@ -54,7 +54,7 @@ const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     emailGeneration: true,
     bulkOperations: true,
     apiAccess: true,
-    requiresOwnApiKeys: false, // Optional for Enterprise
+    requiresOwnApiKeys: true, // BYOK: Enterprise users must provide own API keys
   },
 };
 

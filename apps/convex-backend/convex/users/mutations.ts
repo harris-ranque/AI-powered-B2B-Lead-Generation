@@ -4,6 +4,7 @@ import { auth, getCurrentUser, requireAuth, requireAdmin } from "../auth";
 import { updateUserValidator } from "../lib/validators";
 import { ERROR_CODES } from "../lib/constants";
 import { createError, isAdmin } from "../lib/helpers";
+import { shouldBypassCredits } from "../lib/creditHelpers";
 
 // Update user profile
 export const updateProfile = mutation({
@@ -141,6 +142,20 @@ export const deductCredits = mutation({
         ERROR_CODES.UNAUTHORIZED,
         401,
       );
+    }
+
+    // BYOK: Skip credit deduction for enterprise users with own API keys
+    const bypassCredits = await shouldBypassCredits(ctx, user._id);
+    if (bypassCredits) {
+      console.log(
+        `BYOK: Skipping credit deduction for enterprise user ${user._id} - ${args.description}`
+      );
+      return {
+        success: true,
+        bypassed: true,
+        newBalance: user.credits || 0,
+        message: "Enterprise BYOK - credits not deducted",
+      };
     }
 
     // Direct credit deduction implementation

@@ -11,6 +11,7 @@ import {
   formatCorrelationForLogging,
 } from "../lib/correlation";
 import { CREDIT_COSTS } from "../lib/helpers";
+import { shouldBypassCredits } from "../lib/creditHelpers";
 import {
   searchPlacesWithTiling,
   Bounds,
@@ -464,7 +465,7 @@ export const searchGoogleMaps: any = action({
                 "international_phone_number",
               ].join(","),
             );
-            detailsUrl.searchParams.set("key", googleMapsApiKey);
+            detailsUrl.searchParams.set("key", googleMapsApiKey!);
 
             const detailsResponse = await fetch(detailsUrl.toString());
             if (detailsResponse.ok) {
@@ -1362,7 +1363,10 @@ export const completeSearch: any = action({
         0,
       );
 
-      if (creditsToCharge > 0) {
+      // BYOK: Check if enterprise user with own API keys (skip credit charging)
+      const bypassCredits = await shouldBypassCredits(ctx, search.userId);
+
+      if (creditsToCharge > 0 && !bypassCredits) {
         await ctx.runMutation(internal.credits.transactions.recordTransaction, {
           userId: search.userId,
           amount: creditsToCharge,
@@ -1371,6 +1375,10 @@ export const completeSearch: any = action({
           relatedEntityType: "search",
           relatedEntityId: args.searchId as unknown as string,
         });
+      } else if (bypassCredits && creditsToCharge > 0) {
+        console.log(
+          `BYOK: Skipping ${creditsToCharge} credit charge for enterprise search ${args.searchId}`
+        );
       }
 
       // Update search status to completed with final results

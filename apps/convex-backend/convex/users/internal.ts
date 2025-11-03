@@ -1,5 +1,6 @@
 import { internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
+import { shouldBypassCredits } from "../lib/creditHelpers";
 
 // Internal query to get user without auth check
 export const getUserInternal = internalQuery({
@@ -159,6 +160,19 @@ export const deductCreditsInternal = internalMutation({
     const user = await ctx.db.get(args.userId);
     if (!user) {
       throw new Error("User not found for credit deduction");
+    }
+
+    // BYOK: Skip credit deduction for enterprise users with own API keys
+    const bypassCredits = await shouldBypassCredits(ctx, args.userId);
+    if (bypassCredits) {
+      console.log(
+        `BYOK: Skipping internal credit deduction for enterprise user ${args.userId} - ${args.description}`
+      );
+      return {
+        success: true,
+        bypassed: true,
+        balance: user.credits || 0,
+      };
     }
 
     const currentBalance = user.credits || 0;
