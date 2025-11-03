@@ -14,6 +14,10 @@ ARG PERPLEXITY_API_KEY=""
 ARG MAX_TOKENS=""
 ARG TEMPERATURE=""
 ARG DEFAULT_MODEL=""
+ARG LANGCHAIN_TRACING_V2="false"
+ARG LANGCHAIN_ENDPOINT=""
+ARG LANGCHAIN_PROJECT=""
+ARG LANGCHAIN_API_KEY=""
 
 # Make secrets available to build steps (tests) and runtime unless overridden later
 ENV OPENAI_API_KEY=${OPENAI_API_KEY} \
@@ -26,7 +30,11 @@ ENV OPENAI_API_KEY=${OPENAI_API_KEY} \
     PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY} \
     MAX_TOKENS=${MAX_TOKENS} \
     TEMPERATURE=${TEMPERATURE} \
-    DEFAULT_MODEL=${DEFAULT_MODEL}
+    DEFAULT_MODEL=${DEFAULT_MODEL} \
+    LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2} \
+    LANGCHAIN_ENDPOINT=${LANGCHAIN_ENDPOINT} \
+    LANGCHAIN_PROJECT=${LANGCHAIN_PROJECT} \
+    LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
 
 # Install minimal system dependencies
 RUN apt-get update && apt-get install -y \
@@ -49,7 +57,8 @@ RUN pip install --no-cache-dir \
     requests==2.31.0 \
     python-multipart==0.0.6 \
     aiohttp==3.9.0 \
-    psutil==5.9.0
+    psutil==5.9.0 \
+    "googlemaps>=4.10.0,<5.0.0"
 
 # Install newer compatible versions of AI libraries
 RUN pip install --no-cache-dir \

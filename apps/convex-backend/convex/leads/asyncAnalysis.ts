@@ -145,6 +145,56 @@ export const analyzeSingleLead: any = internalAction({
               ? "Small"
               : "Micro");
 
+        // Get user details to check plan
+        const user = await ctx.runQuery(internal.users.internal.getUserInternal, {
+          userId: args.userId,
+        });
+
+        // Get enterprise user's API keys for Tavily and Perplexity
+        let providerKeys: Record<string, string> | undefined;
+        if (user?.plan === "enterprise") {
+          try {
+            // Get Tavily key
+            const tavilyKeyResult = await ctx.runAction(
+              "userApiKeys/actions:getDecryptedApiKey" as any,
+              {
+                provider: "tavily",
+                userId: args.userId,
+              },
+            );
+            // Get Perplexity key
+            const perplexityKeyResult = await ctx.runAction(
+              "userApiKeys/actions:getDecryptedApiKey" as any,
+              {
+                provider: "perplexity",
+                userId: args.userId,
+              },
+            );
+            // Get OpenAI key
+            const openaiKeyResult = await ctx.runAction(
+              "userApiKeys/actions:getDecryptedApiKey" as any,
+              {
+                provider: "openai",
+                userId: args.userId,
+              },
+            );
+
+            providerKeys = {
+              tavily: tavilyKeyResult.apiKey,
+              perplexity: perplexityKeyResult.apiKey,
+              openai: openaiKeyResult.apiKey,
+            };
+          } catch (error) {
+            // This should have been caught earlier, but just in case
+            console.error("Enterprise user missing required API keys:", error);
+            await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
+              leadId: args.leadId,
+              error: "Enterprise users must provide their own API keys. Please add your API keys in Settings.",
+            });
+            return { success: false, error: "Missing required API keys" };
+          }
+        }
+
         // Prepare lead data for LangGraph
         const leadData = {
           id: lead._id,
@@ -211,6 +261,7 @@ export const analyzeSingleLead: any = internalAction({
               personalization_level: "high",
               follow_up_sequence: true,
             },
+            provider_keys: providerKeys,
           }),
         });
 

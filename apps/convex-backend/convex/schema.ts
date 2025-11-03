@@ -39,6 +39,12 @@ export default defineSchema({
         language: v.string(),
         timezone: v.string(),
         theme: v.optional(themePreferenceValidator),
+        // Deduplication preferences
+        enablePlaceNameDedup: v.optional(v.boolean()), // Search-level place name dedup
+        enableEmailDedup: v.optional(v.boolean()),     // User-level email dedup (default: ON)
+        enableAddressDedup: v.optional(v.boolean()),   // User-level address dedup (default: ON)
+        maxSearchExpansionIterations: v.optional(v.number()), // Max automatic radius expansions (default 5)
+        searchExpansionMultiplier: v.optional(v.number()),    // Radius multiplier per expansion (default 1.5)
       }),
     ),
     createdAt: v.number(),
@@ -100,6 +106,13 @@ export default defineSchema({
         v.object({
           minEmployees: v.optional(v.number()),
           maxEmployees: v.optional(v.number()),
+        }),
+      ),
+      deduplication: v.optional(
+        v.object({
+          enablePlaceNameDedup: v.optional(v.boolean()),
+          enableEmailDedup: v.optional(v.boolean()),
+          enableAddressDedup: v.optional(v.boolean()),
         }),
       ),
     }),
@@ -183,6 +196,26 @@ export default defineSchema({
       }),
     ),
     researchCompletedAt: v.optional(v.number()),
+
+    // Discovery diagnostics & dedup metrics
+    initialSearchRadius: v.optional(v.number()), // In meters
+    finalSearchRadius: v.optional(v.number()),   // In meters
+    expansionIterations: v.optional(v.number()),
+    duplicatesFilteredPlaceName: v.optional(v.number()),
+    duplicatesFilteredEmail: v.optional(v.number()),
+    duplicatesFilteredAddress: v.optional(v.number()),
+    duplicatesFilteredPlaceId: v.optional(v.number()),
+    discoveryMetadata: v.optional(
+      v.object({
+        requested: v.number(),
+        delivered: v.number(),
+        shortfall: v.number(),
+        expanded: v.boolean(),
+        originalAreaLeads: v.number(),
+        expansionAreaLeads: v.number(),
+        expansionMessage: v.string(),
+      }),
+    ),
 
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
@@ -388,6 +421,9 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_status", ["status"])
     .index("by_place_id", ["placeId"])
+    .index("by_user_place", ["userId", "placeId"]) // User-level deduplication (across all searches)
+    .index("by_search_place", ["searchId", "placeId"]) // Per-search deduplication (for spatial tiling)
+    .index("by_user_address", ["userId", "address"]) // User-level address deduplication
     .index("by_enrichment_status", ["enrichmentStatus"])
     .index("by_analysis_status", ["analysisStatus"])
     .index("by_analysis_scheduled", ["analysisScheduledAt"])
@@ -1153,8 +1189,12 @@ export default defineSchema({
   // User API Keys - For Starter tier users who bring their own API keys
   userApiKeys: defineTable({
     userId: v.id("users"),
-    service: v.union(
+    provider: v.union(
       v.literal("openai"),
+      v.literal("tavily"),
+      v.literal("perplexity"),
+      v.literal("google_places"),
+      // Legacy enrichment providers still supported for backwards compatibility
       v.literal("google_maps"),
       v.literal("findymail"),
       v.literal("icypeas"),
@@ -1165,9 +1205,9 @@ export default defineSchema({
     keyHash: v.string(), // Hash for quick lookup/validation
 
     // Validation status
-    isValid: v.boolean(),
-    lastValidated: v.optional(v.number()),
-    validationError: v.optional(v.string()),
+    validated: v.boolean(),
+    validatedAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
 
     // Usage tracking
     usageCount: v.number(),
@@ -1181,13 +1221,56 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
-    .index("by_user_service", ["userId", "service"])
+    .index("by_user_and_provider", ["userId", "provider"])
     .index("by_hash", ["keyHash"])
-    .index("by_service", ["service"])
+    .index("by_provider", ["provider"])
     .index("by_active", ["isActive"])
     // Compound indexes for API key validation queries
-    .index("by_user_service_active", ["userId", "service", "isActive"])
-    .index("by_user_active_valid", ["userId", "isActive", "isValid"]),
+    .index("by_user_provider_active", ["userId", "provider", "isActive"])
+    .index("by_user_active_valid", ["userId", "isActive", "validated"]),
+
+  // API Key Audit Log - Security audit trail for API key access
+  apiKeyAuditLog: defineTable({
+    userId: v.id("users"),
+    keyId: v.id("userApiKeys"),
+    action: v.union(
+      v.literal("decrypted"),
+      v.literal("validated"),
+      v.literal("created"),
+      v.literal("deleted"),
+    ),
+    purpose: v.string(), // e.g., "system_use", "enrichment", "validation"
+    success: v.boolean(),
+    errorMessage: v.optional(v.string()),
+    timestamp: v.number(),
+  })
+    .index("by_key", ["keyId"])
+    .index("by_user", ["userId"])
+    .index("by_action", ["action"])
+    .index("by_timestamp", ["timestamp"])
+    .index("by_user_action", ["userId", "action"]),
+
+  // Duplicate Metrics - Track prevented duplicates for analytics
+  duplicateMetrics: defineTable({
+    userId: v.id("users"),
+    searchId: v.id("searches"),
+    placeId: v.string(),
+    duplicateType: v.union(
+      v.literal("search_level"), // Duplicate within same search (spatial tiling)
+      v.literal("user_level"),   // Duplicate across user's searches
+      v.literal("place_name"),   // Duplicate place name within search
+      v.literal("email"),        // Duplicate email across user's searches
+      v.literal("address"),      // Duplicate address across user's searches
+    ),
+    preventedAt: v.number(),
+    originalLeadId: v.optional(v.id("leads")), // Reference to original lead
+    businessName: v.string(), // For reporting purposes
+  })
+    .index("by_user", ["userId"])
+    .index("by_search", ["searchId"])
+    .index("by_date", ["preventedAt"])
+    .index("by_type", ["duplicateType"])
+    .index("by_user_type", ["userId", "duplicateType"]),
 
   // Usage Tracking - Track user activity per billing period
   usageTracking: defineTable({

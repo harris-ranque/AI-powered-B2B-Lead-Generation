@@ -6,12 +6,16 @@ into a single comprehensive intelligence gathering agent.
 import time
 import asyncio
 from typing import Dict, Any, List
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field, ConfigDict
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
-from ...utils.research_clients import ResearchOrchestrator, ResearchResult, ResearchTier
+from ...utils.research_clients import (
+    ResearchOrchestrator,
+    ResearchResult,
+    ResearchTier,
+    ClientRegistry,
+)
 from ...utils.data_validation import BaseDataValidator
 from ...models.lead_models import AgentResult, CompetitorInsight
 from ..state import EmailGenerationState
@@ -96,6 +100,9 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
     
     logger.info(f"Starting comprehensive business intelligence analysis for {lead.company_name}")
     
+    provider_keys = state.get("provider_keys") or {}
+    registry = ClientRegistry.get_instance()
+
     try:
         # Phase 1: Execute tiered business context research
         logger.info(f"Phase 1: Business context research for {lead.company_name}")
@@ -111,12 +118,13 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         lead_value = float(getattr(lead, 'estimated_value', 0))
         
         # Perform tiered research
-        orchestrator = ResearchOrchestrator()
+        orchestrator = ResearchOrchestrator(client_registry=registry)
         research_result = await orchestrator.research_company(
             company_name=lead.company_name,
             domain=domain,
             user_tier=user_tier,
-            lead_value=lead_value
+            lead_value=lead_value,
+            provider_keys=provider_keys,
         )
         
         research_time = time.time() - research_start
@@ -145,12 +153,12 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         
         # Initialize LLM for comprehensive analysis
         # gpt-5-nano uses max_completion_tokens instead of max_tokens
-        llm = ChatOpenAI(
+        llm = registry.get_openai_client(
+            api_key=provider_keys.get("openai"),
             model=settings.default_model,
             temperature=0.3,
             max_completion_tokens=settings.max_tokens,
-            reasoning_effort="minimal",  # Optimize for speed with gpt-5-nano
-            openai_api_key=settings.openai_api_key
+            reasoning_effort="minimal",
         ).with_structured_output(BusinessIntelligence)
         
         # Create comprehensive analysis prompt
@@ -362,14 +370,51 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         }
         
     except Exception as e:
-        logger.error(f"Error in business intelligence agent: {str(e)}")
+        import traceback
+        import sentry_sdk
         execution_time = time.time() - start_time
-        
+
+        # Comprehensive error logging with full context
+        error_details = {
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "lead_company": lead.company_name if lead else "Unknown",
+            "lead_id": getattr(lead, 'id', 'Unknown'),
+            "request_id": state.get('request_id', 'Unknown'),
+            "execution_time": execution_time,
+            "stack_trace": traceback.format_exc()
+        }
+
+        # Send structured context to Sentry
+        sentry_sdk.set_context("business_intelligence_error", {
+            "agent": "Business Intelligence Agent",
+            "error_type": error_details['error_type'],
+            "lead_company": error_details['lead_company'],
+            "lead_id": error_details['lead_id'],
+            "request_id": error_details['request_id'],
+            "execution_time_seconds": error_details['execution_time'],
+            "has_business_profile": business_profile is not None,
+            "has_requirements": requirements is not None
+        })
+
+        # Capture exception in Sentry with full context
+        sentry_sdk.capture_exception(e)
+
+        logger.error(
+            f"CRITICAL ERROR in Business Intelligence Agent:\n"
+            f"  Error Type: {error_details['error_type']}\n"
+            f"  Error Message: {error_details['error_message']}\n"
+            f"  Lead: {error_details['lead_company']} (ID: {error_details['lead_id']})\n"
+            f"  Request ID: {error_details['request_id']}\n"
+            f"  Execution Time: {error_details['execution_time']:.2f}s\n"
+            f"  Full Stack Trace:\n{error_details['stack_trace']}"
+        )
+
         # Create error result
         agent_result = AgentResult(
             agent_name="Business Intelligence Agent",
             role="Comprehensive business intelligence and analysis",
-            output=f"Error during business intelligence analysis: {str(e)}",
+            output=f"Error during business intelligence analysis: {error_details['error_type']}: {error_details['error_message']}",
             confidence_score=0.1,
             execution_time=execution_time
         )

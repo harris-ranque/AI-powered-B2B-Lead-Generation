@@ -63,6 +63,12 @@ export const updatePreferences = mutation({
     language: v.optional(v.string()),
     timezone: v.optional(v.string()),
     theme: v.optional(themePreferenceValidator),
+    // Deduplication preferences
+    enablePlaceNameDedup: v.optional(v.boolean()),
+    enableEmailDedup: v.optional(v.boolean()),
+    enableAddressDedup: v.optional(v.boolean()),
+    maxSearchExpansionIterations: v.optional(v.number()),
+    searchExpansionMultiplier: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
@@ -82,17 +88,35 @@ export const updatePreferences = mutation({
       theme: "neon-pulse",
     };
 
-    const newPreferences = {
+    const validatedPreferences = {
       ...currentPreferences,
       ...args,
     };
 
+    if (typeof args.maxSearchExpansionIterations === "number") {
+      const maxIterations = Math.min(
+        Math.max(Math.floor(args.maxSearchExpansionIterations), 0),
+        10,
+      );
+      validatedPreferences.maxSearchExpansionIterations = maxIterations;
+    }
+
+    if (
+      typeof args.searchExpansionMultiplier === "number" &&
+      args.searchExpansionMultiplier > 0
+    ) {
+      validatedPreferences.searchExpansionMultiplier = Math.min(
+        Math.max(args.searchExpansionMultiplier, 1.1),
+        3,
+      );
+    }
+
     await ctx.db.patch(user._id, {
-      preferences: newPreferences,
+      preferences: validatedPreferences,
       updatedAt: Date.now(),
     });
 
-    return { success: true, preferences: newPreferences };
+    return { success: true, preferences: validatedPreferences };
   },
 });
 

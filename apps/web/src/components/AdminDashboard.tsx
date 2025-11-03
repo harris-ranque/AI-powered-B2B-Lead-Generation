@@ -669,6 +669,7 @@ function AdminDashboardComponent() {
   const { toast } = useToast();
   const historySyncDisabledRef = useRef(false);
   const lastSyncedSearchRef = useRef<string | null>(null);
+  const navigationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     metrics,
@@ -773,22 +774,37 @@ function AdminDashboardComponent() {
       return;
     }
 
-    try {
-      navigate(
-        {
-          pathname: location.pathname,
-          search: nextSearch ? `?${nextSearch}` : "",
-        },
-        { replace: true },
-      );
-      lastSyncedSearchRef.current = nextSearch;
-    } catch (error) {
-      historySyncDisabledRef.current = true;
-      handleComponentError(error, "sync-tab-to-url", {
-        pathname: location.pathname,
-        attemptedSearch: nextSearch,
-      });
+    // Clear any pending navigation
+    if (navigationTimeoutRef.current) {
+      clearTimeout(navigationTimeoutRef.current);
     }
+
+    // Throttle navigation to prevent React Router spam protection
+    navigationTimeoutRef.current = setTimeout(() => {
+      try {
+        navigate(
+          {
+            pathname: location.pathname,
+            search: nextSearch ? `?${nextSearch}` : "",
+          },
+          { replace: true },
+        );
+        lastSyncedSearchRef.current = nextSearch;
+      } catch (error) {
+        historySyncDisabledRef.current = true;
+        handleComponentError(error, "sync-tab-to-url", {
+          pathname: location.pathname,
+          attemptedSearch: nextSearch,
+        });
+      }
+    }, 100); // 100ms debounce to prevent rapid navigation calls
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+      }
+    };
   }, [
     currentTab,
     handleComponentError,

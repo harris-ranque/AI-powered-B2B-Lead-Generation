@@ -6,11 +6,11 @@ to ensure high standards before final output.
 import time
 import re
 from typing import Dict, Any, List
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
+from ...utils.research_clients import ClientRegistry
 from ...models.lead_models import AgentResult
 from ..state import EmailGenerationState
 
@@ -76,6 +76,9 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
     primary_email = state.get("primary_email")
     email_metadata = state.get("email_metadata", {})
     
+    provider_keys = state.get("provider_keys") or {}
+    registry = ClientRegistry.get_instance()
+
     logger.info(f"Starting quality assurance for {lead.company_name}")
     
     try:
@@ -106,12 +109,12 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         # Initialize LLM for quality assessment
         # gpt-5-nano uses max_completion_tokens instead of max_tokens
         # Use medium reasoning effort for QA - we need accurate scoring, not just speed
-        llm = ChatOpenAI(
+        llm = registry.get_openai_client(
+            api_key=provider_keys.get("openai"),
             model=settings.default_model,
-            temperature=0.2,  # Low temperature for consistent assessment
+            temperature=0.2,
             max_completion_tokens=settings.max_tokens,
-            reasoning_effort="medium",  # Use medium for better quality assessment
-            openai_api_key=settings.openai_api_key
+            reasoning_effort="medium",
         ).with_structured_output(QualityAssessment)
         
         # Create comprehensive quality assessment prompt
@@ -430,14 +433,49 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         }
         
     except Exception as e:
-        logger.error(f"Error in quality assurance agent: {str(e)}")
+        import traceback
+        import sentry_sdk
         execution_time = time.time() - start_time
-        
+
+        # Comprehensive error logging with full context
+        error_details = {
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "request_id": state.get('request_id', 'Unknown'),
+            "execution_time": execution_time,
+            "has_primary_email": state.get('primary_email') is not None,
+            "stack_trace": traceback.format_exc()
+        }
+
+        # Send structured context to Sentry
+        sentry_sdk.set_context("quality_assurance_error", {
+            "agent": "Quality Assurance Agent",
+            "error_type": error_details['error_type'],
+            "request_id": error_details['request_id'],
+            "execution_time_seconds": error_details['execution_time'],
+            "has_primary_email": error_details['has_primary_email'],
+            "has_follow_up_sequence": state.get('follow_up_sequence') is not None,
+            "has_email_metadata": state.get('email_metadata') is not None
+        })
+
+        # Capture exception in Sentry with full context
+        sentry_sdk.capture_exception(e)
+
+        logger.error(
+            f"CRITICAL ERROR in Quality Assurance Agent:\n"
+            f"  Error Type: {error_details['error_type']}\n"
+            f"  Error Message: {error_details['error_message']}\n"
+            f"  Request ID: {error_details['request_id']}\n"
+            f"  Has Primary Email: {error_details['has_primary_email']}\n"
+            f"  Execution Time: {error_details['execution_time']:.2f}s\n"
+            f"  Full Stack Trace:\n{error_details['stack_trace']}"
+        )
+
         # Create error result
         agent_result = AgentResult(
             agent_name="Quality Assurance Agent",
             role="Email quality validation and standards enforcement",
-            output=f"Error during quality assessment: {str(e)}",
+            output=f"Error during quality assessment: {error_details['error_type']}: {error_details['error_message']}",
             confidence_score=0.1,
             execution_time=execution_time
         )

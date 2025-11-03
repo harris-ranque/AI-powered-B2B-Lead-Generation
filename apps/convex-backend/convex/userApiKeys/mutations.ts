@@ -1,98 +1,38 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
+import { internal } from "../_generated/api";
 
-// Simple encryption/decryption functions (in production, use proper encryption)
-function encryptApiKey(key: string): string {
-  // In production, use proper encryption like AES
-  return Buffer.from(key).toString("base64");
-}
+export const SUPPORTED_PROVIDERS = [
+  "openai",
+  "tavily",
+  "perplexity",
+  "google_places",
+  // Legacy enrichment providers remain for backwards compatibility
+  "google_maps",
+  "findymail",
+  "icypeas",
+  "apify",
+] as const;
 
-function decryptApiKey(encryptedKey: string): string {
-  // In production, use proper decryption
-  return Buffer.from(encryptedKey, "base64").toString("utf8");
-}
+export const providerValidator = v.union(
+  ...SUPPORTED_PROVIDERS.map((provider) => v.literal(provider)),
+);
 
-function hashApiKey(key: string): string {
-  // Simple hash for lookup (in production, use proper hashing)
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) {
-    const char = key.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32-bit integer
+export function ensureUserCanManageKeys(plan: string) {
+  if (!plan) {
+    throw new Error("User plan missing for API key operation");
   }
-  return Math.abs(hash).toString(16);
+
+  // Starter historically supported BYOK for enrichment, enterprise requires it.
+  const allowedPlans = new Set(["starter", "enterprise", "business"]);
+  if (!allowedPlans.has(plan)) {
+    throw new Error("API key management is not enabled for this plan");
+  }
 }
 
-// Add or update API key
-export const upsertApiKey = mutation({
-  args: {
-    service: v.union(
-      v.literal("openai"),
-      v.literal("google_maps"),
-      v.literal("findymail"),
-      v.literal("icypeas"),
-      v.literal("apify"),
-    ),
-    keyName: v.string(),
-    apiKey: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
-
-    // Only starter tier users can manage their own API keys
-    if (user.plan !== "starter") {
-      throw new Error(
-        "API key management is only available for Starter tier users",
-      );
-    }
-
-    // Check if key already exists for this service
-    const existingKey = await ctx.db
-      .query("userApiKeys")
-      .filter((q) => q.eq(q.field("userId"), user._id))
-      .filter((q) => q.eq(q.field("service"), args.service))
-      .unique();
-
-    const encryptedKey = encryptApiKey(args.apiKey);
-    const keyHash = hashApiKey(args.apiKey);
-
-    const keyData = {
-      userId: user._id,
-      service: args.service,
-      keyName: args.keyName,
-      encryptedKey,
-      keyHash,
-      isValid: false, // Will be validated separately
-      usageCount: 0,
-      isActive: true,
-      updatedAt: Date.now(),
-    };
-
-    if (existingKey) {
-      // Update existing key
-      await ctx.db.patch(existingKey._id, keyData);
-
-      return {
-        success: true,
-        keyId: existingKey._id,
-        action: "updated",
-      };
-    } else {
-      // Create new key
-      const keyId = await ctx.db.insert("userApiKeys", {
-        ...keyData,
-        createdAt: Date.now(),
-      });
-
-      return {
-        success: true,
-        keyId,
-        action: "created",
-      };
-    }
-  },
-});
+// NOTE: upsertApiKey has been moved to actions.ts to support Node.js crypto operations
+// See convex/userApiKeys/actions.ts for the implementation
 
 // Delete API key
 export const deleteApiKey = mutation({
@@ -101,13 +41,7 @@ export const deleteApiKey = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-
-    // Only starter tier users can manage their own API keys
-    if (user.plan !== "starter") {
-      throw new Error(
-        "API key management is only available for Starter tier users",
-      );
-    }
+    ensureUserCanManageKeys(user.plan);
 
     const apiKey = await ctx.db.get(args.keyId);
 
@@ -118,6 +52,15 @@ export const deleteApiKey = mutation({
     if (apiKey.userId !== user._id) {
       throw new Error("Not authorized to delete this API key");
     }
+
+    // Log deletion before deleting the key
+    await ctx.scheduler.runAfter(0, internal.userApiKeys.internal.logApiKeyAccess, {
+      userId: user._id,
+      keyId: args.keyId,
+      action: "deleted",
+      purpose: "user_deletion",
+      success: true,
+    });
 
     await ctx.db.delete(args.keyId);
 
@@ -133,13 +76,7 @@ export const toggleApiKey = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-
-    // Only starter tier users can manage their own API keys
-    if (user.plan !== "starter") {
-      throw new Error(
-        "API key management is only available for Starter tier users",
-      );
-    }
+    ensureUserCanManageKeys(user.plan);
 
     const apiKey = await ctx.db.get(args.keyId);
 
@@ -163,23 +100,19 @@ export const toggleApiKey = mutation({
 // Update API key usage (internal use)
 export const recordApiKeyUsage = mutation({
   args: {
-    service: v.union(
-      v.literal("openai"),
-      v.literal("google_maps"),
-      v.literal("findymail"),
-      v.literal("icypeas"),
-      v.literal("apify"),
-    ),
+    provider: providerValidator,
     userId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    // Find the active API key for this service and user
+    // Use compound index for O(log n) performance instead of O(n) filtering
     const apiKey = await ctx.db
       .query("userApiKeys")
-      .filter((q) => q.eq(q.field("userId"), args.userId))
-      .filter((q) => q.eq(q.field("service"), args.service))
-      .filter((q) => q.eq(q.field("isActive"), true))
-      .unique();
+      .withIndex("by_user_provider_active", (q) =>
+        q.eq("userId", args.userId)
+         .eq("provider", args.provider)
+         .eq("isActive", true)
+      )
+      .first();
 
     if (apiKey) {
       await ctx.db.patch(apiKey._id, {
@@ -197,8 +130,8 @@ export const recordApiKeyUsage = mutation({
 export const updateValidationStatus = mutation({
   args: {
     keyId: v.id("userApiKeys"),
-    isValid: v.boolean(),
-    validationError: v.optional(v.string()),
+    validated: v.boolean(),
+    lastError: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const apiKey = await ctx.db.get(args.keyId);
@@ -208,9 +141,9 @@ export const updateValidationStatus = mutation({
     }
 
     await ctx.db.patch(args.keyId, {
-      isValid: args.isValid,
-      lastValidated: Date.now(),
-      validationError: args.validationError || undefined,
+      validated: args.validated,
+      validatedAt: Date.now(),
+      lastError: args.lastError || undefined,
       updatedAt: Date.now(),
     });
 

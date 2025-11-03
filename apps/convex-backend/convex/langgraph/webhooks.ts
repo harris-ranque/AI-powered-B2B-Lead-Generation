@@ -187,6 +187,9 @@ export const handleEmailGenerationCompleted = internalMutation({
         return { success: false, error: "Search not found" };
       }
 
+      const userDoc = await ctx.db.get(search.userId);
+      const isEnterpriseUser = userDoc?.plan === "enterprise";
+
       // Get lead and validate
       const lead = await ctx.runQuery(internal.leads.internal.getLeadInternal, {
         leadId,
@@ -305,7 +308,9 @@ export const handleEmailGenerationCompleted = internalMutation({
               typeof result.processing_time === "number"
                 ? result.processing_time
                 : requestDoc.processingTime,
-            creditsUsed: (requestDoc.creditsUsed || 0) + additionalCredits,
+            creditsUsed: isEnterpriseUser
+              ? 0
+              : (requestDoc.creditsUsed || 0) + additionalCredits,
             outputData: {
               raw: result,
               formatted: formattedOutput,
@@ -370,7 +375,7 @@ export const handleEmailGenerationCompleted = internalMutation({
         });
 
         // Process deep research tracking and credit charges
-        if (deepResearchUsed) {
+        if (deepResearchUsed && !isEnterpriseUser) {
           logger.info("Processing deep research charge", {
             leadId,
             reason: deepResearchReason,

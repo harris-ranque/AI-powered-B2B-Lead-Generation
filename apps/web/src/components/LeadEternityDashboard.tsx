@@ -15,6 +15,7 @@ import {
   Menu,
   AlertTriangle,
   CreditCard,
+  Palette,
 } from "lucide-react";
 import { PipelineOrchestrator } from "./pipeline/PipelineOrchestrator";
 import { PipelineProvider, usePipeline } from "@/pipeline/context";
@@ -53,11 +54,13 @@ import { ToastAction } from "@/components/ui/toast";
 import { ClerkUserButton } from "@/components/auth/ClerkAuthWrapper";
 import { withErrorBoundary } from "@/utils/errorHandling";
 import { createLogger } from "@/utils/logger";
+import { applyAppTheme, getStoredAppTheme, type AppThemeKey } from "@/lib/appTheme";
 
 const leadDashboardLogger = createLogger("LeadEternityDashboard");
 
 function LeadEternityDashboardContent() {
   const [currentTab, setCurrentTab] = useState<DashboardTabName>("overview");
+  const [currentTheme, setCurrentTheme] = useState<AppThemeKey>(getStoredAppTheme());
   const location = useLocation();
   const completionAnnouncedRef = useRef(false);
   const isHandlingHashChangeRef = useRef(false);
@@ -462,6 +465,16 @@ function LeadEternityDashboardContent() {
     [handleComponentError, purchaseCredits, toast],
   );
 
+  const handleToggleTheme = useCallback(() => {
+    const newTheme: AppThemeKey = currentTheme === "harborlight" ? "neon-pulse" : "harborlight";
+    setCurrentTheme(newTheme);
+    applyAppTheme(newTheme);
+    toast({
+      title: "Theme Changed",
+      description: `Switched to ${newTheme === "harborlight" ? "Horizon" : "Neon"} theme`,
+    });
+  }, [currentTheme, toast]);
+
   // Avoid flashing onboarding while loading profile
   if (isProfileLoading) {
     return <div className="harborlight-shell min-h-screen bg-background" />;
@@ -519,33 +532,26 @@ function LeadEternityDashboardContent() {
             </Button>
           </div>
 
-          <div className="ml-auto flex flex-col items-end gap-4 text-right">
-            <div className="flex items-center gap-4">
-              <Badge variant="secondary" className="ai-activity-badge">
-                <Sparkles className="ai-badge-icon h-3 w-3" aria-hidden="true" />
-                <span>AI System Active</span>
-              </Badge>
+          <div className="ml-auto flex items-center gap-3">
+            <Badge variant="secondary" className="ai-activity-badge">
+              <Sparkles className="ai-badge-icon h-3 w-3" aria-hidden="true" />
+              <span>AI System Active</span>
+            </Badge>
 
-              <div
-                className="ai-agent-indicator"
-                aria-live="polite"
-                aria-label="5 AI agents active"
-              >
-                <div className="ai-agent-orb" aria-hidden="true">
-                  <span className="ai-agent-count">5</span>
-                </div>
-                <div className="text-right">
-                  <div className="ai-agent-label text-sm leading-tight">
-                    AI Agents Active
-                  </div>
-                  <div className="ai-agent-subtitle text-xs">
-                    Ready for personalization
-                  </div>
-                </div>
-              </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleToggleTheme}
+              className="flex items-center gap-2 h-9"
+              aria-label={`Switch to ${currentTheme === "harborlight" ? "Neon" : "Horizon"} theme`}
+            >
+              <Palette className="h-4 w-4" />
+              <span className="text-xs font-medium">
+                {currentTheme === "harborlight" ? "Horizon" : "Neon"}
+              </span>
+            </Button>
 
-              <ClerkUserButton />
-            </div>
+            <ClerkUserButton />
           </div>
         </div>
       </div>

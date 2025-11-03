@@ -3,7 +3,7 @@ Pydantic models for Genni CrewAI Worker
 """
 from pydantic import BaseModel, Field
 from pydantic import ConfigDict
-from typing import List, Dict, Any, Optional
+from typing import Dict, List, Any, Optional, Literal
 from datetime import datetime
 from enum import Enum
 
@@ -102,6 +102,26 @@ class EmailRequirements(BaseModel):
     personalization_level: str = Field("high", description="Personalization depth")
     follow_up_sequence: bool = Field(True, alias="followUpSequence", description="Generate follow-up sequence")
 
+class ProviderKeys(BaseModel):
+    """User-supplied provider credentials"""
+
+    openai: Optional[str] = Field(default=None, description="OpenAI API key override")
+    tavily: Optional[str] = Field(default=None, description="Tavily API key override")
+    perplexity: Optional[str] = Field(default=None, description="Perplexity API key override")
+    google_places: Optional[str] = Field(default=None, alias="googlePlaces", description="Google Places API key override")
+
+
+class ProviderKeyValidationRequest(BaseModel):
+    provider: Literal["openai", "tavily", "perplexity", "google_places"]
+    key: str
+
+
+class ProviderKeyValidationResponse(BaseModel):
+    valid: bool
+    error: Optional[str] = None
+    quota_remaining: Optional[int] = Field(default=None, alias="quotaRemaining")
+
+
 class EmailGenerationRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
     """Request model for email generation"""
@@ -109,6 +129,8 @@ class EmailGenerationRequest(BaseModel):
     lead: Lead = Field(..., description="Lead information")
     business_profile: BusinessProfile = Field(..., alias="businessProfile", description="Our business context")
     requirements: EmailRequirements = Field(default_factory=EmailRequirements, description="Email requirements")
+    provider_keys: Optional[ProviderKeys] = Field(default=None, alias="providerKeys", description="Optional provider credential overrides")
+    user_id: Optional[str] = Field(default=None, alias="userId", description="Authenticated user identifier for key resolution")
 
 class AgentResult(BaseModel):
     """Individual agent result"""

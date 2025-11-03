@@ -34,7 +34,24 @@ export interface BusinessProfileInput {
 }
 
 // Search types
-export type Search = Doc<"searches">;
+export type Search = Doc<"searches"> & {
+  initialSearchRadius?: number;
+  finalSearchRadius?: number;
+  expansionIterations?: number;
+  duplicatesFilteredPlaceName?: number;
+  duplicatesFilteredEmail?: number;
+  duplicatesFilteredAddress?: number;
+  duplicatesFilteredPlaceId?: number;
+  discoveryMetadata?: {
+    requested: number;
+    delivered: number;
+    shortfall: number;
+    expanded: boolean;
+    originalAreaLeads: number;
+    expansionAreaLeads: number;
+    expansionMessage: string;
+  };
+};
 export type SearchStatus =
   | "pending"
   | "in_progress"
@@ -54,6 +71,15 @@ export interface SearchParams {
   roles?: string[];
   minRating?: number;
   maxResults: number;
+  filters?: {
+    minEmployees?: number;
+    maxEmployees?: number;
+  };
+  deduplication?: {
+    enablePlaceNameDedup?: boolean;
+    enableEmailDedup?: boolean;
+    enableAddressDedup?: boolean;
+  };
 }
 
 // Lead types

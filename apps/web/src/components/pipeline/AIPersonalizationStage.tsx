@@ -13,6 +13,7 @@ import {
   Sparkles,
   CheckCircle,
   Clock,
+  Building,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 

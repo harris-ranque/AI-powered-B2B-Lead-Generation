@@ -29,19 +29,19 @@ export function SubscriptionStatusCard() {
 
   if (!subscription?.billing && !isStarter) {
     return (
-      <Card className="border-orange-200 bg-orange-50/50">
+      <Card className="border-border bg-card">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-orange-700">
-            <AlertCircle className="h-5 w-5" />
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <AlertCircle className="h-5 w-5 text-orange-500" />
             No Active Subscription
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-orange-600">
+          <p className="text-sm text-muted-foreground">
             You don't have an active subscription. Choose a plan to get started.
           </p>
           <Link to="/pricing">
-            <Button size="sm" className="w-full">
+            <Button size="sm" className="w-full bg-primary hover:bg-primary/90">
               View Plans
             </Button>
           </Link>

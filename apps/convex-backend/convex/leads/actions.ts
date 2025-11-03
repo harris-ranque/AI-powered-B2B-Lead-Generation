@@ -392,21 +392,15 @@ export const enrichLeads: any = action({
           const keyResult = await ctx.runAction(
             "userApiKeys/actions:getDecryptedApiKey" as any,
             {
-              service: providerType, // Use configured provider
+              provider: providerType, // Use configured provider
               userId: user._id,
             },
           );
           userApiKey = keyResult.apiKey;
         } catch (error) {
-          // Will fallback to system API key in EnrichmentService
-          logWithCorrelation(
-            "warn",
-            correlation,
-            "Enterprise user API key not available, falling back to system key",
-            {
-              provider: providerType,
-              userId: user._id,
-            },
+          // For enterprise users, API keys are required
+          throw new Error(
+            `Enterprise users must provide their own ${providerType} API key. Please add your API key in Settings.`
           );
         }
       }
@@ -597,6 +591,14 @@ export const enrichLeads: any = action({
                 },
               );
               enrichedCount++;
+              await ctx.runMutation(
+                internal.leads.internal.checkEmailDuplication,
+                {
+                  leadId: (lead as any)._id,
+                  userId: (lead as any).userId,
+                  searchId: (lead as any).searchId,
+                },
+              );
             } else {
               // No emails found, add to fallback list
               domainsNeedingFallback.push(domain);
@@ -657,6 +659,14 @@ export const enrichLeads: any = action({
                     },
                   );
                   enrichedCount++;
+                  await ctx.runMutation(
+                    internal.leads.internal.checkEmailDuplication,
+                    {
+                      leadId: (lead as any)._id,
+                      userId: (lead as any).userId,
+                      searchId: (lead as any).searchId,
+                    },
+                  );
 
                   logWithCorrelation(
                     "info",

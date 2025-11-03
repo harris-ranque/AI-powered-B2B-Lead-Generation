@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +25,8 @@ import { SourceRegistry } from "@/pipeline/sources/SourceRegistry";
 import { FileUploadArea } from "./FileUploadArea";
 import { EstimatedCostCard } from "./EstimatedCostCard";
 import { useSearches, useGoogleMapsSearch } from "@/hooks/useSearches";
+import { useQuery } from "convex/react";
+import { api } from "@genni/convex-types";
 import {
   Search,
   MapPin,
@@ -38,7 +41,15 @@ import {
   ChevronUp,
   X,
   Plus,
+  Filter,
+  Info,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -89,19 +100,32 @@ export function LeadDiscoveryStage({
   const { toast } = useToast();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
+  // Fetch user preferences for de-duplication settings
+  const userPreferences = useQuery(api.users.queries.getUserPreferences);
+
   // Google Maps form state
   const [location, setLocation] = useState("");
   const [industry, setIndustry] = useState("");
   const [leadsCount, setLeadsCount] = useState([50]);
   const [radius, setRadius] = useState([DEFAULT_RADIUS_MILES]);
   const [employeeRange, setEmployeeRange] = useState([10, 1000]);
-  const [includeEmails, setIncludeEmails] = useState(true);
-  const [aiAnalysis, setAiAnalysis] = useState(true);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([
     ...DEFAULT_ROLE_SELECTION,
   ]);
   const [customRole, setCustomRole] = useState("");
   const [roleError, setRoleError] = useState<string | null>(null);
+
+  // Filtering options state
+  const [filteringExpanded, setFilteringExpanded] = useState(false);
+  const [filterPlaceNames, setFilterPlaceNames] = useState(
+    userPreferences?.enablePlaceNameDedup ?? false
+  );
+  const [filterEmails, setFilterEmails] = useState(
+    userPreferences?.enableEmailDedup ?? true
+  );
+  const [filterAddresses, setFilterAddresses] = useState(
+    userPreferences?.enableAddressDedup ?? true
+  );
 
   // Upload form state
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -119,7 +143,15 @@ export function LeadDiscoveryStage({
     }
   }, [hasActiveSearch]);
 
-  const rolesDisabled = !includeEmails;
+  // Sync filtering options with user preferences
+  useEffect(() => {
+    if (userPreferences) {
+      setFilterPlaceNames(userPreferences.enablePlaceNameDedup ?? false);
+      setFilterEmails(userPreferences.enableEmailDedup ?? true);
+      setFilterAddresses(userPreferences.enableAddressDedup ?? true);
+    }
+  }, [userPreferences]);
+
   const canAddMoreRoles = selectedRoles.length < MAX_SELECTED_ROLES;
 
   useEffect(() => {
@@ -128,17 +160,7 @@ export function LeadDiscoveryStage({
     }
   }, [selectedRoles.length]);
 
-  useEffect(() => {
-    if (!includeEmails) {
-      setRoleError(null);
-    }
-  }, [includeEmails]);
-
   const tryAddRole = (role: string) => {
-    if (rolesDisabled) {
-      return false;
-    }
-
     const formatted = toStandardCase(role);
     if (!formatted) {
       setRoleError("Role name cannot be empty.");
@@ -164,10 +186,6 @@ export function LeadDiscoveryStage({
   };
 
   const handleToggleRole = (role: string) => {
-    if (rolesDisabled) {
-      return;
-    }
-
     const formatted = toStandardCase(role);
     if (!formatted) {
       return;
@@ -221,8 +239,8 @@ export function LeadDiscoveryStage({
         radius: radius[0],
         minEmployees: employeeRange[0],
         maxEmployees: employeeRange[1],
-        includeEmails,
-        aiAnalysis,
+        includeEmails: true, // Always enabled
+        aiAnalysis: true, // Always enabled
         roles: selectedRoles,
       };
       return selectedSource.validate(params);
@@ -293,6 +311,11 @@ export function LeadDiscoveryStage({
             filters: {
               minEmployees: employeeRange[0],
               maxEmployees: employeeRange[1],
+            },
+            deduplication: {
+              enablePlaceNameDedup: filterPlaceNames,
+              enableEmailDedup: filterEmails,
+              enableAddressDedup: filterAddresses,
             },
           },
           autoStart: true, // This will trigger the orchestrator automatically
@@ -507,29 +530,7 @@ export function LeadDiscoveryStage({
 
               {/* Processing Options */}
               <div className="space-y-4 p-4 rounded-lg bg-muted/20">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <Label className="flex items-center gap-2">
-                      <Mail className="h-4 w-4" />
-                      Email Enrichment
-                    </Label>
-                    <p className="text-xs text-muted-foreground">
-                      Find contact emails for discovered leads
-                    </p>
-                  </div>
-                  <Switch
-                    checked={includeEmails}
-                    onCheckedChange={setIncludeEmails}
-                  />
-                </div>
-
-                <div
-                  className={cn(
-                    "space-y-3 rounded-lg border border-border/60 bg-background/60 p-4 transition-opacity",
-                    rolesDisabled && "pointer-events-none opacity-60",
-                  )}
-                  aria-disabled={rolesDisabled}
-                >
+                <div className="space-y-3 rounded-lg border border-border/60 bg-background/60 p-4">
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                     <div className="space-y-1">
                       <Label className="flex items-center gap-2 text-sm font-medium">
@@ -589,9 +590,7 @@ export function LeadDiscoveryStage({
                             !isSelected && "bg-background/80",
                           )}
                           onClick={() => handleToggleRole(role)}
-                          disabled={
-                            rolesDisabled || (!isSelected && !canAddMoreRoles)
-                          }
+                          disabled={!isSelected && !canAddMoreRoles}
                         >
                           {formatted}
                         </Button>
@@ -605,15 +604,12 @@ export function LeadDiscoveryStage({
                       onChange={(event) => setCustomRole(event.target.value)}
                       onKeyDown={handleCustomRoleKeyDown}
                       placeholder="Add a custom role (e.g., VP of Marketing)"
-                      disabled={rolesDisabled}
                     />
                     <Button
                       type="button"
                       variant="secondary"
                       onClick={handleAddCustomRole}
-                      disabled={
-                        rolesDisabled || !customRole.trim() || !canAddMoreRoles
-                      }
+                      disabled={!customRole.trim() || !canAddMoreRoles}
                       className="sm:w-auto"
                     >
                       <Plus className="mr-2 h-4 w-4" />
@@ -625,28 +621,149 @@ export function LeadDiscoveryStage({
                     <p className="text-xs text-destructive">{roleError}</p>
                   )}
                 </div>
+              </div>
 
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <Label className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4" />
-                      AI Analysis
-                    </Label>
-                    <p className="text-xs text-muted-foreground">
-                      Analyze leads for relevance and pain points
+              {/* Deduplication Options */}
+              <div className="space-y-4 p-4 rounded-lg bg-muted/20">
+                <Collapsible
+                  open={filteringExpanded}
+                  onOpenChange={setFilteringExpanded}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setFilteringExpanded(!filteringExpanded)}
+                    className="flex w-full items-center justify-between gap-2 cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Filter className="h-4 w-4 text-primary" />
+                      <h4 className="text-sm font-semibold">Deduplication Options</h4>
+                    </div>
+                    {filteringExpanded ? (
+                      <ChevronUp className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                    )}
+                  </button>
+
+                  <CollapsibleContent className="space-y-4 mt-4">
+                    {/* Place Name Deduplication */}
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Label className="text-sm font-medium">
+                            Filter duplicate place names
+                          </Label>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button type="button" className="inline-flex">
+                                  <Info className="h-4 w-4 text-muted-foreground" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p>
+                                  Removes businesses with identical names from search results.
+                                  Useful for filtering out franchise locations (e.g., multiple
+                                  State Farm or McDonald's locations). Only keeps the first
+                                  occurrence found.
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Search-level only (not user history)
+                        </p>
+                      </div>
+                      <Switch
+                        checked={filterPlaceNames}
+                        onCheckedChange={setFilterPlaceNames}
+                      />
+                    </div>
+
+                    <Separator />
+
+                    {/* Email Deduplication */}
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Label className="text-sm font-medium">
+                            Avoid duplicate email addresses
+                          </Label>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button type="button" className="inline-flex">
+                                  <Info className="h-4 w-4 text-muted-foreground" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p>
+                                  Prevents sending emails to the same email address across
+                                  all your searches. Checks against your historical lead
+                                  database.
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Checks all previous leads (recommended)
+                        </p>
+                      </div>
+                      <Switch
+                        checked={filterEmails}
+                        onCheckedChange={setFilterEmails}
+                      />
+                    </div>
+
+                    <Separator />
+
+                    {/* Address Deduplication */}
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Label className="text-sm font-medium">
+                            Filter duplicate addresses
+                          </Label>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button type="button" className="inline-flex">
+                                  <Info className="h-4 w-4 text-muted-foreground" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p>
+                                  Removes locations with addresses you've already targeted.
+                                  Checks against your historical lead database.
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Checks all previous leads (recommended)
+                        </p>
+                      </div>
+                      <Switch
+                        checked={filterAddresses}
+                        onCheckedChange={setFilterAddresses}
+                      />
+                    </div>
+
+                    <p className="text-xs text-muted-foreground mt-2">
+                      These settings will apply to this search. You can set defaults in your{" "}
+                      <a href="/settings" className="text-primary hover:underline">account settings</a>.
                     </p>
-                  </div>
-                  <Switch
-                    checked={aiAnalysis}
-                    onCheckedChange={setAiAnalysis}
-                  />
-                </div>
+                  </CollapsibleContent>
+                </Collapsible>
               </div>
                 </>
               )}
 
               {state.selectedSource === "csv_upload" && (
-                <Alert>
+                <Alert className="border border-amber-500/40 bg-amber-500/10 text-amber-200">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
                     CSV Upload is temporarily disabled while we roll out
@@ -664,7 +781,7 @@ export function LeadDiscoveryStage({
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
-              className="mt-4 flex gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-700"
+              className="mt-4 flex gap-2 rounded-xl border border-red-500/50 bg-red-500/10 p-3 text-red-200"
             >
               <AlertTriangle className="h-4 w-4 shrink-0" />
               <div>
@@ -679,7 +796,7 @@ export function LeadDiscoveryStage({
           )}
 
           {validation.warnings.length > 0 && (
-            <Alert>
+            <Alert className="border border-amber-500/40 bg-amber-500/10 text-amber-200">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
                 <div className="space-y-1">

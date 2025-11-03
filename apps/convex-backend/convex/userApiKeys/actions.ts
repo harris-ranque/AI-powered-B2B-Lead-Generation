@@ -1,13 +1,211 @@
+"use node";
+
+import crypto from "node:crypto";
 import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 import { api, internal } from "../_generated/api";
+import {
+  ensureUserCanManageKeys,
+  providerValidator,
+  SUPPORTED_PROVIDERS,
+} from "./mutations";
 
-// Simple decryption function (matches mutations.ts)
-function decryptApiKey(encryptedKey: string): string {
-  // In production, use proper decryption
-  return Buffer.from(encryptedKey, "base64").toString("utf8");
+// Crypto helper functions for API key encryption
+const AES_ALGORITHM = "aes-256-gcm";
+const IV_LENGTH = 12; // Recommended IV size for GCM
+
+function resolveEncryptionKey(): Buffer {
+  const secret = process.env.USER_API_KEY_SECRET || process.env.CONVEX_SITE_SECRET;
+
+  if (!secret) {
+    throw new Error(
+      "CRITICAL SECURITY ERROR: USER_API_KEY_SECRET environment variable is required. " +
+      "API key encryption cannot proceed without a secure secret. " +
+      "Set USER_API_KEY_SECRET in your environment configuration."
+    );
+  }
+
+  // Validate secret strength (minimum 32 characters for AES-256 security)
+  if (secret.length < 32) {
+    throw new Error(
+      "CRITICAL SECURITY ERROR: USER_API_KEY_SECRET must be at least 32 characters " +
+      "to ensure AES-256 encryption security. Current length: " + secret.length
+    );
+  }
+
+  // Derive a 32-byte key for AES-256 from the secret
+  return crypto.createHash("sha256").update(secret).digest();
 }
+
+function encryptApiKey(key: string): string {
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(AES_ALGORITHM, resolveEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(key, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  return Buffer.concat([iv, authTag, encrypted]).toString("base64");
+}
+
+function decryptApiKey(encryptedKey: string): string {
+  const payload = Buffer.from(encryptedKey, "base64");
+  const iv = payload.subarray(0, IV_LENGTH);
+  const authTag = payload.subarray(IV_LENGTH, IV_LENGTH + 16);
+  const ciphertext = payload.subarray(IV_LENGTH + 16);
+
+  const decipher = crypto.createDecipheriv(
+    AES_ALGORITHM,
+    resolveEncryptionKey(),
+    iv,
+  );
+  decipher.setAuthTag(authTag);
+
+  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  return decrypted.toString("utf8");
+}
+
+function hashApiKey(key: string): string {
+  return crypto.createHash("sha256").update(key).digest("hex");
+}
+
+const ENTERPRISE_VALIDATION_PROVIDERS = new Set([
+  "openai",
+  "tavily",
+  "perplexity",
+  "google_places",
+]);
+
+type Provider = (typeof SUPPORTED_PROVIDERS)[number];
+
+type ValidationResult = {
+  valid: boolean;
+  error?: string;
+  quotaRemaining?: number | null;
+};
+
+const workerUrl = process.env.LANGGRAPH_URL;
+const workerApiKey = process.env.LANGGRAPH_API_KEY;
+
+async function validateWithWorker(
+  provider: Provider,
+  apiKey: string,
+): Promise<ValidationResult> {
+  if (!workerUrl || !workerApiKey) {
+    throw new Error("LangGraph worker configuration missing for validation");
+  }
+
+  const response = await fetch(`${workerUrl}/validate-key`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${workerApiKey}`,
+    },
+    body: JSON.stringify({
+      provider,
+      key: apiKey,
+    }),
+  });
+  let payload: ValidationResult = { valid: false };
+  try {
+    payload = (await response.json()) as ValidationResult;
+  } catch (error) {
+    // Log full error internally for debugging
+    console.error("LangGraph validation response parsing error:", {
+      provider,
+      error: error instanceof Error ? error.message : String(error),
+      timestamp: Date.now(),
+    });
+
+    // Return generic error to user
+    throw new Error(
+      `Unable to validate ${provider} API key. Please verify your key is correct and try again.`
+    );
+  }
+
+  if (!response.ok) {
+    // Log full error internally for debugging
+    console.error("LangGraph validation failed:", {
+      provider,
+      status: response.status,
+      statusText: response.statusText,
+      error: payload.error,
+      timestamp: Date.now(),
+    });
+
+    // Return generic error to user
+    throw new Error(
+      `Unable to validate ${provider} API key. Please verify your key is correct and try again.`
+    );
+  }
+
+  return {
+    valid: Boolean(payload.valid),
+    error: payload.error,
+    quotaRemaining: payload.quotaRemaining ?? null,
+  };
+}
+
+async function validateLegacyProvider(
+  provider: Provider,
+  apiKey: string,
+): Promise<ValidationResult> {
+  switch (provider) {
+    case "google_maps":
+      return { valid: await validateGoogleMapsKey(apiKey) };
+    case "findymail":
+      return { valid: await validateFindyMailKey(apiKey) };
+    case "icypeas":
+      return { valid: await validateIcyPeasKey(apiKey) };
+    case "apify":
+      return { valid: await validateApifyKey(apiKey) };
+    default:
+      return { valid: false, error: "Unsupported provider for legacy validation" };
+  }
+}
+
+// Add or update API key (action with crypto operations)
+export const upsertApiKey = action({
+  args: {
+    provider: providerValidator,
+    keyName: v.string(),
+    apiKey: v.string(),
+  },
+  handler: async (ctx, args): Promise<{
+    success: boolean;
+    keyId: any;
+    action: "updated" | "created";
+  }> => {
+    const user = await requireAuth(ctx);
+    ensureUserCanManageKeys(user.plan);
+
+    // Crypto operations in action (allowed with "use node" in crypto.ts)
+    const encryptedKey = encryptApiKey(args.apiKey);
+    const keyHash = hashApiKey(args.apiKey);
+
+    // Call internal mutation for DB operations
+    const result = await ctx.runMutation(
+      internal.userApiKeys.internal.upsertApiKeyInternal,
+      {
+        userId: user._id,
+        provider: args.provider,
+        keyName: args.keyName,
+        encryptedKey,
+        keyHash,
+      }
+    );
+
+    // Log key creation/update
+    await ctx.runMutation(internal.userApiKeys.internal.logApiKeyAccess, {
+      userId: user._id,
+      keyId: result.keyId,
+      action: "created",
+      purpose: result.action === "created" ? "new_key" : "key_update",
+      success: true,
+    });
+
+    return result;
+  },
+});
 
 // Validate API key by testing it with the actual service
 export const validateApiKey = action({
@@ -17,12 +215,7 @@ export const validateApiKey = action({
   handler: async (ctx, args): Promise<any> => {
     const user = await requireAuth(ctx);
 
-    // Only starter tier users can validate their API keys
-    if (user.plan !== "starter") {
-      throw new Error(
-        "API key validation is only available for Starter tier users",
-      );
-    }
+    ensureUserCanManageKeys(user.plan);
 
     // Get the API key with full details using internal query
     const apiKey = await ctx.runQuery(
@@ -40,61 +233,77 @@ export const validateApiKey = action({
       throw new Error("Not authorized to validate this API key");
     }
 
+    let validationSuccess = false;
+    let validationError: string | undefined;
+
     try {
       const decryptedKey = decryptApiKey((apiKey as any).encryptedKey || "");
-      let isValid = false;
-      let validationError = "";
+      const provider = apiKey.provider as Provider;
 
-      // Test the API key with the actual service
-      switch (apiKey.service) {
-        case "openai":
-          isValid = await validateOpenAIKey(decryptedKey);
-          break;
-        case "google_maps":
-          isValid = await validateGoogleMapsKey(decryptedKey);
-          break;
-        case "findymail":
-          isValid = await validateFindyMailKey(decryptedKey);
-          break;
-        case "icypeas":
-          isValid = await validateIcyPeasKey(decryptedKey);
-          break;
-        case "apify":
-          isValid = await validateApifyKey(decryptedKey);
-          break;
-        default:
-          throw new Error(`Unknown service: ${apiKey.service}`);
-      }
+      const validation = ENTERPRISE_VALIDATION_PROVIDERS.has(provider)
+        ? await validateWithWorker(provider, decryptedKey)
+        : await validateLegacyProvider(provider, decryptedKey);
 
-      // Update the API key validation status
+      validationSuccess = validation.valid;
+      validationError = validation.error;
+
       await ctx.runMutation(api.userApiKeys.mutations.updateValidationStatus, {
         keyId: args.keyId,
-        isValid,
-        validationError: isValid ? "" : "API key validation failed",
+        validated: validation.valid,
+        lastError: validation.valid ? undefined : "API key validation failed",
+      });
+
+      // Log successful validation
+      await ctx.runMutation(internal.userApiKeys.internal.logApiKeyAccess, {
+        userId: user._id,
+        keyId: args.keyId,
+        action: "validated",
+        purpose: "user_validation",
+        success: validation.valid,
+        errorMessage: validation.valid ? undefined : "Validation failed",
       });
 
       return {
         success: true,
-        isValid,
-        service: apiKey.service,
-        validationError: isValid ? "" : "API key validation failed",
+        isValid: validation.valid,
+        provider,
+        quotaRemaining: validation.quotaRemaining ?? null,
+        validationError: validation.valid ? undefined : "API key validation failed. Please verify your key is correct.",
       };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown validation error";
+      const sanitizedError = "API key validation failed. Please verify your key is correct.";
+
+      // Log detailed error internally
+      console.error("API key validation error:", {
+        keyId: args.keyId,
+        provider: apiKey.provider,
+        userId: user._id,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: Date.now(),
+      });
 
       // Update with error status
       await ctx.runMutation(api.userApiKeys.mutations.updateValidationStatus, {
         keyId: args.keyId,
-        isValid: false,
-        validationError: errorMessage,
+        validated: false,
+        lastError: sanitizedError,
+      });
+
+      // Log failed validation attempt
+      await ctx.runMutation(internal.userApiKeys.internal.logApiKeyAccess, {
+        userId: user._id,
+        keyId: args.keyId,
+        action: "validated",
+        purpose: "user_validation",
+        success: false,
+        errorMessage: error instanceof Error ? error.message : String(error),
       });
 
       return {
         success: false,
         isValid: false,
-        service: apiKey.service,
-        validationError: errorMessage,
+        provider: apiKey.provider,
+        validationError: sanitizedError,
       };
     }
   },
@@ -106,10 +315,7 @@ export const validateAllApiKeys = action({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
 
-    // Only starter tier users need API key validation
-    if (user.plan !== "starter") {
-      return { success: true, results: [] };
-    }
+    ensureUserCanManageKeys(user.plan);
 
     // Get all API keys using internal query with full details
     const apiKeys = await ctx.runQuery(
@@ -134,7 +340,7 @@ export const validateAllApiKeys = action({
         results.push({
           success: false,
           isValid: false,
-          service: apiKey.service,
+          provider: apiKey.provider,
           validationError:
             error instanceof Error ? error.message : "Validation failed",
         });
@@ -148,13 +354,7 @@ export const validateAllApiKeys = action({
 // Get decrypted API key for internal use (only for the system to use)
 export const getDecryptedApiKey: any = action({
   args: {
-    service: v.union(
-      v.literal("openai"),
-      v.literal("google_maps"),
-      v.literal("findymail"),
-      v.literal("icypeas"),
-      v.literal("apify"),
-    ),
+    provider: providerValidator,
     userId: v.id("users"),
   },
   handler: async (ctx, args) => {
@@ -162,50 +362,95 @@ export const getDecryptedApiKey: any = action({
 
     // Fetch API key internally without requiring auth
     const apiKey = await ctx.runQuery(
-      internal.userApiKeys.internal.getApiKeyForUserAndService,
+      internal.userApiKeys.internal.getApiKeyForUserAndProvider,
       {
         userId: args.userId as any,
-        service: args.service as any,
+        provider: args.provider as any,
       },
     );
 
     if (!apiKey) {
-      throw new Error(`No valid ${args.service} API key found for user`);
+      throw new Error(`No valid ${args.provider} API key found for user`);
     }
 
-    const decryptedKey = decryptApiKey((apiKey as any).encryptedKey || "");
+    let decryptedKey: string;
+
+    try {
+      decryptedKey = decryptApiKey((apiKey as any).encryptedKey || "");
+
+      // Log successful decryption
+      await ctx.runMutation(internal.userApiKeys.internal.logApiKeyAccess, {
+        userId: args.userId,
+        keyId: apiKey._id,
+        action: "decrypted",
+        purpose: "system_use",
+        success: true,
+      });
+    } catch (error) {
+      // Log failed decryption attempt
+      await ctx.runMutation(internal.userApiKeys.internal.logApiKeyAccess, {
+        userId: args.userId,
+        keyId: apiKey._id,
+        action: "decrypted",
+        purpose: "system_use",
+        success: false,
+        errorMessage: error instanceof Error ? error.message : "Decryption failed",
+      });
+
+      throw error;
+    }
 
     // Record usage
     await ctx.runMutation(api.userApiKeys.mutations.recordApiKeyUsage, {
-      service: args.service,
+      provider: args.provider,
       userId: args.userId,
     });
 
     return {
       apiKey: decryptedKey,
       keyId: apiKey._id,
-      service: args.service,
+      provider: args.provider,
     };
   },
 });
 
-// Helper functions to validate API keys with actual services
-async function validateOpenAIKey(apiKey: string): Promise<boolean> {
-  try {
-    const response = await fetch("https://api.openai.com/v1/models", {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-    });
+// Resolve user provider keys for use in actions
+export const resolveUserProviderKeys = action({
+  args: {
+    userId: v.id("users"),
+    includeInactive: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const includeInactive = args.includeInactive ?? false;
 
-    return response.status === 200;
-  } catch (error) {
-    console.error("OpenAI validation error:", error);
-    return false;
-  }
-}
+    const keys = await ctx.runQuery(
+      internal.userApiKeys.internal.getUserApiKeysInternal,
+      {
+        userId: args.userId,
+      },
+    );
+
+    const providerKeys: Record<string, string> = {};
+
+    for (const key of keys) {
+      if (!includeInactive && (!key.isActive || !key.validated)) {
+        continue;
+      }
+
+      try {
+        providerKeys[key.provider] = decryptApiKey((key as any).encryptedKey || "");
+      } catch (error) {
+        console.warn("Failed to decrypt provider key", {
+          provider: key.provider,
+          userId: args.userId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return providerKeys;
+  },
+});
 
 async function validateGoogleMapsKey(apiKey: string): Promise<boolean> {
   try {

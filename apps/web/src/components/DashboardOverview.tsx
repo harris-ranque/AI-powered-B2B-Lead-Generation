@@ -182,13 +182,13 @@ export function DashboardOverview({
       sublabel:
         usageSummary.currentPeriodUsage > 0
           ? `${usageSummary.currentPeriodUsage} used this cycle`
-          : "No credits used yet",
+          : `${credits.toLocaleString()} remaining`,
       icon: CreditCard,
     },
     {
       label: "AI emails",
       value: emailCount.toLocaleString(),
-      sublabel: hasNewEmails ? "New emails ready to review" : "Generate outreach from any search",
+      sublabel: emailCount > 0 ? `${emailCount} email${emailCount !== 1 ? 's' : ''} generated` : "No emails generated yet",
       icon: Mail,
     },
   ];
@@ -243,17 +243,17 @@ export function DashboardOverview({
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+      <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <Card className="border-border/70">
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg font-semibold">
               <Sparkles className="h-5 w-5" />
               Quick workspaces
             </CardTitle>
             <CardDescription>Choose where you want to go next.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
+          <CardContent className="space-y-3">
+            <div className="grid gap-2 md:grid-cols-2">
               {[
                 {
                   title: "Lead pipeline",
@@ -368,9 +368,9 @@ export function DashboardOverview({
         </Card>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
+      <section className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
         <Card className="border-border/70">
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg font-semibold">
               <Target className="h-5 w-5" />
               Pipeline progress
@@ -381,7 +381,7 @@ export function DashboardOverview({
                 : "Move through each stage to take a lead from discovery to outreach."}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3">
             <div className="rounded-lg border border-border/60 bg-muted/30 p-4">
               <p className="text-sm font-semibold text-muted-foreground">Current stage</p>
               <p className="mt-1 text-lg font-semibold text-foreground">
@@ -426,16 +426,16 @@ export function DashboardOverview({
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+      <section className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
         <Card className="border-border/70">
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg font-semibold">
               <CheckCircle className="h-5 w-5" />
               Next best actions
             </CardTitle>
             <CardDescription>Guided suggestions to keep momentum.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-2">
             <div className="rounded-lg border border-border/60 p-4">
               <p className="text-sm font-semibold text-foreground">Launch the pipeline</p>
               <p className="text-sm text-muted-foreground">
@@ -469,14 +469,14 @@ export function DashboardOverview({
         </Card>
 
         <Card className="border-border/70">
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg font-semibold">
               <Sparkles className="h-5 w-5" />
               Need a hand?
             </CardTitle>
             <CardDescription>Explore tips, tutorials, and concierge support.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4">
             <DashboardHelpWidget />
           </CardContent>
         </Card>

@@ -5,11 +5,11 @@ with rich business intelligence integration.
 """
 import time
 from typing import Dict, Any, List
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field, ConfigDict
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
+from ...utils.research_clients import ClientRegistry
 from ...models.lead_models import (
     AgentResult,
     BusinessProfile,
@@ -188,6 +188,9 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
     requirements = state["requirements"]
     business_intelligence = state.get("business_intelligence", {})
     
+    provider_keys = state.get("provider_keys") or {}
+    registry = ClientRegistry.get_instance()
+
     logger.info(f"Starting email generation for {lead.company_name}")
     
     try:
@@ -246,141 +249,587 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         
         # Initialize LLM for email generation
         # gpt-5-nano uses max_completion_tokens instead of max_tokens
-        llm = ChatOpenAI(
+        llm = registry.get_openai_client(
+            api_key=provider_keys.get("openai"),
             model=settings.default_model,
-            temperature=0.4,  # Slightly higher for creative email writing
-            max_completion_tokens=settings.max_tokens,  # Use Railway MAX_TOKENS_OPTIONAL config (10000)
-            reasoning_effort="minimal",  # Optimize for speed with gpt-5-nano
-            openai_api_key=settings.openai_api_key
+            temperature=0.4,
+            max_completion_tokens=settings.max_tokens,
+            reasoning_effort="minimal",
         ).with_structured_output(EmailSequence)
         
         # Create comprehensive email generation prompt
         prompt = ChatPromptTemplate.from_messages([
             ("system", """You are an elite B2B email copywriter and sales strategist with expertise in:
-            - Highly personalized business email creation
-            - Multi-touch email sequence development
-            - Business intelligence integration for maximum relevance
-            - Industry-specific messaging and positioning
-            - Competitive differentiation and value proposition communication
-            
-            Your emails consistently achieve exceptional results because they:
-            - Demonstrate deep research and business understanding
-            - Address specific pain points with relevant solutions
-            - Use industry insights and competitive intelligence
-            - Feel personal and conversational, never templated
-            - Include compelling proof points and credibility elements
-            - Have clear, low-pressure calls to action
-            
-            Email best practices:
-            - Subject lines: Under 50 characters, specific and intriguing
-            - Opening: Reference specific research or recent company news
-            - Body: 150-250 words, conversational professional tone
-            - Value focus: Lead with benefits, not features
-            - Personalization: Use multiple specific elements from research
-            - Proof: Include relevant metrics, case studies, or social proof
-            - CTA: Clear, specific, low-pressure next step
-            - Follow-ups: Varied approaches, value-added content
-            - Follow-ups: Provide at least two distinct follow-up emails when a sequence is requested
-            
-            Integration requirements:
-            - Use business intelligence data extensively
-            - Reference competitor landscape when relevant
-            - Include industry trends and insights
-            - Address specific pain points identified in research
-            - Leverage personalization elements discovered
-            - Follow recommended messaging strategy
-            """),
+- Highly personalized business email creation
+- Multi-touch email sequence development
+- Business intelligence integration for maximum relevance
+- Industry-specific messaging and positioning
+- Competitive differentiation and value proposition communication
+
+Your emails consistently achieve exceptional results because they:
+- Are SHORT, CONCISE, and SCANNABLE (100-150 words max)
+- Get to the point immediately with no fluff
+- Demonstrate deep research in few words
+- Address specific pain points with relevant solutions
+- Use industry insights and competitive intelligence strategically
+- Feel personal and conversational, never templated
+- Include compelling proof points without verbosity
+- Have clear, low-pressure calls to action
+
+Email best practices:
+
+SUBJECT LINES (CRITICAL - HIGHEST PRIORITY):
+- Format: MUST start with "Hi [FirstName]" then add curiosity-provoking content
+- NEVER use hyphens in subject lines
+- Use comma or colon after name: "Hi [FirstName], [statement]" or "Hi [FirstName]: [statement]"
+- Create strong curiosity gaps that make recipients want to open
+- Use specific numbers, stats, and concrete details from research
+- Reference competitors, peers, or insider insights when relevant
+- Keep under 60 characters total including greeting
+- Never use generic phrases: "touching base", "following up", "checking in", "quick question"
+
+Subject Line Patterns (Choose based on context):
+  1. Specific Discovery: "Hi [Name], spotted 3 pipeline gaps at [Company]"
+  2. What If Scenario: "Hi [Name], what if [Company] could cut churn by 30%?"
+  3. Competitive Intelligence: "Hi [Name], why [Company]'s competitors switched from [Tool]"
+  4. Hidden Insight: "Hi [Name]: the overlooked fix for [Company]'s [Challenge]"
+  5. Contrarian/Pattern Interrupt: "Hi [Name], [Company] + this = [Outcome]"
+  6. Peer Proof: "Hi [Name], what companies like [Company] are doing now"
+
+Curiosity Triggers to Use:
+  - Specific numbers/stats from research (3 quick wins, 40% faster, 15hrs/week saved)
+  - Competitor/peer insights (competitors are doing this, others learned)
+  - "What if" scenarios (what if you could double pipeline)
+  - Hidden/overlooked/unconventional angles
+  - Contrarian takes (why teams are ditching X)
+  - Pattern interrupts (Company + this = outcome)
+  - Thought-provoking questions (are you seeing this too?)
+  - Power words: spotted, unconventional, hidden, overlooked, discovered
+
+EMAIL STRUCTURE (CRITICAL - KEEP IT SHORT):
+- Total length: 100-150 words maximum (excluding signature)
+- Paragraphs: 1-2 sentences each, maximum 3-4 paragraphs total
+- Opening: 1 sentence with personalized hook
+- Body: 2-3 short paragraphs with key points
+- No lengthy explanations, just core value and proof
+- Use white space generously for scannability
+- Get to the value proposition in first 3 lines
+- NEVER use hyphens anywhere in the email body
+- Use commas, periods, or separate sentences instead of hyphens
+
+OPENING (1-2 sentences):
+- Quick personalized reference (recent news, growth stage, challenge)
+- Must be immediately relevant to their business
+- Use proper grammar with pronouns and articles
+- Examples:
+  GOOD: "I noticed RevCo closed a Series A last month"
+  BAD: "Noticed RevCo closed Series A last month"
+- No long-winded context setting
+
+BODY (2-3 short paragraphs):
+- Paragraph 1: Their challenge or opportunity (1-2 sentences)
+- Paragraph 2: Proof point with specific results (1-2 sentences with numbers)
+- Paragraph 3: What you can offer them (1 sentence)
+- NO feature lists, NO lengthy explanations
+- Lead with outcomes and specific metrics
+- Every sentence must earn its place
+- Use commas and periods, never hyphens for breaks
+
+PERSONALIZATION:
+- Use business intelligence strategically, not exhaustively
+- Pick the 1-2 most compelling personalization elements
+- Quality over quantity, make every detail count
+- Show research without listing everything you know
+- Always use REAL data from business intelligence
+- Never fabricate or assume information not in research
+
+CALL TO ACTION:
+- One simple sentence
+- Specific time ask (15-30 minutes)
+- Clear value exchange
+- Low pressure
+- Should immediately follow the value proposition
+
+SIGNATURE:
+- Clean and professional
+- Include all provided contact details
+- No extra text or placeholder names
+
+P.S. (Optional, 1 sentence max):
+- Additional value or curiosity hook
+- Must be genuinely useful, not filler
+- Keep numbers VAGUE unless exact data from research
+- Use qualitative language: "several", "some", "multiple"
+- Never use specific placeholder numbers
+
+FOLLOW-UPS (if requested):
+- Same brevity rules apply (100-150 words max)
+- Each follow-up must have unique angle
+- Different curiosity hook in each subject line
+- No hyphens in follow-up subject lines or bodies
+- Provide at least two distinct follow-up emails when a sequence is requested
+- Vary the proof points and value angles
+- Never repeat content from previous emails
+
+WRITING TONE:
+- Conversational but professional
+- Confident, not desperate
+- Peer-to-peer, not vendor-to-buyer
+- Specific, not vague
+- Punchy, not wordy
+- Scannable, not dense
+- Natural and human, not robotic
+
+CRITICAL WRITING REQUIREMENTS:
+
+Natural, Human Language:
+- Write like a real person, not a bot
+- Use complete sentences with proper grammar
+- Always use articles (a, an, the) where grammatically appropriate
+- Include pronouns (I, we, our) naturally
+- Examples:
+  GOOD: "I noticed RevCo closed a Series A last month"
+  BAD: "Noticed RevCo closed Series A last month"
+  GOOD: "I saw Q3 numbers posted"
+  BAD: "Q3 numbers posted"
+- Proofread for natural flow and correctness
+
+NO HYPHENS RULE (CRITICAL):
+- NEVER use hyphens anywhere in subject lines or email body
+- This is non-negotiable
+- Subject format: "Hi [Name], [statement]" or "Hi [Name]: [statement]"
+- In body: use commas, periods, or separate sentences instead
+- Examples:
+  GOOD: "The agent runs 24/7, finds leads matching your ICP, and verifies contact info"
+  BAD: "The agent runs 24/7 - finds leads - verifies contact info"
+  GOOD: "I built a demo. It shows how this works for your ICP."
+  BAD: "I built a demo - shows how this works for your ICP"
+  GOOD: "I mapped out 3 quick wins for your setup. Works with existing tools."
+  BAD: "I mapped out 3 quick wins for your setup - works with existing tools"
+
+NEVER Make Up Information:
+- Every claim about the prospect MUST come from business intelligence data
+- If research shows they closed Series A, reference it
+- If research doesn't show it, don't mention it
+- Use REAL competitor names from research, never "a similar company"
+- Use REAL numbers from research, never estimated or placeholder numbers
+- If you don't have the data, don't make the claim
+- All personalization must be verifiable from provided business intelligence
+
+Subject Line Data Requirements:
+- Subject line curiosity hooks must be based on actual research findings
+- Only reference challenges/opportunities identified in business intelligence
+- Don't assume or fabricate prospect situations
+- Must reflect real data from pain points, personalization elements, or company overview
+
+Avoid Dated/Hype Language:
+- Never use "10x" language (sounds like 2022 hype)
+- Avoid Grant Cardone style exaggeration
+- Use realistic, credible multipliers (2x, 3x, 5x with context)
+- Prefer: "What would it mean if [Company] could double revenue by increasing lead gen 5 fold?"
+- Avoid: "10x your lead gen without hiring"
+
+Grammar and Sentence Structure:
+- Complete sentences with proper subject verb agreement
+- Natural pronoun usage (I, we, our)
+- Logical sentence flow and paragraph transitions
+- CTA should immediately follow the offer when possible
+- Use commas and periods, never hyphens for breaks or pauses
+
+WHAT TO AVOID:
+- Long paragraphs (max 2 sentences)
+- Feature dumps
+- Unnecessary adjectives
+- Fluffy language
+- Multiple asks in one email
+- Overselling or hype
+- Generic value propositions
+- Lengthy case study descriptions (keep to 1 sentence with results)
+- Hyphens anywhere in the email
+- Dropping pronouns or articles
+- Made up or assumed information
+- Vague competitor references
+
+Integration requirements:
+- Use business intelligence data selectively for maximum impact
+- Reference competitor landscape only when it adds clear value
+- Include industry trends if directly relevant
+- Address the top 1-2 pain points, not all of them
+- Leverage only the most compelling personalization elements
+- Follow recommended messaging strategy but keep it tight
+- Always use real competitor names from research data
+- Base all claims on provided business intelligence
+"""),
             ("human", """Create a highly personalized email sequence using comprehensive business intelligence:
-            
-            PROSPECT INFORMATION:
-            Company: {company_name}
-            Contact: {contact_name} ({title})
-            Industry: {industry}
-            Company Size: {company_size}
-            Qualification: {qualification_level}
-            Relevance Score: {relevance_score}
-            
-            BUSINESS INTELLIGENCE INSIGHTS:
-            Company Overview: {company_overview}
-            
-            Pain Points Identified:
-            {pain_points_list}
-            
-            Value Propositions Aligned:
-            {value_matches_list}
-            
-            Personalization Elements:
-            {personalization_elements_list}
-            
-            Engagement Hooks:
-            {engagement_hooks_list}
-            
-            Messaging Strategy: {messaging_strategy}
-            
-            Industry Insights: {industry_insights}
-            
-            Competitor Context: {competitor_context}
-            
-            OUR COMPANY PROFILE:
-            Company: {our_company}
-            Primary Contact Name: {our_contact_name}
-            Contact Email: {our_contact_email}
-            Contact Phone: {our_contact_phone}
-            Company Website: {our_contact_website}
-            Value Proposition: {our_value_prop}
-            Services: {our_services}
-            Differentiators: {our_differentiators}
-            
-            EMAIL REQUIREMENTS:
-            Tone: {tone}
-            Length: {length}
-            Call to Action: {cta}
-            Include Case Study: {include_case_study}
-            Personalization Level: {personalization_level}
-            Follow-up Sequence: {follow_up_sequence}
-            Follow-up Expectation: Always include at least two follow-up emails with unique angles and CTAs when follow_up_sequence is true
 
-            EMAIL GENERATION REQUIREMENTS:
+PROSPECT INFORMATION:
+Company: {company_name}
+Contact: {contact_name} ({title})
+Contact First Name: {contact_first_name}
+Industry: {industry}
+Company Size: {company_size}
+Qualification: {qualification_level}
+Relevance Score: {relevance_score}
 
-            Sender & Signature:
-            - Use the provided sender name and contact details in the closing signature
-            - Ensure the signature never contains placeholder text (e.g., [Your Name])
-            - Reinforce credibility with our company name and a direct contact method
+BUSINESS INTELLIGENCE INSIGHTS:
+Company Overview: {company_overview}
 
-            1. PRIMARY EMAIL CREATION:
-            - Subject line: Specific, intriguing, under 50 characters
-            - Opening: Reference specific research findings or recent news
-            - Body: Address their specific situation and challenges
-            - Value proposition: Connect our solutions to their pain points
-            - Proof points: Include relevant metrics or success stories
-            - CTA: Clear, specific next step aligned with their buying stage
-            - Closing: Professional but personal
-            - P.S.: Optional engagement hook or additional value
-            
-            2. PERSONALIZATION INTEGRATION:
-            - Use multiple specific elements from business intelligence
-            - Reference their business model, growth stage, or recent developments
-            - Show understanding of their industry challenges
-            - Mention competitive landscape insights when relevant
-            - Demonstrate knowledge of their technology stack or processes
-            
-            3. FOLLOW-UP SEQUENCE (if requested):
-            - Email 2 (3-5 days): Different angle, value-added content
-            - Email 3 (1 week): Social proof, case study, or industry insight
-            - Email 4 (2 weeks): Soft breakup with final value offer
-            - Vary subject lines, approaches, and value propositions
-            - Include timing recommendations for each email
-            
-            4. QUALITY STANDARDS:
-            - High personalization depth using business intelligence
-            - Professional but conversational tone
-            - Clear value proposition in every interaction
-            - Specific, actionable next steps
-            - Evidence of thorough research and understanding
-            
-            Create an email sequence that feels like it was written specifically for this prospect 
-            by someone who deeply understands their business and challenges.
-            """)
+Pain Points Identified:
+{pain_points_list}
+
+Value Propositions Aligned:
+{value_matches_list}
+
+Personalization Elements:
+{personalization_elements_list}
+
+Engagement Hooks:
+{engagement_hooks_list}
+
+Messaging Strategy: {messaging_strategy}
+
+Industry Insights: {industry_insights}
+
+Competitor Context: {competitor_context}
+
+OUR COMPANY PROFILE:
+Company: {our_company}
+Primary Contact Name: {our_contact_name}
+Contact Email: {our_contact_email}
+Contact Phone: {our_contact_phone}
+Company Website: {our_contact_website}
+Value Proposition: {our_value_prop}
+Services: {our_services}
+Differentiators: {our_differentiators}
+
+EMAIL REQUIREMENTS:
+Tone: {tone}
+Length: SHORT AND CONCISE (100-150 words max, excluding signature)
+Call to Action: {cta}
+Include Case Study: {include_case_study}
+Personalization Level: {personalization_level}
+Follow-up Sequence: {follow_up_sequence}
+Follow-up Expectation: Always include at least two follow-up emails with unique angles and CTAs when follow_up_sequence is true
+
+CRITICAL DATA INTEGRITY REQUIREMENTS:
+
+You have access to comprehensive business intelligence. USE IT EXCLUSIVELY.
+
+1. ONLY Use Real Research Data:
+   - Every personalization element must come from business intelligence provided
+   - Company overview, pain points, value matches, competitors, industry insights
+   - If business intelligence mentions Series A funding, use it
+   - If business intelligence shows specific growth metrics, use them
+   - If research doesn't contain the information, DON'T make it up
+   - Never assume or fabricate prospect situations
+
+2. Competitor References:
+   - Business intelligence includes: {competitor_context}
+   - When referencing competitors, use REAL names from this data
+   - Never say "a similar company" or use vague references
+   - Always use actual competitor names from the research
+   - If no competitor data available, use industry peer approach with real company names
+   - Example:
+     GOOD: "Salesforce customers switched to HubSpot" (if competitors show this)
+     BAD: "A similar CRM company made the switch"
+   - Using real competitor names builds credibility and shows research depth
+
+3. Subject Line Accuracy:
+   - Subject curiosity hooks must reflect ACTUAL research findings
+   - Only mention challenges/opportunities identified in business intelligence
+   - Pain points from: {pain_points_list}
+   - Personalization elements from: {personalization_elements_list}
+   - Don't assume situations not in the data
+   - NEVER use hyphens in subject lines
+   - Format options:
+     * "Hi {contact_first_name}, [statement]"
+     * "Hi {contact_first_name}: [statement]"
+     * "Hi {contact_first_name} [question]?"
+
+4. Numbers and Statistics:
+   - Use REAL metrics from business intelligence when available
+   - If claiming "3 quick wins", ensure you can identify 3 from research
+   - If claiming time/cost savings, base on industry insights provided
+   - Never use placeholder numbers in P.S. statements
+   - If no specific numbers available, use qualitative approach
+   - Keep P.S. numbers vague unless exact data exists
+
+5. P.S. Content Rules:
+   - Only mention deliverables you can actually provide based on data
+   - Keep numbers and quantities VAGUE unless you have exact real data
+   - Never use specific placeholder numbers in P.S. statements
+   - Examples of valid P.S. approaches:
+     GOOD: "I can share the competitor analysis I pulled on [ActualCompetitors]"
+     GOOD: "I have the breakdown of how [ActualCompetitor] approaches this"
+     GOOD: "Happy to send over the industry benchmark data I found"
+     GOOD: "The system identified prospects matching your criteria. Want to see some examples?"
+     GOOD: "I found several companies in your space using this approach. Want the details?"
+     BAD: "Agent found 87 qualified leads in 48 hours"
+     BAD: "I identified 143 accounts matching your ICP"
+     BAD: "The system found 47 Shopify merchants matching your criteria"
+   - If you don't have exact numbers from research, use qualitative language like:
+     * "several", "some", "multiple", "a number of"
+     * "examples", "instances", "cases"
+     * Avoid any specific counts unless they come directly from business intelligence data
+
+6. Grammar and Natural Language:
+   - Use proper grammar and complete sentences
+   - Include pronouns (I, we, our) naturally
+   - Use articles (a, an, the) appropriately
+   - NEVER use hyphens for pauses, breaks, or emphasis
+   - Use commas, periods, or rewrite sentences instead
+   - Examples:
+     GOOD: "I noticed RevCo closed a Series A last month"
+     BAD: "Noticed RevCo closed Series A last month"
+     GOOD: "I saw Q3 numbers posted"
+     BAD: "Q3 numbers posted"
+     GOOD: "The agent runs on autopilot. It finds leads, verifies contact info, and filters out junk."
+     BAD: "The agent runs on autopilot - finds leads - verifies contact info - filters junk"
+   - Proofread for natural flow
+
+7. Sentence Structure and Flow:
+   - CTA should immediately follow the value proposition
+   - Avoid awkward standalone CTAs
+   - Example:
+     GOOD: "I built a 30 day pilot plan for DataFlow. Want 25 minutes to review it?"
+     BAD: "I built a 30 day pilot plan for DataFlow. [paragraph break] 25 minutes to review it?"
+   - Never break up thoughts with hyphens
+   - Use separate sentences or commas for clarity
+
+8. Avoid Hype Language:
+   - No "10x" claims (dated, 2022 era language)
+   - Use realistic multipliers with context
+   - Examples:
+     GOOD: "What would it mean if BrightPath could double revenue by increasing lead gen 5 fold?"
+     BAD: "What if BrightPath could 10x lead gen?"
+     GOOD: "increase qualified leads by 3x"
+     BAD: "10x your pipeline"
+
+9. NO HYPHENS RULE (CRITICAL):
+   - NEVER use hyphens anywhere in the email (subject or body)
+   - Subject line format: "Hi {contact_first_name}, [statement]" or "Hi {contact_first_name}: [statement]"
+   - In body: use commas, periods, or separate sentences
+   - This is non-negotiable
+   - Examples:
+     GOOD: "I mapped out 3 quick wins for CloudCo's setup. Works with your existing HubSpot data, zero workflow disruption."
+     BAD: "I mapped out 3 quick wins for CloudCo's setup - works with your existing HubSpot data, zero workflow disruption."
+     GOOD: "Three marketing automation companies at your stage cut churn from 8% to under 5%."
+     BAD: "Three companies at your stage - marketing automation - cut churn from 8% to under 5%."
+
+SUBJECT LINE REQUIREMENTS (HIGHEST PRIORITY):
+
+MANDATORY Format: "Hi {contact_first_name}, [curiosity-provoking content]" OR "Hi {contact_first_name}: [curiosity-provoking content]"
+
+You MUST:
+- Start every subject line with "Hi {contact_first_name}"
+- Use first name only (e.g., "Hi Sarah" not "Hi Sarah Johnson")
+- Follow with comma or colon, then curiosity-provoking content
+- NEVER use hyphens in subject lines
+- Keep total length under 60 characters
+- Make recipients want to click to learn more
+- Base all curiosity hooks on ACTUAL business intelligence data
+
+Choose ONE of these proven patterns:
+
+Pattern 1 - Specific Discovery:
+"Hi {contact_first_name}, spotted 3 quick wins for {company_name}"
+"Hi {contact_first_name}: found 2 pipeline gaps at {company_name}"
+
+Pattern 2 - What If Scenario:
+"Hi {contact_first_name}, what if {company_name} could cut [Metric] by 30%?"
+"Hi {contact_first_name}, what if {company_name} could double pipeline in 60 days?"
+
+Pattern 3 - Competitive Intelligence:
+"Hi {contact_first_name}, why {company_name}'s competitors switched from [Competitor]"
+"Hi {contact_first_name}: what [CompetitorCustomer] learned about [PainPoint]"
+
+Pattern 4 - Hidden Insight:
+"Hi {contact_first_name}, the overlooked fix for {company_name}'s [PainPoint]"
+"Hi {contact_first_name}: unconventional [Solution] for {company_name}"
+
+Pattern 5 - Contrarian/Pattern Interrupt:
+"Hi {contact_first_name}, {company_name} + this = [SpecificOutcome]"
+"Hi {contact_first_name}: why [Industry] teams are ditching [OldApproach]"
+
+Pattern 6 - Peer Proof:
+"Hi {contact_first_name}, what companies like {company_name} are doing now"
+"Hi {contact_first_name}: how teams like {company_name} solved [PainPoint]"
+
+EMAIL GENERATION REQUIREMENTS:
+
+CRITICAL LENGTH REQUIREMENT:
+- Email body: 100-150 words MAXIMUM (excluding signature)
+- Each paragraph: 1-2 sentences maximum
+- Total paragraphs: 3-4 maximum
+- If you write more than 150 words, you have failed the task
+- Every word must justify its existence
+- Cut ruthlessly, brevity is the priority
+
+Sender & Signature:
+- Use the provided sender name and contact details in the closing signature
+- Ensure the signature never contains placeholder text (e.g., [Your Name])
+- Keep signature clean and minimal
+- Include all provided contact details
+
+1. PRIMARY EMAIL CREATION:
+
+Subject line (CRITICAL):
+- MUST follow format: "Hi {contact_first_name}, [curiosity-provoking content]" or "Hi {contact_first_name}: [curiosity-provoking content]"
+- NEVER use hyphens after name or anywhere in subject
+- Select the pattern that best matches the business intelligence gathered
+- Use specific numbers, competitor names, or concrete details from RESEARCH ONLY
+- Create strong curiosity that makes them want to read more
+- Maximum 60 characters total
+- Reference company name when space allows and it flows naturally
+- Base all hooks on actual business intelligence data
+
+Email Structure (100-150 words max):
+
+Opening (1-2 sentences):
+- Quick personalized reference based on business intelligence
+- Must use proper grammar with pronouns and articles
+- Examples:
+  GOOD: "I noticed RevCo closed a Series A last month"
+  BAD: "Noticed RevCo closed Series A last month"
+  GOOD: "I saw your blog post about manual prospecting challenges"
+  BAD: "Saw your blog post"
+- Must be immediately relevant
+- Examples of openings:
+  * "I noticed [Company] closed a Series A last month"
+  * "I saw [Company] posted several SDR roles recently"
+  * "I read your earnings call transcript mentioning pipeline challenges"
+
+Body Paragraph 1 (1-2 sentences):
+- State their challenge or opportunity identified in business intelligence
+- Be specific, use actual research data
+- Example: "That growth usually creates a lead quality challenge when scaling the sales team."
+
+Body Paragraph 2 (1-2 sentences):
+- Quick proof point with specific results
+- Reference REAL competitors from business intelligence
+- Include concrete numbers from research or industry data
+- Example: "Mixpanel and Amplitude both solved this by automating lead generation. Amplitude saw their SDR team focus 80% of time on qualified conversations instead of list building."
+- NEVER say "a similar company", always use real competitor names
+
+Body Paragraph 3 (1 sentence):
+- What you can offer them specifically
+- Example: "I built a demo showing how an AI agent would work for MetricFlow's ICP."
+
+Call to Action (1 sentence):
+- Simple, direct ask
+- Specific time commitment (15-30 minutes)
+- Should immediately follow the offer
+- Example: "Want 20 minutes to see it in action?"
+
+Closing (1 line):
+- Simple professional closing (Best, Cheers, Best regards)
+
+Signature:
+- Sender name
+- Company name
+- Email
+- Phone
+- Website/LinkedIn
+
+P.S. (Optional, 1 sentence):
+- Additional value hook or proof element
+- Must add genuine value, not filler
+- Keep numbers VAGUE unless exact data from research
+- Use qualitative language: "several", "some", "multiple", "examples"
+- Never use specific placeholder numbers
+- Examples:
+  GOOD: "I can share the competitor analysis I pulled on Mixpanel and Amplitude"
+  GOOD: "The system identified prospects matching your criteria. Want to see some examples?"
+  BAD: "Agent found 87 qualified leads in 48 hours"
+  BAD: "I identified 143 accounts matching your ICP"
+
+2. PERSONALIZATION INTEGRATION:
+
+Be selective with business intelligence:
+- Pick the 1-2 MOST compelling personalization elements
+- Don't list everything you know
+- Quality beats quantity
+- Use specific numbers and company names when possible from research
+- Show research without being exhaustive
+- Make every detail count
+- All personalization must come from provided business intelligence
+
+Focus areas:
+- Most pressing pain point (pick ONE from research)
+- Most relevant value proposition (pick ONE from research)
+- Most compelling proof point (pick ONE, use real competitor names)
+- Strongest competitive or peer insight (if relevant, use real names)
+
+3. FOLLOW-UP SEQUENCE (if requested):
+
+Email 1 (3-5 days after primary):
+- New angle, different curiosity hook
+- 100-150 words max
+- Different proof point than primary (use different real competitors)
+- Value-added content or resource
+- Different CTA
+- NO hyphens in subject or body
+
+Email 2 (1 week after Email 1):
+- Another unique curiosity-driven subject line (no hyphens)
+- 100-150 words max
+- Social proof or peer comparison focus (real company names)
+- Different value angle
+- Collaborative next step CTA
+- NO hyphens anywhere
+
+Email 3 (2 weeks after Email 2, optional):
+- Soft breakup or final value offer
+- 100-150 words max
+- Summary approach
+- Last chance, low-pressure CTA
+- NO hyphens anywhere
+
+Requirements for ALL follow-ups:
+- Each must be 100-150 words maximum
+- Each must have UNIQUE subject line following "Hi {contact_first_name}, " or "Hi {contact_first_name}: " format
+- NEVER use hyphens in any follow-up subject lines or bodies
+- Each must use DIFFERENT curiosity pattern
+- No repeated content or angles
+- Use different real competitor names in each follow-up when possible
+- Every follow-up should feel fresh and provide new value
+- Keep the same tight, punchy writing style
+- All information must come from business intelligence
+
+4. QUALITY STANDARDS:
+
+DO:
+- Write 100-150 words max (excluding signature)
+- Use 1-2 sentence paragraphs
+- Get to the point in first 3 lines
+- Include specific numbers and results from research
+- Use white space generously
+- Make every word count
+- Be conversational and confident
+- Lead with outcomes, not features
+- Use proper grammar with pronouns and articles
+- Use real competitor names from research
+- Base all claims on business intelligence data
+- Keep P.S. numbers vague unless exact data exists
+
+DON'T:
+- Write long paragraphs (max 2 sentences)
+- Exceed 150 words
+- Include feature lists or descriptions
+- Use unnecessary adjectives or fluff
+- Repeat yourself
+- Over-explain
+- List all the research you did
+- Include multiple CTAs
+- Use hyphens anywhere in email or subject
+- Drop pronouns or articles
+- Say "a similar company" instead of real names
+- Make up information not in business intelligence
+- Use specific numbers in P.S. without real data
+
+FINAL INSTRUCTION:
+Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excluding signature). Every sentence must justify its existence. Use ONLY real data from the business intelligence provided. Use real competitor names, never vague references. Never use hyphens anywhere. The subject line should make {contact_first_name} think "I need to read this" while the body gets straight to the value without wasting their time. Write like you're texting a colleague who respects research and specificity, not pitching a stranger. If your email is longer than 150 words, cut it down ruthlessly until it is. Base every claim on the business intelligence data provided.
+""")
         ])
         
         # Format competitor context
@@ -390,12 +839,16 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
             competitor_context = "; ".join([
                 f"{comp.get('name', 'Unknown')}" for comp in top_competitors
             ])
-        
+
+        # Extract contact first name for subject line personalization
+        contact_first_name = (lead.contact_name or "there").split()[0] if lead.contact_name else "there"
+
         # Execute email generation
         email_sequence: EmailSequence = await llm.ainvoke(prompt.format_messages(
             # Prospect information
             company_name=lead.company_name,
             contact_name=lead.contact_name or "there",
+            contact_first_name=contact_first_name,
             title=lead.title or "professional",
             industry=getattr(lead, 'industry', '') or "your industry",
             company_size=getattr(lead, 'company_size', '') or "your organization",
@@ -693,14 +1146,52 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         }
         
     except Exception as e:
-        logger.error(f"Error in email generation agent: {str(e)}")
+        import traceback
+        import sentry_sdk
         execution_time = time.time() - start_time
-        
+
+        # Comprehensive error logging with full context
+        error_details = {
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "lead_company": lead.company_name if lead else "Unknown",
+            "lead_id": getattr(lead, 'id', 'Unknown'),
+            "request_id": state.get('request_id', 'Unknown'),
+            "execution_time": execution_time,
+            "stack_trace": traceback.format_exc()
+        }
+
+        # Send structured context to Sentry
+        sentry_sdk.set_context("email_generation_error", {
+            "agent": "Email Generation Agent",
+            "error_type": error_details['error_type'],
+            "lead_company": error_details['lead_company'],
+            "lead_id": error_details['lead_id'],
+            "request_id": error_details['request_id'],
+            "execution_time_seconds": error_details['execution_time'],
+            "has_business_intelligence": state.get('business_intelligence') is not None,
+            "has_requirements": requirements is not None,
+            "has_business_profile": business_profile is not None
+        })
+
+        # Capture exception in Sentry with full context
+        sentry_sdk.capture_exception(e)
+
+        logger.error(
+            f"CRITICAL ERROR in Email Generation Agent:\n"
+            f"  Error Type: {error_details['error_type']}\n"
+            f"  Error Message: {error_details['error_message']}\n"
+            f"  Lead: {error_details['lead_company']} (ID: {error_details['lead_id']})\n"
+            f"  Request ID: {error_details['request_id']}\n"
+            f"  Execution Time: {error_details['execution_time']:.2f}s\n"
+            f"  Full Stack Trace:\n{error_details['stack_trace']}"
+        )
+
         # Create error result
         agent_result = AgentResult(
             agent_name="Email Generation Agent",
             role="Personalized email writing and sequence strategy",
-            output=f"Error during email generation: {str(e)}",
+            output=f"Error during email generation: {error_details['error_type']}: {error_details['error_message']}",
             confidence_score=0.1,
             execution_time=execution_time
         )

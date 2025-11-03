@@ -38,10 +38,10 @@ function DashboardHelpWidgetComponent() {
   }, []);
 
   return (
-    <Card className="flex w-full max-w-xs flex-col gap-4 rounded-xl border-primary/20 bg-primary/5 p-4 shadow-sm">
-      <div className="flex items-start gap-3">
-        <HelpCircle className="mt-0.5 h-6 w-6 text-primary" />
-        <div className="flex-1 space-y-2">
+    <Card className="flex w-full flex-col gap-3 rounded-xl border-primary/20 bg-primary/5 p-3 shadow-sm">
+      <div className="flex items-start gap-2">
+        <HelpCircle className="mt-0.5 h-5 w-5 text-primary" />
+        <div className="flex-1 space-y-1">
           <div>
             <p className="text-sm font-semibold text-primary">Need help?</p>
             <p className="text-xs text-muted-foreground">

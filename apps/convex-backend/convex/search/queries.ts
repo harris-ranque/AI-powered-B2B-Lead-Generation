@@ -138,3 +138,46 @@ export const getSearch = query({
     return search;
   },
 });
+
+// Get deduplication summary for a search
+export const getDeduplicationSummary = query({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    // Verify user owns the search
+    const search = await ctx.db.get(args.searchId);
+    if (!search || search.userId !== user._id) {
+      throw new Error("Search not found or access denied");
+    }
+
+    // Get all duplicate metrics for this search
+    const duplicates = await ctx.db
+      .query("duplicateMetrics")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    // Aggregate by type
+    const summary = {
+      total: duplicates.length,
+      byType: {
+        search_level: 0,
+        user_level: 0,
+        place_name: 0,
+        email: 0,
+        address: 0,
+      },
+    };
+
+    duplicates.forEach((dup) => {
+      if (dup.duplicateType in summary.byType) {
+        summary.byType[dup.duplicateType as keyof typeof summary.byType]++;
+      }
+    });
+
+    return summary;
+  },
+});

@@ -38,6 +38,8 @@ export type Place = {
   international_phone_number?: string;
 };
 
+export type TileDefinition = { center: LatLng; radius: number };
+
 export type TilingParams = {
   apiKey: string;
   // Search intent
@@ -52,6 +54,7 @@ export type TilingParams = {
   maxResults: number; // Target: up to 1000+ results
   maxTiles?: number; // Default: 250 (safety cap)
   concurrency?: number; // Default: 5 workers (range: 1-10)
+  tilesOverride?: TileDefinition[]; // Optional explicit tiles (used for expansion)
   // Logging
   correlation: CorrelationContext;
   // Cancellation check
@@ -460,18 +463,22 @@ export async function searchPlacesWithTiling(
     },
   );
 
-  if (!params.bounds && !params.center) {
+  if (!params.bounds && !params.center && !params.tilesOverride) {
     throw new Error("Must provide either bounds or center for tiling search");
   }
 
   // Generate tiles
-  const tiles = params.bounds
-    ? makeGridTiles(
-        params.bounds,
-        Math.min(params.radiusMeters || 1500, 3000),
-        params.correlation,
-      )
-    : [{ center: params.center!, radius: params.radiusMeters || 3000 }];
+  const generatedTiles = params.tilesOverride
+    ? params.tilesOverride
+    : params.bounds
+      ? makeGridTiles(
+          params.bounds,
+          Math.min(params.radiusMeters || 1500, 3000),
+          params.correlation,
+        )
+      : [{ center: params.center!, radius: params.radiusMeters || 3000 }];
+
+  const tiles = [...generatedTiles];
 
   // Cap tiles for safety
   const maxTiles = params.maxTiles || 250;

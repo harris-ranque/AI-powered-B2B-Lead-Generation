@@ -4,6 +4,7 @@ Logging utility for CrewAI worker with environment-based configuration.
 
 import logging
 import os
+import re
 import sys
 from datetime import datetime
 from typing import Any, Optional
@@ -25,6 +26,35 @@ class ColoredFormatter(logging.Formatter):
         if record.levelname in self.COLORS:
             record.levelname = f"{self.COLORS[record.levelname]}{record.levelname}{self.RESET}"
         return super().format(record)
+
+class SensitiveDataFilter(logging.Filter):
+    """Logging filter that masks known API key patterns."""
+
+    PATTERNS = [
+        re.compile(r"sk-[a-zA-Z0-9]{16,}", re.IGNORECASE),
+        re.compile(r"sk-proj-[a-zA-Z0-9]{16,}", re.IGNORECASE),
+        re.compile(r"AIza[0-9A-Za-z-_]{35}"),
+    ]
+
+    MASK = "***KEY***"
+
+    def filter(self, record: logging.LogRecord) -> bool:  # type: ignore[override]
+        record.msg = self._sanitize(record.msg)
+        if isinstance(record.args, tuple):
+            record.args = tuple(self._sanitize(arg) for arg in record.args)
+        return True
+
+    def _sanitize(self, value: Any) -> Any:
+        if isinstance(value, str):
+            sanitized = value
+            for pattern in self.PATTERNS:
+                sanitized = pattern.sub(self.MASK, sanitized)
+            return sanitized
+        if isinstance(value, dict):
+            return {k: self._sanitize(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return type(value)(self._sanitize(v) for v in value)
+        return value
 
 
 def setup_logger(name: str = __name__) -> logging.Logger:
@@ -58,6 +88,7 @@ def setup_logger(name: str = __name__) -> logging.Logger:
     # Create console handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(log_level)
+    console_handler.addFilter(SensitiveDataFilter())
     
     # Create formatter
     if is_development:
@@ -125,22 +156,49 @@ def log_response_details(logger: logging.Logger, response_data: Any, duration: O
 
 
 def log_error_details(logger: logging.Logger, error: Exception, context: Optional[dict] = None):
-    """Log detailed error information."""
-    # Log error message (will be automatically sent to Sentry if configured)
-    logger.error(f"Error: {type(error).__name__}: {str(error)}")
-    
+    """Log detailed error information with full stack trace and send to Sentry."""
+    import traceback
+    import sentry_sdk
+
+    # Get full stack trace
+    stack_trace = traceback.format_exc()
+
+    # Log comprehensive error details
+    error_type = type(error).__name__
+    error_msg = str(error)
+
+    logger.error(
+        f"{'=' * 80}\n"
+        f"CRITICAL ERROR OCCURRED\n"
+        f"{'=' * 80}\n"
+        f"Error Type: {error_type}\n"
+        f"Error Message: {error_msg}\n"
+        f"{'=' * 80}\n"
+        f"FULL STACK TRACE:\n"
+        f"{stack_trace}\n"
+        f"{'=' * 80}"
+    )
+
+    if context:
+        logger.error(f"ERROR CONTEXT: {context}")
+
+        # Send structured context to Sentry
+        sentry_sdk.set_context("error_context", {
+            "error_type": error_type,
+            **context  # Merge all context data
+        })
+
+    # Capture exception in Sentry with full context
+    sentry_sdk.capture_exception(error)
+
     environment = os.getenv('ENVIRONMENT', 'production').lower()
     is_development = environment in ('development', 'dev', 'local')
-    
-    if context:
-        # Always log context info for production debugging
-        logger.info(f"Error context: {context}")
-    
+
     if is_development and context:
-        logger.debug("=== ERROR CONTEXT ===")
+        logger.debug("=== DETAILED ERROR CONTEXT ===")
         for key, value in context.items():
             logger.debug(f"  {key}: {value}")
-        logger.debug("=" * 25)
+        logger.debug("=" * 30)
 
 
 # Create default logger instance

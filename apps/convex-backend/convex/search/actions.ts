@@ -29,9 +29,17 @@ type GoogleAddressComponent = {
 };
 
 type GooglePlaceDetails = {
+  place_id?: string;
+  name?: string;
   formatted_address?: string;
   geometry?: { location?: { lat?: number; lng?: number } };
   address_components?: GoogleAddressComponent[];
+  website?: string;
+  formatted_phone_number?: string;
+  international_phone_number?: string;
+  rating?: number;
+  user_ratings_total?: number;
+  types?: string[];
 };
 
 const findAddressComponentValue = (
@@ -57,6 +65,83 @@ const findAddressComponentValue = (
 
   return match.long_name ?? match.short_name ?? undefined;
 };
+
+const INITIAL_FETCH_MULTIPLIER = 1.5;
+const MAX_RADIUS_MULTIPLIER = 3;
+const DEFAULT_EXPANSION_ITERATIONS = 5;
+const DEFAULT_EXPANSION_MULTIPLIER = 1.5;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(value, max));
+}
+
+function normalizeLongitude(lng: number) {
+  if (lng > 180) {
+    return ((lng + 180) % 360) - 180;
+  }
+  if (lng < -180) {
+    return ((lng - 180) % 360) + 180;
+  }
+  return lng;
+}
+
+function boundsFromCenterRadius(center: LatLng, radiusMeters: number): Bounds {
+  const latOffset = radiusMeters / 111_320;
+  const lngOffset =
+    radiusMeters / (111_320 * Math.cos((center.lat * Math.PI) / 180) || 1);
+
+  return {
+    ne: {
+      lat: clamp(center.lat + latOffset, -90, 90),
+      lng: normalizeLongitude(center.lng + lngOffset),
+    },
+    sw: {
+      lat: clamp(center.lat - latOffset, -90, 90),
+      lng: normalizeLongitude(center.lng - lngOffset),
+    },
+  };
+}
+
+function computeRingSegments(previous: Bounds, expanded: Bounds): Bounds[] {
+  const segments: Bounds[] = [];
+
+  // North band
+  if (expanded.ne.lat > previous.ne.lat) {
+    segments.push({
+      ne: { lat: expanded.ne.lat, lng: expanded.ne.lng },
+      sw: { lat: previous.ne.lat, lng: expanded.sw.lng },
+    });
+  }
+
+  // South band
+  if (expanded.sw.lat < previous.sw.lat) {
+    segments.push({
+      ne: { lat: previous.sw.lat, lng: expanded.ne.lng },
+      sw: { lat: expanded.sw.lat, lng: expanded.sw.lng },
+    });
+  }
+
+  // West band
+  if (expanded.sw.lng < previous.sw.lng) {
+    segments.push({
+      ne: { lat: previous.ne.lat, lng: previous.sw.lng },
+      sw: { lat: previous.sw.lat, lng: expanded.sw.lng },
+    });
+  }
+
+  // East band
+  if (expanded.ne.lng > previous.ne.lng) {
+    segments.push({
+      ne: { lat: previous.ne.lat, lng: expanded.ne.lng },
+      sw: { lat: previous.sw.lat, lng: previous.ne.lng },
+    });
+  }
+
+  return segments.filter(
+    (segment) =>
+      segment.ne.lat > segment.sw.lat && segment.ne.lng > segment.sw.lng,
+  );
+}
 
 // Google Maps search action
 export const searchGoogleMaps: any = action({
@@ -268,11 +353,273 @@ export const searchGoogleMaps: any = action({
         }
       }
 
-      // Get Google Maps API key
-      const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+      // Get Google Maps API key (use user's key for enterprise users)
+      let googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+
+      if (user?.plan === "enterprise") {
+        try {
+          const keyResult = await ctx.runAction(
+            "userApiKeys/actions:getDecryptedApiKey" as any,
+            {
+              provider: "google_maps",
+              userId: search.userId,
+            },
+          );
+          googleMapsApiKey = keyResult.apiKey;
+        } catch (error) {
+          // For enterprise users, API keys are required
+          throw new Error(
+            "Enterprise users must provide their own Google Maps API key. Please add your API key in Settings."
+          );
+        }
+      }
+
       if (!googleMapsApiKey) {
         throw new Error("Google Maps API key not configured");
       }
+
+      const requestedResults = search.parameters.maxResults;
+      const deduplicationConfig = {
+        enablePlaceNameDedup:
+          search.parameters.deduplication?.enablePlaceNameDedup ??
+          user?.preferences?.enablePlaceNameDedup ??
+          false,
+        enableEmailDedup:
+          search.parameters.deduplication?.enableEmailDedup ??
+          user?.preferences?.enableEmailDedup ??
+          true,
+        enableAddressDedup:
+          search.parameters.deduplication?.enableAddressDedup ??
+          user?.preferences?.enableAddressDedup ??
+          true,
+      };
+
+      const maxExpansionIterations = Math.max(
+        0,
+        Math.min(
+          Math.round(
+            user?.preferences?.maxSearchExpansionIterations ??
+              DEFAULT_EXPANSION_ITERATIONS,
+          ),
+          DEFAULT_EXPANSION_ITERATIONS,
+        ),
+      );
+      const expansionRadiusMultiplier = clamp(
+        user?.preferences?.searchExpansionMultiplier ??
+          DEFAULT_EXPANSION_MULTIPLIER,
+        1.1,
+        MAX_RADIUS_MULTIPLIER,
+      );
+
+      const processedPlaceIds = new Set<string>();
+      const placeDetailsCache = new Map<string, GooglePlaceDetails>();
+      const duplicateCounters = {
+        placeId: 0,
+        placeName: 0,
+        address: 0,
+      };
+      const areaLeadBreakdown = {
+        initial: 0,
+        expansion: 0,
+      };
+      let duplicatesFromTiles = 0;
+      let rawPlacesDiscovered = 0;
+      let expansionIterationsUsed = 0;
+      let finalRadiusMeters = 0;
+      const leadIds: string[] = [];
+
+      const ensureSearchActive = async () => {
+        const current = await ctx.runQuery(
+          internal.search.internal.getSearchInternal,
+          {
+            searchId: args.searchId,
+          },
+        );
+        return current && current.status !== "cancelled";
+      };
+
+      const fetchDetailedPlace = async (
+        place: Place,
+      ): Promise<GooglePlaceDetails> => {
+        if (place.place_id && placeDetailsCache.has(place.place_id)) {
+          return placeDetailsCache.get(place.place_id)!;
+        }
+
+        let detailedPlace: GooglePlaceDetails = place as GooglePlaceDetails;
+
+        if (place.place_id) {
+          try {
+            const detailsUrl = new URL(
+              "https://maps.googleapis.com/maps/api/place/details/json",
+            );
+            detailsUrl.searchParams.set("place_id", place.place_id);
+            detailsUrl.searchParams.set(
+              "fields",
+              [
+                "address_component",
+                "formatted_address",
+                "geometry",
+                "website",
+                "formatted_phone_number",
+                "international_phone_number",
+              ].join(","),
+            );
+            detailsUrl.searchParams.set("key", googleMapsApiKey);
+
+            const detailsResponse = await fetch(detailsUrl.toString());
+            if (detailsResponse.ok) {
+              const detailsData = (await detailsResponse.json()) as {
+                status: string;
+                result?: GooglePlaceDetails;
+              };
+              if (detailsData.status === "OK" && detailsData.result) {
+                detailedPlace = {
+                  ...place,
+                  ...detailsData.result,
+                } as GooglePlaceDetails;
+              }
+            }
+
+            // Add small delay to respect rate limits
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          } catch (error) {
+            console.warn(
+              `Failed to get place details for ${place.place_id}:`,
+              error,
+            );
+          }
+        }
+
+        if (place.place_id) {
+          placeDetailsCache.set(place.place_id, detailedPlace);
+        }
+
+        return detailedPlace;
+      };
+
+      const tryProcessPlace = async (
+        place: Place,
+        phase: "initial" | "expansion",
+      ) => {
+        if (!place || !place.place_id) {
+          duplicateCounters.placeId++;
+          return;
+        }
+
+        if (processedPlaceIds.has(place.place_id)) {
+          duplicateCounters.placeId++;
+          return;
+        }
+        processedPlaceIds.add(place.place_id);
+
+        const detailedPlace = await fetchDetailedPlace(place);
+        const basePlaceInfo = place as GooglePlaceDetails;
+        const addressComponents =
+          detailedPlace.address_components ??
+          basePlaceInfo.address_components;
+
+        const city =
+          findAddressComponentValue(addressComponents, ["locality"]) ??
+          findAddressComponentValue(addressComponents, ["postal_town"]) ??
+          findAddressComponentValue(addressComponents, [
+            "administrative_area_level_2",
+          ]);
+
+        const state = findAddressComponentValue(
+          addressComponents,
+          ["administrative_area_level_1"],
+          { preferShort: true },
+        );
+
+        const country = findAddressComponentValue(addressComponents, ["country"]);
+
+        const postalCode = findAddressComponentValue(
+          addressComponents,
+          ["postal_code"],
+        );
+
+        const leadResult = await ctx.runMutation(
+          internal.leads.internal.createLeadInternal,
+          {
+            userId: search.userId,
+            searchId: args.searchId,
+            deduplication: deduplicationConfig,
+            leadData: {
+              businessName: detailedPlace.name || "Unknown",
+              address: detailedPlace.formatted_address || "",
+              placeId: detailedPlace.place_id || place.place_id,
+              location: {
+                lat:
+                  detailedPlace.geometry?.location?.lat ??
+                  basePlaceInfo.geometry?.location?.lat ??
+                  0,
+                lng:
+                  detailedPlace.geometry?.location?.lng ??
+                  basePlaceInfo.geometry?.location?.lng ??
+                  0,
+                formattedAddress:
+                  detailedPlace.formatted_address ??
+                  basePlaceInfo.formatted_address ??
+                  "",
+                city: city ?? undefined,
+                state: state ?? undefined,
+                country: country ?? undefined,
+                postalCode: postalCode ?? undefined,
+              },
+              phone:
+                detailedPlace.formatted_phone_number ||
+                (detailedPlace as any).international_phone_number ||
+                undefined,
+              website: detailedPlace.website || undefined,
+              rating: detailedPlace.rating || undefined,
+              reviewCount: detailedPlace.user_ratings_total || undefined,
+              category: detailedPlace.types?.[0] || undefined,
+            },
+          },
+        );
+
+        if (leadResult?.status === "created") {
+          leadIds.push(leadResult.leadId);
+          if (phase === "initial") {
+            areaLeadBreakdown.initial++;
+          } else {
+            areaLeadBreakdown.expansion++;
+          }
+          return;
+        }
+
+        if (leadResult?.status === "skipped") {
+          if (
+            leadResult.reason === "search_level" ||
+            leadResult.reason === "user_level"
+          ) {
+            duplicateCounters.placeId++;
+          } else if (leadResult.reason === "place_name") {
+            duplicateCounters.placeName++;
+          } else if (leadResult.reason === "address") {
+            duplicateCounters.address++;
+          }
+        }
+      };
+
+      const processPlacesBatch = async (
+        placesToProcess: Place[],
+        phase: "initial" | "expansion",
+      ) => {
+        for (const place of placesToProcess) {
+          if (leadIds.length >= requestedResults) {
+            return true;
+          }
+
+          const active = await ensureSearchActive();
+          if (!active) {
+            return false;
+          }
+
+          await tryProcessPlace(place, phase);
+        }
+        return true;
+      };
 
       // Build search query
       const params: any = search.parameters;
@@ -390,17 +737,20 @@ export const searchGoogleMaps: any = action({
           discoveryCorrelation,
           "🗺️ Using SPATIAL TILING strategy (maxResults > 60)",
           {
-            maxResults: params.maxResults,
+            maxResults: requestedResults,
             hasBounds: !!bounds,
             hasCenter: lat !== 0 && lng !== 0,
             strategy: "tiled_search",
-            estimatedTiles: Math.ceil(params.maxResults / 50), // ~50 places per tile average
-            estimatedApiCalls: Math.ceil(params.maxResults / 50) * 3,
-            estimatedTimeMinutes: Math.ceil(params.maxResults / 250), // ~250 places per minute
+            fetchMultiplier: INITIAL_FETCH_MULTIPLIER,
+            estimatedTiles: Math.ceil(requestedResults / 50),
+            estimatedApiCalls: Math.ceil(requestedResults / 50) * 3,
           },
         );
 
-        // Use spatial tiling for large result sets
+        const initialFetchCount = Math.ceil(
+          requestedResults * INITIAL_FETCH_MULTIPLIER,
+        );
+
         const tilingResult = await searchPlacesWithTiling({
           apiKey: googleMapsApiKey,
           query,
@@ -409,33 +759,33 @@ export const searchGoogleMaps: any = action({
           bounds: bounds || undefined,
           center: bounds ? undefined : { lat, lng },
           radiusMeters: bounds ? undefined : radius,
-          maxResults: params.maxResults,
-          maxTiles: 250, // Increased for 1000-result searches
-          concurrency: 5, // Increased for better throughput
+          maxResults: initialFetchCount,
+          maxTiles: 250,
+          concurrency: 5,
           correlation: discoveryCorrelation,
-          shouldCancel: async () => {
-            const latest = await ctx.runQuery(
-              internal.search.internal.getSearchInternal,
-              { searchId: args.searchId },
-            );
-            return !latest || latest.status === "cancelled";
-          },
+          shouldCancel: async () => !(await ensureSearchActive()),
         });
 
         places = tilingResult.places;
         totalApiCalls = tilingResult.totalApiCalls;
+        rawPlacesDiscovered += places.length;
+        duplicatesFromTiles += tilingResult.duplicatesFiltered;
 
         logWithCorrelation(
           "info",
           discoveryCorrelation,
           "✅ TILED SEARCH COMPLETE",
           {
+            bufferedTarget: initialFetchCount,
             placesFound: places.length,
-            targetPlaces: params.maxResults,
             tilesSearched: tilingResult.tilesSearched,
             apiCalls: totalApiCalls,
             duplicatesFiltered: tilingResult.duplicatesFiltered,
-            efficiency: ((places.length / totalApiCalls) * 100).toFixed(1) + "% places per API call",
+            efficiency:
+              totalApiCalls > 0
+                ? ((places.length / totalApiCalls) * 100).toFixed(1) +
+                  "% places per API call"
+                : "N/A",
             timeMs: tilingResult.timeMs,
           },
         );
@@ -455,8 +805,12 @@ export const searchGoogleMaps: any = action({
         let nextPageToken: string | undefined = undefined;
         const maxPages = 3;
         let currentPage = 0;
+        const paginationTarget = Math.ceil(
+          requestedResults * INITIAL_FETCH_MULTIPLIER,
+        );
+        const simpleFetchCap = Math.max(requestedResults, paginationTarget);
 
-        while (currentPage < maxPages && places.length < params.maxResults) {
+        while (currentPage < maxPages && places.length < simpleFetchCap) {
           const placesUrl = new URL(
             "https://maps.googleapis.com/maps/api/place/textsearch/json",
           );
@@ -495,6 +849,7 @@ export const searchGoogleMaps: any = action({
 
           const pageResults = data.results || [];
           places.push(...pageResults);
+          rawPlacesDiscovered += pageResults.length;
 
           logWithCorrelation(
             "info",
@@ -511,7 +866,7 @@ export const searchGoogleMaps: any = action({
           nextPageToken = data.next_page_token;
           currentPage++;
 
-          if (!nextPageToken || places.length >= params.maxResults) {
+          if (!nextPageToken || places.length >= simpleFetchCap) {
             break;
           }
 
@@ -556,21 +911,162 @@ export const searchGoogleMaps: any = action({
           return { success: false, message: "Search cancelled" } as any;
         }
       }
-      const totalFound = Math.min(places.length, params.maxResults);
+      const processedInitial = await processPlacesBatch(places, "initial");
+      if (!processedInitial) {
+        return {
+          success: false,
+          message: "Search cancelled",
+          totalFound: leadIds.length,
+          leadIds,
+        } as any;
+      }
 
-      // Update search progress using scheduler
+      const hasValidCenter = lat !== 0 || lng !== 0;
+      const maxRadiusMeters = Math.min(
+        radius * MAX_RADIUS_MULTIPLIER,
+        MAX_PLACES_RADIUS_METERS,
+      );
+      finalRadiusMeters = radius;
+
+      if (
+        hasValidCenter &&
+        leadIds.length < requestedResults &&
+        maxExpansionIterations > 0
+      ) {
+        let currentRadiusMeters = radius;
+
+        while (
+          leadIds.length < requestedResults &&
+          expansionIterationsUsed < maxExpansionIterations &&
+          currentRadiusMeters < maxRadiusMeters
+        ) {
+          const nextRadiusMeters = Math.min(
+            Math.max(
+              Math.ceil(currentRadiusMeters * expansionRadiusMultiplier),
+              currentRadiusMeters + 500,
+            ),
+            maxRadiusMeters,
+          );
+
+          if (nextRadiusMeters <= currentRadiusMeters) {
+            break;
+          }
+
+          const previousBounds = boundsFromCenterRadius(
+            { lat, lng },
+            currentRadiusMeters,
+          );
+          const expandedBounds = boundsFromCenterRadius(
+            { lat, lng },
+            nextRadiusMeters,
+          );
+          const ringSegments = computeRingSegments(
+            previousBounds,
+            expandedBounds,
+          );
+
+          if (ringSegments.length === 0) {
+            break;
+          }
+
+          expansionIterationsUsed++;
+
+          for (const segment of ringSegments) {
+            const remainingNeed = requestedResults - leadIds.length;
+            const segmentFetchCount = Math.max(
+              Math.ceil(remainingNeed * INITIAL_FETCH_MULTIPLIER),
+              requestedResults,
+            );
+
+            const expansionResult = await searchPlacesWithTiling({
+              apiKey: googleMapsApiKey,
+              query,
+              type: "establishment",
+              keyword: query,
+              bounds: segment,
+              radiusMeters: nextRadiusMeters,
+              maxResults: segmentFetchCount,
+              maxTiles: 120,
+              concurrency: 4,
+              correlation: discoveryCorrelation,
+              shouldCancel: async () => !(await ensureSearchActive()),
+            });
+
+            totalApiCalls += expansionResult.totalApiCalls;
+            duplicatesFromTiles += expansionResult.duplicatesFiltered;
+            rawPlacesDiscovered += expansionResult.places.length;
+
+            const processedExpansion = await processPlacesBatch(
+              expansionResult.places,
+              "expansion",
+            );
+            if (!processedExpansion) {
+              return {
+                success: false,
+                message: "Search cancelled",
+                totalFound: leadIds.length,
+                leadIds,
+              } as any;
+            }
+
+            if (leadIds.length >= requestedResults) {
+              break;
+            }
+          }
+
+          currentRadiusMeters = nextRadiusMeters;
+          finalRadiusMeters = currentRadiusMeters;
+
+          if (leadIds.length >= requestedResults) {
+            break;
+          }
+        }
+      }
+
+      const deliveredLeads = leadIds.length;
+      const shortfall = Math.max(requestedResults - deliveredLeads, 0);
+      const totalDuplicatesPlaceId =
+        duplicateCounters.placeId + duplicatesFromTiles;
+
       await ctx.runMutation(
         internal.search.internal.updateSearchProgressInternal,
         {
           searchId: args.searchId,
           progress: {
-            discovered: totalFound,
+            discovered: deliveredLeads,
             enriched: 0,
             analyzed: 0,
-            total: totalFound,
+            total: deliveredLeads,
           },
-          partialResults: totalFound < params.maxResults,
-          requestedCount: params.maxResults,
+          partialResults: deliveredLeads < requestedResults,
+          requestedCount: requestedResults,
+        },
+      );
+
+      await ctx.runMutation(
+        internal.search.internal.updateDiscoveryMetadataInternal,
+        {
+          searchId: args.searchId,
+          initialSearchRadius: radius,
+          finalSearchRadius: finalRadiusMeters,
+          expansionIterations: expansionIterationsUsed,
+          duplicatesFilteredPlaceId: totalDuplicatesPlaceId,
+          duplicatesFilteredPlaceName: duplicateCounters.placeName,
+          duplicatesFilteredAddress: duplicateCounters.address,
+          discoveryMetadata: {
+            requested: requestedResults,
+            delivered: deliveredLeads,
+            shortfall,
+            expanded: expansionIterationsUsed > 0,
+            originalAreaLeads: areaLeadBreakdown.initial,
+            expansionAreaLeads: areaLeadBreakdown.expansion,
+            expansionMessage:
+              expansionIterationsUsed > 0
+                ? deliveredLeads >= requestedResults
+                  ? `Found ${deliveredLeads} leads after expanding search radius ${expansionIterationsUsed}×`
+                  : `Found ${deliveredLeads} of ${requestedResults} leads after ${expansionIterationsUsed} expansions (max radius reached)`
+                : `Found ${deliveredLeads} leads in the original search area`,
+          },
         },
       );
 
@@ -579,21 +1075,33 @@ export const searchGoogleMaps: any = action({
         discoveryCorrelation,
         "✅ Google Maps API Discovery Completed",
         {
-          totalFound,
-          requestedMax: params.maxResults,
-          discoveryRate: (totalFound / params.maxResults) * 100,
+          deliveredLeads,
+          requestedMax: requestedResults,
+          rawPlacesDiscovered,
+          duplicatesFilteredPlaceId: totalDuplicatesPlaceId,
+          duplicatesFilteredPlaceName: duplicateCounters.placeName,
+          duplicatesFilteredAddress: duplicateCounters.address,
+          expansionIterations: expansionIterationsUsed,
+          finalRadiusMeters,
           strategy: useTiling ? "spatial_tiling" : "simple_pagination",
           apiCalls: totalApiCalls,
-          efficiency: totalApiCalls > 0 ? (totalFound / totalApiCalls).toFixed(2) + " places/API call" : "N/A",
+          efficiency:
+            totalApiCalls > 0
+              ? (deliveredLeads / totalApiCalls).toFixed(2) +
+                " leads/API call"
+              : "N/A",
         },
       );
 
-      // Warn user if we found fewer leads than requested
-      const requestedResults = params.maxResults;
-      if (totalFound < requestedResults) {
-        const foundPercentage = (totalFound / requestedResults) * 100;
-        const shortfall = requestedResults - totalFound;
-        const warningMessage = `Found ${totalFound} of ${requestedResults} requested leads (${foundPercentage.toFixed(0)}%) in this area`;
+      if (deliveredLeads < requestedResults) {
+        const foundPercentage =
+          requestedResults > 0
+            ? (deliveredLeads / requestedResults) * 100
+            : 0;
+        const warningMessage =
+          expansionIterationsUsed > 0
+            ? `Found ${deliveredLeads} of ${requestedResults} requested leads after ${expansionIterationsUsed} expansions (max area reached)`
+            : `Found ${deliveredLeads} of ${requestedResults} requested leads in this area`;
 
         logWithCorrelation(
           "warn",
@@ -601,13 +1109,13 @@ export const searchGoogleMaps: any = action({
           "⚠️ PARTIAL RESULTS: Fewer leads found than requested",
           {
             requested: requestedResults,
-            found: totalFound,
+            found: deliveredLeads,
             shortfall,
             percentage: foundPercentage,
+            expansionsAttempted: expansionIterationsUsed,
           },
         );
 
-        // Broadcast warning to user immediately
         await ctx.runMutation(
           internal.realtime.broadcaster.broadcastPipelineUpdate,
           {
@@ -620,162 +1128,28 @@ export const searchGoogleMaps: any = action({
             data: {
               partialResults: true,
               requested: requestedResults,
-              found: totalFound,
+              found: deliveredLeads,
               shortfall,
-              suggestions: shortfall > requestedResults * 0.5 ? [
-                "Try increasing search radius",
-                "Use broader keywords",
-                "Expand to nearby cities",
-              ] : [
-                "Try increasing search radius slightly",
-                "Adjust keyword specificity",
-              ],
-            },
-          },
-        );
-      }
-
-      // Create lead records for discovered places with Place Details enrichment
-      const leadIds: string[] = [];
-      for (let i = 0; i < totalFound; i++) {
-        // Early exit if cancelled mid-loop
-        const current = await ctx.runQuery(
-          internal.search.internal.getSearchInternal,
-          {
-            searchId: args.searchId,
-          },
-        );
-        if (!current || current.status === "cancelled") {
-          return {
-            success: false,
-            message: "Search cancelled",
-            totalFound: i,
-            leadIds,
-          } as any;
-        }
-        const place = places[i];
-        if (!place || !place.place_id) {
-          // Skip invalid places
-          continue;
-        }
-
-        // Get detailed place information including website and phone
-        let detailedPlace: any = place;
-        if (place.place_id) {
-          try {
-            const detailsUrl = new URL(
-              "https://maps.googleapis.com/maps/api/place/details/json",
-            );
-            detailsUrl.searchParams.set("place_id", place.place_id);
-            detailsUrl.searchParams.set(
-              "fields",
-              [
-                "address_component",
-                "formatted_address",
-                "geometry",
-                "website",
-                "formatted_phone_number",
-                "international_phone_number",
-              ].join(","),
-            );
-            detailsUrl.searchParams.set("key", googleMapsApiKey);
-
-            const detailsResponse = await fetch(detailsUrl.toString());
-            if (detailsResponse.ok) {
-              const detailsData = (await detailsResponse.json()) as {
-                status: string;
-                result?: {
-                  website?: string;
-                  formatted_phone_number?: string;
-                  international_phone_number?: string;
-                };
-              };
-              if (detailsData.status === "OK" && detailsData.result) {
-                detailedPlace = { ...place, ...detailsData.result };
-              }
-            }
-
-            // Add small delay to respect rate limits
-            await new Promise((resolve) => setTimeout(resolve, 100));
-          } catch (error) {
-            console.warn(
-              `Failed to get place details for ${place.place_id}:`,
-              error,
-            );
-            // Continue with basic place data
-          }
-        }
-
-        // Create lead using internal mutation (works without user auth)
-        const detailedPlaceInfo = detailedPlace as GooglePlaceDetails;
-        const basePlaceInfo = place as GooglePlaceDetails;
-        const addressComponents =
-          detailedPlaceInfo.address_components ??
-          basePlaceInfo.address_components;
-
-        const city =
-          findAddressComponentValue(addressComponents, ["locality"]) ??
-          findAddressComponentValue(addressComponents, ["postal_town"]) ??
-          findAddressComponentValue(addressComponents, [
-            "administrative_area_level_2",
-          ]);
-
-        const state = findAddressComponentValue(
-          addressComponents,
-          ["administrative_area_level_1"],
-          { preferShort: true },
-        );
-
-        const country = findAddressComponentValue(addressComponents, ["country"]);
-
-        const postalCode = findAddressComponentValue(
-          addressComponents,
-          ["postal_code"],
-        );
-
-        const leadId = await ctx.runMutation(
-          internal.leads.internal.createLeadInternal,
-          {
-            userId: search.userId,
-            searchId: args.searchId,
-            leadData: {
-              businessName: detailedPlace.name || "Unknown",
-              address: detailedPlace.formatted_address || "",
-              placeId: detailedPlace.place_id || "",
-              location: {
-                lat:
-                  detailedPlaceInfo.geometry?.location?.lat ??
-                  basePlaceInfo.geometry?.location?.lat ??
-                  0,
-                lng:
-                  detailedPlaceInfo.geometry?.location?.lng ??
-                  basePlaceInfo.geometry?.location?.lng ??
-                  0,
-                formattedAddress:
-                  detailedPlaceInfo.formatted_address ??
-                  basePlaceInfo.formatted_address ??
-                  "",
-                city: city ?? undefined,
-                state: state ?? undefined,
-                country: country ?? undefined,
-                postalCode: postalCode ?? undefined,
+              duplicatesFiltered: {
+                placeId: totalDuplicatesPlaceId,
+                placeName: duplicateCounters.placeName,
+                address: duplicateCounters.address,
               },
-              phone:
-                detailedPlace.formatted_phone_number ||
-                detailedPlace.international_phone_number ||
-                undefined,
-              website: detailedPlace.website || undefined,
-              rating: detailedPlace.rating || undefined,
-              reviewCount: detailedPlace.user_ratings_total || undefined,
-              category: detailedPlace.types?.[0] || undefined,
+              expansions: expansionIterationsUsed,
+              suggestions:
+                shortfall > requestedResults * 0.5
+                  ? [
+                      "Try increasing search radius",
+                      "Use broader keywords",
+                      "Expand to nearby cities",
+                    ]
+                  : [
+                      "Try increasing search radius slightly",
+                      "Adjust keyword specificity",
+                    ],
             },
           },
         );
-
-        // Skip duplicates - null means duplicate was detected and skipped
-        if (leadId !== null) {
-          leadIds.push(leadId);
-        }
       }
 
       // Update search status to processing (discovery complete, but pipeline continues)
@@ -794,22 +1168,31 @@ export const searchGoogleMaps: any = action({
         correlation,
         "🎉 PHASE 1 COMPLETE: Google Maps Discovery Phase Finished",
         {
-          totalFound,
+          totalFound: deliveredLeads,
           leadIds: leadIds.length,
           discoveryDurationMs: performanceData?.duration || 0,
-          averageTimePerLead: totalFound > 0 ? (performanceData?.duration || 0) / totalFound : 0,
+          averageTimePerLead:
+            deliveredLeads > 0
+              ? (performanceData?.duration || 0) / deliveredLeads
+              : 0,
           nextPhase: "lead_enrichment",
           phaseCompletionRate: 100,
           // API efficiency metrics
           strategy: useTiling ? "spatial_tiling" : "simple_pagination",
           totalApiCalls,
-          placesPerApiCall: totalApiCalls > 0 ? (totalFound / totalApiCalls).toFixed(2) : "N/A",
-          apiCostEfficiency: totalApiCalls > 0 ? ((totalFound / totalApiCalls) * 100).toFixed(1) + "%" : "N/A",
+          placesPerApiCall:
+            totalApiCalls > 0
+              ? (deliveredLeads / totalApiCalls).toFixed(2)
+              : "N/A",
+          apiCostEfficiency:
+            totalApiCalls > 0
+              ? ((deliveredLeads / totalApiCalls) * 100).toFixed(1) + "%"
+              : "N/A",
         },
       );
 
       // If no leads found, complete the search immediately
-      if (totalFound === 0) {
+      if (deliveredLeads === 0) {
         logWithCorrelation(
           "warn",
           correlation,
@@ -851,7 +1234,7 @@ export const searchGoogleMaps: any = action({
             correlation,
             "🔄 PHASE TRANSITION: Triggering Phase 2 (Lead Enrichment)",
             {
-              leadsToEnrich: totalFound,
+              leadsToEnrich: deliveredLeads,
               schedulingDelay: "immediate",
             },
           );
@@ -864,8 +1247,8 @@ export const searchGoogleMaps: any = action({
 
       return {
         success: true,
-        message: `Discovered ${totalFound} potential leads using ${useTiling ? "spatial tiling" : "pagination"} (${totalApiCalls} API calls)`,
-        totalFound,
+        message: `Discovered ${deliveredLeads} potential leads using ${useTiling ? "spatial tiling" : "pagination"} (${totalApiCalls} API calls)`,
+        totalFound: deliveredLeads,
         leadIds,
         strategy: useTiling ? "spatial_tiling" : "simple_pagination",
         apiCalls: totalApiCalls,

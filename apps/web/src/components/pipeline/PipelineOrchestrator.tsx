@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +42,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSearch } from "@/hooks/useSearches";
+import { useLeads } from "@/hooks/useLeads";
 import { useSearchBroadcasts } from "@/hooks/useStatusBroadcasts";
 import { useAdminSystemControl } from "@/hooks/useAdmin";
 import { SourceRegistry } from "@/pipeline/sources/SourceRegistry";
@@ -58,7 +65,8 @@ export function PipelineOrchestrator({
   onGenerateEmail,
   onOpenLeadHistory,
 }: PipelineOrchestratorProps) {
-  const { state, setStage, canProgressToStage } = usePipeline();
+  const { state, setStage, canProgressToStage, setLeads, setEnrichedLeads } =
+    usePipeline();
   const [isPipelineCollapsed, setIsPipelineCollapsed] = useState(false);
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   const lastCompletedSearchIdRef = useRef<string | null>(null);
@@ -102,6 +110,47 @@ export function PipelineOrchestrator({
   const selectedSource = state.selectedSource
     ? SourceRegistry.getSource(state.selectedSource)
     : undefined;
+
+  const { leads: searchLeads } = useLeads(state.searchId || undefined);
+
+  const leadsFromPipeline = useMemo(() => {
+    if (state.searchId && searchLeads) {
+      return searchLeads;
+    }
+    return state.leads;
+  }, [searchLeads, state.leads, state.searchId]);
+
+  useEffect(() => {
+    if (!state.searchId || !searchLeads || searchLeads.length === 0) {
+      return;
+    }
+
+    const leadsLengthChanged = state.leads.length !== searchLeads.length;
+    const hasDifferentLead =
+      leadsLengthChanged ||
+      state.leads.some(
+        (lead, index) => lead._id !== searchLeads[index]?._id,
+      );
+
+    if (hasDifferentLead) {
+      setLeads(searchLeads);
+    }
+
+    const enriched = searchLeads.filter(
+      (lead) => lead.contactInfo?.emails?.length,
+    );
+
+    if (state.enrichedLeads.length !== enriched.length) {
+      setEnrichedLeads(enriched);
+    }
+  }, [
+    searchLeads,
+    setEnrichedLeads,
+    setLeads,
+    state.enrichedLeads.length,
+    state.leads,
+    state.searchId,
+  ]);
 
   const inlineSourcePanel = selectedSource ? (
     <SourceInlinePanel
@@ -151,24 +200,24 @@ export function PipelineOrchestrator({
         return {
           label: "Standard Research",
           icon: Search,
-          color: "text-blue-500 dark:text-blue-200",
-          bg: "bg-blue-50 dark:bg-blue-500/20",
+          badgeClass:
+            "border border-cyan-500/40 bg-cyan-500/10 text-cyan-200",
           description: "Fast business context (2-3s)",
         };
       case "exa":
         return {
           label: "Enhanced Research",
           icon: Brain,
-          color: "text-purple-500 dark:text-purple-200",
-          bg: "bg-purple-50 dark:bg-purple-500/20",
+          badgeClass:
+            "border border-purple-500/40 bg-purple-500/10 text-purple-200",
           description: "Deep competitor analysis (3-4s)",
         };
       case "perplexity":
         return {
           label: "Premium Research",
           icon: Zap,
-          color: "text-amber-600 dark:text-amber-200",
-          bg: "bg-amber-50 dark:bg-amber-500/20",
+          badgeClass:
+            "border border-amber-500/40 bg-amber-500/10 text-amber-200",
           description: "Comprehensive report (10-15s)",
         };
       default:
@@ -213,16 +262,66 @@ export function PipelineOrchestrator({
       )
     : undefined;
 
-  const optimisticMetrics = {
-    discovered: state.leads.length,
-    enriched: state.enrichedLeads.length,
-    analyzed: state.generatedEmails.length,
-    total: Math.max(
-      state.leads.length,
+  const discoveredFromSearch =
+    search?.progress?.discovered ??
+    search?.results?.totalFound ??
+    state.leads.length;
+
+  const enrichedFromSearch =
+    search?.progress?.enriched ??
+    search?.results?.enrichedCount ??
+    state.enrichedLeads.length;
+
+  const analyzedFromSearch =
+    search?.progress?.analyzed ?? state.generatedEmails.length;
+
+  const enrichedFromLeads = useMemo(() => {
+    if (!leadsFromPipeline?.length) {
+      return 0;
+    }
+    return leadsFromPipeline.filter((lead) => lead.contactInfo?.emails?.length)
+      .length;
+  }, [leadsFromPipeline]);
+
+  const optimisticMetrics = useMemo(() => {
+    const discoveredMetric = Math.max(
+      discoveredFromSearch,
+      leadsFromPipeline?.length ?? 0,
+    );
+    const enrichedMetric = Math.max(
+      enrichedFromSearch,
+      enrichedFromLeads,
       state.enrichedLeads.length,
+    );
+    const analyzedMetric = Math.max(
+      analyzedFromSearch,
       state.generatedEmails.length,
-    ),
-  };
+    );
+    const totalMetric = Math.max(
+      search?.progress?.total ?? 0,
+      search?.results?.totalFound ?? 0,
+      discoveredMetric,
+      enrichedMetric,
+      analyzedMetric,
+    );
+
+    return {
+      discovered: discoveredMetric,
+      enriched: enrichedMetric,
+      analyzed: analyzedMetric,
+      total: totalMetric,
+    };
+  }, [
+    analyzedFromSearch,
+    discoveredFromSearch,
+    enrichedFromLeads,
+    enrichedFromSearch,
+    leadsFromPipeline?.length,
+    search?.progress?.total,
+    search?.results?.totalFound,
+    state.enrichedLeads.length,
+    state.generatedEmails.length,
+  ]);
 
   const shouldHideInteractiveSections =
     isSearchCompleted && isPipelineCollapsed;
@@ -240,7 +339,7 @@ export function PipelineOrchestrator({
       case "ai_personalization":
         return <AIPersonalizationStage />;
       case "review_export":
-        return <ReviewExportStage />;
+        return <ReviewExportStage onViewResults={openLeadHistory} />;
       default:
         return <SourceSelector />;
     }
@@ -250,11 +349,11 @@ export function PipelineOrchestrator({
     <>
       {/* Search Completion Dialog */}
       <Dialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md border border-slate-800/60 bg-slate-950/90 shadow-[0_24px_72px_-32px_rgba(0,255,204,0.35)]">
           <DialogHeader>
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center">
-                <CheckCircle className="h-6 w-6 text-white" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-emerald-500/50 bg-emerald-500/15 text-emerald-200 shadow-[0_0_22px_rgba(0,255,132,0.25)]">
+                <CheckCircle className="h-6 w-6" />
               </div>
               <DialogTitle className="text-2xl">Search Complete!</DialogTitle>
             </div>
@@ -265,16 +364,16 @@ export function PipelineOrchestrator({
                     Great news! We found and processed your leads.
                   </p>
                   <div className="grid grid-cols-3 gap-3 pt-3">
-                    <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-muted/50 p-3">
-                      <div className="text-2xl font-bold text-foreground">{totalFound}</div>
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-emerald-100">
+                      <div className="text-2xl font-bold">{totalFound}</div>
                       <div className="text-xs text-muted-foreground">Found</div>
                     </div>
-                    <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-muted/50 p-3">
-                      <div className="text-2xl font-bold text-foreground">{enrichedCount}</div>
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-cyan-500/40 bg-cyan-500/10 p-3 text-cyan-100">
+                      <div className="text-2xl font-bold">{enrichedCount}</div>
                       <div className="text-xs text-muted-foreground">Enriched</div>
                     </div>
-                    <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-muted/50 p-3">
-                      <div className="text-2xl font-bold text-foreground">
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-purple-500/40 bg-purple-500/10 p-3 text-purple-100">
+                      <div className="text-2xl font-bold">
                         {search?.results?.analyzedCount || 0}
                       </div>
                       <div className="text-xs text-muted-foreground">Analyzed</div>
@@ -294,11 +393,15 @@ export function PipelineOrchestrator({
                 setStage("source_selection");
                 setIsPipelineCollapsed(false);
               }}
+              className="border border-slate-700/60 bg-slate-900 text-slate-200 hover:border-cyan-500/50 hover:text-cyan-100"
             >
               <RotateCcw className="h-4 w-4 mr-2" />
               Start New Search
             </Button>
-            <Button onClick={openLeadHistory} className="gap-2">
+            <Button
+              onClick={openLeadHistory}
+              className="gap-2 border border-cyan-500/40 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/25"
+            >
               <FileText className="h-4 w-4" />
               View Results
             </Button>
@@ -310,7 +413,7 @@ export function PipelineOrchestrator({
         className={cn(
           "space-y-6 transition-colors",
           isSearchCompleted &&
-            "rounded-2xl border border-green-200/70 bg-green-50/80 p-3 shadow-inner dark:border-green-700/60 dark:bg-green-950/40",
+            "rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3 shadow-[inset_0_0_32px_rgba(0,255,132,0.12)]",
         )}
       >
       {/* Pipeline Header */}
@@ -349,7 +452,7 @@ export function PipelineOrchestrator({
       {systemStatus?.leadGenerationPaused && (
         <Alert
           variant="destructive"
-          className="border-red-500 bg-red-50 dark:border-red-500/70 dark:bg-red-950/40"
+          className="border border-red-500/50 bg-red-500/10 text-red-200"
         >
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
@@ -375,7 +478,7 @@ export function PipelineOrchestrator({
       {systemConfiguration?.orchestrationSettings?.langGraphHealth?.status === "unavailable" && (
         <Alert
           variant="destructive"
-          className="border-red-500 bg-red-50 dark:border-red-500/70 dark:bg-red-950/40"
+          className="border border-red-500/50 bg-red-500/10 text-red-200"
         >
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
@@ -397,17 +500,17 @@ export function PipelineOrchestrator({
       )}
 
       {systemConfiguration?.orchestrationSettings?.langGraphHealth?.status === "degraded" && (
-        <Alert className="border-yellow-500 bg-yellow-50 dark:border-yellow-500/70 dark:bg-yellow-950/40">
-          <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-300" />
+        <Alert className="border border-amber-500/50 bg-amber-500/10 text-amber-200">
+          <AlertTriangle className="h-4 w-4 text-amber-200" />
           <AlertDescription>
             <div className="space-y-1">
-              <div className="font-semibold text-yellow-900 dark:text-yellow-200">
+              <div className="font-semibold text-amber-100">
                 AI Analysis Service Degraded
               </div>
-              <div className="text-sm text-yellow-800 dark:text-yellow-200/80">
+              <div className="text-sm text-amber-100/80">
                 The LangGraph worker is experiencing issues. AI analysis may be slower than usual or encounter errors.
               </div>
-              <div className="text-xs text-yellow-700 mt-1 dark:text-yellow-300/80">
+              <div className="mt-1 text-xs text-amber-100/70">
                 {systemConfiguration.orchestrationSettings.langGraphHealth.consecutiveFailures} consecutive failures detected
               </div>
             </div>
@@ -478,7 +581,9 @@ export function PipelineOrchestrator({
                   <div
                     className={cn(
                       "w-3 h-3 rounded-full transition-colors",
-                      isBusy ? "bg-yellow-500 animate-pulse" : "bg-green-500",
+                      isBusy
+                        ? "bg-amber-400 animate-pulse"
+                        : "bg-emerald-400",
                     )}
                   />
                   <span className="text-sm font-medium">
@@ -487,10 +592,10 @@ export function PipelineOrchestrator({
                   {researchTierInfo && (
                     <Badge
                       variant="outline"
-                      className={cn("ml-2", researchTierInfo.bg, researchTierInfo.color)}
+                      className={cn("ml-2", researchTierInfo.badgeClass)}
                     >
                       {React.createElement(researchTierInfo.icon, {
-                        className: cn("w-3 h-3 mr-1", researchTierInfo.color),
+                        className: "w-3 h-3 mr-1",
                       })}
                       {researchTierInfo.label}
                     </Badge>
@@ -498,56 +603,59 @@ export function PipelineOrchestrator({
                 </div>
 
                 {latestStatus && (
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge
+                    variant="outline"
+                    className="text-xs border border-cyan-500/40 bg-cyan-500/10 text-cyan-200"
+                  >
                     {latestStatus.title}
                   </Badge>
                 )}
               </div>
 
               <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center dark:bg-blue-500/20">
-                    <Search className="h-4 w-4 text-blue-500 dark:text-blue-200" />
+                <div className="flex items-center gap-3 rounded-xl border border-cyan-500/40 bg-slate-900/60 p-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-500/40 bg-cyan-500/10 text-cyan-200">
+                    <Search className="h-4 w-4" />
                   </div>
                   <div>
-                    <div className="text-lg font-semibold">
-                      {search?.progress?.discovered || state.leads.length || 0}
+                    <div className="text-lg font-semibold text-slate-100">
+                      {optimisticMetrics.discovered}
                     </div>
                     <div className="text-xs text-muted-foreground">Discovered</div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center dark:bg-green-500/20">
-                    <Users className="h-4 w-4 text-green-500 dark:text-green-200" />
+                <div className="flex items-center gap-3 rounded-xl border border-emerald-500/40 bg-slate-900/60 p-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-200">
+                    <Users className="h-4 w-4" />
                   </div>
                   <div>
-                    <div className="text-lg font-semibold">
-                      {search?.progress?.enriched || state.enrichedLeads.length || 0}
+                    <div className="text-lg font-semibold text-slate-100">
+                      {optimisticMetrics.enriched}
                     </div>
                     <div className="text-xs text-muted-foreground">Enriched</div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center dark:bg-purple-500/20">
-                    <Brain className="h-4 w-4 text-purple-500 dark:text-purple-200" />
+                <div className="flex items-center gap-3 rounded-xl border border-purple-500/40 bg-slate-900/60 p-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-purple-500/40 bg-purple-500/10 text-purple-200">
+                    <Brain className="h-4 w-4" />
                   </div>
                   <div>
-                    <div className="text-lg font-semibold">
-                      {search?.progress?.analyzed || 0}
+                    <div className="text-lg font-semibold text-slate-100">
+                      {optimisticMetrics.analyzed}
                     </div>
                     <div className="text-xs text-muted-foreground">Analyzed</div>
                   </div>
                 </div>
 
                 {search?.researchConfidence && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center dark:bg-amber-500/20">
-                      <Sparkles className="h-4 w-4 text-amber-500 dark:text-amber-200" />
+                  <div className="flex items-center gap-3 rounded-xl border border-amber-500/40 bg-slate-900/60 p-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-200">
+                      <Sparkles className="h-4 w-4" />
                     </div>
                     <div>
-                      <div className="text-lg font-semibold">
+                      <div className="text-lg font-semibold text-slate-100">
                         {Math.round(search.researchConfidence * 100)}%
                       </div>
                       <div className="text-xs text-muted-foreground">Confidence</div>

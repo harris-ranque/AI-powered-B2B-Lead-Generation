@@ -281,3 +281,51 @@ export const updateSearchProgressInternal = internalMutation({
     return { success: true };
   },
 });
+
+export const updateDiscoveryMetadataInternal = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    initialSearchRadius: v.optional(v.number()),
+    finalSearchRadius: v.optional(v.number()),
+    expansionIterations: v.optional(v.number()),
+    duplicatesFilteredPlaceId: v.optional(v.number()),
+    duplicatesFilteredPlaceName: v.optional(v.number()),
+    duplicatesFilteredEmail: v.optional(v.number()),
+    duplicatesFilteredAddress: v.optional(v.number()),
+    discoveryMetadata: v.optional(
+      v.object({
+        requested: v.number(),
+        delivered: v.number(),
+        shortfall: v.number(),
+        expanded: v.boolean(),
+        originalAreaLeads: v.number(),
+        expansionAreaLeads: v.number(),
+        expansionMessage: v.string(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      throw new Error("Search not found");
+    }
+
+    const { searchId, ...rest } = args;
+    const updateData: Record<string, any> = {};
+
+    for (const [key, value] of Object.entries(rest)) {
+      if (value !== undefined) {
+        updateData[key] = value;
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return { success: true };
+    }
+
+    updateData.updatedAt = Date.now();
+
+    await ctx.db.patch(searchId, updateData);
+    return { success: true };
+  },
+});

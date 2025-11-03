@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "@genni/convex-types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +14,16 @@ export function EmailStudio() {
   const [aiGeneratedEmails, setAiGeneratedEmails] = useState<
     EmailGenerationResult[]
   >([]);
+
+  const user = useQuery(api.users.queries.getCurrentUserData);
+  const keyStatus = useQuery(api.userApiKeys.queries.getApiKeyStatus);
+
+  const enterprisePlan = user?.plan === "enterprise";
+  const usingOpenAiKey =
+    enterprisePlan && Boolean(keyStatus?.configuredProviders?.includes("openai"));
+  const providerBadges = (keyStatus?.configuredProviders as string[] | undefined)?.filter(
+    (provider) => ["openai", "tavily", "perplexity", "google_places"].includes(provider),
+  );
 
   const handleEmailGenerated = (result: EmailGenerationResult) => {
     setAiGeneratedEmails((prev) => [result, ...prev]);
@@ -58,6 +70,40 @@ export function EmailStudio() {
                   AI-powered email creation and template management for lead
                   outreach.
                 </p>
+                {user && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Badge
+                      variant={usingOpenAiKey ? "secondary" : "outline"}
+                      className={
+                        usingOpenAiKey
+                          ? "bg-emerald-500/20 text-emerald-600"
+                          : "text-muted-foreground"
+                      }
+                    >
+                      {usingOpenAiKey
+                        ? "Using your OpenAI key"
+                        : enterprisePlan
+                          ? "OpenAI key required"
+                          : "Using Genni's OpenAI key"}
+                    </Badge>
+                    {enterprisePlan && providerBadges?.length ? (
+                      providerBadges
+                        .filter((provider) => provider !== "openai")
+                        .map((provider) => (
+                          <Badge key={provider} variant="outline">
+                            {`BYOK: ${provider.replace("_", " ")}`}
+                          </Badge>
+                        ))
+                    ) : !enterprisePlan ? (
+                      <Badge variant="outline">Credits will be applied</Badge>
+                    ) : null}
+                    {enterprisePlan && !usingOpenAiKey && (
+                      <span className="text-xs text-destructive">
+                        Add and validate your OpenAI key to start generating emails.
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
                 <Plus className="h-4 w-4 mr-2" />

@@ -18,8 +18,17 @@ import {
   Download,
   AlertCircle,
   Mail,
+  Filter,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ProviderKeyManager } from "@/components/settings/ProviderKeyManager";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   APP_THEME_OPTIONS,
   DEFAULT_APP_THEME,
@@ -32,6 +41,12 @@ type PreferencesState = {
   language: string;
   timezone: string;
   theme: AppThemeKey;
+  // Deduplication preferences
+  enablePlaceNameDedup?: boolean;
+  enableEmailDedup?: boolean;
+  enableAddressDedup?: boolean;
+   maxSearchExpansionIterations?: number;
+   searchExpansionMultiplier?: number;
 };
 
 export function Settings() {
@@ -63,6 +78,11 @@ export function Settings() {
     language: "en",
     timezone: "UTC",
     theme: DEFAULT_APP_THEME,
+    enablePlaceNameDedup: false,
+    enableEmailDedup: true,
+    enableAddressDedup: true,
+    maxSearchExpansionIterations: 5,
+    searchExpansionMultiplier: 1.5,
   });
 
   const [profileData, setProfileData] = useState({
@@ -76,6 +96,10 @@ export function Settings() {
     signature: "",
   });
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
+  const [expansionIterationsSetting, setExpansionIterationsSetting] =
+    useState(5);
+  const [expansionMultiplierSetting, setExpansionMultiplierSetting] =
+    useState(1.5);
 
   const normalizeContactName = (value: string) =>
     value
@@ -96,6 +120,11 @@ export function Settings() {
     return lines.join("\n");
   };
 
+  const clampExpansionIterations = (value: number) =>
+    Math.min(Math.max(Math.round(value), 0), 5);
+  const clampExpansionMultiplier = (value: number) =>
+    Math.min(Math.max(Number.isFinite(value) ? value : 1.5, 1.1), 3);
+
   // Update local state when data loads
   useEffect(() => {
     if (userPreferences) {
@@ -110,7 +139,26 @@ export function Settings() {
         language: userPreferences.language ?? prev.language,
         timezone: userPreferences.timezone ?? prev.timezone,
         theme,
+        enablePlaceNameDedup:
+          userPreferences.enablePlaceNameDedup ?? prev.enablePlaceNameDedup,
+        enableEmailDedup:
+          userPreferences.enableEmailDedup ?? prev.enableEmailDedup,
+        enableAddressDedup:
+          userPreferences.enableAddressDedup ?? prev.enableAddressDedup,
+        maxSearchExpansionIterations:
+          userPreferences.maxSearchExpansionIterations ??
+          prev.maxSearchExpansionIterations,
+        searchExpansionMultiplier:
+          userPreferences.searchExpansionMultiplier ??
+          prev.searchExpansionMultiplier,
       }));
+
+      setExpansionIterationsSetting(
+        userPreferences.maxSearchExpansionIterations ?? 5,
+      );
+      setExpansionMultiplierSetting(
+        userPreferences.searchExpansionMultiplier ?? 1.5,
+      );
 
       applyAppTheme(theme);
     }
@@ -172,6 +220,20 @@ export function Settings() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleExpansionIterationsBlur = () => {
+    const clamped = clampExpansionIterations(expansionIterationsSetting);
+    setExpansionIterationsSetting(clamped);
+    handlePreferencesUpdate({ maxSearchExpansionIterations: clamped });
+  };
+
+  const handleExpansionMultiplierBlur = () => {
+    const clamped = Number(
+      clampExpansionMultiplier(expansionMultiplierSetting).toFixed(2),
+    );
+    setExpansionMultiplierSetting(clamped);
+    handlePreferencesUpdate({ searchExpansionMultiplier: clamped });
   };
 
   const handleProfileUpdate = async () => {
@@ -285,6 +347,7 @@ export function Settings() {
     <div className="flex h-screen">
       <div className="flex-1 p-8 overflow-y-auto">
         <div className="max-w-4xl">
+          <ProviderKeyManager plan={userData?.plan} />
           {/* Account Settings */}
           <Card className="p-6 bg-card border-border mb-6">
             <div className="flex items-center gap-3 mb-6">
@@ -493,6 +556,208 @@ export function Settings() {
                 Genni automatically prepares two follow-up emails for each
                 outreach sequence by default.
               </p>
+            </div>
+          </Card>
+
+          {/* Deduplication Options */}
+          <Card className="p-6 bg-card border-border mb-6">
+            <div className="flex items-center gap-3 mb-6">
+              <Filter className="h-5 w-5 text-primary" />
+              <h3 className="text-lg font-semibold text-foreground">
+                Deduplication Options
+              </h3>
+            </div>
+
+            <div className="space-y-6">
+              {/* Place Name Deduplication */}
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="font-medium text-foreground">
+                      Filter duplicate place names
+                    </div>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button type="button" className="inline-flex">
+                            <Info className="h-4 w-4 text-muted-foreground" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>
+                            Removes businesses with identical names from search results.
+                            Useful for filtering out franchise locations (e.g., multiple
+                            State Farm or McDonald's locations). Only keeps the first
+                            occurrence found.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Search-level only (not user history)
+                  </div>
+                </div>
+                <Switch
+                  checked={preferences.enablePlaceNameDedup ?? false}
+                  onCheckedChange={(checked) =>
+                    handlePreferencesUpdate({ enablePlaceNameDedup: checked })
+                  }
+                  disabled={isLoading}
+                />
+              </div>
+
+              <Separator className="bg-border" />
+
+              {/* Email Deduplication */}
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="font-medium text-foreground">
+                      Avoid duplicate email addresses
+                    </div>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button type="button" className="inline-flex">
+                            <Info className="h-4 w-4 text-muted-foreground" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>
+                            Prevents sending emails to the same email address across
+                            all your searches. Checks against your historical lead
+                            database.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Checks all previous leads (recommended)
+                  </div>
+                </div>
+                <Switch
+                  checked={preferences.enableEmailDedup ?? true}
+                  onCheckedChange={(checked) =>
+                    handlePreferencesUpdate({ enableEmailDedup: checked })
+                  }
+                  disabled={isLoading}
+                />
+              </div>
+
+              <Separator className="bg-border" />
+
+              {/* Address Deduplication */}
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="font-medium text-foreground">
+                      Filter duplicate addresses
+                    </div>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button type="button" className="inline-flex">
+                            <Info className="h-4 w-4 text-muted-foreground" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>
+                            Removes locations with addresses you've already targeted.
+                            Checks against your historical lead database.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Checks all previous leads (recommended)
+                  </div>
+                </div>
+                <Switch
+                  checked={preferences.enableAddressDedup ?? true}
+                  onCheckedChange={(checked) =>
+                    handlePreferencesUpdate({ enableAddressDedup: checked })
+                  }
+                  disabled={isLoading}
+                />
+              </div>
+
+              <Separator className="bg-border" />
+
+              <div className="space-y-3 rounded-lg border border-border/60 bg-muted/10 p-4">
+                <div className="flex items-center gap-2">
+                  <div className="font-medium text-foreground">
+                    Search expansion safeguards
+                  </div>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button type="button" className="inline-flex">
+                          <Info className="h-4 w-4 text-muted-foreground" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p>
+                          Automatically expands the search radius (in concentric tiles) when
+                          deduplication removes too many leads. Stops after the configured number
+                          of attempts or 3× the original radius.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs uppercase tracking-wide text-muted-foreground">
+                      <span>Max attempts</span>
+                      <Badge variant="outline">
+                        {expansionIterationsSetting}
+                      </Badge>
+                    </div>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={5}
+                      step={1}
+                      value={expansionIterationsSetting}
+                      onChange={(e) =>
+                        setExpansionIterationsSetting(Number(e.target.value))
+                      }
+                      onBlur={handleExpansionIterationsBlur}
+                      className="bg-input border-border"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs uppercase tracking-wide text-muted-foreground">
+                      <span>Radius multiplier</span>
+                      <Badge variant="outline">
+                        {expansionMultiplierSetting.toFixed(1)}×
+                      </Badge>
+                    </div>
+                    <Input
+                      type="number"
+                      min={1.1}
+                      max={3}
+                      step={0.1}
+                      value={expansionMultiplierSetting}
+                      onChange={(e) =>
+                        setExpansionMultiplierSetting(Number(e.target.value))
+                      }
+                      onBlur={handleExpansionMultiplierBlur}
+                      className="bg-input border-border"
+                    />
+                  </div>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  We'll fetch about 1.5× the requested leads initially, then expand up to{" "}
+                  {(preferences.searchExpansionMultiplier ?? 1.5).toFixed(1)}× the original radius (max 3×)
+                  until we reach your requested count or hit the attempt limit.
+                </p>
+              </div>
             </div>
           </Card>
 

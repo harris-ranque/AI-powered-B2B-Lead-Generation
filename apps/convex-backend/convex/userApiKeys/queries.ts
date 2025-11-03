@@ -1,6 +1,11 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
+import {
+  ensureUserCanManageKeys,
+  providerValidator,
+  SUPPORTED_PROVIDERS,
+} from "./mutations";
 
 // Get all API keys for current user
 export const getUserApiKeys = query({
@@ -8,8 +13,9 @@ export const getUserApiKeys = query({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
 
-    // Only starter tier users can view their API keys
-    if (user.plan !== "starter") {
+    try {
+      ensureUserCanManageKeys(user.plan);
+    } catch (error) {
       return [];
     }
 
@@ -21,11 +27,11 @@ export const getUserApiKeys = query({
     // Return keys without the actual encrypted key for security
     return apiKeys.map((key) => ({
       _id: key._id,
-      service: key.service,
+      provider: key.provider,
       keyName: key.keyName,
-      isValid: key.isValid,
-      lastValidated: key.lastValidated,
-      validationError: key.validationError,
+      validated: key.validated,
+      validatedAt: key.validatedAt,
+      lastError: key.lastError,
       usageCount: key.usageCount,
       lastUsed: key.lastUsed,
       isActive: key.isActive,
@@ -41,13 +47,19 @@ export const getApiKeyStatus = query({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
 
-    // Only starter tier users need API key status
-    if (user.plan !== "starter") {
+    let requiresApiKeys = false;
+
+    try {
+      ensureUserCanManageKeys(user.plan);
+      requiresApiKeys = user.plan === "enterprise";
+    } catch (error) {
       return {
         requiresApiKeys: false,
-        configuredServices: [],
-        missingServices: [],
+        configuredProviders: [],
+        missingProviders: [],
         totalUsage: 0,
+        validKeys: 0,
+        totalKeys: 0,
       };
     }
 
@@ -57,21 +69,20 @@ export const getApiKeyStatus = query({
       .filter((q) => q.eq(q.field("isActive"), true))
       .collect();
 
-    const allServices = ["openai", "google_maps", "findymail", "icypeas", "apify"];
-    const configuredServices = apiKeys
-      .filter((key) => key.isValid)
-      .map((key) => key.service);
-    const missingServices = allServices.filter(
-      (service) => !configuredServices.includes(service as any),
+    const configuredProviders = apiKeys
+      .filter((key) => key.validated)
+      .map((key) => key.provider);
+    const missingProviders = SUPPORTED_PROVIDERS.filter(
+      (provider) => !configuredProviders.includes(provider),
     );
     const totalUsage = apiKeys.reduce((sum, key) => sum + key.usageCount, 0);
 
     return {
-      requiresApiKeys: true,
-      configuredServices,
-      missingServices,
+      requiresApiKeys,
+      configuredProviders,
+      missingProviders,
       totalUsage,
-      validKeys: apiKeys.filter((key) => key.isValid).length,
+      validKeys: apiKeys.filter((key) => key.validated).length,
       totalKeys: apiKeys.length,
     };
   },
@@ -80,34 +91,32 @@ export const getApiKeyStatus = query({
 // Check if user has required API keys for a service
 export const hasApiKeyForService = query({
   args: {
-    service: v.union(
-      v.literal("openai"),
-      v.literal("google_maps"),
-      v.literal("findymail"),
-      v.literal("icypeas"),
-      v.literal("apify"),
-    ),
+    provider: providerValidator,
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
 
-    // Non-starter users don't need API keys
-    if (user.plan !== "starter") {
-      return { hasKey: true, managed: true };
+    try {
+      ensureUserCanManageKeys(user.plan);
+    } catch (error) {
+      return { hasKey: true, managed: false };
     }
 
     const apiKey = await ctx.db
       .query("userApiKeys")
-      .withIndex("by_user_service_active", (q) => 
-        q.eq("userId", user._id).eq("service", args.service).eq("isActive", true)
+      .withIndex("by_user_provider_active", (q) =>
+        q
+          .eq("userId", user._id)
+          .eq("provider", args.provider)
+          .eq("isActive", true)
       )
-      .filter((q) => q.eq(q.field("isValid"), true))
+      .filter((q) => q.eq(q.field("validated"), true))
       .unique();
 
     return {
       hasKey: !!apiKey,
       managed: false,
-      lastValidated: apiKey?.lastValidated,
+      lastValidated: apiKey?.validatedAt,
       usageCount: apiKey?.usageCount || 0,
     };
   },

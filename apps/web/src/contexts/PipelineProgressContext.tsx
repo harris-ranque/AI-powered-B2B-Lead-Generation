@@ -102,29 +102,25 @@ export function PipelineProgressProvider({
   collapsed,
 }: PipelineProgressProviderProps) {
   const stageOrder = stageOrderProp ?? (STAGE_ORDER as PipelineStage[]);
-  const [isCollapsed, dispatch] = useReducer(
+  const [internalCollapsed, dispatch] = useReducer(
     collapseReducer,
     false,
     readInitialCollapsed,
   );
-
-  useEffect(() => {
-    if (typeof collapsed === "boolean" && collapsed !== isCollapsed) {
-      dispatch({ type: "set", value: collapsed });
-    }
-  }, [collapsed, isCollapsed]);
+  const isControlled = typeof collapsed === "boolean";
+  const resolvedCollapsed = isControlled ? Boolean(collapsed) : internalCollapsed;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       window.localStorage.setItem(
         COLLAPSE_STORAGE_KEY,
-        JSON.stringify(isCollapsed),
+        JSON.stringify(resolvedCollapsed),
       );
     } catch {
       // Ignore storage errors (Safari private mode, etc.)
     }
-  }, [isCollapsed]);
+  }, [resolvedCollapsed]);
 
   const { search } = useSearch(searchId);
   const {
@@ -227,13 +223,19 @@ export function PipelineProgressProvider({
   );
 
   const setCollapsed = useCallback(
-    (value: boolean) => dispatch({ type: "set", value }),
-    [],
+    (value: boolean) => {
+      const nextValue = Boolean(value);
+      if (!isControlled) {
+        dispatch({ type: "set", value: nextValue });
+      }
+      onCollapseChange?.(nextValue);
+    },
+    [isControlled, onCollapseChange],
   );
 
   const toggleCollapsed = useCallback(
-    () => dispatch({ type: "toggle" }),
-    [],
+    () => setCollapsed(!resolvedCollapsed),
+    [resolvedCollapsed, setCollapsed],
   );
 
   const value = useMemo<PipelineProgressContextValue>(
@@ -244,7 +246,7 @@ export function PipelineProgressProvider({
       currentStage: derivedStage,
       completedStages,
       availableStages,
-      isCollapsed,
+      isCollapsed: resolvedCollapsed,
       setCollapsed,
       toggleCollapsed,
       onStageSelect,
@@ -254,7 +256,7 @@ export function PipelineProgressProvider({
       completedStages,
       derivedStage,
       events,
-      isCollapsed,
+      resolvedCollapsed,
       onStageSelect,
       progress,
       setCollapsed,
@@ -262,10 +264,6 @@ export function PipelineProgressProvider({
       toggleCollapsed,
     ],
   );
-
-  useEffect(() => {
-    onCollapseChange?.(isCollapsed);
-  }, [isCollapsed, onCollapseChange]);
 
   return (
     <PipelineProgressContext.Provider value={value}>
