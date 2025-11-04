@@ -61,6 +61,9 @@ const leadDashboardLogger = createLogger("LeadEternityDashboard");
 function LeadEternityDashboardContent() {
   const [currentTab, setCurrentTab] = useState<DashboardTabName>("overview");
   const [currentTheme, setCurrentTheme] = useState<AppThemeKey>(getStoredAppTheme());
+  const [hasSkippedOnboarding, setHasSkippedOnboarding] = useState<boolean>(
+    () => localStorage.getItem("genni_onboarding_skipped") === "true"
+  );
   const location = useLocation();
   const completionAnnouncedRef = useRef(false);
   const isHandlingHashChangeRef = useRef(false);
@@ -389,6 +392,10 @@ function LeadEternityDashboardContent() {
   const handleCompleteOnboarding = useCallback(
     (profileData: BusinessProfileInput) => {
       try {
+        // Clear skip flag if it was set
+        localStorage.removeItem("genni_onboarding_skipped");
+        setHasSkippedOnboarding(false);
+
         handleTabChange("overview");
         toast({
           title: "Welcome to Genni!",
@@ -418,12 +425,17 @@ function LeadEternityDashboardContent() {
 
   const handleSkipOnboarding = useCallback(() => {
     try {
+      // Store skip preference in localStorage to bypass onboarding gate
+      localStorage.setItem("genni_onboarding_skipped", "true");
+      setHasSkippedOnboarding(true);
+
       handleTabChange("overview");
       toast({
         title: "Onboarding Skipped",
-        description: "You can complete your business profile later in Settings.",
+        description: "You can complete your business profile anytime in Settings to unlock full AI personalization.",
+        duration: 5000,
       });
-      leadDashboardLogger.info("Onboarding skipped");
+      leadDashboardLogger.info("Onboarding skipped - user can access dashboard with incomplete profile");
     } catch (error) {
       handleComponentError(error, "handle-skip-onboarding");
     }
@@ -480,8 +492,8 @@ function LeadEternityDashboardContent() {
     return <div className="harborlight-shell min-h-screen bg-background" />;
   }
 
-  // Show onboarding if not completed (after loading)
-  if (!hasCompletedOnboarding) {
+  // Show onboarding if not completed AND not skipped (after loading)
+  if (!hasCompletedOnboarding && !hasSkippedOnboarding) {
     return (
       <div className="harborlight-shell min-h-screen bg-background">
         <BusinessProfileWizard

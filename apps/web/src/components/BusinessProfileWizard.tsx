@@ -345,13 +345,27 @@ export function BusinessProfileWizard({
     if (
       !profile.companyName ||
       !profile.industry ||
-      !sanitizedContactName ||
-      !profile.valueProposition
+      !sanitizedContactName
     ) {
       toast({
         title: "Missing Information",
         description:
-          "Please fill in the required fields (Company Name, Your Name, Industry, Value Proposition).",
+          "Please fill in the required fields (Company Name, Your Name, Industry).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Value proposition validation: if provided, must be at least 50 characters
+    if (
+      profile.valueProposition &&
+      profile.valueProposition.length > 0 &&
+      profile.valueProposition.length < 50
+    ) {
+      toast({
+        title: "Value Proposition Too Short",
+        description:
+          "Value proposition must be at least 50 characters. Either provide a complete description or leave it empty to fill in later.",
         variant: "destructive",
       });
       return;
@@ -414,9 +428,11 @@ export function BusinessProfileWizard({
           profile.targetIndustries.length > 0 && profile.offerings.length > 0
         );
       case 3:
-        return (
-          profile.valueProposition && profile.keyDifferentiators.length > 0
-        );
+        // Value proposition is optional, but if provided must be 50+ chars
+        // Key differentiators are required
+        const valuePropositionValid =
+          !profile.valueProposition || profile.valueProposition.length >= 50;
+        return valuePropositionValid && profile.keyDifferentiators.length > 0;
       case 4:
         return profile.idealCustomerProfile;
       default:
@@ -654,10 +670,10 @@ export function BusinessProfileWizard({
         <div className="space-y-6">
           <div>
             <Label htmlFor="valueProposition" className="text-sm font-medium">
-              Core Value Proposition *
+              Core Value Proposition <span className="text-muted-foreground">(optional but recommended)</span>
             </Label>
             <p className="text-xs text-muted-foreground mb-2">
-              In 1-2 sentences, describe the main value you provide to clients
+              In 1-2 sentences, describe the main value you provide to clients. If provided, must be at least 50 characters for quality AI personalization.
             </p>
             <Textarea
               id="valueProposition"
@@ -671,6 +687,20 @@ export function BusinessProfileWizard({
               placeholder="We help growing businesses scale their operations through AI-powered automation solutions that reduce manual work by 60% while improving accuracy and customer satisfaction."
               className="min-h-[80px]"
             />
+            <div className="flex items-center justify-between mt-1">
+              <span className={`text-xs ${
+                profile.valueProposition.length >= 50
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-muted-foreground"
+              }`}>
+                {profile.valueProposition.length} / 50 characters
+              </span>
+              {profile.valueProposition.length > 0 && profile.valueProposition.length < 50 && (
+                <span className="text-xs text-orange-600 dark:text-orange-400">
+                  {50 - profile.valueProposition.length} more needed
+                </span>
+              )}
+            </div>
           </div>
 
           <div>

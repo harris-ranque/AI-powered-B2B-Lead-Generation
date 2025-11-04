@@ -90,12 +90,14 @@ export const createOrUpdateProfile = mutation({
       );
     }
 
+    // Value proposition validation: allow empty OR require 50+ chars if provided
     if (
-      !sanitizedData.valueProposition ||
+      sanitizedData.valueProposition &&
+      sanitizedData.valueProposition.length > 0 &&
       sanitizedData.valueProposition.length < 50
     ) {
       throw createError(
-        "Value proposition must be at least 50 characters",
+        "Value proposition must be at least 50 characters when provided",
         ERROR_CODES.VALIDATION_ERROR,
         400,
       );
@@ -137,7 +139,8 @@ export const createOrUpdateProfile = mutation({
     const isComplete = !!(
       sanitizedData.companyName &&
       sanitizedData.industry &&
-      sanitizedData.valueProposition &&
+      sanitizedData.valueProposition && // Value prop required for completion
+      sanitizedData.valueProposition.length >= 50 && // Must meet minimum length
       sanitizedData.services.length > 0 &&
       sanitizedData.targetMarkets.length > 0 &&
       sanitizedData.keyDifferentiators.length > 0 &&
