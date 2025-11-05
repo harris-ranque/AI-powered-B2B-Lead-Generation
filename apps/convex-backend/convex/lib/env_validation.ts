@@ -50,6 +50,11 @@ export const REQUIRED_ENV_VARS: RequiredEnvVar[] = [
     required: true,
     validate: (value: string) => value.includes("clerk."),
   },
+  {
+    name: "CLERK_SYNC_TOKEN",
+    description: "Shared secret used to authorize Clerk user sync migrations",
+    required: false,
+  },
 
   // Stripe Payment Processing
   {

@@ -680,6 +680,7 @@ function LeadEternityDashboardContent() {
                 userCredits={userCredits}
                 userPlan={userPlan}
                 onOpenLeadHistory={handleOpenLeadHistory}
+                onNavigateToSettings={() => handleTabChange("settings")}
               />
             </div>
           )}

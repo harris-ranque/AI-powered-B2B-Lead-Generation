@@ -17,7 +17,11 @@ ValidationResult = Dict[str, Any]
 
 OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
-PERPLEXITY_MODELS_URL = "https://api.perplexity.ai/models"
+PERPLEXITY_CHAT_URL = "https://api.perplexity.ai/chat/completions"
+FINDYMAIL_CREDITS_URL = "https://app.findymail.com/api/credits"
+GOOGLE_MAPS_FINDPLACE_URL = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
+ICYPEAS_CREDITS_URL = "https://app.icypeas.com/api/credits"
+APIFY_USER_URL = "https://api.apify.com/v2/users/me"
 
 
 async def validate_openai_key(api_key: str) -> ValidationResult:
@@ -64,22 +68,39 @@ async def validate_tavily_key(api_key: str) -> ValidationResult:
 
 
 async def validate_perplexity_key(api_key: str) -> ValidationResult:
+    """Validate Perplexity API key by attempting a minimal chat completion request."""
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
 
+    # Minimal test payload to validate the key without consuming significant quota
+    payload = {
+        "model": "llama-3.1-sonar-small-128k-online",
+        "messages": [{"role": "user", "content": "test"}],
+        "max_tokens": 1
+    }
+
     try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-            async with session.get(PERPLEXITY_MODELS_URL, headers=headers) as response:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+            async with session.post(PERPLEXITY_CHAT_URL, headers=headers, json=payload) as response:
+                # 200: Valid key and successful request
+                # 401/403: Invalid or unauthorized key
                 if response.status == 200:
-                    data = await response.json()
-                    quota = data.get("data")
-                    quota_remaining = len(quota) if isinstance(quota, list) else None
-                    return {"valid": True, "quotaRemaining": quota_remaining}
-                body = await response.text()
-                logger.warning("Perplexity validation failed", extra={"status": response.status})
-                return {"valid": False, "error": body or "Authentication failed"}
+                    return {"valid": True}
+
+                # Get error details for better diagnostics
+                try:
+                    error_data = await response.json()
+                    error_msg = error_data.get("error", {}).get("message", "Authentication failed")
+                except Exception:
+                    error_msg = await response.text()
+
+                logger.warning("Perplexity validation failed", extra={
+                    "status": response.status,
+                    "error": error_msg[:200]
+                })
+                return {"valid": False, "error": error_msg[:200] or "Authentication failed"}
     except asyncio.TimeoutError:
         return {"valid": False, "error": "Validation timeout"}
     except Exception as error:  # pylint: disable=broad-except
@@ -105,11 +126,118 @@ async def validate_google_places_key(api_key: str) -> ValidationResult:
     return await asyncio.to_thread(_validate)
 
 
+async def validate_findymail_key(api_key: str) -> ValidationResult:
+    """Validate FindyMail API key by checking credits endpoint."""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+            async with session.get(FINDYMAIL_CREDITS_URL, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    # Extract quota information if available
+                    credits = data.get("credits")
+                    return {
+                        "valid": True,
+                        "quotaRemaining": credits if isinstance(credits, (int, float)) else None
+                    }
+                body = await response.text()
+                logger.warning("FindyMail validation failed", extra={"status": response.status, "body": body[:200]})
+                return {"valid": False, "error": body or "Authentication failed"}
+    except asyncio.TimeoutError:
+        return {"valid": False, "error": "Validation timeout"}
+    except Exception as error:  # pylint: disable=broad-except
+        logger.error("FindyMail key validation error", exc_info=error)
+        return {"valid": False, "error": str(error)}
+
+
+async def validate_google_maps_key(api_key: str) -> ValidationResult:
+    """Validate Google Maps API key using Places API."""
+    params = {
+        "input": "restaurant",
+        "inputtype": "textquery",
+        "fields": "place_id,name",
+        "key": api_key
+    }
+
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+            async with session.get(GOOGLE_MAPS_FINDPLACE_URL, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    # Check for valid response status (OK or ZERO_RESULTS both indicate working key)
+                    if data.get("status") in ["OK", "ZERO_RESULTS"]:
+                        return {"valid": True}
+                    error_msg = data.get("error_message", f"API returned status: {data.get('status')}")
+                    logger.warning("Google Maps validation failed", extra={"status": data.get("status"), "error": error_msg})
+                    return {"valid": False, "error": error_msg}
+                body = await response.text()
+                logger.warning("Google Maps validation HTTP error", extra={"status": response.status, "body": body[:200]})
+                return {"valid": False, "error": body or "Authentication failed"}
+    except asyncio.TimeoutError:
+        return {"valid": False, "error": "Validation timeout"}
+    except Exception as error:  # pylint: disable=broad-except
+        logger.error("Google Maps key validation error", exc_info=error)
+        return {"valid": False, "error": str(error)}
+
+
+async def validate_icypeas_key(api_key: str) -> ValidationResult:
+    """Validate IcyPeas API key by checking credits endpoint."""
+    headers = {
+        "Authorization": api_key,  # IcyPeas uses direct key in Authorization header
+    }
+
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+            async with session.get(ICYPEAS_CREDITS_URL, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    credits = data.get("credits")
+                    return {
+                        "valid": True,
+                        "quotaRemaining": credits if isinstance(credits, (int, float)) else None
+                    }
+                body = await response.text()
+                logger.warning("IcyPeas validation failed", extra={"status": response.status, "body": body[:200]})
+                return {"valid": False, "error": body or "Authentication failed"}
+    except asyncio.TimeoutError:
+        return {"valid": False, "error": "Validation timeout"}
+    except Exception as error:  # pylint: disable=broad-except
+        logger.error("IcyPeas key validation error", exc_info=error)
+        return {"valid": False, "error": str(error)}
+
+
+async def validate_apify_key(api_key: str) -> ValidationResult:
+    """Validate Apify API key by checking user endpoint."""
+    params = {"token": api_key}
+
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+            async with session.get(APIFY_USER_URL, params=params) as response:
+                if response.status == 200:
+                    return {"valid": True}
+                body = await response.text()
+                logger.warning("Apify validation failed", extra={"status": response.status, "body": body[:200]})
+                return {"valid": False, "error": body or "Authentication failed"}
+    except asyncio.TimeoutError:
+        return {"valid": False, "error": "Validation timeout"}
+    except Exception as error:  # pylint: disable=broad-except
+        logger.error("Apify key validation error", exc_info=error)
+        return {"valid": False, "error": str(error)}
+
+
 PROVIDER_VALIDATORS = {
     "openai": validate_openai_key,
     "tavily": validate_tavily_key,
     "perplexity": validate_perplexity_key,
     "google_places": validate_google_places_key,
+    "google_maps": validate_google_maps_key,  # Legacy provider
+    "findymail": validate_findymail_key,
+    "icypeas": validate_icypeas_key,
+    "apify": validate_apify_key,
 }
 
 

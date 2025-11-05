@@ -4,10 +4,15 @@ import { SearchPage } from "./SearchPage";
 import { LeadsPage } from "./LeadsPage";
 import { TemplatesPage } from "./TemplatesPage";
 import { ActivityPanel } from "./ActivityPanel";
+import { Settings } from "./Settings";
 import { UserDataProvider } from "@/contexts/UserDataContext";
 
 export function LeadGenApp() {
   const [currentPage, setCurrentPage] = useState("search");
+
+  const handleNavigateToSettings = () => {
+    setCurrentPage("settings");
+  };
 
   const renderPage = () => {
     switch (currentPage) {
@@ -32,19 +37,7 @@ export function LeadGenApp() {
           </div>
         );
       case "settings":
-        return (
-          <div className="space-y-8">
-            <div className="space-y-2">
-              <h1 className="text-3xl font-bold">Settings</h1>
-              <p className="text-muted-foreground text-lg">
-                Configure your account preferences
-              </p>
-            </div>
-            <div className="text-center py-12 text-muted-foreground">
-              Settings panel coming soon...
-            </div>
-          </div>
-        );
+        return <Settings />;
       case "billing":
         return (
           <div className="space-y-8">

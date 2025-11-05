@@ -57,10 +57,12 @@ import {
   CollapsibleContent,
 } from "@/components/ui/collapsible";
 import { toStandardCase } from "@/utils/string";
+import { EnterpriseApiKeyBlocker } from "./EnterpriseApiKeyBlocker";
 
 interface LeadDiscoveryStageProps {
   userCredits: number;
   userPlan: "free" | "pro" | "enterprise";
+  onNavigateToSettings?: () => void;
 }
 
 const MIN_RADIUS_MILES = 1;
@@ -86,6 +88,7 @@ const MAX_SELECTED_ROLES = 3;
 export function LeadDiscoveryStage({
   userCredits,
   userPlan,
+  onNavigateToSettings,
 }: LeadDiscoveryStageProps) {
   const {
     state,
@@ -99,9 +102,18 @@ export function LeadDiscoveryStage({
   const { searchGoogleMaps } = useGoogleMapsSearch();
   const { toast } = useToast();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [showApiKeyBlocker, setShowApiKeyBlocker] = useState(false);
 
   // Fetch user preferences for de-duplication settings
   const userPreferences = useQuery(api.users.queries.getUserPreferences);
+
+  // Fetch API key status for enterprise users
+  const apiKeyStatus = useQuery(api.userApiKeys.queries.getApiKeyStatus);
+
+  // Check if enterprise user has all required API keys
+  const isEnterprise = userPlan === "enterprise";
+  const missingApiKeys = apiKeyStatus?.missingRequiredProviders || [];
+  const hasAllApiKeys = apiKeyStatus?.hasRequiredKeys ?? true;
 
   // Google Maps form state
   const [location, setLocation] = useState("");
@@ -366,7 +378,21 @@ export function LeadDiscoveryStage({
 
   const handleRequestStart = () => {
     if (isStartDisabled) return;
+
+    // For enterprise users, check if all API keys are configured
+    if (isEnterprise && !hasAllApiKeys) {
+      setShowApiKeyBlocker(true);
+      return;
+    }
+
     setIsConfirmOpen(true);
+  };
+
+  const handleGoToSettings = () => {
+    setShowApiKeyBlocker(false);
+    if (onNavigateToSettings) {
+      onNavigateToSettings();
+    }
   };
 
   const handleConfirmStart = async () => {
@@ -853,6 +879,14 @@ export function LeadDiscoveryStage({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Enterprise API Key Blocker Modal */}
+      {showApiKeyBlocker && isEnterprise && missingApiKeys.length > 0 && (
+        <EnterpriseApiKeyBlocker
+          missingProviders={missingApiKeys}
+          onGoToSettings={handleGoToSettings}
+        />
+      )}
     </div>
   );
 }

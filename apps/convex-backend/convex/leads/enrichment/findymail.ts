@@ -72,7 +72,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
     // - API limit: 5 concurrent requests (synchronous)
     // - Heavy processing involved (real-time search)
     // We use conservative limits to be respectful of their infrastructure
-    const CONCURRENT_REQUESTS = 3; // Max concurrent requests (API limit is 5)
+    const CONCURRENT_REQUESTS = 5; // Max concurrent requests (API limit is 5)
     const DELAY_BETWEEN_BATCHES_MS = 500; // 500ms delay between batches for heavy processing
     const RETRY_ATTEMPTS = 4; // Increased to 4 retries for 504 Gateway Timeouts (heavy processing)
 
@@ -84,7 +84,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
 
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
       const batch = batches[batchIndex]!;
-      console.log(`[FindyMail] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} domains) - respecting 5 concurrent request limit`);
+      console.log(`[FindyMail] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} domains) - using 5 concurrent requests`);
 
       // Process batch with retries
       const batchPromises = batch.map(async (domain) => {

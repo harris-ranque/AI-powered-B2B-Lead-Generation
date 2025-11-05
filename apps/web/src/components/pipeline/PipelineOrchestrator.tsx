@@ -57,6 +57,7 @@ interface PipelineOrchestratorProps {
   userPlan: "free" | "pro" | "enterprise";
   onGenerateEmail?: (lead: Lead) => void;
   onOpenLeadHistory?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export function PipelineOrchestrator({
@@ -64,6 +65,7 @@ export function PipelineOrchestrator({
   userPlan,
   onGenerateEmail,
   onOpenLeadHistory,
+  onNavigateToSettings,
 }: PipelineOrchestratorProps) {
   const { state, setStage, canProgressToStage, setLeads, setEnrichedLeads } =
     usePipeline();
@@ -332,7 +334,11 @@ export function PipelineOrchestrator({
         return <SourceSelector />;
       case "lead_discovery":
         return (
-          <LeadDiscoveryStage userCredits={userCredits} userPlan={userPlan} />
+          <LeadDiscoveryStage
+            userCredits={userCredits}
+            userPlan={userPlan}
+            onNavigateToSettings={onNavigateToSettings}
+          />
         );
       case "enrichment":
         return <EnrichmentStage />;

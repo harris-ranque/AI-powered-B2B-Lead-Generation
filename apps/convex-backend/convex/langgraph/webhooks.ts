@@ -187,7 +187,9 @@ export const handleEmailGenerationCompleted = internalMutation({
         return { success: false, error: "Search not found" };
       }
 
-      const userDoc = await ctx.db.get(search.userId);
+      const userDoc = await ctx.runQuery(internal.users.internal.getUserInternal, {
+        userId: search.userId,
+      });
       const isEnterpriseUser = userDoc?.plan === "enterprise";
 
       // Get lead and validate

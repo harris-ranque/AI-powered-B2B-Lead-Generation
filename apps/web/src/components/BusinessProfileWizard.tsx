@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useMutation } from "convex/react";
+import { api } from "@genni/convex-types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -134,6 +136,7 @@ export function BusinessProfileWizard({
   // Convex hooks
   const { profile: existingProfile, createOrUpdateProfile } = useProfile();
   const { user } = useAuth();
+  const updateUserProfile = useMutation(api.users.mutations.updateProfile);
 
   const initialContactInfo =
     (existingProfile?.contactInfo as {
@@ -379,6 +382,13 @@ export function BusinessProfileWizard({
     setIsSaving(true);
 
     try {
+      // Update user's name in the users table if it's different
+      if (sanitizedContactName && sanitizedContactName !== user?.name) {
+        await updateUserProfile({
+          name: sanitizedContactName,
+        });
+      }
+
       // Save profile to Convex - map frontend fields to backend schema
       await createOrUpdateProfile({
         companyName: completedProfile.companyName,
@@ -559,13 +569,12 @@ export function BusinessProfileWizard({
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === ",") {
                     e.preventDefault();
-                    if (addToArray("targetIndustries", newTargetIndustry)) {
-                      setNewTargetIndustry("");
-                    }
+                    addToArray("targetIndustries", newTargetIndustry);
+                    setNewTargetIndustry("");
                   }
                 }}
                 onBlur={() => {
-                  if (addToArray("targetIndustries", newTargetIndustry)) {
+                  if (newTargetIndustry.trim() && addToArray("targetIndustries", newTargetIndustry)) {
                     setNewTargetIndustry("");
                   }
                 }}
@@ -613,13 +622,12 @@ export function BusinessProfileWizard({
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === ",") {
                     e.preventDefault();
-                    if (addToArray("offerings", newOffering)) {
-                      setNewOffering("");
-                    }
+                    addToArray("offerings", newOffering);
+                    setNewOffering("");
                   }
                 }}
                 onBlur={() => {
-                  if (addToArray("offerings", newOffering)) {
+                  if (newOffering.trim() && addToArray("offerings", newOffering)) {
                     setNewOffering("");
                   }
                 }}
@@ -670,7 +678,7 @@ export function BusinessProfileWizard({
         <div className="space-y-6">
           <div>
             <Label htmlFor="valueProposition" className="text-sm font-medium">
-              Core Value Proposition <span className="text-muted-foreground">(optional but recommended)</span>
+              Core Value Proposition
             </Label>
             <p className="text-xs text-muted-foreground mb-2">
               In 1-2 sentences, describe the main value you provide to clients. If provided, must be at least 50 characters for quality AI personalization.
@@ -716,13 +724,12 @@ export function BusinessProfileWizard({
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === ",") {
                     e.preventDefault();
-                    if (addToArray("keyDifferentiators", newDifferentiator)) {
-                      setNewDifferentiator("");
-                    }
+                    addToArray("keyDifferentiators", newDifferentiator);
+                    setNewDifferentiator("");
                   }
                 }}
                 onBlur={() => {
-                  if (addToArray("keyDifferentiators", newDifferentiator)) {
+                  if (newDifferentiator.trim() && addToArray("keyDifferentiators", newDifferentiator)) {
                     setNewDifferentiator("");
                   }
                 }}
@@ -769,13 +776,12 @@ export function BusinessProfileWizard({
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === ",") {
                     e.preventDefault();
-                    if (addToArray("painPointsWeSolve", newPainPoint)) {
-                      setNewPainPoint("");
-                    }
+                    addToArray("painPointsWeSolve", newPainPoint);
+                    setNewPainPoint("");
                   }
                 }}
                 onBlur={() => {
-                  if (addToArray("painPointsWeSolve", newPainPoint)) {
+                  if (newPainPoint.trim() && addToArray("painPointsWeSolve", newPainPoint)) {
                     setNewPainPoint("");
                   }
                 }}
@@ -866,13 +872,12 @@ export function BusinessProfileWizard({
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === ",") {
                     e.preventDefault();
-                    if (addToArray("currentChallenges", newChallenge)) {
-                      setNewChallenge("");
-                    }
+                    addToArray("currentChallenges", newChallenge);
+                    setNewChallenge("");
                   }
                 }}
                 onBlur={() => {
-                  if (addToArray("currentChallenges", newChallenge)) {
+                  if (newChallenge.trim() && addToArray("currentChallenges", newChallenge)) {
                     setNewChallenge("");
                   }
                 }}

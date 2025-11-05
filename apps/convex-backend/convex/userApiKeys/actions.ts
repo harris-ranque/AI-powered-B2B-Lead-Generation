@@ -454,12 +454,23 @@ export const resolveUserProviderKeys = action({
 
 async function validateGoogleMapsKey(apiKey: string): Promise<boolean> {
   try {
+    // Use a more specific test query that should always return results with a valid key
     const response = await fetch(
-      `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=test&inputtype=textquery&fields=place_id&key=${apiKey}`,
+      `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=restaurant&inputtype=textquery&fields=place_id,name&key=${apiKey}`,
     );
 
     const data: any = await response.json();
-    return response.status === 200 && !data.error_message;
+
+    // Check for successful API response status
+    // ZERO_RESULTS is acceptable - it means the key works but no results found
+    // OK with results means the key works perfectly
+    // Any error_message indicates a problem with the key
+    if (data.error_message) {
+      console.error("Google Maps validation error:", data.error_message);
+      return false;
+    }
+
+    return response.status === 200 && (data.status === "OK" || data.status === "ZERO_RESULTS");
   } catch (error) {
     console.error("Google Maps validation error:", error);
     return false;

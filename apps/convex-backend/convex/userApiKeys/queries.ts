@@ -7,6 +7,16 @@ import {
   SUPPORTED_PROVIDERS,
 } from "./mutations";
 
+// Required providers for enterprise BYOK (Bring Your Own Keys)
+// These are the minimum set of API keys needed for full platform functionality
+export const REQUIRED_ENTERPRISE_PROVIDERS = [
+  "openai",      // LangGraph AI operations
+  "tavily",      // Research and business intelligence
+  "perplexity",  // Deep research and analysis
+  "google_places", // Location and business discovery
+  "findymail",   // Email enrichment
+] as const;
+
 // Get all API keys for current user
 export const getUserApiKeys = query({
   args: {},
@@ -57,6 +67,8 @@ export const getApiKeyStatus = query({
         requiresApiKeys: false,
         configuredProviders: [],
         missingProviders: [],
+        missingRequiredProviders: [],
+        hasRequiredKeys: true,
         totalUsage: 0,
         validKeys: 0,
         totalKeys: 0,
@@ -75,12 +87,26 @@ export const getApiKeyStatus = query({
     const missingProviders = SUPPORTED_PROVIDERS.filter(
       (provider) => !configuredProviders.includes(provider),
     );
+
+    // For enterprise users, check if they have all REQUIRED providers
+    const missingRequiredProviders = requiresApiKeys
+      ? REQUIRED_ENTERPRISE_PROVIDERS.filter(
+          (provider) => !configuredProviders.includes(provider),
+        )
+      : [];
+
+    const hasRequiredKeys = requiresApiKeys
+      ? missingRequiredProviders.length === 0
+      : true;
+
     const totalUsage = apiKeys.reduce((sum, key) => sum + key.usageCount, 0);
 
     return {
       requiresApiKeys,
       configuredProviders,
-      missingProviders,
+      missingProviders, // All missing providers (for info/display)
+      missingRequiredProviders, // Only required providers that are missing
+      hasRequiredKeys, // True if all required keys are configured
       totalUsage,
       validKeys: apiKeys.filter((key) => key.validated).length,
       totalKeys: apiKeys.length,

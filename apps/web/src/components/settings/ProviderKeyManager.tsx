@@ -264,15 +264,15 @@ export function ProviderKeyManager({ plan }: ProviderKeyManagerProps) {
         })}
         {status && (
           <p className="text-xs text-muted-foreground">
-            Connected providers: {status.configuredProviders?.length ?? 0} / {providerOrder.length}. Missing providers:
+            Connected providers: {status.configuredProviders?.length ?? 0} / {providerOrder.length}. Missing required providers:
             {" "}
             {(() => {
-              const missing = (status.missingProviders as string[] | undefined)?.filter((provider): provider is ProviderId =>
+              const missing = (status.missingRequiredProviders as string[] | undefined)?.filter((provider): provider is ProviderId =>
                 providerOrder.includes(provider as ProviderId),
               );
               return missing && missing.length
                 ? missing.map((provider) => provider.replace("_", " ")).join(", ")
-                : "None";
+                : "None - All required providers configured!";
             })()}
           </p>
         )}
