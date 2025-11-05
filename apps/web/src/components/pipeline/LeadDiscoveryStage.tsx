@@ -84,6 +84,13 @@ const ROLE_SUGGESTIONS = [
   "Manager",
 ] as const;
 const MAX_SELECTED_ROLES = 3;
+const ENTERPRISE_REQUIRED_PROVIDERS = [
+  "openai",
+  "google_places",
+  "findymail",
+  "tavily",
+  "perplexity",
+] as const;
 
 export function LeadDiscoveryStage({
   userCredits,
@@ -112,8 +119,15 @@ export function LeadDiscoveryStage({
 
   // Check if enterprise user has all required API keys
   const isEnterprise = userPlan === "enterprise";
-  const missingApiKeys = apiKeyStatus?.missingRequiredProviders || [];
-  const hasAllApiKeys = apiKeyStatus?.hasRequiredKeys ?? true;
+  const keysLoaded = apiKeyStatus !== undefined;
+  const missingApiKeys =
+    apiKeyStatus?.missingRequiredProviders ??
+    (isEnterprise ? [...ENTERPRISE_REQUIRED_PROVIDERS] : []);
+  const hasAllApiKeys = !isEnterprise
+    ? true
+    : keysLoaded
+    ? apiKeyStatus.hasRequiredKeys
+    : false;
 
   // Google Maps form state
   const [location, setLocation] = useState("");
@@ -171,6 +185,19 @@ export function LeadDiscoveryStage({
       setRoleError(null);
     }
   }, [selectedRoles.length]);
+
+  useEffect(() => {
+    if (!isEnterprise) {
+      setShowApiKeyBlocker(false);
+      return;
+    }
+
+    if (!apiKeyStatus) {
+      return;
+    }
+
+    setShowApiKeyBlocker(!apiKeyStatus.hasRequiredKeys);
+  }, [apiKeyStatus, isEnterprise]);
 
   const tryAddRole = (role: string) => {
     const formatted = toStandardCase(role);
