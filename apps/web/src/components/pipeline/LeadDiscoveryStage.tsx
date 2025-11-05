@@ -89,6 +89,7 @@ const ENTERPRISE_REQUIRED_PROVIDERS = [
   "google_places",
   "findymail",
   "tavily",
+  "exa",
   "perplexity",
 ] as const;
 

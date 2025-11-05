@@ -77,9 +77,9 @@ async def validate_perplexity_key(api_key: str) -> ValidationResult:
 
     # Minimal test payload to validate the key without consuming significant quota
     payload = {
-        # Perplexity does not expose an "online" variant for the small Sonar model;
-        # use the chat endpoint variant for lightweight validation requests.
-        "model": "llama-3.1-sonar-small-128k-chat",
+        # Use the current Sonar model (as of 2025, replaces deprecated llama-3.1-sonar models)
+        # Reference: https://docs.perplexity.ai/docs/model-cards
+        "model": "sonar",
         "messages": [{"role": "user", "content": "test"}],
         "max_tokens": 1
     }

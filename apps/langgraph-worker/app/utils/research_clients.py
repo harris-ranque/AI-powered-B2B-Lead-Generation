@@ -531,8 +531,9 @@ class PerplexityClient:
             
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
                 payload = {
-                    # Use chat variant for broad support; callers can override via settings if needed.
-                    "model": "llama-3.1-sonar-large-128k-online",
+                    # Use sonar-pro for comprehensive research (replaces deprecated llama-3.1-sonar-large-128k-online)
+                    # Reference: https://docs.perplexity.ai/docs/model-cards
+                    "model": "sonar-pro",
                     "messages": [
                         {
                             "role": "system",
