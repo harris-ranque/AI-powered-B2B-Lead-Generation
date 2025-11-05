@@ -112,6 +112,17 @@ export const createSearch = mutation({
 
         const user = await requireAuth(ctx);
 
+        // Block free tier users from creating searches
+        if (user.plan === "free") {
+          captureAnalyticsEvent(user._id, "search_creation_blocked", {
+            reason: "free_tier_restriction",
+            plan: user.plan,
+          });
+          throw new Error(
+            "Search creation is not available on the free plan. Please upgrade to Pro or higher to create searches."
+          );
+        }
+
         // Validate enterprise users have required API keys
         if (user.plan === "enterprise") {
           const apiKeys = await ctx.db
@@ -131,7 +142,6 @@ export const createSearch = mutation({
           const hasFindyMail = apiKeys.some((key) => key.provider === "findymail");
           const hasTavily = apiKeys.some((key) => key.provider === "tavily");
           const hasPerplexity = apiKeys.some((key) => key.provider === "perplexity");
-          const hasExa = apiKeys.some((key) => key.provider === "exa");
 
           const missingKeys: string[] = [];
           if (!hasOpenAI) missingKeys.push("OpenAI");
@@ -141,7 +151,6 @@ export const createSearch = mutation({
           if (!hasFindyMail) missingKeys.push("FindyMail");
           if (!hasTavily) missingKeys.push("Tavily");
           if (!hasPerplexity) missingKeys.push("Perplexity");
-          if (!hasExa) missingKeys.push("Exa");
 
           if (!hasGooglePlaces && hasLegacyGoogleMaps) {
             console.warn(
@@ -278,6 +287,17 @@ export const createSearchCompleted = mutation({
 
         const user = await requireAuth(ctx);
 
+        // Block free tier users from creating searches
+        if (user.plan === "free") {
+          captureAnalyticsEvent(user._id, "search_creation_blocked", {
+            reason: "free_tier_restriction",
+            plan: user.plan,
+          });
+          throw new Error(
+            "Search creation is not available on the free plan. Please upgrade to Pro or higher to create searches."
+          );
+        }
+
         // Validate enterprise users have required API keys
         if (user.plan === "enterprise") {
           const apiKeys = await ctx.db
@@ -297,7 +317,6 @@ export const createSearchCompleted = mutation({
           const hasFindyMail = apiKeys.some((key) => key.provider === "findymail");
           const hasTavily = apiKeys.some((key) => key.provider === "tavily");
           const hasPerplexity = apiKeys.some((key) => key.provider === "perplexity");
-          const hasExa = apiKeys.some((key) => key.provider === "exa");
 
           const missingKeys: string[] = [];
           if (!hasOpenAI) missingKeys.push("OpenAI");
@@ -307,7 +326,6 @@ export const createSearchCompleted = mutation({
           if (!hasFindyMail) missingKeys.push("FindyMail");
           if (!hasTavily) missingKeys.push("Tavily");
           if (!hasPerplexity) missingKeys.push("Perplexity");
-          if (!hasExa) missingKeys.push("Exa");
 
           if (!hasGooglePlaces && hasLegacyGoogleMaps) {
             console.warn(

@@ -227,8 +227,8 @@ class BaseDataValidator:
         TIGHTENED: Deep research is now a LAST RESORT.
         Only triggers when MULTIPLE critical conditions are met simultaneously.
 
-        With optimized Tavily (advanced search, domain targeting, metadata extraction)
-        and Exa semantic search, deep research should rarely be needed.
+        With optimized Tavily (advanced search, domain targeting, metadata extraction),
+        deep research should rarely be needed.
 
         Args:
             validation_result: Result from validate_research_result
@@ -245,17 +245,16 @@ class BaseDataValidator:
         if not DEEP_RESEARCH_CONFIG['ENABLED']:
             return False, "Deep research is currently disabled"
 
-        # Check user tier requirements
-        allowed_tiers = ['pro', 'enterprise'] if DEEP_RESEARCH_CONFIG['MINIMUM_TIER'] == 'pro' else ['free', 'pro', 'enterprise']
-        if user_tier not in allowed_tiers:
-            return False, f"Deep research only available for {DEEP_RESEARCH_CONFIG['MINIMUM_TIER']}+ users"
+        # REMOVED: User tier restrictions - all users can access deep research when needed
+        # Previously checked MINIMUM_TIER config - now open to all tiers
 
-        # PRIORITY 1: High-value leads get deep research regardless (but with higher threshold)
-        value_threshold = DEEP_RESEARCH_CONFIG['HIGH_VALUE_THRESHOLD']
-        if lead_value >= value_threshold:
-            return True, f"High-value lead (${lead_value:,.0f}) - comprehensive research justified"
+        # DISABLED: High-value lead automatic deep research (functionality preserved for future)
+        # Uncomment below to re-enable automatic deep research for high-value leads
+        # value_threshold = DEEP_RESEARCH_CONFIG['HIGH_VALUE_THRESHOLD']
+        # if lead_value >= value_threshold:
+        #     return True, f"High-value lead (${lead_value:,.0f}) - comprehensive research justified"
 
-        # PRIORITY 2: Multiple critical failures required (AND logic, not OR)
+        # PRIORITY: Multiple critical failures required (AND logic, not OR)
         # Deep research only if BOTH data quality AND confidence are critically low
         min_missing = DEEP_RESEARCH_CONFIG['MIN_MISSING_DATA_POINTS']
         data_threshold = DEEP_RESEARCH_CONFIG['DATA_COMPLETENESS_THRESHOLD']
@@ -279,13 +278,13 @@ class BaseDataValidator:
         if is_data_critically_incomplete:
             return False, (
                 f"Data incomplete ({validation_result.validation_score:.2f}) but confidence acceptable ({confidence_score:.2f}) - "
-                f"Exa research should be sufficient"
+                f"Baseline research should be sufficient"
             )
 
         if is_confidence_critically_low:
             return False, (
                 f"Confidence low ({confidence_score:.2f}) but data quality acceptable ({validation_result.validation_score:.2f}) - "
-                f"Exa research should be sufficient"
+                f"Baseline research should be sufficient"
             )
 
-        return False, "Tavily + Exa research sufficient - deep research not needed"
+        return False, "Tavily research sufficient - deep research not needed"
