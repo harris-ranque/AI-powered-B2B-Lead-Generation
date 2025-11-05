@@ -29,16 +29,22 @@ class StartupValidator:
         """Run all startup validations. Returns True if all pass, raises exception if any fail."""
         logger.info("🚀 Starting comprehensive startup validation...")
 
-        validations = [
+        # Critical validations that MUST pass
+        critical_validations = [
             ("API Keys", self.validate_api_keys),
+            ("Configuration", self.validate_configuration)
+        ]
+
+        # Non-critical validations that can fail without blocking startup
+        non_critical_validations = [
             ("Webhook Connectivity", self.validate_webhook_connectivity),
             ("OpenAI Connection", self.validate_openai_connection),
-            ("Configuration", self.validate_configuration)
         ]
 
         failed_validations = []
 
-        for name, validation_func in validations:
+        # Run critical validations
+        for name, validation_func in critical_validations:
             try:
                 logger.info(f"📋 Validating {name}...")
                 await validation_func()
@@ -58,12 +64,33 @@ class StartupValidator:
                     "timestamp": datetime.utcnow().isoformat()
                 })
 
+        # Run non-critical validations (log warnings but don't block startup)
+        for name, validation_func in non_critical_validations:
+            try:
+                logger.info(f"📋 Validating {name}...")
+                await validation_func()
+                logger.info(f"✅ {name} validation passed")
+                self.validation_results.append({
+                    "name": name,
+                    "status": "passed",
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+            except Exception as e:
+                logger.warning(f"⚠️  {name} validation failed (non-critical): {str(e)}")
+                logger.warning(f"⚠️  Server will start anyway, but {name.lower()} may not work correctly")
+                self.validation_results.append({
+                    "name": name,
+                    "status": "failed_non_critical",
+                    "error": str(e),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+
         if failed_validations:
             error_msg = f"Startup validation failed:\n" + "\n".join(f"  - {error}" for error in failed_validations)
             logger.error(error_msg)
             raise StartupValidationError(error_msg)
 
-        logger.info("🎉 All startup validations passed! Server ready to start.")
+        logger.info("🎉 All critical startup validations passed! Server ready to start.")
         return True
 
     async def validate_api_keys(self):
