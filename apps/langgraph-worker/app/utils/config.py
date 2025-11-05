@@ -56,7 +56,6 @@ class Settings(BaseSettings):
     
     # Research API Configuration
     tavily_api_key: Optional[str] = os.getenv("TAVILY_API_KEY", None)
-    exa_api_key: Optional[str] = os.getenv("EXA_API_KEY", None)
     perplexity_api_key: Optional[str] = os.getenv("PERPLEXITY_API_KEY", None)
     
     # Tavily-specific Configuration

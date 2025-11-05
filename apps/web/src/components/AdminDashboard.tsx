@@ -233,14 +233,6 @@ const EXTERNAL_SERVICE_GROUPS: ExternalServiceGroup[] = [
         envVars: ["TAVILY_API_KEY"],
       },
       {
-        name: "Exa Semantic Search",
-        description: "Tier 2 semantic and competitor research escalations inside the AI workflow.",
-        href: "https://exa.ai/docs",
-        icon: Layers,
-        requiresKey: true,
-        envVars: ["EXA_API_KEY"],
-      },
-      {
         name: "Perplexity API",
         description: "Tier 3 comprehensive research for premium users and deep analysis flows.",
         href: "https://docs.perplexity.ai/",

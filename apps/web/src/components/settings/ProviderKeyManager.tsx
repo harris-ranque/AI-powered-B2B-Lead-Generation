@@ -40,12 +40,6 @@ const PROVIDERS = [
     required: true,
   },
   {
-    id: "exa" as const,
-    name: "Exa Semantic Search",
-    description: "Required for tier 2 semantic research and competitive intelligence workflows.",
-    required: true,
-  },
-  {
     id: "perplexity" as const,
     name: "Perplexity",
     description: "Required for deep research and business intelligence.",
@@ -102,7 +96,6 @@ export function ProviderKeyManager({ plan }: ProviderKeyManagerProps) {
     google_places: "",
     findymail: "",
     tavily: "",
-    exa: "",
     perplexity: "",
     // google_maps: "", // Commented out - legacy
     // icypeas: "", // Commented out
@@ -133,7 +126,6 @@ export function ProviderKeyManager({ plan }: ProviderKeyManagerProps) {
       google_places: { validated: false, usageCount: 0, hasKey: false },
       findymail: { validated: false, usageCount: 0, hasKey: false },
       tavily: { validated: false, usageCount: 0, hasKey: false },
-      exa: { validated: false, usageCount: 0, hasKey: false },
       perplexity: { validated: false, usageCount: 0, hasKey: false },
       // google_maps: { validated: false, usageCount: 0, hasKey: false }, // Commented out - legacy
       // icypeas: { validated: false, usageCount: 0, hasKey: false }, // Commented out
@@ -211,7 +203,7 @@ export function ProviderKeyManager({ plan }: ProviderKeyManagerProps) {
         <CardTitle>Enterprise API Keys (Required)</CardTitle>
         <CardDescription>
           As an Enterprise customer, you must provide your own API keys for all providers.
-          All six API keys (OpenAI, Google Places, FindyMail, Tavily, Exa Semantic Search, Perplexity) are required before you can run any lead generation workflows.
+          All five API keys (OpenAI, Google Places, FindyMail, Tavily, Perplexity) are required before you can run any lead generation workflows.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

@@ -19,7 +19,6 @@ import {
   ChevronUp,
   ExternalLink,
   Bot,
-  Microscope,
   TrendingUp,
 } from "lucide-react";
 import { BusinessContextDisplay } from "./BusinessContextDisplay";
@@ -50,7 +49,7 @@ interface BusinessContext {
   // Enhanced research fields
   competitors?: Array<Record<string, unknown>>;
   industry_insights?: string;
-  research_tier?: "tavily" | "exa" | "perplexity";
+  research_tier?: "tavily" | "perplexity";
   escalation_reason?: string;
   sources_analyzed?: number;
   comprehensive_report?: string;
@@ -85,18 +84,9 @@ export function EnhancedLeadCard({
           description: "Fast business context",
           variant: "secondary" as const,
         };
-      case "exa":
-        return {
-          label: "Enhanced Research",
-          icon: Microscope,
-          color: "text-purple-500",
-          bg: "bg-purple-50",
-          description: "Deep competitor analysis",
-          variant: "outline" as const,
-        };
       case "perplexity":
         return {
-          label: "Premium Research",
+          label: "Deep Research",
           icon: Zap,
           color: "text-amber-600",
           bg: "bg-amber-50",

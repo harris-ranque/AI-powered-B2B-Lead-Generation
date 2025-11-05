@@ -12,7 +12,6 @@ import {
   Clock,
   CheckCircle,
   AlertTriangle,
-  Microscope,
 } from "lucide-react";
 import {
   useStatusBroadcasts,
@@ -50,8 +49,7 @@ export function ActivityPanel({ onNavigateToHistory }: ActivityPanelProps = {}) 
   const getActivityIcon = (type: string, stage?: string) => {
     if (stage?.includes("research")) return Brain;
     if (stage?.includes("tier1_tavily")) return Search;
-    if (stage?.includes("tier2_exa")) return Microscope;
-    if (stage?.includes("tier3_perplexity")) return Zap;
+    if (stage?.includes("tier2_perplexity")) return Zap;
     if (stage?.includes("discovery")) return Building;
     if (stage?.includes("enrichment")) return UserPlus;
     if (stage?.includes("analysis")) return Brain;

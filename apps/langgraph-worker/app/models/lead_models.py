@@ -107,7 +107,6 @@ class ProviderKeys(BaseModel):
 
     openai: Optional[str] = Field(default=None, description="OpenAI API key override")
     tavily: Optional[str] = Field(default=None, description="Tavily API key override")
-    exa: Optional[str] = Field(default=None, description="Exa API key override")
     perplexity: Optional[str] = Field(default=None, description="Perplexity API key override")
     google_places: Optional[str] = Field(default=None, alias="googlePlaces", description="Google Places API key override")
     findymail: Optional[str] = Field(default=None, description="FindyMail API key override")
@@ -117,7 +116,6 @@ class ProviderKeys(BaseModel):
 ProviderLiteral = Literal[
     "openai",
     "tavily",
-    "exa",
     "perplexity",
     "google_places",
     "google_maps",

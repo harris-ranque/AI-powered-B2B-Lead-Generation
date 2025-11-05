@@ -163,8 +163,7 @@ export default defineSchema({
       v.union(
         v.literal("research_started"),
         v.literal("tier1_tavily"),
-        v.literal("tier2_exa"),
-        v.literal("tier3_perplexity"),
+        v.literal("tier2_perplexity"),
         v.literal("research_completed"),
         v.literal("research_failed"),
         v.literal("research_error"),
@@ -173,7 +172,6 @@ export default defineSchema({
     researchTier: v.optional(
       v.union(
         v.literal("tavily"),
-        v.literal("exa"),
         v.literal("perplexity"),
         v.literal("error"),
       ),
@@ -409,7 +407,6 @@ export default defineSchema({
     deepResearchProvider: v.optional(
       v.union(
         v.literal("tavily"),
-        v.literal("exa"),
         v.literal("perplexity"),
       ),
     ),
@@ -1192,7 +1189,6 @@ export default defineSchema({
     provider: v.union(
       v.literal("openai"),
       v.literal("tavily"),
-      v.literal("exa"),
       v.literal("perplexity"),
       v.literal("google_places"),
       // Legacy enrichment providers still supported for backwards compatibility

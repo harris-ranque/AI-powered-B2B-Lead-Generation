@@ -6,7 +6,6 @@ import { internal } from "../_generated/api";
 export const SUPPORTED_PROVIDERS = [
   "openai",
   "tavily",
-  "exa",
   "perplexity",
   "google_places",
   // Legacy enrichment providers remain for backwards compatibility

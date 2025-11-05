@@ -126,7 +126,6 @@ Here is a list of the available tools and their descriptions:
 | **DirectorySearchTool**          | A RAG tool for searching within directories, useful for navigating through file systems.       |
 | **DOCXSearchTool**               | A RAG tool aimed at searching within DOCX documents, ideal for processing Word files.          |
 | **DirectoryReadTool**            | Facilitates reading and processing of directory structures and their contents.                 |
-| **EXASearchTool**                | A tool designed for performing exhaustive searches across various data sources.                |
 | **FileReadTool**                 | Enables reading and extracting data from files, supporting various file formats.               |
 | **FirecrawlSearchTool**          | A tool to search webpages using Firecrawl and return the results.                              |
 | **FirecrawlCrawlWebsiteTool**    | A tool for crawling webpages using Firecrawl.                                                  |
@@ -317,7 +316,6 @@ Perform web searches, find code repositories, research YouTube content, and disc
 **Available Tools:**
 
 - **SerperDevTool**: Google search API integration
-- **EXASearchTool**: AI-powered search
 - **GithubSearchTool**: Search GitHub repositories
 - **WebsiteSearchTool**: Search within specific websites
 - **CodeDocsSearchTool**: Search through code documentation

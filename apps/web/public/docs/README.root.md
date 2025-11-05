@@ -46,7 +46,6 @@ This is a multi-repository system with the following structure:
               │   - FindyMail      │
               │   - OpenAI         │
               │   - Tavily Search  │
-              │   - Exa Search     │
               │   - Perplexity AI  │
               │   - Stripe         │
               └───────────────────┘
@@ -184,7 +183,7 @@ The Python worker implements an **optimized 3-agent LangGraph system** for email
 │  │                   1. BUSINESS INTELLIGENCE AGENT                       ││
 │  │                                                                         ││
 │  │  🔍 INTEGRATED RESEARCH & ANALYSIS                                     ││
-│  │  ├─ 3-Tier Research System (Tavily → Exa → Perplexity)                ││
+│  │  ├─ 2-Tier Research System (Tavily → Perplexity)                      ││
 │  │  ├─ Lead Qualification & Relevance Analysis                            ││
 │  │  ├─ Pain Point Identification & Urgency Assessment                     ││
 │  │  ├─ Value Proposition Alignment & Benefit Quantification               ││
@@ -272,19 +271,9 @@ Genni implements a sophisticated three-tier research system that intelligently e
 │  └─────────────────────────┬───────────────────────────────────────────────┘│
 │                            ▼ (if confidence <0.6 OR user tier Pro+)        │
 │  ┌─────────────────────────────────────────────────────────────────────────┐│
-│  │ TIER 2: EXA SEMANTIC SEARCH                                            ││
-│  │ ────────────────────────────                                           ││
-│  │ • Response Time: 3-4 seconds                                           ││
-│  │ • Cost: $0.005 per search                                              ││
-│  │ • Coverage: Competitor analysis, industry insights, semantic search    ││
-│  │ • Confidence Threshold: ≥0.4 to avoid escalation                      ││
-│  │ • Data Sources: Competitor databases, industry reports, market data    ││
-│  └─────────────────────────┬───────────────────────────────────────────────┘│
-│                            ▼ (if confidence <0.4 OR user tier Enterprise)  │
-│  ┌─────────────────────────────────────────────────────────────────────────┐│
-│  │ TIER 3: PERPLEXITY COMPREHENSIVE                                       ││
+│  │ TIER 2: PERPLEXITY COMPREHENSIVE                                       ││
 │  │ ─────────────────────────────────                                      ││
-│  │ • Response Time: 10-15 seconds                                         ││
+│  │ • Response Time: 8-12 seconds                                          ││
 │  │ • Cost: $0.01 per search                                               ││
 │  │ • Coverage: Comprehensive reports, deep analysis, expert insights      ││
 │  │ • Advanced Features: Multi-source synthesis, trend analysis            ││
@@ -300,36 +289,29 @@ Genni implements a sophisticated three-tier research system that intelligently e
 
 **Tier 1 → Tier 2 Escalation Triggers:**
 
-- Confidence score < 0.6
+- Confidence score < 0.6 after validation
 - User subscription: Pro or Enterprise
 - Lead estimated value > $5,000
-- Insufficient company information found
-
-**Tier 2 → Tier 3 Escalation Triggers:**
-
-- Confidence score < 0.4
-- User subscription: Enterprise
-- Lead estimated value > $10,000
-- Complex industry requiring deep analysis
+- Missing critical business context
 
 ### Research Capabilities by Tier
 
-| Feature                        | Tier 1 (Tavily) | Tier 2 (Exa) | Tier 3 (Perplexity) |
-| ------------------------------ | --------------- | ------------ | ------------------- |
-| **Response Time**              | 2-3 seconds     | 3-4 seconds  | 10-15 seconds       |
-| **Cost per Search**            | $0.001          | $0.005       | $0.01               |
-| **Company Overview**           | ✅ Basic        | ✅ Enhanced  | ✅ Comprehensive    |
-| **Industry Analysis**          | ❌              | ✅           | ✅ Premium          |
-| **Competitor Discovery**       | ❌              | ✅ Top 5     | ✅ Complete Market  |
-| **Business Model Analysis**    | ✅ Basic        | ✅ Detailed  | ✅ Strategic        |
-| **Technology Stack**           | ✅ Basic        | ✅ Detailed  | ✅ Architecture     |
-| **Recent News & Events**       | ✅              | ✅           | ✅ Analysis         |
-| **Growth Stage Assessment**    | ✅              | ✅           | ✅ Detailed         |
-| **Pain Points Identification** | ❌              | ✅           | ✅ Deep Analysis    |
-| **Market Positioning**         | ❌              | ✅           | ✅ Strategic        |
-| **Financial Insights**         | ❌              | ❌           | ✅                  |
-| **Trend Analysis**             | ❌              | ❌           | ✅                  |
-| **Comprehensive Reports**      | ❌              | ❌           | ✅                  |
+| Feature                        | Tier 1 (Tavily) | Tier 2 (Perplexity) |
+|--------------------------------|-----------------|---------------------|
+| **Response Time**              | 2-3 seconds     | 8-12 seconds        |
+| **Cost per Search**            | $0.001          | $0.01               |
+| **Company Overview**           | ✅ Rapid summary | ✅ Comprehensive analysis |
+| **Industry Analysis**          | ✅ Basic signals | ✅ Premium insights  |
+| **Competitor Discovery**       | ❌               | ✅ Market landscape  |
+| **Business Model Analysis**    | ✅ High-level    | ✅ Strategic detail  |
+| **Technology Stack**           | ✅ Basic         | ✅ Architecture view |
+| **Recent News & Events**       | ✅ Headlines     | ✅ Curated narrative |
+| **Growth Stage Assessment**    | ✅ Quick inference | ✅ Detailed context |
+| **Pain Points Identification** | ❌               | ✅ Deep analysis     |
+| **Market Positioning**         | ❌               | ✅ Strategic view    |
+| **Financial Insights**         | ❌               | ✅ When public       |
+| **Trend Analysis**             | ❌               | ✅                   |
+| **Comprehensive Reports**      | ❌               | ✅                   |
 
 ### Real-time Progress Broadcasting
 
@@ -341,11 +323,9 @@ type ResearchProgressStage =
   | "research_started" // Initial research begins
   | "tier1_tavily" // Tavily search in progress
   | "tier1_complete" // Tavily results ready
-  | "escalating_tier2" // Escalating to Exa search
-  | "tier2_exa" // Exa search in progress
-  | "tier2_complete" // Exa results ready
-  | "escalating_tier3" // Escalating to Perplexity
-  | "tier3_perplexity" // Perplexity analysis in progress
+  | "escalating_tier2" // Escalating to Perplexity
+  | "tier2_perplexity" // Perplexity analysis in progress
+  | "tier2_complete" // Deep research results ready
   | "research_completed" // All research complete
   | "research_failed"; // Research encountered errors
 
@@ -353,7 +333,7 @@ type ResearchProgressStage =
 interface ResearchProgress {
   searchId: string;
   stage: ResearchProgressStage;
-  tier: "tavily" | "exa" | "perplexity";
+  tier: "tavily" | "perplexity";
   confidence: number; // 0.0 - 1.0
   dataPoints: number; // Data points collected
   sourcesAnalyzed: number; // Sources processed
@@ -367,13 +347,13 @@ interface ResearchProgress {
 **Average Cost per Lead by Research Tier:**
 
 - **Free Plan**: Tier 1 only → $0.001 per lead
-- **Pro Plan**: Tier 1-2 escalation → $0.003 average per lead
-- **Enterprise Plan**: All tiers → $0.011 average per lead
+- **Pro Plan**: Tier 1 with selective Tier 2 escalation → ~$0.003 per lead
+- **Enterprise Plan**: Aggressive Tier 2 usage with BYOK → ~$0.009 per lead
 
 **ROI Optimization:**
 
-- **High-value leads** ($10K+) → Automatic Tier 3 for maximum insight
-- **Medium-value leads** ($5K+) → Pro tier escalation logic
+- **High-value leads** ($10K+) → Automatic Tier 2 for maximum insight
+- **Medium-value leads** ($5K+) → Conditional Tier 2 escalation
 - **Low-value leads** (<$5K) → Tier 1 optimization for cost efficiency
 
 ### API Integration Architecture
@@ -384,9 +364,8 @@ interface ResearchProgress {
 # Multi-tier research orchestration
 class ResearchOrchestrator:
     def __init__(self):
-        self.tavily = TavilyClient()      # Tier 1: Fast web search
-        self.exa = ExaClient()            # Tier 2: Semantic search
-        self.perplexity = PerplexityClient()  # Tier 3: Comprehensive
+        self.tavily = TavilyClient()           # Tier 1: Fast web search
+        self.perplexity = PerplexityClient()   # Tier 2: Comprehensive analysis
 
     async def research_company(
         self,
@@ -477,9 +456,9 @@ Lead Data ──▶ HTTP POST ──▶ Railway Worker
                      │   3-Agent System       │
                      ├────────────────────────┤
                      │ 1. Business Intel      │ ◄─┐
-                     │    (Research+Analysis) │   │ Tavily
-                     │ 2. Email Generation    │   │ Exa
-                     │    (Writing+Follow-up) │   │ Perplexity
+                     │    (Research+Analysis) │   │ Tavily ➜ Perplexity
+                     │ 2. Email Generation    │   │
+                     │    (Writing+Follow-up) │   │
                      │ 3. Quality Assurance   │ ◄─┘
                      │    (Validation+QA)     │
                      └───────────┬────────────┘
@@ -613,9 +592,8 @@ OPENAI_API_KEY=sk-your-openai-api-key-here
 API_KEY=your-secure-api-key-here
 CONVEX_URL=https://your-convex-deployment.convex.site
 
-# Tiered Research System APIs
+# Research System APIs
 TAVILY_API_KEY=tvly-your-tavily-api-key-here
-EXA_API_KEY=your-exa-api-key-here
 PERPLEXITY_API_KEY=pplx-your-perplexity-api-key-here
 
 # Optional - webhook URL is auto-constructed from CONVEX_URL
@@ -640,9 +618,8 @@ OPENAI_API_KEY=sk-...
 GOOGLE_MAPS_API_KEY=...
 FINDYMAIL_API_KEY=...
 
-# Tiered Research System APIs (for monitoring and webhooks)
+# Research System APIs (for monitoring and webhooks)
 TAVILY_API_KEY=tvly-...
-EXA_API_KEY=...
 PERPLEXITY_API_KEY=pplx-...
 
 # Payment Processing
@@ -732,7 +709,6 @@ npx convex deploy
 - **Google Maps API**: Business discovery and location data
 - **FindyMail API**: Contact information enrichment
 - **Tavily Search API**: Tier 1 fast business context research (2-3s)
-- **Exa Search API**: Tier 2 semantic search and competitor analysis (3-4s)
 - **Perplexity API**: Tier 3 comprehensive research reports (10-15s)
 - **OpenAI API**: GPT models for AI analysis and content generation
 - **Stripe**: Payment processing and subscription management

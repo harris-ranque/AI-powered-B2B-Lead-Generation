@@ -40,7 +40,7 @@ class BusinessIntelligence(BaseModel):
     recent_news: List[str] = Field(default_factory=list, description="Recent company developments")
     
     # Research metadata
-    research_tier: str = Field(..., description="Research tier used (tavily/exa/perplexity)")
+    research_tier: str = Field(..., description="Research tier used (tavily/perplexity)")
     confidence_score: float = Field(..., ge=0, le=1, description="Research confidence score")
     data_sources: List[str] = Field(..., description="Sources of information gathered")
     competitors: List[CompetitorInsight] = Field(
@@ -80,7 +80,7 @@ class BusinessIntelligence(BaseModel):
 async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[str, Any]:
     """
     Comprehensive Business Intelligence Agent that consolidates:
-    1. Business Context Research (Tavily → Exa → Perplexity tiered research)
+    1. Business Context Research (Tavily → Perplexity tiered research)
     2. Relevance Analysis (lead qualification and fit assessment)
     3. Pain Point Research (challenge identification and analysis)
     4. Value Matching (solution alignment and benefit quantification)

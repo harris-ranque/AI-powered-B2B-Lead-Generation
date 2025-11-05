@@ -87,7 +87,6 @@ class StartupValidator:
 
         optional_keys = {
             "TAVILY_API_KEY": self.settings.tavily_api_key,
-            "EXA_API_KEY": self.settings.exa_api_key,
             "PERPLEXITY_API_KEY": self.settings.perplexity_api_key,
         }
 

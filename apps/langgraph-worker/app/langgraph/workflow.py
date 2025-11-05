@@ -25,7 +25,7 @@ def create_email_generation_workflow(
     Create the optimized 3-agent email generation workflow using LangGraph.
     
     This workflow implements a streamlined linear flow with the following agents:
-    1. Business Intelligence Agent: Research + Analysis (Tavily→Exa→Perplexity)
+    1. Business Intelligence Agent: Research + Analysis (Tavily→Perplexity)
     2. Email Generation Agent: Writing + Follow-up Strategy
     3. Quality Assurance Agent: Validation + Standards Enforcement
     

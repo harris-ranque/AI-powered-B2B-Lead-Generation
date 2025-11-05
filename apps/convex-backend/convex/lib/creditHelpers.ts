@@ -45,7 +45,6 @@ export const shouldBypassCreditsQuery = internalQuery({
     const hasFindyMail = apiKeys.some((key) => key.provider === "findymail");
     const hasTavily = apiKeys.some((key) => key.provider === "tavily");
     const hasPerplexity = apiKeys.some((key) => key.provider === "perplexity");
-    const hasExa = apiKeys.some((key) => key.provider === "exa");
 
     const hasLocationProvider = hasGooglePlaces || hasLegacyGoogleMaps;
 
@@ -61,8 +60,7 @@ export const shouldBypassCreditsQuery = internalQuery({
       hasLocationProvider &&
       hasFindyMail &&
       hasTavily &&
-      hasPerplexity &&
-      hasExa;
+      hasPerplexity;
 
     if (hasAllKeys) {
       const providerLabel = hasGooglePlaces ? "google_places" : "google_maps";
@@ -132,7 +130,6 @@ export async function shouldBypassCredits(
   const hasPerplexity = apiKeys.some(
     (key: any) => key.provider === "perplexity",
   );
-  const hasExa = apiKeys.some((key: any) => key.provider === "exa");
 
   const hasLocationProvider = hasGooglePlaces || hasLegacyGoogleMaps;
 
@@ -148,8 +145,7 @@ export async function shouldBypassCredits(
     hasLocationProvider &&
     hasFindyMail &&
     hasTavily &&
-    hasPerplexity &&
-    hasExa;
+    hasPerplexity;
 
   if (hasAllKeys) {
     const providerLabel = hasGooglePlaces ? "google_places" : "google_maps";

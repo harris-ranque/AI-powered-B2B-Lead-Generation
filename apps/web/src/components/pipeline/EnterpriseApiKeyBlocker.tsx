@@ -35,12 +35,6 @@ const REQUIRED_PROVIDERS: ApiKeyProvider[] = [
     icon: "🔍",
   },
   {
-    id: "exa",
-    name: "Exa Semantic Search",
-    description: "Required for semantic enrichment and competitive intelligence",
-    icon: "🧭",
-  },
-  {
     id: "perplexity",
     name: "Perplexity",
     description: "Required for deep research and analysis",

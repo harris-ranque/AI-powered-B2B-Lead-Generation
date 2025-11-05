@@ -73,7 +73,6 @@ function hashApiKey(key: string): string {
 const ENTERPRISE_VALIDATION_PROVIDERS = new Set([
   "openai",
   "tavily",
-  "exa",
   "perplexity",
   "google_places",
 ]);

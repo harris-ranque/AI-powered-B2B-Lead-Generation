@@ -40,7 +40,6 @@ import {
   Loader2,
   Eye,
   Zap,
-  Microscope,
   FileText,
   TrendingUp,
   Brain,
@@ -901,10 +900,8 @@ function getResearchTierDisplay(tier?: string) {
   switch (tier) {
     case "tavily":
       return { icon: Zap, label: "Standard", accent: "text-blue-500" };
-    case "exa":
-      return { icon: Microscope, label: "Enhanced", accent: "text-purple-500" };
     case "perplexity":
-      return { icon: FileText, label: "Premium", accent: "text-amber-600" };
+      return { icon: FileText, label: "Deep Research", accent: "text-amber-600" };
     case "error":
       return { icon: AlertCircle, label: "Research error", accent: "text-red-500" };
     default:

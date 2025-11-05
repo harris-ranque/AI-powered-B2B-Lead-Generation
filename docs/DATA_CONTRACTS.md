@@ -150,12 +150,11 @@ interface Search {
   researchStage?:
     | "research_started"
     | "tier1_tavily"
-    | "tier2_exa"
-    | "tier3_perplexity"
+    | "tier2_perplexity"
     | "research_completed"
     | "research_failed"
     | "research_error";
-  researchTier?: "tavily" | "exa" | "perplexity" | "error";
+  researchTier?: "tavily" | "perplexity" | "error";
   researchConfidence?: number;
   researchDataPoints?: number;
   researchSourcesAnalyzed?: number;

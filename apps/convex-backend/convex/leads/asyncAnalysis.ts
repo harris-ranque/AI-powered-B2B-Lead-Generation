@@ -193,7 +193,6 @@ export const analyzeSingleLead: any = internalAction({
             const missingProviders: string[] = [];
             if (!resolvedKeys.openai) missingProviders.push("OpenAI");
             if (!resolvedKeys.tavily) missingProviders.push("Tavily");
-            if (!resolvedKeys.exa) missingProviders.push("Exa");
             if (!resolvedKeys.perplexity) missingProviders.push("Perplexity");
             if (!googleKey) missingProviders.push("Google Places");
             if (!resolvedKeys.findymail) missingProviders.push("FindyMail");
@@ -208,7 +207,6 @@ export const analyzeSingleLead: any = internalAction({
             providerKeys = {
               openai: resolvedKeys.openai!,
               tavily: resolvedKeys.tavily!,
-              exa: resolvedKeys.exa!,
               perplexity: resolvedKeys.perplexity!,
               googlePlaces: googleKey,
               findymail: resolvedKeys.findymail!,
@@ -218,7 +216,7 @@ export const analyzeSingleLead: any = internalAction({
             console.error("Enterprise user missing required API keys:", error);
             const errorMessage = error instanceof Error
               ? error.message
-          : getMissingApiKeysError(["OpenAI", "Tavily", "Exa", "Perplexity", "Google Places", "FindyMail"], "lead analysis");
+          : getMissingApiKeysError(["OpenAI", "Tavily", "Perplexity", "Google Places", "FindyMail"], "lead analysis");
         await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
           leadId: args.leadId,
           error: errorMessage,

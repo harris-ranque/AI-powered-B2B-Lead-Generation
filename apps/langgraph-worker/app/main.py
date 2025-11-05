@@ -345,7 +345,7 @@ async def generate_email(
     - Graceful degradation under load
 
     Agent pipeline:
-    1. Business Intelligence Agent - Comprehensive research (Tavily→Exa→Perplexity)
+    1. Business Intelligence Agent - Comprehensive research (Tavily→Perplexity)
     2. Email Generation Agent - Personalized email writing
     3. Quality Assurance Agent - Validation and quality enforcement
 
@@ -749,7 +749,7 @@ async def get_agents_info(authenticated: bool = Depends(verify_api_key)):
             {
                 "name": "Business Intelligence Agent",
                 "role": "Comprehensive research and analysis consolidation",
-                "specialization": "Tiered research (Tavily→Exa→Perplexity), relevance analysis, pain point identification, value matching",
+                "specialization": "Tiered research (Tavily→Perplexity), relevance analysis, pain point identification, value matching",
                 "capabilities": [
                     "3-tier research system with intelligent escalation",
                     "Real-time progress broadcasting to Convex backend",
@@ -802,7 +802,7 @@ async def get_agents_info(authenticated: bool = Depends(verify_api_key)):
         ],
         "research_tiers": {
             "tier_1": "Tavily (2-3s) - Fast basic business context",
-            "tier_2": "Exa (3-4s) - Semantic search and competitor analysis", 
+            "tier_2": "Perplexity (8-12s) - Comprehensive research and reporting", 
             "tier_3": "Perplexity (10-15s) - Comprehensive business reports"
         }
     }

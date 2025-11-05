@@ -294,7 +294,7 @@ pnpm type-check
 The Python worker implements an optimized 3-agent system for email personalization:
 
 1. **Business Intelligence Agent**: Comprehensive research and analysis consolidation
-   - **Tiered Research System**: Tavily (fast basic context) → Exa (semantic/competitor analysis) → Perplexity (comprehensive business reports)
+   - **Tiered Research System**: Tavily (fast basic context) → Perplexity (comprehensive business reports)
    - **Relevance Analysis**: Lead qualification and fit assessment
    - **Pain Point Identification**: Customer challenge discovery
    - **Value Matching**: Solution alignment with business needs

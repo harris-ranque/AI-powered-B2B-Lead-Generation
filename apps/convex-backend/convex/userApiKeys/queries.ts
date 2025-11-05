@@ -12,7 +12,6 @@ import {
 export const REQUIRED_ENTERPRISE_PROVIDERS = [
   "openai",      // LangGraph AI operations
   "tavily",      // Research and business intelligence
-  "exa",         // Semantic deep research (Tier 2)
   "perplexity",  // Deep research and analysis
   "google_places", // Location and business discovery
   "findymail",   // Email enrichment

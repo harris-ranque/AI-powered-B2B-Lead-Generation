@@ -5,7 +5,6 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Search,
-  Microscope,
   Zap,
   ChevronRight,
   Clock,
@@ -19,7 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 
 interface ResearchTierFlowProps {
-  currentTier?: "tavily" | "exa" | "perplexity" | "error";
+  currentTier?: "tavily" | "perplexity" | "error";
   stage?: string;
   confidence?: number;
   dataPoints?: number;
@@ -56,29 +55,14 @@ export function ResearchTierFlow({
       ],
     },
     {
-      id: "exa",
-      name: "Enhanced",
-      icon: Microscope,
-      color: "text-purple-500",
-      bg: "bg-purple-50",
-      border: "border-purple-200",
-      description: "Deep competitor & industry analysis",
-      duration: "3-4s",
-      features: [
-        "Competitor discovery",
-        "Industry insights",
-        "Market positioning",
-      ],
-    },
-    {
       id: "perplexity",
-      name: "Premium",
+      name: "Deep",
       icon: Zap,
       color: "text-amber-600",
       bg: "bg-amber-50",
       border: "border-amber-200",
       description: "Comprehensive research report",
-      duration: "10-15s",
+      duration: "8-12s",
       features: [
         "Comprehensive report",
         "Strategic insights",
@@ -96,9 +80,8 @@ export function ResearchTierFlow({
 
     const stageProgress = {
       research_started: 10,
-      tier1_tavily: 30,
-      tier2_exa: 65,
-      tier3_perplexity: 90,
+      tier1_tavily: 45,
+      tier2_perplexity: 90,
       research_completed: 100,
       research_failed: 0,
       research_error: 0,

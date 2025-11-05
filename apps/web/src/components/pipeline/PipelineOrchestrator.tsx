@@ -197,31 +197,23 @@ export function PipelineOrchestrator({
 
   // Get research tier display info
   const getResearchTierInfo = (tier?: string) => {
-    switch (tier) {
-      case "tavily":
-        return {
-          label: "Standard Research",
-          icon: Search,
-          badgeClass:
-            "border border-cyan-500/40 bg-cyan-500/10 text-cyan-200",
-          description: "Fast business context (2-3s)",
-        };
-      case "exa":
-        return {
-          label: "Enhanced Research",
-          icon: Brain,
-          badgeClass:
-            "border border-purple-500/40 bg-purple-500/10 text-purple-200",
-          description: "Deep competitor analysis (3-4s)",
-        };
-      case "perplexity":
-        return {
-          label: "Premium Research",
-          icon: Zap,
-          badgeClass:
-            "border border-amber-500/40 bg-amber-500/10 text-amber-200",
-          description: "Comprehensive report (10-15s)",
-        };
+  switch (tier) {
+    case "tavily":
+      return {
+        label: "Standard Research",
+        icon: Search,
+        badgeClass:
+          "border border-cyan-500/40 bg-cyan-500/10 text-cyan-200",
+        description: "Fast business context (2-3s)",
+      };
+    case "perplexity":
+      return {
+        label: "Deep Research",
+        icon: Zap,
+        badgeClass:
+          "border border-amber-500/40 bg-amber-500/10 text-amber-200",
+        description: "Comprehensive report (8-12s)",
+      };
       default:
         return null;
     }
