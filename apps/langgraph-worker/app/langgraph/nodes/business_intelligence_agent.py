@@ -5,7 +5,7 @@ into a single comprehensive intelligence gathering agent.
 """
 import time
 import asyncio
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field, ConfigDict
 from ...utils.config import get_settings
@@ -17,6 +17,7 @@ from ...utils.research_clients import (
     ClientRegistry,
 )
 from ...utils.data_validation import BaseDataValidator
+from ...utils.analytics import capture_event, capture_error
 from ...models.lead_models import AgentResult, CompetitorInsight
 from ..state import EmailGenerationState
 
@@ -100,8 +101,20 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
     
     logger.info(f"Starting comprehensive business intelligence analysis for {lead.company_name}")
     
-    provider_keys = state.get("provider_keys") or {}
+    provider_keys: Optional[Dict[str, str]] = state.get("provider_keys")
+    provider_key_map = provider_keys or {}
+    using_user_keys = provider_keys is not None
     registry = ClientRegistry.get_instance()
+    analytics_context = {
+        "request_id": request_id,
+        "lead_id": getattr(lead, "id", None),
+        "company_name": lead.company_name,
+        "user_id": state.get("user_id"),
+        "user_tier": state.get("user_tier", "free"),
+        "using_user_keys": using_user_keys,
+        "provider_keys_supplied": sorted(provider_key_map.keys()) if using_user_keys else [],
+    }
+    capture_event("bi_agent_started", analytics_context)
 
     try:
         # Phase 1: Execute tiered business context research
@@ -124,7 +137,8 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
             domain=domain,
             user_tier=user_tier,
             lead_value=lead_value,
-            provider_keys=provider_keys,
+            provider_keys=provider_key_map if using_user_keys else None,
+            user_id=state.get("user_id"),
         )
         
         research_time = time.time() - research_start
@@ -146,6 +160,22 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         
         logger.info(f"Deep research: {'Used' if deep_research_used else 'Not used'}, "
                    f"Reason: {deep_research_reason}, Credits: {total_credit_cost}")
+        capture_event(
+            "bi_agent_research_completed",
+            {
+                **analytics_context,
+                "research_tier": research_result.tier.value,
+                "research_confidence": research_result.confidence_score,
+                "research_data_points": research_result.data_points,
+                "research_sources": research_result.sources_analyzed,
+                "deep_research_used": deep_research_used,
+                "deep_research_reason": deep_research_reason,
+                "research_duration_ms": research_time * 1000,
+                "validation_score": validation_result.validation_score,
+                "missing_data_points": validation_result.missing_data_points,
+                "credit_cost": total_credit_cost,
+            },
+        )
         
         # Phase 2: Comprehensive business intelligence analysis
         logger.info(f"Phase 2: Comprehensive business intelligence analysis")
@@ -153,12 +183,14 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         
         # Initialize LLM for comprehensive analysis
         # gpt-5-nano uses max_completion_tokens instead of max_tokens
+        openai_api_key = provider_key_map.get("openai") if using_user_keys else None
         llm = registry.get_openai_client(
-            api_key=provider_keys.get("openai"),
+            api_key=openai_api_key,
             model=settings.default_model,
             temperature=0.3,
             max_completion_tokens=settings.max_tokens,
             reasoning_effort="minimal",
+            require_user_key=using_user_keys,
         ).with_structured_output(BusinessIntelligence)
         
         # Create comprehensive analysis prompt
@@ -326,6 +358,24 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
                    f"Time={total_time:.2f}s")
         
         intelligence_data = intelligence.model_dump()
+        capture_event(
+            "bi_agent_completed",
+            {
+                **analytics_context,
+                "research_tier": research_result.tier.value,
+                "research_confidence": research_result.confidence_score,
+                "deep_research_used": deep_research_used,
+                "analysis_duration_ms": analysis_time * 1000,
+                "total_duration_ms": total_time * 1000,
+                "relevance_score": intelligence.relevance_score,
+                "qualification_level": intelligence.qualification_level,
+                "pain_points_found": len(intelligence.pain_points),
+                "value_matches_found": len(intelligence.value_matches),
+                "competitors_found": len(intelligence.competitors),
+                "value_alignment_score": intelligence.value_alignment_score,
+                "personalization_elements": len(intelligence.personalization_elements),
+            },
+        )
 
         # Update state with comprehensive business intelligence
         return {
@@ -384,6 +434,14 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
             "execution_time": execution_time,
             "stack_trace": traceback.format_exc()
         }
+        capture_error(
+            "bi_agent_failed",
+            e,
+            {
+                **analytics_context,
+                "duration_ms": execution_time * 1000,
+            },
+        )
 
         # Send structured context to Sentry
         sentry_sdk.set_context("business_intelligence_error", {

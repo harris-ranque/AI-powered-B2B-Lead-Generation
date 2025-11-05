@@ -4,12 +4,13 @@ Consolidates email writing and follow-up strategy into unified email generation
 with rich business intelligence integration.
 """
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field, ConfigDict
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
 from ...utils.research_clients import ClientRegistry
+from ...utils.analytics import capture_event, capture_error
 from ...models.lead_models import (
     AgentResult,
     BusinessProfile,
@@ -187,11 +188,24 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
     business_profile = state["business_profile"]
     requirements = state["requirements"]
     business_intelligence = state.get("business_intelligence", {})
-    
-    provider_keys = state.get("provider_keys") or {}
+
+    provider_keys: Optional[Dict[str, str]] = state.get("provider_keys")
+    provider_key_map = provider_keys or {}
+    using_user_keys = provider_keys is not None
     registry = ClientRegistry.get_instance()
 
     logger.info(f"Starting email generation for {lead.company_name}")
+    analytics_context = {
+        "request_id": state.get("request_id"),
+        "lead_id": getattr(lead, "id", None),
+        "company_name": lead.company_name,
+        "user_id": state.get("user_id"),
+        "user_tier": state.get("user_tier", "free"),
+        "using_user_keys": using_user_keys,
+        "provider_keys_supplied": sorted(provider_key_map.keys()) if using_user_keys else [],
+        "follow_up_sequence": requirements.follow_up_sequence,
+    }
+    capture_event("email_agent_started", analytics_context)
     
     try:
         # Validate business intelligence availability
@@ -249,12 +263,14 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         
         # Initialize LLM for email generation
         # gpt-5-nano uses max_completion_tokens instead of max_tokens
+        openai_api_key = provider_key_map.get("openai") if using_user_keys else None
         llm = registry.get_openai_client(
-            api_key=provider_keys.get("openai"),
+            api_key=openai_api_key,
             model=settings.default_model,
             temperature=0.4,
             max_completion_tokens=settings.max_tokens,
             reasoning_effort="minimal",
+            require_user_key=using_user_keys,
         ).with_structured_output(EmailSequence)
         
         # Create comprehensive email generation prompt
@@ -1111,6 +1127,21 @@ Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excludin
                    f"Effectiveness={email_sequence.estimated_effectiveness:.2f}, "
                    f"Personalization={email_sequence.personalization_depth}, "
                    f"Time={execution_time:.2f}s")
+        capture_event(
+            "email_agent_completed",
+            {
+                **analytics_context,
+                "estimated_effectiveness": email_sequence.estimated_effectiveness,
+                "personalization_depth": email_sequence.personalization_depth,
+                "personalization_elements": len(email_sequence.personalization_elements),
+                "pain_points_addressed": len(email_sequence.pain_points_addressed),
+                "follow_up_count": len(follow_up_sequence.emails) if follow_up_sequence else 0,
+                "has_follow_up_sequence": bool(follow_up_sequence),
+                "competitor_references": len(email_sequence.competitor_references),
+                "industry_insights_used": len(email_sequence.industry_insights_used),
+                "generation_duration_ms": execution_time * 1000,
+            },
+        )
         
         # Update state with generated email content
         return {
@@ -1160,6 +1191,14 @@ Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excludin
             "execution_time": execution_time,
             "stack_trace": traceback.format_exc()
         }
+        capture_error(
+            "email_agent_failed",
+            e,
+            {
+                **analytics_context,
+                "generation_duration_ms": execution_time * 1000,
+            },
+        )
 
         # Send structured context to Sentry
         sentry_sdk.set_context("email_generation_error", {

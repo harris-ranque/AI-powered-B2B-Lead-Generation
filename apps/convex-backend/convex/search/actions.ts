@@ -17,6 +17,7 @@ import {
   LatLng,
   Place,
 } from "./googlePlaces";
+import { getSingleProviderError } from "../lib/errorMessages";
 // Note: This action can be scheduled by the orchestrator (no user auth).
 
 const METERS_PER_MILE = 1609.34;
@@ -353,29 +354,47 @@ export const searchGoogleMaps: any = action({
         }
       }
 
-      // Get Google Maps API key (use user's key for enterprise users)
+      // Get Google Places API key (use user's key for enterprise users)
       let googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
 
       if (user?.plan === "enterprise") {
         try {
-          const keyResult = await ctx.runAction(
-            "userApiKeys/actions:getDecryptedApiKey" as any,
+          const providerKeys = await ctx.runAction(
+            internal.userApiKeys.actions.resolveUserProviderKeys,
             {
-              provider: "google_maps",
               userId: search.userId,
+              purpose: "lead_search",
             },
           );
-          googleMapsApiKey = keyResult.apiKey;
+
+          const locationKey =
+            providerKeys.google_places || providerKeys.google_maps;
+
+          if (!locationKey) {
+            throw new Error(
+              getSingleProviderError("Google Places", "lead discovery")
+            );
+          }
+
+          if (!providerKeys.google_places && providerKeys.google_maps) {
+            console.warn(
+              `BYOK: Enterprise user ${search.userId} is using legacy google_maps key. Ask them to re-save as google_places.`,
+            );
+          }
+
+          googleMapsApiKey = locationKey;
         } catch (error) {
-          // For enterprise users, API keys are required
+          if (error instanceof Error && /Enterprise users must provide/.test(error.message)) {
+            throw error;
+          }
           throw new Error(
-            "Enterprise users must provide their own Google Maps API key. Please add your API key in Settings."
+            getSingleProviderError("Google Places", "lead discovery")
           );
         }
       }
 
       if (!googleMapsApiKey) {
-        throw new Error("Google Maps API key not configured");
+        throw new Error("Google Places API key not configured");
       }
 
       const requestedResults = search.parameters.maxResults;
@@ -1382,6 +1401,22 @@ export const completeSearch: any = action({
         console.log(
           `BYOK: Skipping ${creditsToCharge} credit charge for enterprise search ${args.searchId}`
         );
+
+        // Log the credit bypass for audit trail
+        await ctx.runMutation(internal.lib.auditLog.logCreditBypass, {
+          userId: search.userId,
+          operation: `Lead generation search "${search.name}" completed`,
+          creditsSkipped: creditsToCharge,
+          providers: [], // Will be populated with actual providers in future enhancement
+          relatedEntityType: "search",
+          relatedEntityId: args.searchId as unknown as string,
+          metadata: {
+            totalFound,
+            enrichedCount,
+            analyzedCount,
+            creditBreakdown,
+          },
+        });
       }
 
       // Update search status to completed with final results

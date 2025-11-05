@@ -566,6 +566,7 @@ function extractVerifiedContacts(payload: any): DomainContact[] {
 }
 
 interface DomainResolveOptions {
+  apiKey?: string;
   concurrency?: number;
   maxRetries?: number;
   baseDelayMs?: number;
@@ -676,7 +677,7 @@ export async function resolveDomainsWithFindyMail(
   roles: string[],
   options: DomainResolveOptions = {},
 ): Promise<Map<string, { name?: string; email: string }[]>> {
-  const apiKey = process.env.FINDYMAIL_API_KEY;
+  const apiKey = options.apiKey ?? process.env.FINDYMAIL_API_KEY;
   if (!apiKey) {
     throw new Error("FINDYMAIL_API_KEY environment variable is not configured");
   }

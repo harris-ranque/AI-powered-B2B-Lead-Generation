@@ -296,10 +296,16 @@ export function LeadDiscoveryStage({
 
   const validation = validateAndEstimateCost();
   const estimatedCost = validation.estimatedCost || 0;
+  const validationWarnings = validation.warnings ?? [];
+  const warningsToShow = isEnterprise
+    ? validationWarnings.filter(
+        (warning) => !warning.toLowerCase().includes("credit"),
+      )
+    : validationWarnings;
   const isStartDisabled =
     !validation.isValid ||
     state.isProcessing ||
-    estimatedCost > userCredits ||
+    (!isEnterprise && estimatedCost > userCredits) ||
     state.selectedSource === "csv_upload";
 
   const handleStartDiscovery = async () => {
@@ -393,11 +399,20 @@ export function LeadDiscoveryStage({
         }, 1000);
       }
     } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Failed to start lead discovery. Please try again.";
+
       toast({
         title: "Discovery Failed",
-        description: "Failed to start lead discovery. Please try again.",
+        description: message,
         variant: "destructive",
       });
+
+      if (isEnterprise && message.toLowerCase().includes("api key")) {
+        setShowApiKeyBlocker(true);
+      }
     } finally {
       setProcessing(false);
     }
@@ -848,12 +863,12 @@ export function LeadDiscoveryStage({
             </motion.div>
           )}
 
-          {validation.warnings.length > 0 && (
+          {warningsToShow.length > 0 && (
             <Alert className="border border-amber-500/40 bg-amber-500/10 text-amber-200">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
                 <div className="space-y-1">
-                  {validation.warnings.map((warning, index) => (
+                  {warningsToShow.map((warning, index) => (
                     <div key={index}>{warning}</div>
                   ))}
                 </div>
@@ -862,23 +877,60 @@ export function LeadDiscoveryStage({
           )}
 
           {/* Cost Summary & Action */}
-          <EstimatedCostCard
-            estimatedCredits={estimatedCost}
-            availableCredits={userCredits}
-            afterBalance={Math.max(userCredits - estimatedCost, 0)}
-            onStart={handleRequestStart}
-            disabled={isStartDisabled}
-            isProcessing={state.isProcessing}
-          />
+          {!isEnterprise ? (
+            <EstimatedCostCard
+              estimatedCredits={estimatedCost}
+              availableCredits={userCredits}
+              afterBalance={Math.max(userCredits - estimatedCost, 0)}
+              onStart={handleRequestStart}
+              disabled={isStartDisabled}
+              isProcessing={state.isProcessing}
+            />
+          ) : (
+            <div className="card-glass p-4 md:p-5">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="space-y-1 text-left">
+                  <h4 className="text-base font-semibold text-white">
+                    Ready to discover new leads?
+                  </h4>
+                  <p className="text-sm text-slate-300">
+                    Kick off this search and we&apos;ll start enriching leads immediately. Results will flow into your workspace as they are found.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRequestStart}
+                  disabled={isStartDisabled}
+                  className={cn(
+                    "btn-primary-gradient min-w-[180px] justify-center",
+                    state.isProcessing && "brightness-105",
+                    isStartDisabled && "opacity-70 cursor-not-allowed",
+                  )}
+                >
+                  <Search
+                    className={cn(
+                      "h-4 w-4",
+                      state.isProcessing && "animate-spin",
+                    )}
+                  />
+                  {state.isProcessing ? "Discovering..." : "Start Discovery"}
+                </button>
+              </div>
+            </div>
+          )}
         </CollapsibleContent>
       </Collapsible>
 
       <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm credit usage</AlertDialogTitle>
+            <AlertDialogTitle>
+              {isEnterprise ? "Start lead discovery" : "Confirm credit usage"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {estimatedCost > 0 ? (
+              {isEnterprise ? (
+                "We'll kick off lead discovery using your current configuration. Ready to begin?"
+              ) : estimatedCost > 0 ? (
                 <>
                   This search may use up to{" "}
                   <span className="font-semibold text-foreground">
@@ -899,7 +951,9 @@ export function LeadDiscoveryStage({
               onClick={handleConfirmStart}
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
-              {estimatedCost > 0
+              {isEnterprise
+                ? "Yes, start discovering leads"
+                : estimatedCost > 0
                 ? `Yes, use up to ${estimatedCost} credits`
                 : "Yes, start the search"}
             </AlertDialogAction>

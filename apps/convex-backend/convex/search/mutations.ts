@@ -8,6 +8,8 @@ import {
   isUpdatedAtSchemaError,
   withUpdatedAtIfSupported,
 } from "./utils";
+import { getMissingKeysBeforeOperationError } from "../lib/errorMessages";
+import { captureAnalyticsEvent } from "../lib/analytics";
 
 const DEFAULT_TARGET_ROLES = ["CEO", "Founder", "Owner"] as const;
 const MAX_TARGET_ROLES = 3;
@@ -120,21 +122,41 @@ export const createSearch = mutation({
             .collect();
 
           const hasOpenAI = apiKeys.some((key) => key.provider === "openai");
-          const hasGoogleMaps = apiKeys.some((key) => key.provider === "google_maps");
+          const hasGooglePlaces = apiKeys.some(
+            (key) => key.provider === "google_places",
+          );
+          const hasLegacyGoogleMaps = apiKeys.some(
+            (key) => key.provider === "google_maps",
+          );
           const hasFindyMail = apiKeys.some((key) => key.provider === "findymail");
           const hasTavily = apiKeys.some((key) => key.provider === "tavily");
           const hasPerplexity = apiKeys.some((key) => key.provider === "perplexity");
+          const hasExa = apiKeys.some((key) => key.provider === "exa");
 
           const missingKeys: string[] = [];
           if (!hasOpenAI) missingKeys.push("OpenAI");
-          if (!hasGoogleMaps) missingKeys.push("Google Maps");
+          if (!hasGooglePlaces && !hasLegacyGoogleMaps) {
+            missingKeys.push("Google Places");
+          }
           if (!hasFindyMail) missingKeys.push("FindyMail");
           if (!hasTavily) missingKeys.push("Tavily");
           if (!hasPerplexity) missingKeys.push("Perplexity");
+          if (!hasExa) missingKeys.push("Exa");
+
+          if (!hasGooglePlaces && hasLegacyGoogleMaps) {
+            console.warn(
+              `BYOK: Enterprise user ${user._id} has legacy google_maps key only; instruct them to re-save as google_places`,
+            );
+          }
 
           if (missingKeys.length > 0) {
+            captureAnalyticsEvent(user._id, "search_creation_blocked", {
+              reason: "missing_byok_keys",
+              missingProviders: missingKeys,
+              maxResults: args.parameters.maxResults,
+            });
             throw new Error(
-              `Enterprise users must provide their own API keys. Missing: ${missingKeys.join(", ")}. Please add your API keys in Settings before starting a search.`
+              getMissingKeysBeforeOperationError("a search", missingKeys)
             );
           }
         }
@@ -167,6 +189,12 @@ export const createSearch = mutation({
             ...baseSearchDoc,
             updatedAt: now,
           });
+          captureAnalyticsEvent(user._id, "search_created", {
+            searchId,
+            maxResults: adjustedParameters.maxResults,
+            plan: user.plan,
+            usingUserKeys: user.plan === "enterprise",
+          });
 
           return { searchId };
         } catch (error) {
@@ -175,6 +203,12 @@ export const createSearch = mutation({
           }
 
           const searchId = await ctx.db.insert("searches", baseSearchDoc);
+          captureAnalyticsEvent(user._id, "search_created", {
+            searchId,
+            maxResults: adjustedParameters.maxResults,
+            plan: user.plan,
+            usingUserKeys: user.plan === "enterprise",
+          });
           return { searchId };
         }
       },
@@ -254,21 +288,36 @@ export const createSearchCompleted = mutation({
             .collect();
 
           const hasOpenAI = apiKeys.some((key) => key.provider === "openai");
-          const hasGoogleMaps = apiKeys.some((key) => key.provider === "google_maps");
+          const hasGooglePlaces = apiKeys.some(
+            (key) => key.provider === "google_places",
+          );
+          const hasLegacyGoogleMaps = apiKeys.some(
+            (key) => key.provider === "google_maps",
+          );
           const hasFindyMail = apiKeys.some((key) => key.provider === "findymail");
           const hasTavily = apiKeys.some((key) => key.provider === "tavily");
           const hasPerplexity = apiKeys.some((key) => key.provider === "perplexity");
+          const hasExa = apiKeys.some((key) => key.provider === "exa");
 
           const missingKeys: string[] = [];
           if (!hasOpenAI) missingKeys.push("OpenAI");
-          if (!hasGoogleMaps) missingKeys.push("Google Maps");
+          if (!hasGooglePlaces && !hasLegacyGoogleMaps) {
+            missingKeys.push("Google Places");
+          }
           if (!hasFindyMail) missingKeys.push("FindyMail");
           if (!hasTavily) missingKeys.push("Tavily");
           if (!hasPerplexity) missingKeys.push("Perplexity");
+          if (!hasExa) missingKeys.push("Exa");
+
+          if (!hasGooglePlaces && hasLegacyGoogleMaps) {
+            console.warn(
+              `BYOK: Enterprise user ${user._id} has legacy google_maps key only; instruct them to re-save as google_places`,
+            );
+          }
 
           if (missingKeys.length > 0) {
             throw new Error(
-              `Enterprise users must provide their own API keys. Missing: ${missingKeys.join(", ")}. Please add your API keys in Settings before starting a search.`
+              getMissingKeysBeforeOperationError("a search", missingKeys)
             );
           }
         }

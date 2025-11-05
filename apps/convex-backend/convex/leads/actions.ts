@@ -15,6 +15,7 @@ import {
   createEnrichmentService,
   EnrichmentProviderFactory
 } from "./enrichment/provider";
+import { getSingleProviderError } from "../lib/errorMessages";
 
 // Import enrichment types
 import { EnrichmentBatchResult, EnrichmentOptions } from "./enrichment/types";
@@ -390,17 +391,18 @@ export const enrichLeads: any = action({
       if (user.plan === "enterprise") {
         try {
           const keyResult = await ctx.runAction(
-            "userApiKeys/actions:getDecryptedApiKey" as any,
+            internal.userApiKeys.actions.getDecryptedApiKey,
             {
-              provider: providerType, // Use configured provider
+              provider: providerType,
               userId: user._id,
+              purpose: "lead_enrichment",
             },
           );
           userApiKey = keyResult.apiKey;
         } catch (error) {
           // For enterprise users, API keys are required
           throw new Error(
-            `Enterprise users must provide their own ${providerType} API key. Please add your API key in Settings.`
+            getSingleProviderError(providerType, "lead enrichment")
           );
         }
       }

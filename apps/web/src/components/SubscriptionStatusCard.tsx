@@ -6,8 +6,14 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { Link } from "react-router-dom";
 
 export function SubscriptionStatusCard() {
-  const { subscription, isLoading, planName, getStatusBadge, isStarter } =
-    useSubscription();
+  const {
+    subscription,
+    isLoading,
+    planName,
+    getStatusBadge,
+    isStarter,
+    hasActiveSubscription,
+  } = useSubscription();
 
   if (isLoading) {
     return (
@@ -27,7 +33,7 @@ export function SubscriptionStatusCard() {
     );
   }
 
-  if (!subscription?.billing && !isStarter) {
+  if (!subscription?.billing && !hasActiveSubscription && !isStarter) {
     return (
       <Card className="border-border bg-card">
         <CardHeader>

@@ -2,6 +2,60 @@ import { action } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
+import { REQUIRED_ENTERPRISE_PROVIDERS } from "../userApiKeys/queries";
+
+type ProviderKeyMap = Record<string, string>;
+
+function normalizeProviderKeyMap(
+  rawKeys: ProviderKeyMap,
+  userId: string,
+): ProviderKeyMap {
+  const normalized: ProviderKeyMap = {};
+
+  for (const [provider, key] of Object.entries(rawKeys)) {
+    if (!key) {
+      continue;
+    }
+    normalized[provider] = key;
+  }
+
+  if (
+    normalized.google_maps &&
+    !normalized.google_places
+  ) {
+    console.warn(
+      `BYOK: User ${userId} has legacy google_maps key only; ask them to re-save as google_places.`,
+    );
+    normalized.google_places = normalized.google_maps;
+  }
+
+  delete normalized.google_maps;
+
+  return normalized;
+}
+
+function serializeProviderKeysForWorker(
+  keys: ProviderKeyMap,
+): Record<string, string> | undefined {
+  const entries = Object.entries(keys);
+  if (entries.length === 0) {
+    return undefined;
+  }
+
+  const serialized: Record<string, string> = {};
+  for (const [provider, key] of entries) {
+    if (!key) {
+      continue;
+    }
+    if (provider === "google_places") {
+      serialized.googlePlaces = key;
+    } else {
+      serialized[provider] = key;
+    }
+  }
+
+  return Object.keys(serialized).length > 0 ? serialized : undefined;
+}
 
 // Generate personalized email using LangGraph
 export const generateEmail: unknown = action({
@@ -93,25 +147,43 @@ export const generateEmail: unknown = action({
       },
     );
 
-    const providerKeys =
-      user.plan === "enterprise"
-        ? await ctx.runAction(api.userApiKeys.actions.resolveUserProviderKeys, {
+    let enterpriseProviderKeys: ProviderKeyMap = {};
+    if (user.plan === "enterprise") {
+      const rawProviderKeys =
+        (await ctx.runAction(
+          internal.userApiKeys.actions.resolveUserProviderKeys,
+          {
             userId: user._id,
-          })
-        : {};
+            purpose: "langgraph_email_generation",
+          },
+        )) as ProviderKeyMap;
 
-    const serializedProviderKeys = Object.fromEntries(
-      Object.entries(providerKeys).map(([provider, key]) => {
-        if (!key) {
-          return [provider, key];
-        }
+      enterpriseProviderKeys = normalizeProviderKeyMap(
+        rawProviderKeys,
+        user._id,
+      );
 
-        if (provider === "google_places") {
-          return ["googlePlaces", key];
-        }
+      const missingProviders = REQUIRED_ENTERPRISE_PROVIDERS.filter(
+        (provider) => {
+          if (provider === "google_places") {
+            return !enterpriseProviderKeys.google_places;
+          }
+          return !enterpriseProviderKeys[provider];
+        },
+      );
 
-        return [provider, key];
-      }),
+      if (missingProviders.length > 0) {
+        const readable = missingProviders
+          .map((provider) => provider.replace("_", " "))
+          .join(", ");
+        throw new Error(
+          `Enterprise plans require your own API keys. Missing: ${readable}. Please configure them in Settings.`,
+        );
+      }
+    }
+
+    const serializedProviderKeys = serializeProviderKeysForWorker(
+      enterpriseProviderKeys,
     );
 
     // Call LangGraph worker service
@@ -163,10 +235,7 @@ export const generateEmail: unknown = action({
             personalization_level: "high",
             followUpSequence: (args.emailType ?? "initial") !== "final",
           },
-          providerKeys:
-            Object.keys(serializedProviderKeys).length > 0
-              ? serializedProviderKeys
-              : undefined,
+          providerKeys: serializedProviderKeys,
           userId: user._id,
         }),
       });
@@ -285,6 +354,33 @@ export const analyzeLead = action({
       },
     );
 
+    let enterpriseProviderKeys: ProviderKeyMap = {};
+    if (user.plan === "enterprise") {
+      const rawProviderKeys =
+        (await ctx.runAction(
+          internal.userApiKeys.actions.resolveUserProviderKeys,
+          {
+            userId: user._id,
+            purpose: "langgraph_lead_analysis",
+          },
+        )) as ProviderKeyMap;
+
+      enterpriseProviderKeys = normalizeProviderKeyMap(
+        rawProviderKeys,
+        user._id,
+      );
+
+      if (!enterpriseProviderKeys.openai) {
+        throw new Error(
+          "Enterprise plans require your OpenAI API key before running lead analysis. Please configure it in Settings.",
+        );
+      }
+    }
+
+    const serializedProviderKeys = serializeProviderKeysForWorker(
+      enterpriseProviderKeys,
+    );
+
     // Call LangGraph worker service
     try {
       const langgraphUrl = process.env.LANGGRAPH_URL;
@@ -301,18 +397,22 @@ export const analyzeLead = action({
           Authorization: `Bearer ${apiKey}`,
           "X-Request-ID": requestId,
         },
-        // Worker expects the Lead object as the request body for /analyze-lead
+        // Worker expects a lead payload; provider keys are optional for BYOK users
         body: JSON.stringify({
-          id: args.leadId,
-          company: lead.businessName,
-          title: "",
-          industry: lead.category ?? "",
-          websiteUrl: lead.website ?? "",
-          contactInfo: {
-            email: lead.contactInfo?.emails?.[0]?.email ?? "",
-            linkedinUrl: lead.contactInfo?.socialProfiles?.linkedin ?? "",
-            website: lead.website ?? "",
+          lead: {
+            id: args.leadId,
+            company: lead.businessName,
+            title: "",
+            industry: lead.category ?? "",
+            websiteUrl: lead.website ?? "",
+            contactInfo: {
+              email: lead.contactInfo?.emails?.[0]?.email ?? "",
+              linkedinUrl: lead.contactInfo?.socialProfiles?.linkedin ?? "",
+              website: lead.website ?? "",
+            },
           },
+          providerKeys: serializedProviderKeys,
+          userId: user._id,
         }),
       });
 

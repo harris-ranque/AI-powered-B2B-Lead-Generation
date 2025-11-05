@@ -17,6 +17,8 @@ import {
   OPERATION_TYPES,
 } from "../lib/correlation";
 import { Doc } from "../_generated/dataModel";
+import { getMissingApiKeysError } from "../lib/errorMessages";
+import { captureAnalyticsEvent } from "../lib/analytics";
 
 /**
  * Process a single lead with LangGraph API (scheduled action)
@@ -59,10 +61,15 @@ export const analyzeSingleLead: any = internalAction({
       },
     )) as Doc<"businessProfiles"> | null;
 
-    if (!profile) {
-      console.error(`Profile ${args.profileId} not found`);
-      return { success: false, error: "Profile not found" };
-    }
+  if (!profile) {
+    console.error(`Profile ${args.profileId} not found`);
+    return { success: false, error: "Profile not found" };
+  }
+    captureAnalyticsEvent(args.userId, "async_analysis_enqueued", {
+      leadId: args.leadId,
+      searchId: args.searchId,
+      businessName: lead.businessName,
+    });
 
     // Get LangGraph configuration
     const langgraphUrl = process.env.LANGGRAPH_URL;
@@ -73,6 +80,11 @@ export const analyzeSingleLead: any = internalAction({
       await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
         leadId: args.leadId,
         error: "LangGraph service not configured",
+      });
+      captureAnalyticsEvent(args.userId, "async_analysis_failed", {
+        leadId: args.leadId,
+        searchId: args.searchId,
+        reason: "service_not_configured",
       });
       return { success: false, error: "LangGraph service not configured" };
     }
@@ -110,6 +122,12 @@ export const analyzeSingleLead: any = internalAction({
       );
 
       const attemptPerf = startPerformanceTracking();
+      captureAnalyticsEvent(args.userId, "async_analysis_attempt_started", {
+        leadId: args.leadId,
+        searchId: args.searchId,
+        attempt,
+        maxAttempts: maxRetries,
+      });
 
       try {
         logWithCorrelation(
@@ -150,49 +168,69 @@ export const analyzeSingleLead: any = internalAction({
           userId: args.userId,
         });
 
-        // Get enterprise user's API keys for Tavily and Perplexity
+        // Get enterprise user's API keys (BYOK flow)
         let providerKeys: Record<string, string> | undefined;
         if (user?.plan === "enterprise") {
           try {
-            // Get Tavily key
-            const tavilyKeyResult = await ctx.runAction(
-              "userApiKeys/actions:getDecryptedApiKey" as any,
-              {
-                provider: "tavily",
-                userId: args.userId,
-              },
-            );
-            // Get Perplexity key
-            const perplexityKeyResult = await ctx.runAction(
-              "userApiKeys/actions:getDecryptedApiKey" as any,
-              {
-                provider: "perplexity",
-                userId: args.userId,
-              },
-            );
-            // Get OpenAI key
-            const openaiKeyResult = await ctx.runAction(
-              "userApiKeys/actions:getDecryptedApiKey" as any,
-              {
-                provider: "openai",
-                userId: args.userId,
-              },
-            );
+            const resolvedKeys =
+              (await ctx.runAction(
+                internal.userApiKeys.actions.resolveUserProviderKeys,
+                {
+                  userId: args.userId,
+                  purpose: "async_lead_analysis",
+                },
+              )) as Record<string, string>;
 
+            const googleKey =
+              resolvedKeys.google_places || resolvedKeys.google_maps || "";
+
+            if (!resolvedKeys.google_places && resolvedKeys.google_maps) {
+              console.warn(
+                `BYOK: Enterprise user ${args.userId} is using legacy google_maps provider; ask them to re-save as google_places`,
+              );
+            }
+
+            const missingProviders: string[] = [];
+            if (!resolvedKeys.openai) missingProviders.push("OpenAI");
+            if (!resolvedKeys.tavily) missingProviders.push("Tavily");
+            if (!resolvedKeys.exa) missingProviders.push("Exa");
+            if (!resolvedKeys.perplexity) missingProviders.push("Perplexity");
+            if (!googleKey) missingProviders.push("Google Places");
+            if (!resolvedKeys.findymail) missingProviders.push("FindyMail");
+
+            if (missingProviders.length > 0) {
+              throw new Error(
+                `Missing required BYOK providers: ${missingProviders.join(", ")}`,
+              );
+            }
+
+            // All keys are validated to exist above, safe to assert non-null
             providerKeys = {
-              tavily: tavilyKeyResult.apiKey,
-              perplexity: perplexityKeyResult.apiKey,
-              openai: openaiKeyResult.apiKey,
+              openai: resolvedKeys.openai!,
+              tavily: resolvedKeys.tavily!,
+              exa: resolvedKeys.exa!,
+              perplexity: resolvedKeys.perplexity!,
+              googlePlaces: googleKey,
+              findymail: resolvedKeys.findymail!,
             };
           } catch (error) {
             // This should have been caught earlier, but just in case
             console.error("Enterprise user missing required API keys:", error);
-            await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
-              leadId: args.leadId,
-              error: "Enterprise users must provide their own API keys. Please add your API keys in Settings.",
-            });
-            return { success: false, error: "Missing required API keys" };
-          }
+            const errorMessage = error instanceof Error
+              ? error.message
+          : getMissingApiKeysError(["OpenAI", "Tavily", "Exa", "Perplexity", "Google Places", "FindyMail"], "lead analysis");
+        await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
+          leadId: args.leadId,
+          error: errorMessage,
+        });
+        captureAnalyticsEvent(args.userId, "async_analysis_failed", {
+          leadId: args.leadId,
+          searchId: args.searchId,
+          reason: "missing_byok_keys",
+          missingProviders: errorMessage,
+        });
+        return { success: false, error: "Missing required API keys" };
+      }
         }
 
         // Prepare lead data for LangGraph
@@ -288,6 +326,13 @@ export const analyzeSingleLead: any = internalAction({
         );
 
         // Success - webhook will handle the result
+        captureAnalyticsEvent(args.userId, "async_analysis_completed", {
+          leadId: args.leadId,
+          searchId: args.searchId,
+          attempt,
+          durationMs: perfData?.duration || 0,
+          requestId,
+        });
         return {
           success: true,
           requestId,
@@ -317,6 +362,13 @@ export const analyzeSingleLead: any = internalAction({
             leadId: args.leadId,
             error: error instanceof Error ? error.message : "Unknown error",
           });
+          captureAnalyticsEvent(args.userId, "async_analysis_failed", {
+            leadId: args.leadId,
+            searchId: args.searchId,
+            reason: error instanceof Error ? error.message : "Unknown error",
+            attempt,
+            maxAttempts: maxRetries,
+          });
 
           return {
             success: false,
@@ -333,14 +385,19 @@ export const analyzeSingleLead: any = internalAction({
     }
 
     // Should never reach here, but handle it
-    await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
-      leadId: args.leadId,
-      error: "Max retries exceeded",
-    });
+  await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
+    leadId: args.leadId,
+    error: "Max retries exceeded",
+  });
+  captureAnalyticsEvent(args.userId, "async_analysis_failed", {
+    leadId: args.leadId,
+    searchId: args.searchId,
+    reason: "max_retries",
+  });
 
-    return {
-      success: false,
-      error: "Max retries exceeded",
+  return {
+    success: false,
+    error: "Max retries exceeded",
       leadId: lead._id,
     };
   },

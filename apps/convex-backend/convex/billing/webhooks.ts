@@ -68,7 +68,7 @@ function getPlanLimits(plan: string) {
         emailGeneration: true,
         bulkOperations: true,
         apiAccess: true,
-        requiresOwnApiKeys: false,
+        requiresOwnApiKeys: true,
       };
     default: // starter
       return {
@@ -79,7 +79,7 @@ function getPlanLimits(plan: string) {
         emailGeneration: false,
         bulkOperations: false,
         apiAccess: false,
-        requiresOwnApiKeys: true,
+        requiresOwnApiKeys: false,
       };
   }
 }

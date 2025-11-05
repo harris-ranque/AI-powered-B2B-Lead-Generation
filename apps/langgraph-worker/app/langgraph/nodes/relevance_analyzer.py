@@ -4,12 +4,13 @@ Determines lead relevance and fit for our services
 """
 
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
 from ...utils.research_clients import ClientRegistry
+from ...utils.analytics import capture_event, capture_error
 from ...models.lead_models import AgentResult
 from ..state import EmailGenerationState
 
@@ -46,17 +47,34 @@ async def relevance_analyzer_node(state: EmailGenerationState) -> Dict[str, Any]
     """
     start_time = time.time()
     logger.info(f"Starting relevance analysis for {state['lead'].company_name}")
+    lead = state["lead"]
+    analytics_context = {
+        "request_id": state.get("request_id"),
+        "lead_id": getattr(lead, "id", None),
+        "company_name": lead.company_name,
+        "user_id": state.get("user_id"),
+        "user_tier": state.get("user_tier", "free"),
+    }
+    capture_event("relevance_agent_started", analytics_context)
     
     try:
-        provider_keys = state.get("provider_keys") or {}
+        provider_keys: Optional[Dict[str, str]] = state.get("provider_keys")
+        provider_key_map = provider_keys or {}
+        using_user_keys = provider_keys is not None
+        analytics_context["using_user_keys"] = using_user_keys
+        analytics_context["provider_keys_supplied"] = (
+            sorted(provider_key_map.keys()) if using_user_keys else []
+        )
         registry = ClientRegistry.get_instance()
 
         # Initialize LLM with structured output
+        openai_api_key = provider_key_map.get("openai") if using_user_keys else None
         llm = registry.get_openai_client(
-            api_key=provider_keys.get("openai"),
+            api_key=openai_api_key,
             model=settings.default_model,
             temperature=settings.temperature,
             max_tokens=settings.max_tokens,
+            require_user_key=using_user_keys,
         ).with_structured_output(RelevanceAnalysis)
         
         # Create analysis prompt
@@ -140,9 +158,21 @@ async def relevance_analyzer_node(state: EmailGenerationState) -> Dict[str, Any]
             confidence_score=min(0.95, analysis.relevance_score + 0.15),  # Boost confidence slightly
             execution_time=execution_time
         )
-        
+
         # Update state
         logger.info(f"Relevance analysis complete: Score={analysis.relevance_score:.2f}, Level={analysis.qualification_level}")
+        capture_event(
+            "relevance_agent_completed",
+            {
+                **analytics_context,
+                "relevance_score": analysis.relevance_score,
+                "qualification_level": analysis.qualification_level,
+                "analysis_duration_ms": execution_time * 1000,
+                "key_factors": len(analysis.key_factors),
+                "opportunities": len(analysis.opportunities),
+                "red_flags": len(analysis.red_flags),
+            },
+        )
         
         return {
             "current_stage": "relevance_analysis",  # Update stage for supervisor routing
@@ -175,7 +205,15 @@ async def relevance_analyzer_node(state: EmailGenerationState) -> Dict[str, Any]
     except Exception as e:
         logger.error(f"Error in relevance analyzer: {str(e)}")
         execution_time = time.time() - start_time
-        
+        capture_error(
+            "relevance_agent_failed",
+            e,
+            {
+                **analytics_context,
+                "analysis_duration_ms": execution_time * 1000,
+            },
+        )
+
         # Create error result
         agent_result = AgentResult(
             agent_name="Relevance Analyzer",

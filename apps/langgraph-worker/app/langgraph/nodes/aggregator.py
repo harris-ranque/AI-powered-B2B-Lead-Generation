@@ -6,6 +6,7 @@ import time
 from typing import Dict, Any, List
 from datetime import datetime
 from ...utils.logger import setup_logger
+from ...utils.analytics import capture_event, capture_error
 from ...models.lead_models import EmailGenerationResult, AgentResult
 from ..state import EmailGenerationState
 
@@ -73,6 +74,15 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
     """
     perf_start = time.time()
     logger.info(f"Starting result aggregation for request {state['request_id']}")
+    lead = state["lead"]
+    analytics_context = {
+        "request_id": state.get("request_id"),
+        "lead_id": getattr(lead, "id", None),
+        "company_name": getattr(lead, "company_name", None),
+        "user_id": state.get("user_id"),
+        "user_tier": state.get("user_tier", "free"),
+    }
+    capture_event("aggregator_started", analytics_context)
     
     try:
         # Calculate total processing time
@@ -271,6 +281,19 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
         logger.info(f"  - Follow-ups: {'Yes' if state.get('follow_up_sequence') else 'No'}")
         logger.info(f"  - Total Time: {total_time:.2f}s")
         logger.info(f"  - Recommendations: {len(recommendations)}")
+        capture_event(
+            "aggregator_completed",
+            {
+                **analytics_context,
+                "total_duration_ms": total_time * 1000,
+                "relevance_score": relevance_score,
+                "recommendations_count": len(recommendations),
+                "email_generated": bool(state.get("primary_email")),
+                "follow_up_generated": bool(state.get("follow_up_sequence")),
+                "aggregator_duration_ms": execution_time * 1000,
+                "deep_research_used": state.get("deep_research_triggered", False),
+            },
+        )
         
         # Update state with final results
         return {
@@ -289,6 +312,14 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error in aggregator: {str(e)}")
         execution_time = time.time() - perf_start
+        capture_error(
+            "aggregator_failed",
+            e,
+            {
+                **analytics_context,
+                "aggregator_duration_ms": execution_time * 1000,
+            },
+        )
         
         # Create minimal result on error
         minimal_result = EmailGenerationResult(

@@ -8,6 +8,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.runnables import RunnableConfig
 from ..utils.logger import setup_logger
+from ..utils.analytics import capture_event, capture_error
 from .state import EmailGenerationState
 from .nodes.business_intelligence_agent import business_intelligence_agent_node
 from .nodes.email_generation_agent import email_generation_agent_node
@@ -99,6 +100,17 @@ async def execute_email_generation(
         Workflow execution result with quality-assured email
     """
     logger.info(f"Executing optimized 3-agent email generation for request {request_id}")
+    workflow_start = time.time()
+    provider_key_labels = sorted(provider_keys.keys()) if isinstance(provider_keys, dict) else []
+    analytics_context = {
+        "request_id": request_id,
+        "lead_id": getattr(lead, "id", None),
+        "company_name": getattr(lead, "company_name", None),
+        "user_id": user_id,
+        "provider_keys_supplied": provider_key_labels,
+        "using_user_keys": bool(provider_keys),
+    }
+    capture_event("workflow_execution_started", analytics_context)
     
     # Create workflow
     workflow = create_email_generation_workflow(checkpointer)
@@ -131,7 +143,7 @@ async def execute_email_generation(
     config = {
         "configurable": {
             "thread_id": request_id,  # Use request ID as thread ID for persistence
-            "provider_keys": provider_keys or {},
+            "provider_keys": provider_keys,
             "user_id": user_id,
         }
     }
@@ -149,12 +161,23 @@ async def execute_email_generation(
             # Calculate total processing time
             processing_times = result.get("processing_times", {})
             total_time = sum(processing_times.values())
-            
+
             logger.info(f"3-agent workflow completed for {request_id}: "
                        f"Quality={quality_assessment.get('overall_quality_score', 0):.2f}, "
                        f"Approved={quality_assessment.get('approval_status', 'Unknown')}, "
                        f"Time={total_time:.2f}s")
-            
+            capture_event(
+                "workflow_execution_completed",
+                {
+                    **analytics_context,
+                    "duration_ms": (time.time() - workflow_start) * 1000,
+                    "processing_time_ms": total_time * 1000,
+                    "quality_score": quality_assessment.get("overall_quality_score", 0),
+                    "approved": quality_assessment.get("approval_status") == "Approved",
+                    "agents": 3,
+                },
+            )
+
             return {
                 "status": "completed",
                 "result": final_result,
@@ -169,9 +192,17 @@ async def execute_email_generation(
                 "error": "No result generated from 3-agent workflow",
                 "errors": result.get("errors", [])
             }
-            
+
     except Exception as e:
         logger.error(f"Workflow execution error: {str(e)}")
+        capture_error(
+            "workflow_execution_failed",
+            e,
+            {
+                **analytics_context,
+                "duration_ms": (time.time() - workflow_start) * 1000,
+            },
+        )
         return {
             "status": "error",
             "error": str(e),
@@ -223,6 +254,7 @@ async def execute_with_streaming(
         "processing_times": {},
         "confidence_scores": {},
         "quality_gates_passed": {},
+        "provider_keys": provider_keys,
         "business_intelligence": {},
         "primary_email": None,
         "follow_up_sequence": None,
@@ -235,7 +267,7 @@ async def execute_with_streaming(
     config = {
         "configurable": {
             "thread_id": request_id,
-            "provider_keys": provider_keys or {},
+            "provider_keys": provider_keys,
             "user_id": user_id,
         }
     }

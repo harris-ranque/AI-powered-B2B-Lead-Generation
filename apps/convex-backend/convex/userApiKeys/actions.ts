@@ -1,10 +1,12 @@
 "use node";
 
 import crypto from "node:crypto";
-import { action } from "../_generated/server";
+import { action, internalAction } from "../_generated/server";
+import type { ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 import { api, internal } from "../_generated/api";
+import type { Doc, Id } from "../_generated/dataModel";
 import {
   ensureUserCanManageKeys,
   providerValidator,
@@ -71,6 +73,7 @@ function hashApiKey(key: string): string {
 const ENTERPRISE_VALIDATION_PROVIDERS = new Set([
   "openai",
   "tavily",
+  "exa",
   "perplexity",
   "google_places",
 ]);
@@ -85,6 +88,18 @@ type ValidationResult = {
 
 const workerUrl = process.env.LANGGRAPH_URL;
 const workerApiKey = process.env.LANGGRAPH_API_KEY;
+
+type GetDecryptedApiKeyArgs = {
+  provider: Provider;
+  userId: Id<"users">;
+  purpose?: string;
+};
+
+type GetDecryptedApiKeyResult = {
+  apiKey: string;
+  keyId: Id<"userApiKeys">;
+  provider: Provider;
+};
 
 async function validateWithWorker(
   provider: Provider,
@@ -352,22 +367,41 @@ export const validateAllApiKeys = action({
 });
 
 // Get decrypted API key for internal use (only for the system to use)
-export const getDecryptedApiKey: any = action({
+export const getDecryptedApiKey = internalAction({
   args: {
     provider: providerValidator,
     userId: v.id("users"),
+    purpose: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
-    // This is an internal action, should only be called by other backend functions
-
-    // Fetch API key internally without requiring auth
-    const apiKey = await ctx.runQuery(
+  handler: async (
+    ctx: ActionCtx,
+    args: GetDecryptedApiKeyArgs,
+  ): Promise<GetDecryptedApiKeyResult> => {
+    let apiKey: Doc<"userApiKeys"> | null = await ctx.runQuery(
       internal.userApiKeys.internal.getApiKeyForUserAndProvider,
       {
-        userId: args.userId as any,
-        provider: args.provider as any,
+        userId: args.userId,
+        provider: args.provider,
       },
     );
+
+    // Migration: Auto-fallback to google_maps if google_places is requested but not found
+    if (!apiKey && args.provider === "google_places") {
+      apiKey = await ctx.runQuery(
+        internal.userApiKeys.internal.getApiKeyForUserAndProvider,
+        {
+          userId: args.userId,
+          provider: "google_maps",
+        },
+      );
+
+      if (apiKey) {
+        console.warn(
+          `⚠️ DEPRECATION: User ${args.userId} is using legacy google_maps key. ` +
+          `Please migrate to google_places by re-saving your Google Places API key.`
+        );
+      }
+    }
 
     if (!apiKey) {
       throw new Error(`No valid ${args.provider} API key found for user`);
@@ -378,21 +412,19 @@ export const getDecryptedApiKey: any = action({
     try {
       decryptedKey = decryptApiKey((apiKey as any).encryptedKey || "");
 
-      // Log successful decryption
       await ctx.runMutation(internal.userApiKeys.internal.logApiKeyAccess, {
         userId: args.userId,
         keyId: apiKey._id,
         action: "decrypted",
-        purpose: "system_use",
+        purpose: args.purpose ?? "system_use",
         success: true,
       });
     } catch (error) {
-      // Log failed decryption attempt
       await ctx.runMutation(internal.userApiKeys.internal.logApiKeyAccess, {
         userId: args.userId,
         keyId: apiKey._id,
         action: "decrypted",
-        purpose: "system_use",
+        purpose: args.purpose ?? "system_use",
         success: false,
         errorMessage: error instanceof Error ? error.message : "Decryption failed",
       });
@@ -400,7 +432,6 @@ export const getDecryptedApiKey: any = action({
       throw error;
     }
 
-    // Record usage
     await ctx.runMutation(api.userApiKeys.mutations.recordApiKeyUsage, {
       provider: args.provider,
       userId: args.userId,
@@ -414,11 +445,12 @@ export const getDecryptedApiKey: any = action({
   },
 });
 
-// Resolve user provider keys for use in actions
-export const resolveUserProviderKeys = action({
+// Resolve user provider keys for internal backend flows
+export const resolveUserProviderKeys = internalAction({
   args: {
     userId: v.id("users"),
     includeInactive: v.optional(v.boolean()),
+    purpose: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const includeInactive = args.includeInactive ?? false;
@@ -431,6 +463,7 @@ export const resolveUserProviderKeys = action({
     );
 
     const providerKeys: Record<string, string> = {};
+    let hasLegacyGoogleMaps = false;
 
     for (const key of keys) {
       if (!includeInactive && (!key.isActive || !key.validated)) {
@@ -438,14 +471,46 @@ export const resolveUserProviderKeys = action({
       }
 
       try {
-        providerKeys[key.provider] = decryptApiKey((key as any).encryptedKey || "");
+        const decryptedKey = decryptApiKey((key as any).encryptedKey || "");
+        providerKeys[key.provider] = decryptedKey;
+
+        // Migration: If google_maps key found, also set as google_places for compatibility
+        if (key.provider === "google_maps") {
+          providerKeys["google_places"] = decryptedKey;
+          hasLegacyGoogleMaps = true;
+        }
+
+        await ctx.runMutation(internal.userApiKeys.internal.logApiKeyAccess, {
+          userId: args.userId,
+          keyId: key._id,
+          action: "decrypted",
+          purpose: args.purpose ?? "provider_bundle_resolution",
+          success: true,
+        });
       } catch (error) {
+        await ctx.runMutation(internal.userApiKeys.internal.logApiKeyAccess, {
+          userId: args.userId,
+          keyId: key._id,
+          action: "decrypted",
+          purpose: args.purpose ?? "provider_bundle_resolution",
+          success: false,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+
         console.warn("Failed to decrypt provider key", {
           provider: key.provider,
           userId: args.userId,
           error: error instanceof Error ? error.message : String(error),
         });
       }
+    }
+
+    // Log deprecation warning if legacy google_maps key is being used
+    if (hasLegacyGoogleMaps && !keys.some(k => k.provider === "google_places" && k.isActive && k.validated)) {
+      console.warn(
+        `⚠️ DEPRECATION: User ${args.userId} is using legacy google_maps key. ` +
+        `Please migrate to google_places by re-saving your Google Places API key.`
+      );
     }
 
     return providerKeys;

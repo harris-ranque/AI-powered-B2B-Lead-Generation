@@ -20,16 +20,16 @@ export const getCurrentUsage = query({
       .unique();
 
     // Default limits for starter tier
-    const defaultLimits = {
-      monthlySearches: 10,
-      maxLeadsPerSearch: 25,
-      monthlyEnrichments: 500,
-      monthlyExports: 10,
-      emailGeneration: false,
-      bulkOperations: false,
-      apiAccess: false,
-      requiresOwnApiKeys: true,
-    };
+  const defaultLimits = {
+    monthlySearches: 10,
+    maxLeadsPerSearch: 25,
+    monthlyEnrichments: 500,
+    monthlyExports: 10,
+    emailGeneration: false,
+    bulkOperations: false,
+    apiAccess: false,
+    requiresOwnApiKeys: false,
+  };
 
     const limits = billing?.planLimits || defaultLimits;
 

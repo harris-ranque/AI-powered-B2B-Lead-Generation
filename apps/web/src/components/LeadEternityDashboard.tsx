@@ -605,9 +605,6 @@ function LeadEternityDashboardContent() {
             >
               <BarChart3 className="mr-2 h-4 w-4" />
               Performance & Credits
-              <Badge variant="secondary" className="ml-auto text-xs">
-                {userCredits}
-              </Badge>
             </Button>
 
             <Button

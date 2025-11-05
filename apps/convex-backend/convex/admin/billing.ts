@@ -254,7 +254,7 @@ export const updateSubscriptionPlan = mutation({
         emailGeneration: true,
         bulkOperations: true,
         apiAccess: true,
-        requiresOwnApiKeys: false,
+        requiresOwnApiKeys: args.newPlan === "enterprise",
       };
 
       await ctx.db.patch(billing._id, {

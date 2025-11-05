@@ -5,12 +5,13 @@ to ensure high standards before final output.
 """
 import time
 import re
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
 from ...utils.research_clients import ClientRegistry
+from ...utils.analytics import capture_event, capture_error
 from ...models.lead_models import AgentResult
 from ..state import EmailGenerationState
 
@@ -76,10 +77,23 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
     primary_email = state.get("primary_email")
     email_metadata = state.get("email_metadata", {})
     
-    provider_keys = state.get("provider_keys") or {}
+    provider_keys: Optional[Dict[str, str]] = state.get("provider_keys")
+    provider_key_map = provider_keys or {}
+    using_user_keys = provider_keys is not None
     registry = ClientRegistry.get_instance()
 
     logger.info(f"Starting quality assurance for {lead.company_name}")
+    analytics_context = {
+        "request_id": state.get("request_id"),
+        "lead_id": getattr(lead, "id", None),
+        "company_name": lead.company_name,
+        "user_id": state.get("user_id"),
+        "user_tier": state.get("user_tier", "free"),
+        "using_user_keys": using_user_keys,
+        "provider_keys_supplied": sorted(provider_key_map.keys()) if using_user_keys else [],
+        "has_primary_email": primary_email is not None,
+    }
+    capture_event("qa_agent_started", analytics_context)
     
     try:
         # Validate required data availability
@@ -109,12 +123,14 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         # Initialize LLM for quality assessment
         # gpt-5-nano uses max_completion_tokens instead of max_tokens
         # Use medium reasoning effort for QA - we need accurate scoring, not just speed
+        openai_api_key = provider_key_map.get("openai") if using_user_keys else None
         llm = registry.get_openai_client(
-            api_key=provider_keys.get("openai"),
+            api_key=openai_api_key,
             model=settings.default_model,
             temperature=0.2,
             max_completion_tokens=settings.max_tokens,
             reasoning_effort="medium",
+            require_user_key=using_user_keys,
         ).with_structured_output(QualityAssessment)
         
         # Create comprehensive quality assessment prompt
@@ -362,6 +378,19 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         else:
             logger.error(f"Email REJECTED for {lead.company_name}: Score={overall_score:.2f}, "
                         f"Major issues found")
+        capture_event(
+            "qa_agent_completed",
+            {
+                **analytics_context,
+                "overall_quality_score": overall_score,
+                "approval_status": approval_status,
+                "personalization_score": quality_assessment.personalization_score,
+                "business_context_score": quality_assessment.business_context_score,
+                "issues_found": len(quality_assessment.quality_issues),
+                "suggestions": len(quality_assessment.improvement_suggestions),
+                "quality_duration_ms": execution_time * 1000,
+            },
+        )
         
         # Update state with quality assessment
         return {
@@ -446,6 +475,14 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
             "has_primary_email": state.get('primary_email') is not None,
             "stack_trace": traceback.format_exc()
         }
+        capture_error(
+            "qa_agent_failed",
+            e,
+            {
+                **analytics_context,
+                "quality_duration_ms": execution_time * 1000,
+            },
+        )
 
         # Send structured context to Sentry
         sentry_sdk.set_context("quality_assurance_error", {

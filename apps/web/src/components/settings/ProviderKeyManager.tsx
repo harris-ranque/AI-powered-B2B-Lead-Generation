@@ -83,6 +83,10 @@ interface ProviderKeyManagerProps {
 }
 
 export function ProviderKeyManager({ plan }: ProviderKeyManagerProps) {
+  if (plan !== "enterprise") {
+    return null;
+  }
+
   const userApiKeys = useQuery(api.userApiKeys.queries.getUserApiKeys);
   const status = useQuery(api.userApiKeys.queries.getApiKeyStatus);
   const validateKey = useAction(api.apiKeys.validateKey);

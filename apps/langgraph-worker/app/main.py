@@ -56,6 +56,7 @@ from .models.lead_models import (
     EmailGenerationResponse,
     ProviderKeyValidationRequest,
     ProviderKeyValidationResponse,
+    LeadAnalysisRequest,
 )
 from .langgraph.state import EmailGenerationState
 from .langgraph.workflow import create_email_generation_workflow, execute_email_generation, execute_with_streaming
@@ -64,6 +65,7 @@ from .utils.performance import single_replica_optimizer
 from .utils.concurrent_handler import concurrent_handler
 from .utils.logger import setup_logger, log_request_details, log_response_details, log_error_details
 from .utils.key_validation import validate_user_key
+from .utils.analytics import capture_event, capture_error
 
 # Configure logging
 logger = setup_logger(__name__)
@@ -354,6 +356,21 @@ async def generate_email(
     # Extract client ID from request (use search ID as client identifier)
     # Format: searchId_leadId_attempt
     client_id = request.request_id.split("_")[0] if "_" in request.request_id else "unknown"
+    provider_keys_payload = (
+        request.provider_keys.model_dump(exclude_none=True)
+        if request.provider_keys
+        else None
+    )
+    analytics_context = {
+        "request_id": request.request_id,
+        "client_id": client_id,
+        "lead_id": getattr(request.lead, "id", None),
+        "company_name": request.lead.company_name,
+        "user_id": request.user_id,
+        "using_user_keys": provider_keys_payload is not None,
+        "provider_keys_supplied": sorted(provider_keys_payload.keys()) if provider_keys_payload else [],
+    }
+    capture_event("api_generate_email_started", analytics_context)
 
     # Define the actual processing function
     async def process_email_generation():
@@ -372,12 +389,6 @@ async def generate_email(
                 logger,
                 request.model_dump(exclude={"provider_keys"}, exclude_none=True),
                 "/generate-email",
-            )
-
-            provider_keys_payload = (
-                request.provider_keys.model_dump(exclude_none=True)
-                if request.provider_keys
-                else {}
             )
 
             # Execute LangGraph workflow
@@ -417,6 +428,15 @@ async def generate_email(
                 "agents_used": 3,
                 "workflow_engine": "LangGraph"
             })
+            capture_event(
+                "api_generate_email_completed",
+                {
+                    **analytics_context,
+                    "duration_ms": duration * 1000,
+                    "quality_score": result.get("quality_score", 0),
+                    "approved": result.get("approved", False),
+                },
+            )
             
             # Send success webhook with quality metrics
             result_obj = result["result"]
@@ -446,6 +466,13 @@ async def generate_email(
                 request_id=request.request_id,
                 status="error",
                 error=result.get("error", "Unknown error")
+            )
+            capture_event(
+                "api_generate_email_failed",
+                {
+                    **analytics_context,
+                    "error": result.get("error", "Unknown error"),
+                },
             )
             
             response = EmailGenerationResponse(
@@ -492,11 +519,19 @@ async def generate_email(
             "lead_company": request.lead.company_name,
             "duration": duration
         })
+        capture_error(
+            "api_generate_email_unhandled",
+            e,
+            {
+                **analytics_context,
+                "duration_ms": duration * 1000,
+            },
+        )
         raise HTTPException(status_code=500, detail=f"Email generation failed: {str(e)}")
 
 @app.post("/analyze-lead")
 async def analyze_lead(
-    lead: Lead,
+    analysis_request: LeadAnalysisRequest,
     request: Request,
     authenticated: bool = Depends(verify_api_key)
 ):
@@ -504,7 +539,22 @@ async def analyze_lead(
     start_time = datetime.utcnow()
 
     request_id_header = request.headers.get("X-Request-ID")
+    lead = analysis_request.lead
     request_id = request_id_header or f"analysis_{lead.id}"
+    provider_keys_payload = (
+        analysis_request.provider_keys.model_dump(exclude_none=True)
+        if analysis_request.provider_keys
+        else None
+    )
+    analysis_analytics_context = {
+        "request_id": request_id,
+        "lead_id": lead.id,
+        "company_name": lead.company_name,
+        "user_id": analysis_request.user_id,
+        "using_user_keys": provider_keys_payload is not None,
+        "provider_keys_supplied": sorted(provider_keys_payload.keys()) if provider_keys_payload else [],
+    }
+    capture_event("api_analyze_lead_started", analysis_analytics_context)
     
     # Add Sentry context for this analysis request
     sentry_sdk.set_context("lead_analysis", {
@@ -512,10 +562,15 @@ async def analyze_lead(
         "lead_company": lead.company_name,
         "endpoint": "/analyze-lead",
         "request_id": request_id,
+        "user_id": analysis_request.user_id,
     })
     
     logger.info(f"[LangGraph] Analyzing lead: {lead.company_name}")
-    log_request_details(logger, lead.dict(), "/analyze-lead")
+    log_request_details(
+        logger,
+        analysis_request.model_dump(exclude={"provider_keys"}, exclude_none=True),
+        "/analyze-lead",
+    )
     
     try:
         # Create minimal state for relevance analysis only
@@ -544,7 +599,9 @@ async def analyze_lead(
             "requirements": EmailRequirements(call_to_action="Schedule a call"),
             "agent_results": [],
             "processing_times": {},
-            "confidence_scores": {}
+            "confidence_scores": {},
+            "provider_keys": provider_keys_payload,
+            "user_id": analysis_request.user_id,
         }
         
         # Run relevance analysis
@@ -552,6 +609,14 @@ async def analyze_lead(
         
         duration = (datetime.utcnow() - start_time).total_seconds()
         logger.info(f"Lead analysis completed in {duration:.2f}s")
+        capture_event(
+            "api_analyze_lead_completed",
+            {
+                **analysis_analytics_context,
+                "duration_ms": duration * 1000,
+                "relevance_score": result.get("relevance_score", 0),
+            },
+        )
         
         relevance_analysis = result.get("relevance_analysis", {})
         
@@ -637,6 +702,14 @@ async def analyze_lead(
             "lead_company": lead.company_name,
             "duration": duration
         })
+        capture_error(
+            "api_analyze_lead_unhandled",
+            e,
+            {
+                **analysis_analytics_context,
+                "duration_ms": duration * 1000,
+            },
+        )
         raise HTTPException(status_code=500, detail=f"Lead analysis failed: {str(e)}")
 
 @app.get("/status/{request_id}")

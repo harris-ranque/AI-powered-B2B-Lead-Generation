@@ -10,13 +10,15 @@
  * No Convex scheduling is used; the entire flow completes within a single action invocation.
  */
 import { action } from "../_generated/server";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 import { mapWithConcurrency } from "../utils/async";
 import { canonicalizeDomain } from "../utils/domains";
 import { fetchWithRetry } from "../utils/http";
 import { resolveDomainsWithFindyMail } from "../leads/enrichment/findymail";
+import { Doc } from "../_generated/dataModel";
+import { getSingleProviderError } from "../lib/errorMessages";
 
 const MAX_AUTOCOMPLETE_RADIUS_METERS = 50000;
 
@@ -37,6 +39,88 @@ interface PlacesAutocompleteResponse {
   error_message?: string;
 }
 
+type ProviderKeyMap = Record<string, string>;
+
+async function loadEnterpriseProviderKeys(
+  ctx: any,
+  userId: Doc<"users">["_id"],
+  purpose: string,
+): Promise<ProviderKeyMap> {
+  return (
+    (await ctx.runAction(
+      internal.userApiKeys.actions.resolveUserProviderKeys,
+      {
+        userId,
+        purpose,
+      },
+    )) || {}
+  );
+}
+
+function selectGooglePlacesKey(
+  providerKeys: ProviderKeyMap,
+  userId: Doc<"users">["_id"],
+): string | null {
+  if (providerKeys.google_places) {
+    return providerKeys.google_places;
+  }
+  if (providerKeys.google_maps) {
+    console.warn(
+      `BYOK: Enterprise user ${userId} is using legacy google_maps key. Ask them to re-save as google_places.`,
+    );
+    return providerKeys.google_maps;
+  }
+  return null;
+}
+
+async function resolveGooglePlacesApiKey(
+  ctx: any,
+  user: Doc<"users">,
+  purpose: string,
+  providerKeys?: ProviderKeyMap,
+): Promise<string> {
+  if (user.plan === "enterprise") {
+    const keys = providerKeys ?? (await loadEnterpriseProviderKeys(ctx, user._id, purpose));
+    const googleKey = selectGooglePlacesKey(keys, user._id);
+    if (!googleKey) {
+      throw new Error(
+        getSingleProviderError("Google Places", "location services")
+      );
+    }
+    return googleKey;
+  }
+
+  const envKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!envKey) {
+    throw new Error("Google Maps API key not configured");
+  }
+  return envKey;
+}
+
+async function resolveFindyMailApiKey(
+  ctx: any,
+  user: Doc<"users">,
+  purpose: string,
+  providerKeys?: ProviderKeyMap,
+): Promise<string> {
+  if (user.plan === "enterprise") {
+    const keys = providerKeys ?? (await loadEnterpriseProviderKeys(ctx, user._id, purpose));
+    const findyMailKey = keys.findymail;
+    if (!findyMailKey) {
+      throw new Error(
+        getSingleProviderError("FindyMail", "email enrichment")
+      );
+    }
+    return findyMailKey;
+  }
+
+  const envKey = process.env.FINDYMAIL_API_KEY;
+  if (!envKey) {
+    throw new Error("FindyMail API key not configured");
+  }
+  return envKey;
+}
+
 // Get place predictions from Google Places API
 export const getPlacePredictions = action({
   args: {
@@ -51,11 +135,11 @@ export const getPlacePredictions = action({
       throw new Error("Authentication required");
     }
 
-    // Get Google Maps API key
-    const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
-    if (!googleMapsApiKey) {
-      throw new Error("Google Maps API key not configured");
-    }
+    const googleMapsApiKey = await resolveGooglePlacesApiKey(
+      ctx,
+      user,
+      "places_autocomplete",
+    );
 
     // Validate input
     if (!args.input.trim()) {
@@ -149,11 +233,11 @@ export const getPlaceDetails = action({
       throw new Error("Authentication required");
     }
 
-    // Get Google Maps API key
-    const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
-    if (!googleMapsApiKey) {
-      throw new Error("Google Maps API key not configured");
-    }
+    const googleMapsApiKey = await resolveGooglePlacesApiKey(
+      ctx,
+      user,
+      "places_details",
+    );
 
     // Validate place ID
     if (!args.placeId.trim()) {
@@ -386,10 +470,28 @@ export const enrichBatch: any = action({
       };
     }
 
-    const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
-    if (!googleMapsApiKey) {
-      throw new Error("Google Maps API key not configured");
+    let providerKeys: ProviderKeyMap | undefined;
+    if (caller.plan === "enterprise") {
+      providerKeys = await loadEnterpriseProviderKeys(
+        ctx,
+        caller._id,
+        "places_enrich_batch",
+      );
     }
+
+    const googleMapsApiKey = await resolveGooglePlacesApiKey(
+      ctx,
+      caller,
+      "places_enrich_batch",
+      providerKeys,
+    );
+
+    const findyMailApiKey = await resolveFindyMailApiKey(
+      ctx,
+      caller,
+      "places_enrich_batch",
+      providerKeys,
+    );
 
     const unseen: string[] = await ctx.runMutation(
       api.places.suppressions.filterAndMarkUnseen,
@@ -453,6 +555,7 @@ export const enrichBatch: any = action({
       );
       if (uniqueDomains.length > 0) {
         domainResults = await resolveDomainsWithFindyMail(uniqueDomains, roles, {
+          apiKey: findyMailApiKey,
           concurrency: FINDYMAIL_CONCURRENCY,
         });
       }

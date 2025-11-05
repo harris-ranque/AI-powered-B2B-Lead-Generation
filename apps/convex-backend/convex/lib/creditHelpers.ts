@@ -1,6 +1,7 @@
 import { internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
+import { captureAnalyticsEvent } from "./analytics";
 
 /**
  * Enterprise BYOK Credit Bypass Helper (Internal Query)
@@ -35,16 +36,44 @@ export const shouldBypassCreditsQuery = internalQuery({
 
     // Check for all required providers
     const hasOpenAI = apiKeys.some((key) => key.provider === "openai");
-    const hasGoogleMaps = apiKeys.some((key) => key.provider === "google_maps");
+    const hasGooglePlaces = apiKeys.some(
+      (key) => key.provider === "google_places",
+    );
+    const hasLegacyGoogleMaps = apiKeys.some(
+      (key) => key.provider === "google_maps",
+    );
     const hasFindyMail = apiKeys.some((key) => key.provider === "findymail");
     const hasTavily = apiKeys.some((key) => key.provider === "tavily");
     const hasPerplexity = apiKeys.some((key) => key.provider === "perplexity");
+    const hasExa = apiKeys.some((key) => key.provider === "exa");
+
+    const hasLocationProvider = hasGooglePlaces || hasLegacyGoogleMaps;
+
+    if (!hasGooglePlaces && hasLegacyGoogleMaps) {
+      console.warn(
+        `BYOK: Enterprise user ${args.userId} is using legacy google_maps provider; ask them to re-save as google_places`,
+      );
+    }
 
     // Only bypass credits if ALL required keys are present and validated
-    const hasAllKeys = hasOpenAI && hasGoogleMaps && hasFindyMail && hasTavily && hasPerplexity;
+    const hasAllKeys =
+      hasOpenAI &&
+      hasLocationProvider &&
+      hasFindyMail &&
+      hasTavily &&
+      hasPerplexity &&
+      hasExa;
 
     if (hasAllKeys) {
-      console.log(`BYOK: Enterprise user ${args.userId} has all required API keys - bypassing credits`);
+      const providerLabel = hasGooglePlaces ? "google_places" : "google_maps";
+      console.log(
+        `BYOK: Enterprise user ${args.userId} has all required API keys (using ${providerLabel}) - bypassing credits`,
+      );
+      captureAnalyticsEvent(args.userId, "byok_credit_bypass", {
+        providerLabel,
+        hasGooglePlaces,
+        usingLegacyMaps: !hasGooglePlaces && hasLegacyGoogleMaps,
+      });
     }
 
     return hasAllKeys;
@@ -92,16 +121,46 @@ export async function shouldBypassCredits(
 
   // Check for all required providers
   const hasOpenAI = apiKeys.some((key: any) => key.provider === "openai");
-  const hasGoogleMaps = apiKeys.some((key: any) => key.provider === "google_maps");
+  const hasGooglePlaces = apiKeys.some(
+    (key: any) => key.provider === "google_places",
+  );
+  const hasLegacyGoogleMaps = apiKeys.some(
+    (key: any) => key.provider === "google_maps",
+  );
   const hasFindyMail = apiKeys.some((key: any) => key.provider === "findymail");
   const hasTavily = apiKeys.some((key: any) => key.provider === "tavily");
-  const hasPerplexity = apiKeys.some((key: any) => key.provider === "perplexity");
+  const hasPerplexity = apiKeys.some(
+    (key: any) => key.provider === "perplexity",
+  );
+  const hasExa = apiKeys.some((key: any) => key.provider === "exa");
+
+  const hasLocationProvider = hasGooglePlaces || hasLegacyGoogleMaps;
+
+  if (!hasGooglePlaces && hasLegacyGoogleMaps) {
+    console.warn(
+      `BYOK: Enterprise user ${userId} is using legacy google_maps provider; ask them to re-save as google_places`,
+    );
+  }
 
   // Only bypass credits if ALL required keys are present and validated
-  const hasAllKeys = hasOpenAI && hasGoogleMaps && hasFindyMail && hasTavily && hasPerplexity;
+  const hasAllKeys =
+    hasOpenAI &&
+    hasLocationProvider &&
+    hasFindyMail &&
+    hasTavily &&
+    hasPerplexity &&
+    hasExa;
 
   if (hasAllKeys) {
-    console.log(`BYOK: Enterprise user ${userId} has all required API keys - bypassing credits`);
+    const providerLabel = hasGooglePlaces ? "google_places" : "google_maps";
+    console.log(
+      `BYOK: Enterprise user ${userId} has all required API keys (using ${providerLabel}) - bypassing credits`,
+    );
+    captureAnalyticsEvent(userId, "byok_credit_bypass", {
+      providerLabel,
+      hasGooglePlaces,
+      usingLegacyMaps: !hasGooglePlaces && hasLegacyGoogleMaps,
+    });
   }
 
   return hasAllKeys;

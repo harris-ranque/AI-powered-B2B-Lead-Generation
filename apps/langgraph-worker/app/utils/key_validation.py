@@ -18,6 +18,7 @@ ValidationResult = Dict[str, Any]
 OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 PERPLEXITY_CHAT_URL = "https://api.perplexity.ai/chat/completions"
+EXA_SEARCH_URL = "https://api.exa.ai/search"
 FINDYMAIL_CREDITS_URL = "https://app.findymail.com/api/credits"
 GOOGLE_MAPS_FINDPLACE_URL = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
 ICYPEAS_CREDITS_URL = "https://app.icypeas.com/api/credits"
@@ -76,7 +77,9 @@ async def validate_perplexity_key(api_key: str) -> ValidationResult:
 
     # Minimal test payload to validate the key without consuming significant quota
     payload = {
-        "model": "llama-3.1-sonar-small-128k-online",
+        # Perplexity does not expose an "online" variant for the small Sonar model;
+        # use the chat endpoint variant for lightweight validation requests.
+        "model": "llama-3.1-sonar-small-128k-chat",
         "messages": [{"role": "user", "content": "test"}],
         "max_tokens": 1
     }
@@ -108,12 +111,46 @@ async def validate_perplexity_key(api_key: str) -> ValidationResult:
         return {"valid": False, "error": str(error)}
 
 
+async def validate_exa_key(api_key: str) -> ValidationResult:
+    """Validate Exa API key by performing a minimal semantic search."""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "query": "Genni API key validation",
+        "type": "semantic",
+        "size": 1,
+    }
+
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+            async with session.post(EXA_SEARCH_URL, headers=headers, json=payload) as response:
+                if response.status == 200:
+                    return {"valid": True}
+                try:
+                    error_data = await response.json()
+                    error_msg = error_data.get("message") or error_data.get("error") or "Authentication failed"
+                except Exception:
+                    error_msg = await response.text()
+
+                logger.warning("Exa validation failed", extra={"status": response.status, "error": error_msg[:200]})
+                return {"valid": False, "error": error_msg[:200] or "Authentication failed"}
+    except asyncio.TimeoutError:
+        return {"valid": False, "error": "Validation timeout"}
+    except Exception as error:  # pylint: disable=broad-except
+        logger.error("Exa key validation error", exc_info=error)
+        return {"valid": False, "error": str(error)}
+
+
 async def validate_google_places_key(api_key: str) -> ValidationResult:
     def _validate() -> ValidationResult:
         try:
             client = googlemaps.Client(key=api_key, timeout=5)
             response = client.find_place("Genni", "textquery")
-            if response.get("status") == "OK":
+            status = response.get("status")
+            # Treat ZERO_RESULTS as success – it means the key worked but no matches found
+            if status in {"OK", "ZERO_RESULTS"}:
                 return {"valid": True}
             return {
                 "valid": False,
@@ -232,6 +269,7 @@ async def validate_apify_key(api_key: str) -> ValidationResult:
 PROVIDER_VALIDATORS = {
     "openai": validate_openai_key,
     "tavily": validate_tavily_key,
+    "exa": validate_exa_key,
     "perplexity": validate_perplexity_key,
     "google_places": validate_google_places_key,
     "google_maps": validate_google_maps_key,  # Legacy provider

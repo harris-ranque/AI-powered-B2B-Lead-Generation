@@ -107,12 +107,28 @@ class ProviderKeys(BaseModel):
 
     openai: Optional[str] = Field(default=None, description="OpenAI API key override")
     tavily: Optional[str] = Field(default=None, description="Tavily API key override")
+    exa: Optional[str] = Field(default=None, description="Exa API key override")
     perplexity: Optional[str] = Field(default=None, description="Perplexity API key override")
     google_places: Optional[str] = Field(default=None, alias="googlePlaces", description="Google Places API key override")
+    findymail: Optional[str] = Field(default=None, description="FindyMail API key override")
+
+
+# Keep provider list in sync with Convex backend `SUPPORTED_PROVIDERS`
+ProviderLiteral = Literal[
+    "openai",
+    "tavily",
+    "exa",
+    "perplexity",
+    "google_places",
+    "google_maps",
+    "findymail",
+    "icypeas",
+    "apify",
+]
 
 
 class ProviderKeyValidationRequest(BaseModel):
-    provider: Literal["openai", "tavily", "perplexity", "google_places"]
+    provider: ProviderLiteral
     key: str
 
 
@@ -131,6 +147,13 @@ class EmailGenerationRequest(BaseModel):
     requirements: EmailRequirements = Field(default_factory=EmailRequirements, description="Email requirements")
     provider_keys: Optional[ProviderKeys] = Field(default=None, alias="providerKeys", description="Optional provider credential overrides")
     user_id: Optional[str] = Field(default=None, alias="userId", description="Authenticated user identifier for key resolution")
+
+class LeadAnalysisRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    """Request model for lead analysis endpoint"""
+    lead: Lead = Field(..., description="Lead information to analyze")
+    provider_keys: Optional[ProviderKeys] = Field(default=None, alias="providerKeys", description="Optional provider credential overrides")
+    user_id: Optional[str] = Field(default=None, alias="userId", description="Authenticated user identifier for logging")
 
 class AgentResult(BaseModel):
     """Individual agent result"""

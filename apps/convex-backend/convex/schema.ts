@@ -1192,6 +1192,7 @@ export default defineSchema({
     provider: v.union(
       v.literal("openai"),
       v.literal("tavily"),
+      v.literal("exa"),
       v.literal("perplexity"),
       v.literal("google_places"),
       // Legacy enrichment providers still supported for backwards compatibility
@@ -1396,4 +1397,37 @@ export default defineSchema({
     .index("by_active", ["isActive"])
     .index("by_visible", ["isVisible"])
     .index("by_sort_order", ["sortOrder"]),
+
+  // Audit Logs - Comprehensive audit trail for BYOK and credit operations
+  auditLogs: defineTable({
+    userId: v.id("users"),
+    eventType: v.string(), // credit_bypass, api_key_used, search_started, etc.
+    operation: v.string(), // Operation name (e.g., "lead_search", "email_enrichment")
+
+    // Credit information
+    bypassedCredits: v.optional(v.boolean()),
+    creditsSkipped: v.optional(v.number()),
+    creditsCharged: v.optional(v.number()),
+
+    // Provider information
+    providers: v.optional(v.array(v.string())), // Which providers were used
+
+    // Related entity
+    relatedEntityType: v.optional(v.string()), // "search", "lead", "enrichment"
+    relatedEntityId: v.optional(v.string()), // ID of related entity
+
+    // Operation result
+    success: v.optional(v.boolean()),
+    errorMessage: v.optional(v.string()),
+
+    // Additional metadata
+    metadata: v.optional(v.any()), // Flexible metadata storage
+
+    timestamp: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_event_type", ["eventType"])
+    .index("by_timestamp", ["timestamp"])
+    .index("by_user_and_event", ["userId", "eventType"])
+    .index("by_user_and_timestamp", ["userId", "timestamp"]),
 });

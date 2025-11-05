@@ -22,6 +22,7 @@ from ..utils.config import get_settings
 from ..utils.logger import setup_logger
 from ..utils.tavily_tool import TavilySearchTool, TavilySearchResult
 from ..utils.data_validation import BaseDataValidator, DataValidationResult
+from ..utils.analytics import capture_event, capture_error
 
 logger = setup_logger(__name__)
 settings = get_settings()
@@ -310,8 +311,13 @@ class ExaClient:
     Target: 3-4 seconds response time, focused on competitive landscape and industry insights.
     """
 
-    def __init__(self):
-        self.api_key = getattr(settings, 'exa_api_key', None)
+    def __init__(self, api_key: Optional[str] = None):
+        resolved_key = (api_key or "").strip() if api_key else None
+        if not resolved_key:
+            resolved_key = getattr(settings, 'exa_api_key', None)
+            if isinstance(resolved_key, str):
+                resolved_key = resolved_key.strip() or None
+        self.api_key = resolved_key
         self.base_url = "https://api.exa.ai"
         self.timeout = 12.0
 
@@ -321,7 +327,8 @@ class ExaClient:
     async def deep_search(self,
                           company_name: str,
                           domain: str = "",
-                          previous_context: str = "") -> ResearchResult:
+                          previous_context: str = "",
+                          api_key_override: Optional[str] = None) -> ResearchResult:
         """
         Perform semantic research using Exa to identify competitors and industry signals.
 
@@ -335,7 +342,10 @@ class ExaClient:
         """
         start_time = time.time()
 
-        if not self.api_key:
+        override_key = (api_key_override or "").strip() if api_key_override else None
+        effective_api_key = override_key or self.api_key
+
+        if not effective_api_key:
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.EXA,
@@ -344,7 +354,7 @@ class ExaClient:
             )
 
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {effective_api_key}",
             "Content-Type": "application/json",
         }
 
@@ -521,6 +531,7 @@ class PerplexityClient:
             
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
                 payload = {
+                    # Use chat variant for broad support; callers can override via settings if needed.
                     "model": "llama-3.1-sonar-large-128k-online",
                     "messages": [
                         {
@@ -733,10 +744,19 @@ class ClientRegistry:
         self,
         api_key: Optional[str] = None,
         model: Optional[str] = None,
+        require_user_key: bool = False,
         **kwargs: Any,
     ) -> ChatOpenAI:
         settings = get_settings()
-        resolved_key = api_key or settings.openai_api_key or os.getenv("OPENAI_API_KEY")
+        provided_key = (api_key or "").strip() if api_key else None
+        if require_user_key:
+            if not provided_key:
+                raise ValueError("BYOK request missing OpenAI API key")
+            resolved_key = provided_key
+        else:
+            resolved_key = provided_key or settings.openai_api_key or os.getenv("OPENAI_API_KEY")
+            if resolved_key:
+                resolved_key = resolved_key.strip()
         if not resolved_key:
             raise ValueError("OpenAI API key is required to create a client")
 
@@ -754,8 +774,18 @@ class ClientRegistry:
 
         return self._get_or_create(cache_key, factory)
 
-    def get_tavily_client(self, api_key: Optional[str] = None) -> TavilyClient:
-        resolved_key = api_key or getattr(get_settings(), "tavily_api_key", None)
+    def get_tavily_client(
+        self,
+        api_key: Optional[str] = None,
+        require_user_key: bool = False,
+    ) -> TavilyClient:
+        provided_key = (api_key or "").strip() if api_key else None
+        if require_user_key:
+            if not provided_key:
+                raise ValueError("BYOK request missing Tavily API key")
+            resolved_key = provided_key
+        else:
+            resolved_key = provided_key or getattr(get_settings(), "tavily_api_key", None)
         identifier = self._build_identifier(resolved_key)
         cache_key = CacheKey("tavily", identifier)
 
@@ -764,8 +794,39 @@ class ClientRegistry:
 
         return self._get_or_create(cache_key, factory)
 
-    def get_perplexity_client(self, api_key: Optional[str] = None) -> PerplexityClient:
-        resolved_key = api_key or getattr(get_settings(), "perplexity_api_key", None)
+    def get_exa_client(
+        self,
+        api_key: Optional[str] = None,
+        require_user_key: bool = False,
+    ) -> ExaClient:
+        provided_key = (api_key or "").strip() if api_key else None
+        if require_user_key:
+            if not provided_key:
+                raise ValueError("BYOK request missing Exa API key")
+            resolved_key = provided_key
+        else:
+            resolved_key = provided_key or getattr(get_settings(), "exa_api_key", None)
+
+        identifier = self._build_identifier(resolved_key)
+        cache_key = CacheKey("exa", identifier)
+
+        def factory() -> ExaClient:
+            return ExaClient(api_key=resolved_key)
+
+        return self._get_or_create(cache_key, factory)
+
+    def get_perplexity_client(
+        self,
+        api_key: Optional[str] = None,
+        require_user_key: bool = False,
+    ) -> PerplexityClient:
+        provided_key = (api_key or "").strip() if api_key else None
+        if require_user_key:
+            if not provided_key:
+                raise ValueError("BYOK request missing Perplexity API key")
+            resolved_key = provided_key
+        else:
+            resolved_key = provided_key or getattr(get_settings(), "perplexity_api_key", None)
         identifier = self._build_identifier(resolved_key)
         cache_key = CacheKey("perplexity", identifier)
 
@@ -774,8 +835,20 @@ class ClientRegistry:
 
         return self._get_or_create(cache_key, factory)
 
-    def get_google_places_client(self, api_key: Optional[str] = None) -> googlemaps.Client:
-        resolved_key = api_key or os.getenv("GOOGLE_PLACES_API_KEY")
+    def get_google_places_client(
+        self,
+        api_key: Optional[str] = None,
+        require_user_key: bool = False,
+    ) -> googlemaps.Client:
+        provided_key = (api_key or "").strip() if api_key else None
+        if require_user_key:
+            if not provided_key:
+                raise ValueError("BYOK request missing Google Places API key")
+            resolved_key = provided_key
+        else:
+            resolved_key = provided_key or os.getenv("GOOGLE_PLACES_API_KEY")
+            if resolved_key:
+                resolved_key = resolved_key.strip()
         if not resolved_key:
             raise ValueError("Google Places API key is required")
 
@@ -823,7 +896,6 @@ class ResearchOrchestrator:
 
     def __init__(self, client_registry: Optional[ClientRegistry] = None):
         self.client_registry = client_registry or ClientRegistry.get_instance()
-        self.exa = ExaClient()
         self.data_validator = BaseDataValidator()
         
         # Configuration thresholds - use environment variables
@@ -837,7 +909,8 @@ class ResearchOrchestrator:
                              user_tier: str = "free",
                              lead_value: float = 0.0,
                              force_tier: Optional[ResearchTier] = None,
-                             provider_keys: Optional[Dict[str, str]] = None) -> ResearchResult:
+                             provider_keys: Optional[Dict[str, str]] = None,
+                             user_id: Optional[str] = None) -> ResearchResult:
         """
         Orchestrate 3-tier research with intelligent escalation.
         Tavily (basic research) → Exa (semantic research) → Perplexity (deep research when needed)
@@ -848,21 +921,142 @@ class ResearchOrchestrator:
             user_tier: User subscription tier (free, pro, enterprise)
             lead_value: Estimated lead value for premium research decisions
             force_tier: Force specific research tier (for testing)
+            provider_keys: Optional BYOK provider credentials
+            user_id: Optional distinct identifier for analytics
 
         Returns:
             Final research result with all relevant data
         """
         logger.info(f"Starting 3-tier research for {company_name}")
 
+        user_supplied_keys = provider_keys is not None
         provider_keys = provider_keys or {}
+        using_user_keys = user_supplied_keys
+        provider_key_labels = sorted(provider_keys.keys()) if using_user_keys else []
+        analytics_id = user_id or "research_pipeline"
+        pipeline_start = time.time()
+        tavily_duration_ms = 0.0
+        tavily_error: Optional[str] = None
+        tavily_confidence = 0.0
+        tavily_data_points = 0
+        tavily_sources = 0
+        exa_invoked = False
+        exa_duration_ms = 0.0
+        exa_error: Optional[str] = None
+        exa_confidence = 0.0
+        exa_data_points = 0
+        exa_sources = 0
+        perplexity_invoked = False
+        perplexity_duration_ms = 0.0
+        perplexity_error: Optional[str] = None
+        perplexity_confidence = 0.0
+        perplexity_data_points = 0
+        perplexity_sources = 0
+        tier2_validation: Optional[DataValidationResult] = None
+
+        def _emit_summary(final_result: ResearchResult,
+                          validation_score: Optional[float] = None,
+                          missing_data_points: Optional[List[str]] = None) -> None:
+            capture_event(
+                "research_pipeline_completed",
+                {
+                    "company_name": company_name,
+                    "domain": domain,
+                    "user_tier": user_tier,
+                    "lead_value": lead_value,
+                    "force_tier": force_tier.value if force_tier else None,
+                    "using_user_keys": using_user_keys,
+                    "provider_keys_supplied": provider_key_labels,
+                    "final_tier": final_result.tier.value,
+                    "final_confidence": final_result.confidence_score,
+                    "final_data_points": final_result.data_points,
+                    "final_sources_analyzed": final_result.sources_analyzed,
+                    "final_error": final_result.error,
+                    "deep_research_used": final_result.tier == ResearchTier.PERPLEXITY,
+                    "deep_research_reason": final_result.escalation_reason,
+                    "validation_score": validation_score,
+                    "missing_data_points": missing_data_points or [],
+                    "tavily_duration_ms": tavily_duration_ms,
+                    "tavily_success": tavily_error is None,
+                    "tavily_error": tavily_error,
+                    "tavily_confidence": tavily_confidence,
+                    "tavily_data_points": tavily_data_points,
+                    "tavily_sources": tavily_sources,
+                    "exa_invoked": exa_invoked,
+                    "exa_success": exa_invoked and exa_error is None,
+                    "exa_error": exa_error,
+                    "exa_confidence": exa_confidence,
+                    "exa_data_points": exa_data_points,
+                    "exa_sources": exa_sources,
+                    "exa_duration_ms": exa_duration_ms,
+                    "perplexity_invoked": perplexity_invoked,
+                    "perplexity_success": perplexity_invoked and perplexity_error is None,
+                    "perplexity_error": perplexity_error,
+                    "perplexity_confidence": perplexity_confidence,
+                    "perplexity_data_points": perplexity_data_points,
+                    "perplexity_sources": perplexity_sources,
+                    "perplexity_duration_ms": perplexity_duration_ms,
+                    "total_duration_ms": (time.time() - pipeline_start) * 1000,
+                },
+                distinct_id=analytics_id,
+            )
+
+        capture_event(
+            "research_pipeline_started",
+            {
+                "company_name": company_name,
+                "domain": domain,
+                "user_tier": user_tier,
+                "lead_value": lead_value,
+                "force_tier": force_tier.value if force_tier else None,
+                "using_user_keys": using_user_keys,
+                "provider_keys_supplied": provider_key_labels,
+            },
+            distinct_id=analytics_id,
+        )
 
         # TIER 1: Always start with Tavily (fast basic research)
         tavily_client = self.client_registry.get_tavily_client(
-            api_key=provider_keys.get("tavily")
+            api_key=provider_keys.get("tavily") if using_user_keys else None,
+            require_user_key=using_user_keys,
+        )
+        tier1_start = time.time()
+        capture_event(
+            "research_tier_invoked",
+            {
+                "tier": ResearchTier.TAVILY.value,
+                "company_name": company_name,
+                "user_tier": user_tier,
+                "lead_value": lead_value,
+                "using_user_keys": using_user_keys,
+                "provider_keys_supplied": provider_key_labels,
+            },
+            distinct_id=analytics_id,
         )
         tier1_result = await tavily_client.search(company_name, domain)
+        tier1_duration_ms = (time.time() - tier1_start) * 1000
+        capture_event(
+            "research_tier_completed",
+            {
+                "tier": ResearchTier.TAVILY.value,
+                "company_name": company_name,
+                "success": tier1_result.error is None,
+                "error": tier1_result.error,
+                "confidence_score": tier1_result.confidence_score,
+                "data_points": tier1_result.data_points,
+                "sources_analyzed": tier1_result.sources_analyzed,
+                "duration_ms": tier1_duration_ms,
+            },
+            distinct_id=analytics_id,
+        )
+        tavily_duration_ms = tier1_duration_ms
+        tavily_error = tier1_result.error
+        tavily_confidence = tier1_result.confidence_score
+        tavily_data_points = tier1_result.data_points
+        tavily_sources = tier1_result.sources_analyzed
 
         if force_tier == ResearchTier.TAVILY:
+            _emit_summary(tier1_result)
             return tier1_result
 
         if tier1_result.error:
@@ -903,22 +1097,80 @@ class ResearchOrchestrator:
             logger.info(
                 f"Basic research sufficient for {company_name} (confidence: {tier1_result.confidence_score:.2f})"
             )
+            capture_event(
+                "research_tier_skipped",
+                {
+                    "tier": ResearchTier.EXA.value,
+                    "reason": "confidence_sufficient",
+                    "company_name": company_name,
+                    "confidence_score": tier1_result.confidence_score,
+                    "validation_score": validation_result.validation_score,
+                },
+                distinct_id=analytics_id,
+            )
+            _emit_summary(
+                tier1_result,
+                validation_score=validation_result.validation_score,
+                missing_data_points=validation_result.missing_data_points,
+            )
             return tier1_result
 
         # TIER 2: Exa semantic search for competitor and industry insights
         logger.info(
             f"Escalating to semantic research for {company_name}: {validation_reason}"
         )
-        tier2_result = await self.exa.deep_search(
+        exa_client = self.client_registry.get_exa_client(
+            api_key=provider_keys.get("exa") if using_user_keys else None,
+            require_user_key=using_user_keys,
+        )
+        exa_invoked = True
+        tier2_start = time.time()
+        capture_event(
+            "research_tier_invoked",
+            {
+                "tier": ResearchTier.EXA.value,
+                "company_name": company_name,
+                "reason": validation_reason,
+                "using_user_keys": using_user_keys,
+                "provider_keys_supplied": provider_key_labels,
+            },
+            distinct_id=analytics_id,
+        )
+        tier2_result = await exa_client.deep_search(
             company_name,
             domain,
             tier1_result.company_overview,
+            api_key_override=provider_keys.get("exa") if using_user_keys else None,
+        )
+        exa_duration_ms = (time.time() - tier2_start) * 1000
+        exa_error = tier2_result.error
+        exa_confidence = tier2_result.confidence_score
+        exa_data_points = tier2_result.data_points
+        exa_sources = tier2_result.sources_analyzed
+        capture_event(
+            "research_tier_completed",
+            {
+                "tier": ResearchTier.EXA.value,
+                "company_name": company_name,
+                "success": tier2_result.error is None,
+                "error": tier2_result.error,
+                "confidence_score": tier2_result.confidence_score,
+                "data_points": tier2_result.data_points,
+                "sources_analyzed": tier2_result.sources_analyzed,
+                "duration_ms": exa_duration_ms,
+            },
+            distinct_id=analytics_id,
         )
 
         combined_result = self._merge_research_results(tier1_result, tier2_result)
         combined_result.escalation_reason = validation_reason
 
         if force_tier == ResearchTier.EXA:
+            _emit_summary(
+                combined_result,
+                validation_score=validation_result.validation_score,
+                missing_data_points=validation_result.missing_data_points,
+            )
             return combined_result
 
         # Determine if we need to escalate again to Perplexity
@@ -950,6 +1202,22 @@ class ResearchOrchestrator:
             logger.info(
                 f"Semantic research sufficient for {company_name} (confidence: {combined_result.confidence_score:.2f})"
             )
+            capture_event(
+                "research_tier_skipped",
+                {
+                    "tier": ResearchTier.PERPLEXITY.value,
+                    "reason": "confidence_sufficient",
+                    "company_name": company_name,
+                    "confidence_score": combined_result.confidence_score,
+                    "validation_score": tier2_validation.validation_score if tier2_validation else None,
+                },
+                distinct_id=analytics_id,
+            )
+            _emit_summary(
+                combined_result,
+                validation_score=tier2_validation.validation_score if tier2_validation else None,
+                missing_data_points=tier2_validation.missing_data_points if tier2_validation else None,
+            )
             return combined_result
 
         # TIER 3: Escalate to Perplexity for comprehensive analysis
@@ -959,12 +1227,45 @@ class ResearchOrchestrator:
         )
 
         perplexity_client = self.client_registry.get_perplexity_client(
-            api_key=provider_keys.get("perplexity")
+            api_key=provider_keys.get("perplexity") if using_user_keys else None,
+            require_user_key=using_user_keys,
+        )
+        perplexity_invoked = True
+        tier3_start = time.time()
+        capture_event(
+            "research_tier_invoked",
+            {
+                "tier": ResearchTier.PERPLEXITY.value,
+                "company_name": company_name,
+                "reason": escalation_reason,
+                "using_user_keys": using_user_keys,
+                "provider_keys_supplied": provider_key_labels,
+            },
+            distinct_id=analytics_id,
         )
         deep_research_result = await perplexity_client.comprehensive_research(
             company_name,
             domain,
             combined_result.company_overview,
+        )
+        perplexity_duration_ms = (time.time() - tier3_start) * 1000
+        perplexity_error = deep_research_result.error
+        perplexity_confidence = deep_research_result.confidence_score
+        perplexity_data_points = deep_research_result.data_points
+        perplexity_sources = deep_research_result.sources_analyzed
+        capture_event(
+            "research_tier_completed",
+            {
+                "tier": ResearchTier.PERPLEXITY.value,
+                "company_name": company_name,
+                "success": deep_research_result.error is None,
+                "error": deep_research_result.error,
+                "confidence_score": deep_research_result.confidence_score,
+                "data_points": deep_research_result.data_points,
+                "sources_analyzed": deep_research_result.sources_analyzed,
+                "duration_ms": perplexity_duration_ms,
+            },
+            distinct_id=analytics_id,
         )
 
         final_result = self._merge_research_results(combined_result, deep_research_result)
@@ -972,6 +1273,11 @@ class ResearchOrchestrator:
 
         logger.info(
             f"Completed deep research for {company_name} - Final confidence: {final_result.confidence_score:.2f}"
+        )
+        _emit_summary(
+            final_result,
+            validation_score=tier2_validation.validation_score if tier2_validation else None,
+            missing_data_points=tier2_validation.missing_data_points if tier2_validation else None,
         )
         return final_result
     

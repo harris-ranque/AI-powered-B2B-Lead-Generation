@@ -13,6 +13,7 @@ export const getApiKeyForUserAndProvider = internalQuery({
       .query("userApiKeys")
       .filter((q) => q.eq(q.field("userId"), args.userId))
       .filter((q) => q.eq(q.field("provider"), args.provider))
+      .filter((q) => q.eq(q.field("validated"), true))
       .filter((q) => q.eq(q.field("isActive"), true))
       .unique();
 

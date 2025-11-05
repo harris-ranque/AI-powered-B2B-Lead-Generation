@@ -34,6 +34,17 @@ export const recordTransaction = internalMutation({
           console.log(
             `BYOK: Skipping credit deduction for enterprise user ${args.userId} - ${args.description}`
           );
+
+          // Log the credit bypass for audit trail
+          await ctx.runMutation(internal.lib.auditLog.logCreditBypass, {
+            userId: args.userId,
+            operation: args.description,
+            creditsSkipped: args.amount,
+            providers: [], // Will be populated with actual providers in future enhancement
+            relatedEntityType: args.relatedEntityType,
+            relatedEntityId: args.relatedEntityId,
+          });
+
           return {
             success: true,
             bypassed: true,

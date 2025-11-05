@@ -6,6 +6,7 @@ import { internal } from "../_generated/api";
 export const SUPPORTED_PROVIDERS = [
   "openai",
   "tavily",
+  "exa",
   "perplexity",
   "google_places",
   // Legacy enrichment providers remain for backwards compatibility
@@ -24,8 +25,8 @@ export function ensureUserCanManageKeys(plan: string) {
     throw new Error("User plan missing for API key operation");
   }
 
-  // Starter historically supported BYOK for enrichment, enterprise requires it.
-  const allowedPlans = new Set(["starter", "enterprise", "business"]);
+  // Only enterprise plans support BYOK key management.
+  const allowedPlans = new Set(["enterprise"]);
   if (!allowedPlans.has(plan)) {
     throw new Error("API key management is not enabled for this plan");
   }
