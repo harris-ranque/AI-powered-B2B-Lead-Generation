@@ -229,12 +229,21 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
             - Verify subject line length (<50 characters)
             - Assess overall structure and flow
             - Identify any missing critical elements
-            
-            7. IMPROVEMENT RECOMMENDATIONS:
+
+            7. SIGNATURE AND FORMATTING CONSISTENCY:
+            - Verify email includes professional closing ("Best,", "Cheers,", "Best regards,")
+            - Confirm complete signature is present (Name, Company, Email, Phone, Website)
+            - Check for placeholder text in signature (e.g., "[Your Name]", "Company Name")
+            - For follow-up sequences: Verify ALL emails have identical signature format
+            - Flag any missing or inconsistent signature elements
+            - Ensure no emails in sequence are missing closings or signatures
+
+            8. IMPROVEMENT RECOMMENDATIONS:
             - Identify specific areas needing improvement
             - Provide actionable suggestions for enhancement
             - Highlight missing personalization opportunities
             - Recommend value proposition strengthening
+            - Flag any signature or formatting inconsistencies
             
             Provide detailed quality assessment with specific scores, identified issues, 
             and actionable improvement recommendations. Focus on measurable quality 
@@ -372,12 +381,77 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         # Log quality assessment results
         if approval_status == "Approved":
             logger.info(f"Email APPROVED for {lead.company_name}: Score={overall_score:.2f}")
+            capture_event(
+                "qa_agent_approved",
+                {
+                    **analytics_context,
+                    "overall_quality_score": overall_score,
+                    "personalization_score": quality_assessment.personalization_score,
+                    "business_context_score": quality_assessment.business_context_score,
+                    "professional_tone_score": quality_assessment.professional_tone_score,
+                    "value_proposition_score": quality_assessment.value_proposition_score,
+                    "call_to_action_score": quality_assessment.call_to_action_score,
+                    "personalization_depth": quality_assessment.personalization_depth,
+                    "quality_duration_ms": execution_time * 1000,
+                },
+            )
         elif approval_status == "Needs_Improvement":
             logger.warning(f"Email NEEDS IMPROVEMENT for {lead.company_name}: Score={overall_score:.2f}, "
                           f"Issues: {len(quality_assessment.quality_issues)}")
-        else:
+            capture_event(
+                "qa_agent_needs_improvement",
+                {
+                    **analytics_context,
+                    "overall_quality_score": overall_score,
+                    "approval_status": approval_status,
+                    "personalization_score": quality_assessment.personalization_score,
+                    "business_context_score": quality_assessment.business_context_score,
+                    "professional_tone_score": quality_assessment.professional_tone_score,
+                    "value_proposition_score": quality_assessment.value_proposition_score,
+                    "call_to_action_score": quality_assessment.call_to_action_score,
+                    "issues_found": len(quality_assessment.quality_issues),
+                    "suggestions": len(quality_assessment.improvement_suggestions),
+                    "missing_elements": len(quality_assessment.missing_elements),
+                    "quality_issues": quality_assessment.quality_issues[:5],  # Top 5 issues
+                    "personalization_depth": quality_assessment.personalization_depth,
+                    "length_appropriate": quality_assessment.length_appropriate,
+                    "subject_line_effective": quality_assessment.subject_line_effective,
+                    "professional_standards": quality_assessment.professional_standards,
+                    "quality_duration_ms": execution_time * 1000,
+                    "failed_quality_gate": True,
+                    "retry_needed": True,
+                },
+            )
+        else:  # Rejected
             logger.error(f"Email REJECTED for {lead.company_name}: Score={overall_score:.2f}, "
                         f"Major issues found")
+            capture_event(
+                "qa_agent_rejected",
+                {
+                    **analytics_context,
+                    "overall_quality_score": overall_score,
+                    "approval_status": approval_status,
+                    "personalization_score": quality_assessment.personalization_score,
+                    "business_context_score": quality_assessment.business_context_score,
+                    "professional_tone_score": quality_assessment.professional_tone_score,
+                    "value_proposition_score": quality_assessment.value_proposition_score,
+                    "call_to_action_score": quality_assessment.call_to_action_score,
+                    "issues_found": len(quality_assessment.quality_issues),
+                    "suggestions": len(quality_assessment.improvement_suggestions),
+                    "missing_elements": len(quality_assessment.missing_elements),
+                    "quality_issues": quality_assessment.quality_issues,  # All issues
+                    "personalization_depth": quality_assessment.personalization_depth,
+                    "length_appropriate": quality_assessment.length_appropriate,
+                    "subject_line_effective": quality_assessment.subject_line_effective,
+                    "professional_standards": quality_assessment.professional_standards,
+                    "quality_duration_ms": execution_time * 1000,
+                    "failed_quality_gate": True,
+                    "retry_needed": True,
+                    "critical_failure": True,
+                },
+            )
+
+        # Always capture completion event for aggregate tracking
         capture_event(
             "qa_agent_completed",
             {
@@ -389,6 +463,8 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
                 "issues_found": len(quality_assessment.quality_issues),
                 "suggestions": len(quality_assessment.improvement_suggestions),
                 "quality_duration_ms": execution_time * 1000,
+                "passed_qa": approval_status == "Approved",
+                "failed_qa": approval_status != "Approved",
             },
         )
         

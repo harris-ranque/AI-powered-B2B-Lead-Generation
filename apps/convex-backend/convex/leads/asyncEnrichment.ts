@@ -357,28 +357,27 @@ export const enrichSingleLead = internalAction({
           emailsFound: result.emails.length,
         };
       } else {
-        // FAILURE: No emails found from any provider
+        // FAILURE: No emails found from any provider - DELETE the lead
         await ctx.runMutation(
-          internal.leads.internal.updateEnrichmentStatus,
+          internal.leads.internal.deleteLead,
           {
             leadId: args.leadId,
-            status: "completed_fallback",
-            error: "No emails found from FindyMail or IcyPeas",
           },
         );
 
         const perfData = endPerformanceTracking(performanceTracker);
 
         logWithCorrelation(
-          "warn",
+          "info",
           correlation,
-          "⚠️ Lead Enrichment Failed - No Emails Found",
+          "🗑️ Lead Deleted - No Contacts Found",
           {
             leadId: args.leadId,
             businessName: lead.businessName,
             domain,
             triedProviders: ["findymail", "icypeas"],
             durationMs: perfData?.duration || 0,
+            reason: "No emails or contacts found, lead deleted per user preference",
           },
         );
 

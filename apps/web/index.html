@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Content Security Policy: Allow blob workers for web workers -->
-    <meta http-equiv="Content-Security-Policy" content="worker-src blob: 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:;">
+    <!-- Content Security Policy: Allow blob workers and Google Maps API -->
+    <meta http-equiv="Content-Security-Policy" content="worker-src blob: 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: https://maps.googleapis.com https://maps.gstatic.com; connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com; img-src 'self' data: https: https://maps.googleapis.com https://maps.gstatic.com; frame-src https://maps.googleapis.com;">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Genni</title>
     <meta name="description" content="AI-powered lead generation and outreach platform" />

@@ -44,6 +44,7 @@ import {
   TrendingUp,
   Brain,
   Sparkles,
+  XCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -247,7 +248,7 @@ export function SearchProgressTracker({
       stageIndex: STAGE_ORDER.indexOf("discovery"),
     },
     {
-      label: "Enriched",
+      label: "Contacts Found",
       value: enrichedCount,
       stageIndex: STAGE_ORDER.indexOf("enrichment"),
     },
@@ -421,21 +422,36 @@ export function SearchProgressTracker({
                 search.status === "processing") && (
                 <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
                   <AlertDialogTrigger asChild>
-                    <Button variant="link" size="sm" className="px-0">
-                      Start over
+                    <Button variant="outline" size="sm" className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10">
+                      <XCircle className="h-4 w-4" />
+                      Cancel Search
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Cancel this run?</AlertDialogTitle>
+                      <AlertDialogTitle>Cancel this search?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Cancelling now preserves credits for stages that have not run yet. Discovery may consume 1 credit if it already started.
+                        Cancelling now will stop the search pipeline. Credits for stages that have not started yet will be preserved. Any work already completed will be saved.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel disabled={isCancelling}>Keep running</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleCancel} disabled={isCancelling}>
-                        {isCancelling ? "Cancelling..." : "Confirm"}
+                      <AlertDialogAction
+                        onClick={handleCancel}
+                        disabled={isCancelling}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        {isCancelling ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Cancelling...
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="h-4 w-4 mr-2" />
+                            Cancel Search
+                          </>
+                        )}
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
@@ -548,12 +564,15 @@ export function SearchProgressTracker({
               <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:grid-cols-4">
                 {Object.entries(latestUpdate.data.progress as Record<string, number | undefined>)
                   .filter(([key]) => ["discovered", "enriched", "analyzed", "total"].includes(key))
-                  .map(([key, value]) => (
-                    <div key={key} className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
-                      <span className="uppercase tracking-wide">{key}</span>
-                      <span className="font-semibold text-foreground">{value ?? 0}</span>
-                    </div>
-                  ))}
+                  .map(([key, value]) => {
+                    const displayLabel = key === "enriched" ? "Contacts Found" : key;
+                    return (
+                      <div key={key} className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
+                        <span className="uppercase tracking-wide">{displayLabel}</span>
+                        <span className="font-semibold text-foreground">{value ?? 0}</span>
+                      </div>
+                    );
+                  })}
               </div>
             )}
           </section>

@@ -54,6 +54,15 @@ class GlobalErrorHandler {
 
     // Handle uncaught JavaScript errors
     window.addEventListener("error", (event) => {
+      // Suppress harmless ResizeObserver errors from Radix UI
+      if (
+        event.message.includes("ResizeObserver loop") ||
+        event.message.includes("ResizeObserver loop completed with undelivered notifications")
+      ) {
+        event.preventDefault();
+        return;
+      }
+
       const errorDetails = {
         message: event.message,
         stack: event.error?.stack,

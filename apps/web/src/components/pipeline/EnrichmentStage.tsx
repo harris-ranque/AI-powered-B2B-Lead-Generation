@@ -85,10 +85,10 @@ export function EnrichmentStage() {
       <div className="text-center space-y-2">
         <h3 className="text-xl font-semibold flex items-center justify-center gap-2">
           <Mail className="h-5 w-5" />
-          Enriching Lead Data
+          Finding Contacts
         </h3>
         <p className="text-muted-foreground">
-          Finding contact emails and additional information for your leads
+          Discovering contact emails and additional information for your leads
         </p>
       </div>
 
@@ -98,9 +98,9 @@ export function EnrichmentStage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
-                <h4 className="font-semibold">Enrichment Progress</h4>
+                <h4 className="font-semibold">Contact Discovery Progress</h4>
                 <p className="text-sm text-muted-foreground">
-                  {enrichedCount} of {leads.length} leads enriched
+                  {enrichedCount} of {leads.length} contacts found
                 </p>
               </div>
 
@@ -119,14 +119,14 @@ export function EnrichmentStage() {
             {enrichmentProgress === 100 && (
               <div className="flex items-center justify-center gap-2 text-green-600">
                 <CheckCircle className="h-5 w-5" />
-                <span className="font-medium">Enrichment Complete!</span>
+                <span className="font-medium">Contact Discovery Complete!</span>
               </div>
             )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Enrichment Stats */}
+      {/* Contact Stats */}
       <div className="grid md:grid-cols-4 gap-4">
         <Card className="glass-card">
           <CardContent className="p-4 text-center">
@@ -165,10 +165,10 @@ export function EnrichmentStage() {
         </Card>
       </div>
 
-      {/* Recent Enriched Leads Preview */}
+      {/* Recently Found Contacts Preview */}
       <Card className="glass-card">
         <CardHeader>
-          <CardTitle className="text-lg">Recently Enriched Leads</CardTitle>
+          <CardTitle className="text-lg">Recently Found Contacts</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -217,7 +217,7 @@ export function EnrichmentStage() {
             {enrichedCount === 0 && (
               <div className="text-center py-8 text-muted-foreground">
                 <Clock className="h-8 w-8 mx-auto mb-3 animate-pulse text-primary" />
-                <p>Enriching lead data...</p>
+                <p>Finding contacts...</p>
                 <p className="text-sm">This may take a few minutes</p>
               </div>
             )}

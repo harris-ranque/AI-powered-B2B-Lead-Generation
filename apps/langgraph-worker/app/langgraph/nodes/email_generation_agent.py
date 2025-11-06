@@ -753,9 +753,11 @@ P.S. (Optional, 1 sentence):
 - Keep numbers VAGUE unless exact data from research
 - Use qualitative language: "several", "some", "multiple", "examples"
 - Never use specific placeholder numbers
-- Examples:
+- **CRITICAL: DO NOT include "P.S." prefix in your output - it will be added automatically**
+- Examples of CONTENT ONLY (no "P.S." prefix):
   GOOD: "I can share the competitor analysis I pulled on Mixpanel and Amplitude"
   GOOD: "The system identified prospects matching your criteria. Want to see some examples?"
+  BAD: "P.S. I can share..." (prefix will be duplicated - just write the content)
   BAD: "Agent found 87 qualified leads in 48 hours"
   BAD: "I identified 143 accounts matching your ICP"
 
@@ -778,39 +780,104 @@ Focus areas:
 
 3. FOLLOW-UP SEQUENCE (if requested):
 
+CRITICAL: Follow-ups must be even MORE concise and punchy than primary email.
+Target: 80-120 words maximum (excluding signature). Every follow-up MUST include closing + signature.
+
+Follow-up Email Structure Template:
+
+Opening (1 sentence):
+"Hi {contact_first_name},"
+
+Body (2-3 short sentences):
+- New angle or value point (1 sentence)
+- Quick proof or insight (1 sentence)
+- Specific offer or next step (1 sentence)
+
+Call-to-Action (1 sentence):
+- Direct, specific ask with timeframe
+
+Closing (1 line):
+"Best," OR "Cheers," OR "Best regards,"
+
+Signature (REQUIRED - identical to primary email):
+{Sender Name}
+{Company Name}
+{Email}
+{Phone}
+{Website/LinkedIn}
+
+Example Follow-up:
+"Hi Sarah,
+
+Quick note on the pipeline gaps we discussed. Three RevOps teams at your stage cut manual work by 40% using automated lead scoring.
+
+Want 15 minutes to see how it works for MetricFlow?
+
+Best,
+
+John Smith
+DataFlow Solutions
+john@dataflow.com
+(555) 123-4567"
+
+Follow-up Timing and Angles:
+
 Email 1 (3-5 days after primary):
 - New angle, different curiosity hook
-- 100-150 words max
+- 80-120 words max (EXCLUDING signature)
 - Different proof point than primary (use different real competitors)
 - Value-added content or resource
 - Different CTA
 - NO hyphens in subject or body
+- MUST include closing + full signature
 
 Email 2 (1 week after Email 1):
 - Another unique curiosity-driven subject line (no hyphens)
-- 100-150 words max
+- 80-120 words max (EXCLUDING signature)
 - Social proof or peer comparison focus (real company names)
 - Different value angle
 - Collaborative next step CTA
 - NO hyphens anywhere
+- MUST include closing + full signature
 
 Email 3 (2 weeks after Email 2, optional):
 - Soft breakup or final value offer
-- 100-150 words max
+- 80-120 words max (EXCLUDING signature)
 - Summary approach
 - Last chance, low-pressure CTA
 - NO hyphens anywhere
+- MUST include closing + full signature
 
-Requirements for ALL follow-ups:
-- Each must be 100-150 words maximum
+MANDATORY Requirements for ALL follow-ups:
+
+LENGTH REQUIREMENTS (CRITICAL):
+- Body: 80-120 words MAXIMUM (excluding signature)
+- Even shorter and punchier than primary email
+- Every single word must justify its existence
+- Cut ruthlessly - extreme brevity is the priority
+- If longer than 120 words (excluding signature), you have FAILED
+
+FORMAT REQUIREMENTS (CRITICAL):
+- MUST include professional closing: "Best,", "Cheers,", or "Best regards,"
+- MUST include COMPLETE signature (identical format to primary email)
+- Signature must include: Name, Company, Email, Phone, Website/LinkedIn
+- Signature format must be IDENTICAL across entire sequence
+
+CONTENT REQUIREMENTS:
 - Each must have UNIQUE subject line following "Hi {contact_first_name}, " or "Hi {contact_first_name}: " format
 - NEVER use hyphens in any follow-up subject lines or bodies
-- Each must use DIFFERENT curiosity pattern
+- Each must use DIFFERENT curiosity pattern from primary and other follow-ups
 - No repeated content or angles
 - Use different real competitor names in each follow-up when possible
 - Every follow-up should feel fresh and provide new value
 - Keep the same tight, punchy writing style
 - All information must come from business intelligence
+
+CONSISTENCY REQUIREMENTS:
+- Maintain professional tone throughout sequence
+- Use consistent signature formatting
+- Match primary email's level of personalization
+- Keep brand voice consistent
 
 4. QUALITY STANDARDS:
 

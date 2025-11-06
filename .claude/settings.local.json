@@ -21,7 +21,8 @@
       "Bash(npm install:*)",
       "Bash(pnpm add:*)",
       "Bash(cat:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(pnpm lint:*)"
     ],
     "deny": [],
     "ask": []

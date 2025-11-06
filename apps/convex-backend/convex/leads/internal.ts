@@ -78,6 +78,24 @@ export const updateEnrichmentStatus = internalMutation({
   },
 });
 
+// Internal mutation to delete lead without contacts
+export const deleteLead = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+  },
+  handler: async (ctx, args) => {
+    const lead = await ctx.db.get(args.leadId);
+    if (!lead) {
+      return { success: false, reason: "Lead not found" };
+    }
+
+    // Delete the lead from database
+    await ctx.db.delete(args.leadId);
+
+    return { success: true, leadId: args.leadId };
+  },
+});
+
 // Internal mutation to check for email duplicates after enrichment
 export const checkEmailDuplication = internalMutation({
   args: {

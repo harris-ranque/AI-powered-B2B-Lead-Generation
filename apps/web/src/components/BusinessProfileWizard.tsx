@@ -23,42 +23,135 @@ import {
   ArrowLeft,
   Building2,
   Target,
-  MessageSquare,
   Sparkles,
   Info,
   AlertTriangle,
   Plus,
   X,
+  Mail,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useProfile } from "@/hooks/useProfile";
 import { createLogger } from "@/utils/logger";
 import { normalizeError } from "@/utils/errorUtils";
 
+// TODO: Future enhancements - Add these fields when LangGraph integration is ready:
+// - toneOfVoice: string (professional/friendly/casual) - for email generation
+// - painPointsWeSolve: string[] - for better AI personalization
+// - idealCustomerProfile: string - for lead qualification
+// - currentChallenges: string[] - for value proposition matching
+
+// Business rules for array limits
+const LIMITS = {
+  MAX_SERVICES: 20,
+  MAX_TARGET_MARKETS: 15,
+  MAX_DIFFERENTIATORS: 10,
+  VALUE_PROPOSITION_MIN: 50,
+  VALUE_PROPOSITION_MAX: 500,
+} as const;
+
+// Validation helpers
+const isValidUrl = (url: string): boolean => {
+  if (!url.trim()) return true; // Optional field
+  try {
+    const urlObj = new URL(url);
+    return urlObj.protocol === "http:" || urlObj.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+const isValidPhone = (phone: string): boolean => {
+  if (!phone.trim()) return true; // Optional field
+  // Basic phone validation - allows international formats
+  const phoneRegex = /^[+]?[(]?[0-9]{1,4}[)]?[-\s.]?[(]?[0-9]{1,4}[)]?[-\s.]?[0-9]{1,9}$/;
+  return phoneRegex.test(phone.replace(/\s/g, ""));
+};
+
+// Validation logic consolidated
+const validateField = (
+  field: keyof BusinessProfile,
+  value: string | string[],
+): string | null => {
+  switch (field) {
+    case "companyName":
+      return !value || !(value as string).trim()
+        ? "Company name is required"
+        : null;
+
+    case "contactName":
+      return !value || !normalizeContactName(value as string)
+        ? "Contact name is required"
+        : null;
+
+    case "industry":
+      return !value || !(value as string).trim()
+        ? "Industry is required"
+        : null;
+
+    case "targetMarkets":
+      return (value as string[]).length === 0
+        ? "At least one target market is required"
+        : null;
+
+    case "services":
+      return (value as string[]).length === 0
+        ? "At least one service is required"
+        : null;
+
+    case "valueProposition": {
+      const str = value as string;
+      if (!str.trim()) return "Value proposition is required";
+      if (str.length < LIMITS.VALUE_PROPOSITION_MIN) {
+        return `Must be at least ${LIMITS.VALUE_PROPOSITION_MIN} characters`;
+      }
+      if (str.length > LIMITS.VALUE_PROPOSITION_MAX) {
+        return `Must not exceed ${LIMITS.VALUE_PROPOSITION_MAX} characters`;
+      }
+      return null;
+    }
+
+    case "keyDifferentiators":
+      return (value as string[]).length === 0
+        ? "At least one differentiator is required"
+        : null;
+
+    case "contactPhone":
+      return value && !isValidPhone(value as string)
+        ? "Invalid phone number format"
+        : null;
+
+    case "contactWebsite":
+      return value && !isValidUrl(value as string)
+        ? "Invalid URL format (e.g., https://example.com)"
+        : null;
+
+    case "contactLinkedin":
+      return value && !isValidUrl(value as string)
+        ? "Invalid URL format (e.g., https://linkedin.com/in/profile)"
+        : null;
+
+    default:
+      return null;
+  }
+};
+
 interface BusinessProfile {
   companyName: string;
   industry: string;
-  targetIndustries: string[];
-  offerings: string[];
-  toneOfVoice: string;
+  targetMarkets: string[];
+  services: string[];
   valueProposition: string;
   keyDifferentiators: string[];
-  painPointsWeSolve: string[];
-  idealCustomerProfile: string;
-  currentChallenges: string[];
   contactName: string;
-  contactEmail: string;
   contactPhone: string;
   contactWebsite: string;
   contactLinkedin: string;
 }
 
 type IncomingProfile = Partial<BusinessProfile> & {
-  targetMarkets?: string[];
-  services?: string[];
   contactInfo?: {
     name?: string;
-    email?: string;
     phone?: string;
     website?: string;
     linkedin?: string;
@@ -122,6 +215,133 @@ const resolveArray = (...values: unknown[]): string[] => {
 
 const wizardLogger = createLogger("BusinessProfileWizard");
 
+// Reusable Array Input Component
+interface ArrayInputProps {
+  label: string;
+  description: string;
+  placeholder: string;
+  values: string[];
+  onAdd: (value: string) => boolean;
+  onRemove: (value: string) => void;
+  maxItems: number;
+  fieldName: string;
+  onDuplicateDetected?: () => void;
+}
+
+function ArrayInput({
+  label,
+  description,
+  placeholder,
+  values,
+  onAdd,
+  onRemove,
+  maxItems,
+  fieldName,
+  onDuplicateDetected,
+}: ArrayInputProps) {
+  const [inputValue, setInputValue] = useState("");
+  const [showDuplicateMessage, setShowDuplicateMessage] = useState(false);
+  const isAtLimit = values.length >= maxItems;
+
+  const handleAdd = () => {
+    const trimmedValue = inputValue.trim();
+    if (!trimmedValue) return;
+
+    // Check for duplicates before adding
+    if (values.includes(trimmedValue)) {
+      setShowDuplicateMessage(true);
+      setTimeout(() => setShowDuplicateMessage(false), 3000);
+      onDuplicateDetected?.();
+      return;
+    }
+
+    if (onAdd(trimmedValue)) {
+      setInputValue("");
+      setShowDuplicateMessage(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAdd();
+    }
+  };
+
+  return (
+    <div>
+      <Label htmlFor={fieldName} className="text-sm font-medium">
+        {label} *
+      </Label>
+      <p className="text-xs text-muted-foreground mb-2">{description}</p>
+
+      {showDuplicateMessage && (
+        <Alert className="mb-2">
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            This item already exists in your list.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {isAtLimit && !showDuplicateMessage && (
+        <Alert className="mb-2">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            Maximum limit of {maxItems} items reached. Remove an item to add more.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="flex gap-2 mb-2">
+        <Input
+          id={fieldName}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={`${placeholder} (Press Enter to add)`}
+          disabled={isAtLimit}
+          aria-label={label}
+          aria-describedby={`${fieldName}-description`}
+        />
+        <Button
+          onClick={handleAdd}
+          size="sm"
+          disabled={!inputValue.trim() || isAtLimit}
+          aria-label={`Add ${label.toLowerCase()}`}
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap gap-2" role="list" aria-label={`${label} list`}>
+        {values.map((value) => (
+          <Badge
+            key={value}
+            variant="secondary"
+            className="flex items-center gap-1"
+            role="listitem"
+          >
+            {value}
+            <button
+              onClick={() => onRemove(value)}
+              className="ml-1 hover:bg-muted rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              aria-label={`Remove ${value}`}
+              type="button"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        ))}
+      </div>
+
+      <p className="text-xs text-muted-foreground mt-1">
+        {values.length} / {maxItems} items
+      </p>
+    </div>
+  );
+}
+
 export function BusinessProfileWizard({
   onComplete,
   onSkip,
@@ -131,168 +351,60 @@ export function BusinessProfileWizard({
   const [currentStep, setCurrentStep] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-
-  // State for form inputs
-  const [newTargetIndustry, setNewTargetIndustry] = useState("");
-  const [newOffering, setNewOffering] = useState("");
-  const [newDifferentiator, setNewDifferentiator] = useState("");
-  const [newPainPoint, setNewPainPoint] = useState("");
-  const [newChallenge, setNewChallenge] = useState("");
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   // Convex hooks
   const { profile: existingProfile, createOrUpdateProfile } = useProfile();
   const { user } = useAuth();
   const updateUserProfile = useMutation(api.users.mutations.updateProfile);
+  const { toast } = useToast();
 
   const initialContactInfo =
     (existingProfile?.contactInfo as {
       name?: string;
-      email?: string;
       phone?: string;
       website?: string;
       linkedin?: string;
     } | null | undefined) ??
     (initialData as IncomingProfile | undefined)?.contactInfo;
 
-  const [profile, setProfile] = useState<BusinessProfile>({
-    companyName:
-      initialData?.companyName ?? existingProfile?.companyName ?? "",
-    industry: initialData?.industry ?? existingProfile?.industry ?? "",
-    targetIndustries: resolveArray(
-      initialData?.targetIndustries,
-      (initialData as IncomingProfile | undefined)?.targetMarkets,
-      existingProfile?.targetIndustries,
-      (existingProfile as IncomingProfile | undefined)?.targetMarkets,
-    ),
-    offerings: resolveArray(
-      initialData?.offerings,
-      (initialData as IncomingProfile | undefined)?.services,
-      existingProfile?.offerings,
-      (existingProfile as IncomingProfile | undefined)?.services,
-    ),
-    toneOfVoice:
-      initialData?.toneOfVoice ??
-      existingProfile?.toneOfVoice ??
-      "professional",
-    valueProposition:
-      initialData?.valueProposition ??
-      existingProfile?.valueProposition ??
-      "",
-    keyDifferentiators: resolveArray(
-      initialData?.keyDifferentiators,
-      existingProfile?.keyDifferentiators,
-    ),
-    painPointsWeSolve: resolveArray(
-      initialData?.painPointsWeSolve,
-      existingProfile?.painPointsWeSolve,
-    ),
-    idealCustomerProfile:
-      initialData?.idealCustomerProfile ??
-      existingProfile?.idealCustomerProfile ??
-      "",
-    currentChallenges: resolveArray(
-      initialData?.currentChallenges,
-      existingProfile?.currentChallenges,
-    ),
-    contactName: normalizeContactName(
-      initialData?.contactName ??
-        initialContactInfo?.name ??
-        user?.name ??
-        "",
-    ),
-    contactEmail:
-      initialData?.contactEmail ??
-      initialContactInfo?.email ??
-      user?.email ??
-      "",
-    contactPhone:
-      initialData?.contactPhone ?? initialContactInfo?.phone ?? "",
-    contactWebsite:
-      initialData?.contactWebsite ?? initialContactInfo?.website ?? "",
-    contactLinkedin:
-      initialData?.contactLinkedin ?? initialContactInfo?.linkedin ?? "",
-  });
-
-  useEffect(() => {
-    const sourceProfile = initialData || existingProfile;
-    if (!sourceProfile) {
-      return;
-    }
-
-    const normalizedProfile: IncomingProfile = sourceProfile;
-    const contactInfo = normalizedProfile.contactInfo ?? {};
-
-    setProfile((prev) => ({
-      ...prev,
-      companyName: prev.companyName || sourceProfile.companyName || "",
-      industry: prev.industry || sourceProfile.industry || "",
+  // Initialize profile from initialData or existingProfile
+  const [profile, setProfile] = useState<BusinessProfile>(() => {
+    return {
+      companyName:
+        initialData?.companyName ?? existingProfile?.companyName ?? "",
+      industry: initialData?.industry ?? existingProfile?.industry ?? "",
+      targetMarkets: resolveArray(
+        initialData?.targetMarkets,
+        existingProfile?.targetMarkets,
+      ),
+      services: resolveArray(initialData?.services, existingProfile?.services),
       valueProposition:
-        prev.valueProposition || sourceProfile.valueProposition || "",
-      targetIndustries:
-        prev.targetIndustries.length > 0
-          ? prev.targetIndustries
-          : resolveArray(
-              normalizedProfile.targetIndustries,
-              normalizedProfile.targetMarkets,
-            ),
-      offerings:
-        prev.offerings.length > 0
-          ? prev.offerings
-          : resolveArray(
-              normalizedProfile.offerings,
-              normalizedProfile.services,
-            ),
-      keyDifferentiators:
-        prev.keyDifferentiators.length > 0
-          ? prev.keyDifferentiators
-          : resolveArray(sourceProfile.keyDifferentiators),
-      painPointsWeSolve:
-        prev.painPointsWeSolve.length > 0
-          ? prev.painPointsWeSolve
-          : resolveArray(normalizedProfile.painPointsWeSolve),
-      idealCustomerProfile:
-        prev.idealCustomerProfile ||
-        normalizedProfile.idealCustomerProfile ||
+        initialData?.valueProposition ??
+        existingProfile?.valueProposition ??
         "",
-      currentChallenges:
-        prev.currentChallenges.length > 0
-          ? prev.currentChallenges
-          : resolveArray(normalizedProfile.currentChallenges),
+      keyDifferentiators: resolveArray(
+        initialData?.keyDifferentiators,
+        existingProfile?.keyDifferentiators,
+      ),
       contactName: normalizeContactName(
-        prev.contactName ||
-          normalizedProfile.contactName ||
-          contactInfo.name ||
-          user?.name ||
+        initialData?.contactName ??
+          initialContactInfo?.name ??
+          user?.name ??
           "",
       ),
-      contactEmail:
-        prev.contactEmail ||
-        normalizedProfile.contactEmail ||
-        contactInfo.email ||
-        user?.email ||
-        "",
       contactPhone:
-        prev.contactPhone ||
-        normalizedProfile.contactPhone ||
-        contactInfo.phone ||
-        "",
+        initialData?.contactPhone ?? initialContactInfo?.phone ?? "",
       contactWebsite:
-        prev.contactWebsite ||
-        normalizedProfile.contactWebsite ||
-        contactInfo.website ||
-        "",
+        initialData?.contactWebsite ?? initialContactInfo?.website ?? "",
       contactLinkedin:
-        prev.contactLinkedin ||
-        normalizedProfile.contactLinkedin ||
-        contactInfo.linkedin ||
-        "",
-    }));
-  }, [initialData, existingProfile, user]);
+        initialData?.contactLinkedin ?? initialContactInfo?.linkedin ?? "",
+    };
+  });
 
-  const { toast } = useToast();
   const totalSteps = 4;
 
-  const addToArray = (field: keyof BusinessProfile, value: string) => {
+  const addToArray = (field: keyof BusinessProfile, value: string): boolean => {
     const valuesToAdd = parseStringArray(value);
 
     if (valuesToAdd.length === 0) {
@@ -300,13 +412,26 @@ export function BusinessProfileWizard({
     }
 
     let added = false;
+    const currentArray = profile[field] as string[];
+
+    // Check limits
+    const limits: Record<string, number> = {
+      targetMarkets: LIMITS.MAX_TARGET_MARKETS,
+      services: LIMITS.MAX_SERVICES,
+      keyDifferentiators: LIMITS.MAX_DIFFERENTIATORS,
+    };
+
+    const limit = limits[field];
+    if (limit && currentArray.length >= limit) {
+      return false;
+    }
 
     setProfile((prev) => {
-      const currentArray = prev[field] as string[];
-      const merged = [...currentArray];
+      const current = prev[field] as string[];
+      const merged = [...current];
 
       valuesToAdd.forEach((item) => {
-        if (!merged.includes(item)) {
+        if (!merged.includes(item) && merged.length < (limit || Infinity)) {
           merged.push(item);
           added = true;
         }
@@ -316,114 +441,161 @@ export function BusinessProfileWizard({
         return prev;
       }
 
-      return {
+      const newProfile = {
         ...prev,
         [field]: merged,
       };
+
+      // Real-time validation
+      const error = validateField(field, merged);
+      setValidationErrors((errors) => {
+        const newErrors = { ...errors };
+        if (error) {
+          newErrors[field] = error;
+        } else {
+          delete newErrors[field];
+        }
+        return newErrors;
+      });
+
+      return newProfile;
     });
 
     return added;
   };
 
   const removeFromArray = (field: keyof BusinessProfile, value: string) => {
-    const currentArray = profile[field] as string[];
-    setProfile((prev) => ({
-      ...prev,
-      [field]: currentArray.filter((item) => item !== value),
-    }));
+    setProfile((prev) => {
+      const currentArray = prev[field] as string[];
+      const newArray = currentArray.filter((item) => item !== value);
+
+      // Real-time validation
+      const error = validateField(field, newArray);
+      setValidationErrors((errors) => {
+        const newErrors = { ...errors };
+        if (error) {
+          newErrors[field] = error;
+        } else {
+          delete newErrors[field];
+        }
+        return newErrors;
+      });
+
+      return {
+        ...prev,
+        [field]: newArray,
+      };
+    });
   };
 
-  const handleNext = () => {
-    if (currentStep < totalSteps) {
-      setCurrentStep((prev) => prev + 1);
-    } else {
-      handleComplete();
+  // Real-time validation for text fields
+  const updateField = (
+    field: keyof BusinessProfile,
+    value: string | string[],
+  ) => {
+    setProfile((prev) => ({ ...prev, [field]: value }));
+
+    // Validate immediately
+    const error = validateField(field, value);
+    setValidationErrors((errors) => {
+      const newErrors = { ...errors };
+      if (error) {
+        newErrors[field] = error;
+      } else {
+        delete newErrors[field];
+      }
+      return newErrors;
+    });
+  };
+
+  const validateStep = (step: number): boolean => {
+    const errors: Record<string, string> = {};
+    let fieldsToValidate: Array<keyof BusinessProfile> = [];
+
+    switch (step) {
+      case 1:
+        fieldsToValidate = ["companyName", "contactName", "industry"];
+        break;
+      case 2:
+        fieldsToValidate = ["targetMarkets", "services"];
+        break;
+      case 3:
+        fieldsToValidate = ["valueProposition", "keyDifferentiators"];
+        break;
+      case 4:
+        fieldsToValidate = ["contactPhone", "contactWebsite", "contactLinkedin"];
+        break;
     }
+
+    // Validate only the fields in the current step
+    fieldsToValidate.forEach((field) => {
+      const value = profile[field];
+      const error = validateField(field, value);
+      if (error) {
+        errors[field] = error;
+      }
+    });
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
-  const handlePrevious = () => {
-    if (currentStep > 1) {
-      setCurrentStep((prev) => prev - 1);
+  const handleNext = async () => {
+    if (!validateStep(currentStep)) {
+      return;
     }
-  };
 
-  const handleComplete = async () => {
-    // Basic validation
-    const sanitizedContactName = normalizeContactName(profile.contactName);
+    // Save current step data
+    setIsSaving(true);
     setSaveError(null);
 
-    if (
-      !profile.companyName ||
-      !profile.industry ||
-      !sanitizedContactName
-    ) {
-      const message =
-        "Please fill in the required fields (Company Name, Your Name, Industry).";
-      setSaveError(message);
-      toast({
-        title: "Missing Information",
-        description: message,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Value proposition validation: if provided, must be at least 50 characters
-    if (
-      profile.valueProposition &&
-      profile.valueProposition.length > 0 &&
-      profile.valueProposition.length < 50
-    ) {
-      const message =
-        "Value proposition must be at least 50 characters. Either provide a complete description or leave it empty to fill in later.";
-      setSaveError(message);
-      toast({
-        title: "Value Proposition Too Short",
-        description: message,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const completedProfile = {
-      ...profile,
-      contactName: sanitizedContactName,
-    };
-
-    setIsSaving(true);
-
     try {
-      // Update user's name in the users table if it's different
+      const sanitizedContactName = normalizeContactName(profile.contactName);
+
+      // Update user's name if it changed
       if (sanitizedContactName && sanitizedContactName !== user?.name) {
-        await updateUserProfile({
-          name: sanitizedContactName,
-        });
+        try {
+          await updateUserProfile({ name: sanitizedContactName });
+          wizardLogger.info("Updated user profile name");
+        } catch (userError) {
+          wizardLogger.warn("Failed to update user name, continuing", userError);
+        }
       }
 
-      // Save profile to Convex - map frontend fields to backend schema
+      // Save current state to Convex
       await createOrUpdateProfile({
-        companyName: completedProfile.companyName,
-        industry: completedProfile.industry,
-        services: completedProfile.offerings, // Map offerings to services
-        targetMarkets: completedProfile.targetIndustries, // Map targetIndustries to targetMarkets
-        valueProposition: completedProfile.valueProposition,
-        keyDifferentiators: completedProfile.keyDifferentiators,
+        companyName: profile.companyName,
+        industry: profile.industry,
+        services: profile.services,
+        targetMarkets: profile.targetMarkets,
+        valueProposition: profile.valueProposition,
+        keyDifferentiators: profile.keyDifferentiators,
         contactInfo: {
           name: sanitizedContactName,
-          email: completedProfile.contactEmail,
-          phone: completedProfile.contactPhone,
-          website: completedProfile.contactWebsite,
-          linkedin: completedProfile.contactLinkedin,
+          phone: profile.contactPhone,
+          website: profile.contactWebsite,
+          linkedin: profile.contactLinkedin,
         },
       });
 
-      setProfile(completedProfile);
-      onComplete(completedProfile);
-      toast({
-        title: "Profile Saved!",
-        description:
-          "Your business profile has been saved and will be used to personalize all AI-generated emails.",
-      });
+      wizardLogger.info(`Step ${currentStep} saved successfully`);
+
+      // Move to next step or complete
+      if (currentStep < totalSteps) {
+        setCurrentStep((prev) => prev + 1);
+      } else {
+        // Final step - call onComplete
+        onComplete({
+          ...profile,
+          contactName: sanitizedContactName,
+        });
+
+        toast({
+          title: "Profile Saved!",
+          description:
+            "Your business profile has been saved and will be used to personalize all AI-generated emails.",
+        });
+      }
     } catch (error) {
       const normalizedError = normalizeError(
         error,
@@ -432,11 +604,11 @@ export function BusinessProfileWizard({
       const errorInstance =
         error instanceof Error ? error : new Error(String(error));
       wizardLogger.error(
-        "Failed to save business profile",
+        `Failed to save step ${currentStep}`,
         {
           code: normalizedError.code,
           statusCode: normalizedError.statusCode,
-          step: "createOrUpdateProfile",
+          step: currentStep,
         },
         errorInstance,
       );
@@ -451,29 +623,15 @@ export function BusinessProfileWizard({
     }
   };
 
-  const isStepValid = () => {
-    switch (currentStep) {
-      case 1:
-        return (
-          profile.companyName &&
-          profile.industry &&
-          normalizeContactName(profile.contactName)
-        );
-      case 2:
-        return (
-          profile.targetIndustries.length > 0 && profile.offerings.length > 0
-        );
-      case 3:
-        // Value proposition is optional, but if provided must be 50+ chars
-        // Key differentiators are required
-        const valuePropositionValid =
-          !profile.valueProposition || profile.valueProposition.length >= 50;
-        return valuePropositionValid && profile.keyDifferentiators.length > 0;
-      case 4:
-        return profile.idealCustomerProfile;
-      default:
-        return true;
+  const handlePrevious = () => {
+    if (currentStep > 1) {
+      setCurrentStep((prev) => prev - 1);
+      setSaveError(null);
     }
+  };
+
+  const isStepValid = () => {
+    return validateStep(currentStep);
   };
 
   const renderStep1 = (opts?: { header?: boolean }) => (
@@ -494,30 +652,30 @@ export function BusinessProfileWizard({
           <Input
             id="companyName"
             value={profile.companyName}
-            onChange={(e) =>
-              setProfile((prev) => ({ ...prev, companyName: e.target.value }))
-            }
-            placeholder="Enter your company name"
+            onChange={(e) => updateField("companyName", e.target.value)}
+            placeholder="e.g., Acme Corporation"
             className="mt-1"
+            aria-invalid={!!validationErrors.companyName}
+            aria-describedby={validationErrors.companyName ? "companyName-error" : undefined}
           />
+          {validationErrors.companyName && (
+            <p id="companyName-error" className="text-sm text-destructive mt-1">
+              {validationErrors.companyName}
+            </p>
+          )}
         </div>
 
         <div>
           <Label htmlFor="contactName" className="text-sm font-medium">
-            Your Name *
+            Contact Name *
           </Label>
           <p className="text-xs text-muted-foreground mb-2">
-            We'll use this name in email signatures and personalization.
+            This name will appear in email signatures and personalization.
           </p>
           <Input
             id="contactName"
             value={profile.contactName}
-            onChange={(e) =>
-              setProfile((prev) => ({
-                ...prev,
-                contactName: e.target.value,
-              }))
-            }
+            onChange={(e) => updateField("contactName", e.target.value)}
             onBlur={(e) =>
               setProfile((prev) => ({
                 ...prev,
@@ -526,43 +684,34 @@ export function BusinessProfileWizard({
             }
             placeholder="e.g., Alex Rivera"
             className="mt-1"
+            aria-invalid={!!validationErrors.contactName}
+            aria-describedby={validationErrors.contactName ? "contactName-error" : undefined}
           />
+          {validationErrors.contactName && (
+            <p id="contactName-error" className="text-sm text-destructive mt-1">
+              {validationErrors.contactName}
+            </p>
+          )}
         </div>
 
         <div>
           <Label htmlFor="industry" className="text-sm font-medium">
-            Your Industry *
+            Industry *
           </Label>
           <Input
             id="industry"
             value={profile.industry}
-            onChange={(e) =>
-              setProfile((prev) => ({ ...prev, industry: e.target.value }))
-            }
+            onChange={(e) => updateField("industry", e.target.value)}
             placeholder="e.g., Software Development, Marketing Agency, E-commerce"
             className="mt-1"
+            aria-invalid={!!validationErrors.industry}
+            aria-describedby={validationErrors.industry ? "industry-error" : undefined}
           />
-        </div>
-
-        <div>
-          <Label htmlFor="toneOfVoice" className="text-sm font-medium">
-            Preferred Communication Tone
-          </Label>
-          <div className="grid grid-cols-3 gap-2 mt-2">
-            {["professional", "friendly", "casual"].map((tone) => (
-              <Button
-                key={tone}
-                variant={profile.toneOfVoice === tone ? "default" : "outline"}
-                size="sm"
-                onClick={() =>
-                  setProfile((prev) => ({ ...prev, toneOfVoice: tone }))
-                }
-                className="capitalize"
-              >
-                {tone}
-              </Button>
-            ))}
-          </div>
+          {validationErrors.industry && (
+            <p id="industry-error" className="text-sm text-destructive mt-1">
+              {validationErrors.industry}
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -574,7 +723,7 @@ export function BusinessProfileWizard({
         {(opts?.header ?? true) && (
           <div className="text-center mb-8">
             <Target className="h-12 w-12 text-primary mx-auto mb-4" />
-            <h2 className="text-2xl font-bold">Target Market & Offerings</h2>
+            <h2 className="text-2xl font-bold">Target Markets & Services</h2>
             <p className="text-muted-foreground">
               Define who you serve and what you offer
             </p>
@@ -583,261 +732,127 @@ export function BusinessProfileWizard({
 
         <div className="space-y-6">
           <div>
-            <Label className="text-sm font-medium">Target Industries *</Label>
-            <p className="text-xs text-muted-foreground mb-2">
-              Which industries do you primarily serve?
-            </p>
-            <div className="flex gap-2 mb-2">
-              <Input
-                value={newTargetIndustry}
-                onChange={(e) => setNewTargetIndustry(e.target.value)}
-                placeholder="e.g., SaaS, Healthcare, E-commerce"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === ",") {
-                    e.preventDefault();
-                    addToArray("targetIndustries", newTargetIndustry);
-                    setNewTargetIndustry("");
-                  }
-                }}
-                onBlur={() => {
-                  if (newTargetIndustry.trim() && addToArray("targetIndustries", newTargetIndustry)) {
-                    setNewTargetIndustry("");
-                  }
-                }}
-              />
-              <Button
-                onClick={() => {
-                  if (addToArray("targetIndustries", newTargetIndustry)) {
-                    setNewTargetIndustry("");
-                  }
-                }}
-                size="sm"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {profile.targetIndustries.map((industry) => (
-                <Badge
-                  key={industry}
-                  variant="secondary"
-                  className="flex items-center gap-1"
-                >
-                  {industry}
-                  <X
-                    className="h-3 w-3 cursor-pointer"
-                    onClick={() =>
-                      removeFromArray("targetIndustries", industry)
-                    }
-                  />
-                </Badge>
-              ))}
-            </div>
+            <ArrayInput
+              label="Target Markets"
+              description="Industries or market segments you primarily serve."
+              placeholder="e.g., SaaS Companies, Healthcare, E-commerce"
+              values={profile.targetMarkets}
+              onAdd={(value) => addToArray("targetMarkets", value)}
+              onRemove={(value) => removeFromArray("targetMarkets", value)}
+              maxItems={LIMITS.MAX_TARGET_MARKETS}
+              fieldName="targetMarkets"
+            />
+            {validationErrors.targetMarkets && (
+              <p className="text-sm text-destructive mt-1">
+                {validationErrors.targetMarkets}
+              </p>
+            )}
           </div>
 
           <div>
-            <Label className="text-sm font-medium">Your Offerings *</Label>
-            <p className="text-xs text-muted-foreground mb-2">
-              What products or services do you provide?
-            </p>
-            <div className="flex gap-2 mb-2">
-              <Input
-                value={newOffering}
-                onChange={(e) => setNewOffering(e.target.value)}
-                placeholder="e.g., Web Development, SEO Services, AI Consulting"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === ",") {
-                    e.preventDefault();
-                    addToArray("offerings", newOffering);
-                    setNewOffering("");
-                  }
-                }}
-                onBlur={() => {
-                  if (newOffering.trim() && addToArray("offerings", newOffering)) {
-                    setNewOffering("");
-                  }
-                }}
-              />
-              <Button
-                onClick={() => {
-                  if (addToArray("offerings", newOffering)) {
-                    setNewOffering("");
-                  }
-                }}
-                size="sm"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {profile.offerings.map((offering) => (
-                <Badge
-                  key={offering}
-                  variant="secondary"
-                  className="flex items-center gap-1"
-                >
-                  {offering}
-                  <X
-                    className="h-3 w-3 cursor-pointer"
-                    onClick={() => removeFromArray("offerings", offering)}
-                  />
-                </Badge>
-              ))}
-            </div>
+            <ArrayInput
+              label="Services"
+              description="Products or services you provide to clients."
+              placeholder="e.g., Web Development, SEO Services, AI Consulting"
+              values={profile.services}
+              onAdd={(value) => addToArray("services", value)}
+              onRemove={(value) => removeFromArray("services", value)}
+              maxItems={LIMITS.MAX_SERVICES}
+              fieldName="services"
+            />
+            {validationErrors.services && (
+              <p className="text-sm text-destructive mt-1">
+                {validationErrors.services}
+              </p>
+            )}
           </div>
         </div>
       </div>
     );
   };
 
-  const renderStep3 = () => {
+  const renderStep3 = (opts?: { header?: boolean }) => {
+    const charCount = profile.valueProposition.length;
+    const minChars = LIMITS.VALUE_PROPOSITION_MIN;
+    const maxChars = LIMITS.VALUE_PROPOSITION_MAX;
+    const isTooShort = charCount > 0 && charCount < minChars;
+    const isValid = charCount >= minChars && charCount <= maxChars;
+    const isTooLong = charCount > maxChars;
+
     return (
       <div className="space-y-6">
-        <div className="text-center mb-8">
-          <Sparkles className="h-12 w-12 text-primary mx-auto mb-4" />
-          <h2 className="text-2xl font-bold">Value Proposition</h2>
-          <p className="text-muted-foreground">
-            What makes you unique and valuable?
-          </p>
-        </div>
+        {(opts?.header ?? true) && (
+          <div className="text-center mb-8">
+            <Sparkles className="h-12 w-12 text-primary mx-auto mb-4" />
+            <h2 className="text-2xl font-bold">Value Proposition</h2>
+            <p className="text-muted-foreground">
+              What makes you unique and valuable?
+            </p>
+          </div>
+        )}
 
         <div className="space-y-6">
           <div>
             <Label htmlFor="valueProposition" className="text-sm font-medium">
-              Core Value Proposition
+              Value Proposition *
             </Label>
             <p className="text-xs text-muted-foreground mb-2">
-              In 1-2 sentences, describe the main value you provide to clients. If provided, must be at least 50 characters for quality AI personalization.
+              Main value you provide to clients ({minChars}-{maxChars} characters).
             </p>
             <Textarea
               id="valueProposition"
               value={profile.valueProposition}
-              onChange={(e) =>
-                setProfile((prev) => ({
-                  ...prev,
-                  valueProposition: e.target.value,
-                }))
-              }
+              onChange={(e) => updateField("valueProposition", e.target.value)}
               placeholder="We help growing businesses scale their operations through AI-powered automation solutions that reduce manual work by 60% while improving accuracy and customer satisfaction."
-              className="min-h-[80px]"
+              className="min-h-[100px]"
+              aria-invalid={!!validationErrors.valueProposition}
+              aria-describedby="valueProposition-count"
             />
             <div className="flex items-center justify-between mt-1">
-              <span className={`text-xs ${
-                profile.valueProposition.length >= 50
-                  ? "text-green-600 dark:text-green-400"
-                  : "text-muted-foreground"
-              }`}>
-                {profile.valueProposition.length} / 50 characters
+              <span
+                id="valueProposition-count"
+                className={`text-xs ${
+                  isTooLong
+                    ? "text-destructive"
+                    : isTooShort
+                    ? "text-orange-600 dark:text-orange-400"
+                    : isValid
+                    ? "text-green-600 dark:text-green-400"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {charCount} / {maxChars} characters
               </span>
-              {profile.valueProposition.length > 0 && profile.valueProposition.length < 50 && (
-                <span className="text-xs text-orange-600 dark:text-orange-400">
-                  {50 - profile.valueProposition.length} more needed
+              {isValid && (
+                <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                  <CheckCircle className="h-3 w-3" />
+                  Good length
                 </span>
               )}
             </div>
+            {validationErrors.valueProposition && (
+              <p className="text-sm text-destructive mt-1">
+                {validationErrors.valueProposition}
+              </p>
+            )}
           </div>
 
           <div>
-            <Label className="text-sm font-medium">Key Differentiators *</Label>
-            <p className="text-xs text-muted-foreground mb-2">
-              What sets you apart from competitors?
-            </p>
-            <div className="flex gap-2 mb-2">
-              <Input
-                value={newDifferentiator}
-                onChange={(e) => setNewDifferentiator(e.target.value)}
-                placeholder="e.g., 24/7 support, AI-powered solutions, 10+ years experience"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === ",") {
-                    e.preventDefault();
-                    addToArray("keyDifferentiators", newDifferentiator);
-                    setNewDifferentiator("");
-                  }
-                }}
-                onBlur={() => {
-                  if (newDifferentiator.trim() && addToArray("keyDifferentiators", newDifferentiator)) {
-                    setNewDifferentiator("");
-                  }
-                }}
-              />
-              <Button
-                onClick={() => {
-                  if (addToArray("keyDifferentiators", newDifferentiator)) {
-                    setNewDifferentiator("");
-                  }
-                }}
-                size="sm"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {profile.keyDifferentiators.map((diff) => (
-                <Badge
-                  key={diff}
-                  variant="secondary"
-                  className="flex items-center gap-1"
-                >
-                  {diff}
-                  <X
-                    className="h-3 w-3 cursor-pointer"
-                    onClick={() => removeFromArray("keyDifferentiators", diff)}
-                  />
-                </Badge>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <Label className="text-sm font-medium">Pain Points You Solve</Label>
-            <p className="text-xs text-muted-foreground mb-2">
-              What problems do your clients typically face before working with
-              you?
-            </p>
-            <div className="flex gap-2 mb-2">
-              <Input
-                value={newPainPoint}
-                onChange={(e) => setNewPainPoint(e.target.value)}
-                placeholder="e.g., Manual processes, Poor lead quality, High customer acquisition costs"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === ",") {
-                    e.preventDefault();
-                    addToArray("painPointsWeSolve", newPainPoint);
-                    setNewPainPoint("");
-                  }
-                }}
-                onBlur={() => {
-                  if (newPainPoint.trim() && addToArray("painPointsWeSolve", newPainPoint)) {
-                    setNewPainPoint("");
-                  }
-                }}
-              />
-              <Button
-                onClick={() => {
-                  if (addToArray("painPointsWeSolve", newPainPoint)) {
-                    setNewPainPoint("");
-                  }
-                }}
-                size="sm"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {profile.painPointsWeSolve.map((pain) => (
-                <Badge
-                  key={pain}
-                  variant="secondary"
-                  className="flex items-center gap-1"
-                >
-                  {pain}
-                  <X
-                    className="h-3 w-3 cursor-pointer"
-                    onClick={() => removeFromArray("painPointsWeSolve", pain)}
-                  />
-                </Badge>
-              ))}
-            </div>
+            <ArrayInput
+              label="Key Differentiators"
+              description="Unique strengths that set you apart from competitors."
+              placeholder="e.g., 24/7 Support, AI-Powered Solutions, 10+ Years Experience"
+              values={profile.keyDifferentiators}
+              onAdd={(value) => addToArray("keyDifferentiators", value)}
+              onRemove={(value) => removeFromArray("keyDifferentiators", value)}
+              maxItems={LIMITS.MAX_DIFFERENTIATORS}
+              fieldName="keyDifferentiators"
+            />
+            {validationErrors.keyDifferentiators && (
+              <p className="text-sm text-destructive mt-1">
+                {validationErrors.keyDifferentiators}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -849,101 +864,79 @@ export function BusinessProfileWizard({
       <div className="space-y-6">
         {(opts?.header ?? true) && (
           <div className="text-center mb-8">
-            <MessageSquare className="h-12 w-12 text-primary mx-auto mb-4" />
-            <h2 className="text-2xl font-bold">Ideal Customer & Challenges</h2>
+            <Mail className="h-12 w-12 text-primary mx-auto mb-4" />
+            <h2 className="text-2xl font-bold">Contact Information</h2>
             <p className="text-muted-foreground">
-              Help us understand your perfect client
+              Additional contact details for prospects
             </p>
           </div>
         )}
 
-        <div className="space-y-6">
+        <div className="space-y-4">
           <div>
-            <Label
-              htmlFor="idealCustomerProfile"
-              className="text-sm font-medium"
-            >
-              Ideal Customer Profile *
+            <Label htmlFor="contactPhone" className="text-sm font-medium">
+              Phone Number (optional)
             </Label>
-            <p className="text-xs text-muted-foreground mb-2">
-              Describe your ideal customer in detail (company size, role,
-              challenges, goals)
-            </p>
-            <Textarea
-              id="idealCustomerProfile"
-              value={profile.idealCustomerProfile}
-              onChange={(e) =>
-                setProfile((prev) => ({
-                  ...prev,
-                  idealCustomerProfile: e.target.value,
-                }))
-              }
-              placeholder="Growing SaaS companies with 50-200 employees, led by founders or VPs of Marketing who are struggling to scale their lead generation processes while maintaining personalization. They typically have strong product-market fit but need help optimizing their sales funnel and improving conversion rates."
-              className="min-h-[120px]"
+            <Input
+              id="contactPhone"
+              value={profile.contactPhone}
+              onChange={(e) => updateField("contactPhone", e.target.value)}
+              placeholder="e.g., +1 (555) 123-4567"
+              className="mt-1"
+              type="tel"
+              aria-invalid={!!validationErrors.contactPhone}
             />
+            {validationErrors.contactPhone && (
+              <p className="text-sm text-destructive mt-1">
+                {validationErrors.contactPhone}
+              </p>
+            )}
           </div>
 
           <div>
-            <Label className="text-sm font-medium">
-              Current Business Challenges
+            <Label htmlFor="contactWebsite" className="text-sm font-medium">
+              Website (optional)
             </Label>
-            <p className="text-xs text-muted-foreground mb-2">
-              What challenges are you currently facing in your business?
-            </p>
-            <div className="flex gap-2 mb-2">
-              <Input
-                value={newChallenge}
-                onChange={(e) => setNewChallenge(e.target.value)}
-                placeholder="e.g., Scaling lead generation, Improving conversion rates, Reducing manual work"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === ",") {
-                    e.preventDefault();
-                    addToArray("currentChallenges", newChallenge);
-                    setNewChallenge("");
-                  }
-                }}
-                onBlur={() => {
-                  if (newChallenge.trim() && addToArray("currentChallenges", newChallenge)) {
-                    setNewChallenge("");
-                  }
-                }}
-              />
-              <Button
-                onClick={() => {
-                  if (addToArray("currentChallenges", newChallenge)) {
-                    setNewChallenge("");
-                  }
-                }}
-                size="sm"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {profile.currentChallenges.map((challenge) => (
-                <Badge
-                  key={challenge}
-                  variant="secondary"
-                  className="flex items-center gap-1"
-                >
-                  {challenge}
-                  <X
-                    className="h-3 w-3 cursor-pointer"
-                    onClick={() =>
-                      removeFromArray("currentChallenges", challenge)
-                    }
-                  />
-                </Badge>
-              ))}
-            </div>
+            <Input
+              id="contactWebsite"
+              value={profile.contactWebsite}
+              onChange={(e) => updateField("contactWebsite", e.target.value)}
+              placeholder="e.g., https://yourcompany.com"
+              className="mt-1"
+              type="url"
+              aria-invalid={!!validationErrors.contactWebsite}
+            />
+            {validationErrors.contactWebsite && (
+              <p className="text-sm text-destructive mt-1">
+                {validationErrors.contactWebsite}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <Label htmlFor="contactLinkedin" className="text-sm font-medium">
+              LinkedIn Profile (optional)
+            </Label>
+            <Input
+              id="contactLinkedin"
+              value={profile.contactLinkedin}
+              onChange={(e) => updateField("contactLinkedin", e.target.value)}
+              placeholder="e.g., https://linkedin.com/in/yourprofile"
+              className="mt-1"
+              type="url"
+              aria-invalid={!!validationErrors.contactLinkedin}
+            />
+            {validationErrors.contactLinkedin && (
+              <p className="text-sm text-destructive mt-1">
+                {validationErrors.contactLinkedin}
+              </p>
+            )}
           </div>
 
           <Alert>
             <Info className="h-4 w-4" />
             <AlertDescription>
-              This information will help our AI agents create highly
-              personalized emails that resonate with your prospects and speak
-              directly to their needs.
+              This contact information will appear in your email signatures.
             </AlertDescription>
           </Alert>
         </div>
@@ -954,11 +947,94 @@ export function BusinessProfileWizard({
   // Editor mode: show all sections at once with a single save
   if (variant === "editor") {
     const isEditorValid = () => {
-      return (
-        !!profile.companyName &&
-        !!profile.industry &&
-        !!profile.valueProposition
-      );
+      const allFields: Array<keyof BusinessProfile> = [
+        "companyName",
+        "contactName",
+        "industry",
+        "targetMarkets",
+        "services",
+        "valueProposition",
+        "keyDifferentiators",
+        "contactPhone",
+        "contactWebsite",
+        "contactLinkedin",
+      ];
+
+      return allFields.every((field) => {
+        const value = profile[field];
+        const error = validateField(field, value);
+        return !error;
+      });
+    };
+
+    const handleEditorSave = async () => {
+      if (!isEditorValid()) return;
+
+      setIsSaving(true);
+      setSaveError(null);
+
+      try {
+        const sanitizedContactName = normalizeContactName(profile.contactName);
+
+        if (sanitizedContactName && sanitizedContactName !== user?.name) {
+          try {
+            await updateUserProfile({ name: sanitizedContactName });
+            wizardLogger.info("Updated user profile name");
+          } catch (userError) {
+            wizardLogger.warn("Failed to update user name, continuing", userError);
+          }
+        }
+
+        await createOrUpdateProfile({
+          companyName: profile.companyName,
+          industry: profile.industry,
+          services: profile.services,
+          targetMarkets: profile.targetMarkets,
+          valueProposition: profile.valueProposition,
+          keyDifferentiators: profile.keyDifferentiators,
+          contactInfo: {
+            name: sanitizedContactName,
+            phone: profile.contactPhone,
+            website: profile.contactWebsite,
+            linkedin: profile.contactLinkedin,
+          },
+        });
+
+        wizardLogger.info("Profile saved successfully");
+        onComplete({
+          ...profile,
+          contactName: sanitizedContactName,
+        });
+
+        toast({
+          title: "Profile Saved!",
+          description:
+            "Your business profile has been saved and will be used to personalize all AI-generated emails.",
+        });
+      } catch (error) {
+        const normalizedError = normalizeError(
+          error,
+          "Failed to save your profile. Please try again.",
+        );
+        const errorInstance =
+          error instanceof Error ? error : new Error(String(error));
+        wizardLogger.error(
+          "Failed to save business profile",
+          {
+            code: normalizedError.code,
+            statusCode: normalizedError.statusCode,
+          },
+          errorInstance,
+        );
+        setSaveError(normalizedError.message);
+        toast({
+          title: "Save Failed",
+          description: normalizedError.message,
+          variant: "destructive",
+        });
+      } finally {
+        setIsSaving(false);
+      }
     };
 
     return (
@@ -979,7 +1055,11 @@ export function BusinessProfileWizard({
           </Alert>
         )}
         <Card className="p-4">
-          <Accordion type="multiple" defaultValue={[]} className="w-full">
+          <Accordion
+            type="multiple"
+            defaultValue={["company", "market", "value", "contact"]}
+            className="w-full"
+          >
             <AccordionItem value="company">
               <AccordionTrigger>
                 <div className="text-left flex items-center gap-3">
@@ -987,7 +1067,7 @@ export function BusinessProfileWizard({
                   <div>
                     <div className="font-semibold">Company Information</div>
                     <div className="text-xs text-muted-foreground">
-                      Name, industry, tone of voice
+                      Name, industry, contact person
                     </div>
                   </div>
                 </div>
@@ -1005,10 +1085,10 @@ export function BusinessProfileWizard({
                   <Target className="h-4 w-4 text-primary" />
                   <div>
                     <div className="font-semibold">
-                      Target Market & Offerings
+                      Target Markets & Services
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Industries served and services offered
+                      Markets served and services offered
                     </div>
                   </div>
                 </div>
@@ -1027,7 +1107,7 @@ export function BusinessProfileWizard({
                   <div>
                     <div className="font-semibold">Value Proposition</div>
                     <div className="text-xs text-muted-foreground">
-                      Differentiators and pain points you solve
+                      Differentiators and core value
                     </div>
                   </div>
                 </div>
@@ -1039,16 +1119,14 @@ export function BusinessProfileWizard({
 
             <Separator className="my-2" />
 
-            <AccordionItem value="ideal">
+            <AccordionItem value="contact">
               <AccordionTrigger>
                 <div className="text-left flex items-center gap-3">
-                  <MessageSquare className="h-4 w-4 text-primary" />
+                  <Mail className="h-4 w-4 text-primary" />
                   <div>
-                    <div className="font-semibold">
-                      Ideal Customer & Challenges
-                    </div>
+                    <div className="font-semibold">Contact Information</div>
                     <div className="text-xs text-muted-foreground">
-                      Ideal customer profile and current challenges
+                      Email, phone, website, LinkedIn
                     </div>
                   </div>
                 </div>
@@ -1061,7 +1139,7 @@ export function BusinessProfileWizard({
 
           <div className="flex items-center justify-end pt-6">
             <Button
-              onClick={handleComplete}
+              onClick={handleEditorSave}
               disabled={!isEditorValid() || isSaving}
             >
               {isSaving ? "Saving..." : "Save Changes"}
@@ -1094,22 +1172,38 @@ export function BusinessProfileWizard({
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-3xl font-bold">Business Profile Setup</h1>
           {onSkip && (
-            <Button variant="ghost" onClick={onSkip}>
+            <Button
+              variant="ghost"
+              onClick={onSkip}
+              aria-label="Skip profile setup for now"
+            >
               Skip for now
             </Button>
           )}
         </div>
+        {onSkip && (
+          <Alert className="mb-4">
+            <Info className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              You can skip setup and access your dashboard, but you'll need to complete your profile before creating lead searches.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-muted-foreground">
             Step {currentStep} of {totalSteps}
           </span>
-          <span className="text-sm text-muted-foreground">
+          <span className="text-sm text-muted-foreground" aria-live="polite">
             {Math.round((currentStep / totalSteps) * 100)}% complete
           </span>
         </div>
 
-        <Progress value={(currentStep / totalSteps) * 100} className="h-2" />
+        <Progress
+          value={(currentStep / totalSteps) * 100}
+          className="h-2"
+          aria-label={`Progress: Step ${currentStep} of ${totalSteps}`}
+        />
       </div>
 
       <Card className="p-8">
@@ -1126,26 +1220,29 @@ export function BusinessProfileWizard({
             onClick={handlePrevious}
             disabled={currentStep === 1}
             className="flex items-center gap-2"
+            aria-label="Go to previous step"
           >
             <ArrowLeft className="h-4 w-4" />
             Previous
           </Button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" role="navigation" aria-label="Step indicator">
             {Array.from({ length: totalSteps }, (_, i) => (
               <div
                 key={i}
                 className={`h-2 w-8 rounded-full ${
                   i + 1 <= currentStep ? "bg-primary" : "bg-muted"
                 }`}
+                aria-label={`Step ${i + 1}${i + 1 === currentStep ? " (current)" : i + 1 < currentStep ? " (completed)" : ""}`}
               />
             ))}
           </div>
 
           <Button
             onClick={handleNext}
-            disabled={!isStepValid() || isSaving}
+            disabled={isSaving || !isStepValid()}
             className="flex items-center gap-2"
+            aria-label={currentStep === totalSteps ? "Complete setup" : "Go to next step"}
           >
             {currentStep === totalSteps ? (
               <>
@@ -1154,7 +1251,7 @@ export function BusinessProfileWizard({
               </>
             ) : (
               <>
-                Next
+                {isSaving ? "Saving..." : "Next"}
                 <ArrowRight className="h-4 w-4" />
               </>
             )}

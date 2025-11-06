@@ -7,16 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   Command,
-  CommandEmpty,
   CommandGroup,
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 
 // Google Places types
 interface PlacePrediction {
@@ -269,63 +263,65 @@ export const LocationAutocomplete = React.forwardRef<
     }, []);
 
     return (
-      <Popover open={isOpen && !disabled} onOpenChange={setIsOpen}>
-        <PopoverTrigger asChild>
-          <div className={cn("relative", className)}>
-            <div className="relative">
-              <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                ref={ref}
-                value={inputValue}
-                onChange={(e) => handleInputChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={placeholder}
-                disabled={disabled}
-                className="pl-10 pr-10"
-                {...props}
-              />
-              <div className="absolute right-2 top-2 flex items-center gap-1">
-                {isLoading && (
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                )}
-                {inputValue && !disabled && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0 hover:bg-transparent"
-                    onClick={handleClear}
-                  >
-                    <X className="h-3 w-3" />
-                    <span className="sr-only">Clear</span>
-                  </Button>
-                )}
-              </div>
-            </div>
-            {error && <p className="mt-1 text-sm text-destructive">{error}</p>}
+      <div className={cn("relative", className)}>
+        <div className="relative">
+          <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+          <Input
+            ref={ref}
+            value={inputValue}
+            onChange={(e) => handleInputChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onFocus={() => {
+              // Show dropdown if we have predictions
+              if (inputValue && predictions.length > 0) {
+                setIsOpen(true);
+              }
+            }}
+            onBlur={() => {
+              // Delay closing to allow click events on predictions
+              setTimeout(() => setIsOpen(false), 200);
+            }}
+            placeholder={placeholder}
+            disabled={disabled}
+            className="pl-10 pr-10"
+            autoComplete="off"
+            {...props}
+          />
+          <div className="absolute right-2 top-2 flex items-center gap-1">
+            {isLoading && (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            )}
+            {inputValue && !disabled && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 hover:bg-transparent"
+                onClick={handleClear}
+                onMouseDown={(e) => e.preventDefault()} // Prevent input blur
+              >
+                <X className="h-3 w-3" />
+                <span className="sr-only">Clear</span>
+              </Button>
+            )}
           </div>
-        </PopoverTrigger>
-        <PopoverContent
-          className="w-[var(--radix-popover-trigger-width)] p-0"
-          align="start"
-          sideOffset={4}
-        >
-          <Command>
-            <CommandList>
-              {predictions.length === 0 && !isLoading ? (
-                <CommandEmpty>
-                  {inputValue.trim()
-                    ? "No locations found."
-                    : "Start typing to search locations"}
-                </CommandEmpty>
-              ) : (
+        </div>
+
+        {/* Custom Dropdown - No Popover component */}
+        {isOpen && !disabled && predictions.length > 0 && (
+          <div className="absolute z-50 w-full mt-1 bg-popover border border-border rounded-md shadow-md max-h-[300px] overflow-y-auto">
+            <Command>
+              <CommandList>
                 <CommandGroup>
                   {predictions.map((prediction) => (
                     <CommandItem
                       key={prediction.place_id}
                       value={prediction.description}
-                      onSelect={() => handleLocationSelect(prediction)}
-                      className="flex items-start gap-2 p-2"
+                      onMouseDown={(e) => {
+                        e.preventDefault(); // Prevent input blur
+                        handleLocationSelect(prediction);
+                      }}
+                      className="flex items-start gap-2 p-2 cursor-pointer hover:bg-accent"
                     >
                       <MapPin className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
                       <div className="flex flex-col">
@@ -341,11 +337,13 @@ export const LocationAutocomplete = React.forwardRef<
                     </CommandItem>
                   ))}
                 </CommandGroup>
-              )}
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+              </CommandList>
+            </Command>
+          </div>
+        )}
+
+        {error && <p className="mt-1 text-sm text-destructive">{error}</p>}
+      </div>
     );
   },
 );
