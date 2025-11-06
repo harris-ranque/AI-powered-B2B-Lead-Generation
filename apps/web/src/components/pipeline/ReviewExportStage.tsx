@@ -879,7 +879,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {details?.responseRate !== null && (
+                        {details?.responseRate !== null && details?.responseRate !== undefined && (
                           <Badge className="border border-emerald-500/40 bg-emerald-500/15 text-emerald-200">
                             {formatPercent(details.responseRate)}
                           </Badge>
@@ -1114,7 +1114,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
                         <Badge className="border border-purple-500/40 bg-purple-500/15 text-purple-200">
                           {formatPercent(relevance * 100)}
                         </Badge>
-                        {details?.responseRate !== null && (
+                        {details?.responseRate !== null && details?.responseRate !== undefined && (
                           <Badge className="border border-emerald-500/40 bg-emerald-500/15 text-emerald-200">
                             {formatPercent(details.responseRate)}
                           </Badge>

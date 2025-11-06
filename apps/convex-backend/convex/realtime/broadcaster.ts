@@ -157,8 +157,17 @@ async function upsertPipelineBroadcast(
         patch.delivered = false;
       }
 
-      await ctx.db.patch(latest._id, patch);
-      return;
+      try {
+        await ctx.db.patch(latest._id, patch);
+        return;
+      } catch (error) {
+        // If patch fails due to concurrent modification, fall through to insert
+        // This prevents the error from propagating while ensuring status is updated
+        console.warn(
+          `Concurrent modification detected for broadcast ${latest._id}, creating new broadcast instead`,
+          { searchId: args.searchId, stage: args.stage }
+        );
+      }
     }
   }
 

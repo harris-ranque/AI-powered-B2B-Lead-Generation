@@ -1064,66 +1064,15 @@ export const analyzeLeads: any = action({
         return { success: false, message: "Cancelled" } as any;
       }
 
-      // Check LangGraph worker health before starting AI analysis
-      const systemConfig = await ctx.runQuery(
-        api.admin.queries.getSystemConfiguration,
-        {},
+      logWithCorrelation(
+        "info",
+        correlation,
+        "🎯 PHASE 3 START: AI Analysis Pipeline",
+        {
+          searchId: args.searchId,
+          note: "Health check already validated by search orchestrator",
+        },
       );
-
-      const langGraphHealth = systemConfig?.orchestrationSettings?.langGraphHealth;
-
-      if (!langGraphHealth || langGraphHealth.status === "unavailable") {
-        const errorMessage =
-          "LangGraph worker is currently unavailable. AI analysis pipeline is temporarily paused. " +
-          (langGraphHealth?.lastError || "Worker health check failed.");
-
-        logWithCorrelation(
-          "error",
-          correlation,
-          "❌ PHASE 3 BLOCKED: LangGraph Worker Unavailable",
-          {
-            healthStatus: langGraphHealth?.status || "unknown",
-            lastError: langGraphHealth?.lastError,
-            consecutiveFailures: langGraphHealth?.consecutiveFailures,
-          },
-        );
-
-        await ctx.runMutation(
-          internal.search.internal.updateSearchStatusInternal,
-          {
-            searchId: args.searchId,
-            status: "failed",
-            error: errorMessage,
-          },
-        );
-
-        await ctx.runMutation(
-          internal.realtime.broadcaster.broadcastPipelineUpdate,
-          {
-            userId: search.userId,
-            searchId: args.searchId,
-            stage: "analysis_failed",
-            progress: 0,
-            message: "AI analysis service unavailable",
-            error: errorMessage,
-          },
-        );
-
-        throw new Error(errorMessage);
-      }
-
-      if (langGraphHealth.status === "degraded") {
-        logWithCorrelation(
-          "warn",
-          correlation,
-          "⚠️ LangGraph Worker Health Degraded - Proceeding with caution",
-          {
-            healthStatus: langGraphHealth.status,
-            services: langGraphHealth.services,
-            performance: langGraphHealth.performance,
-          },
-        );
-      }
 
       // Get all leads for this search that have valid contact information
       // Only analyze leads with both email and contact name
