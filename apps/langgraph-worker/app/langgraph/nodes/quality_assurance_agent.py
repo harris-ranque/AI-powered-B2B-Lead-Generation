@@ -124,12 +124,14 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         # gpt-5-nano uses max_completion_tokens instead of max_tokens
         # Use medium reasoning effort for QA - we need accurate scoring, not just speed
         openai_api_key = provider_key_map.get("openai") if using_user_keys else None
+        qa_model = settings.quality_assurance_model or settings.default_model
+        qa_token_budget = settings.clamp_tokens(settings.quality_assurance_max_tokens)
         llm = registry.get_openai_client(
             api_key=openai_api_key,
-            model=settings.default_model,
+            model=qa_model,
             temperature=0.2,
-            max_completion_tokens=settings.max_tokens,
-            reasoning_effort="medium",
+            max_completion_tokens=qa_token_budget,
+            reasoning_effort="minimal",
             require_user_key=using_user_keys,
         ).with_structured_output(QualityAssessment)
         
@@ -143,6 +145,7 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
             - Value proposition clarity and effectiveness assessment
             - Call-to-action optimization and conversion principles
             
+            Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per bullet).
             Your role is to conduct rigorous quality assessment of generated emails to ensure:
             - High personalization standards using available business intelligence
             - Professional communication that builds credibility and trust

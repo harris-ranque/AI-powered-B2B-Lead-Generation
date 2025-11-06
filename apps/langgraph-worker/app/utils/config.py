@@ -142,6 +142,12 @@ class Settings(BaseSettings):
     
     # Model Configuration
     default_model: str = os.getenv("DEFAULT_MODEL", "gpt-5-nano")
+    business_intelligence_model: str = os.getenv("BUSINESS_INTELLIGENCE_MODEL", "")
+    email_generation_model: str = os.getenv("EMAIL_GENERATION_MODEL", "")
+    quality_assurance_model: str = os.getenv("QUALITY_ASSURANCE_MODEL", "")
+    business_intelligence_max_tokens: int = int(os.getenv("BUSINESS_INTELLIGENCE_MAX_TOKENS", "900") or "900")
+    email_generation_max_tokens: int = int(os.getenv("EMAIL_GENERATION_MAX_TOKENS", "1200") or "1200")
+    quality_assurance_max_tokens: int = int(os.getenv("QUALITY_ASSURANCE_MAX_TOKENS", "600") or "600")
 
     @property
     def temperature(self) -> float:
@@ -164,6 +170,12 @@ class Settings(BaseSettings):
             return int(tokens_str)
         except (ValueError, TypeError):
             return 2000
+
+    def clamp_tokens(self, requested: Optional[int]) -> int:
+        """Clamp agent token budgets to the global max_tokens."""
+        if requested is None or requested <= 0:
+            return self.max_tokens
+        return min(self.max_tokens, requested)
     
     # Sentry Configuration
     sentry_dsn: Optional[str] = os.getenv("SENTRY_DSN", None)

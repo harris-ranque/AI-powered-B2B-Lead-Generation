@@ -54,13 +54,12 @@ interface PipelineProgressPanelProps {
   stageContent?: ReactNode;
 }
 
-// User-facing metrics only - no internal implementation details
+// Live, active user-facing metrics only - no internal implementation details
 const METRIC_LABELS: Record<string, { label: string; icon: LucideIcon; accent: string }> = {
   discovered: { label: "Found", icon: Search, accent: "text-blue-500" },
   enriched: { label: "Contacts", icon: Users, accent: "text-emerald-500" },
   analyzed: { label: "Created", icon: Bot, accent: "text-purple-500" },
   total: { label: "Total", icon: Activity, accent: "text-slate-500" },
-  creditsReserved: { label: "Credits", icon: Timer, accent: "text-indigo-500" },
 };
 
 const numberFormatter = new Intl.NumberFormat();
@@ -295,8 +294,9 @@ export function PipelineProgressPanel({
   }, [progress.health]);
 
   const metrics = useMemo(() => {
-    // Filter to only user-facing metrics - exclude internal implementation details
-    const EXCLUDED_METRICS = ['scheduledBatches', 'totalBatches', 'sourcesAnalyzed', 'confidence'];
+    // Filter to only live/active user-facing metrics
+    // Exclude internal implementation details and non-live status indicators
+    const EXCLUDED_METRICS = ['scheduledBatches', 'totalBatches', 'sourcesAnalyzed', 'confidence', 'creditsReserved'];
 
     return Object.entries(progress.metrics)
       .filter(([key, value]) =>

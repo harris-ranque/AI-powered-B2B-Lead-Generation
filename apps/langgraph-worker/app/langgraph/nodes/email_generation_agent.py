@@ -264,11 +264,13 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         # Initialize LLM for email generation
         # gpt-5-nano uses max_completion_tokens instead of max_tokens
         openai_api_key = provider_key_map.get("openai") if using_user_keys else None
+        email_model = settings.email_generation_model or settings.default_model
+        email_token_budget = settings.clamp_tokens(settings.email_generation_max_tokens)
         llm = registry.get_openai_client(
             api_key=openai_api_key,
-            model=settings.default_model,
+            model=email_model,
             temperature=0.4,
-            max_completion_tokens=settings.max_tokens,
+            max_completion_tokens=email_token_budget,
             reasoning_effort="minimal",
             require_user_key=using_user_keys,
         ).with_structured_output(EmailSequence)
@@ -283,6 +285,7 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
 - Competitive differentiation and value proposition communication
 
 Your emails consistently achieve exceptional results because they:
+- Obey strict word budgets (primary email ≤150 words, follow-ups ≤90 words each)
 - Are SHORT, CONCISE, and SCANNABLE (100-150 words max)
 - Get to the point immediately with no fluff
 - Demonstrate deep research in few words

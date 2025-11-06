@@ -184,11 +184,13 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         # Initialize LLM for comprehensive analysis
         # gpt-5-nano uses max_completion_tokens instead of max_tokens
         openai_api_key = provider_key_map.get("openai") if using_user_keys else None
+        bi_model = settings.business_intelligence_model or settings.default_model
+        bi_token_budget = settings.clamp_tokens(settings.business_intelligence_max_tokens)
         llm = registry.get_openai_client(
             api_key=openai_api_key,
-            model=settings.default_model,
+            model=bi_model,
             temperature=0.3,
-            max_completion_tokens=settings.max_tokens,
+            max_completion_tokens=bi_token_budget,
             reasoning_effort="minimal",
             require_user_key=using_user_keys,
         ).with_structured_output(BusinessIntelligence)
@@ -202,6 +204,7 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
             - Value proposition alignment and benefit quantification
             - Personalization strategy and messaging optimization
             
+            Keep every field to at most two crisp sentences and lists to three bullet points.
             Your role is to perform comprehensive business intelligence analysis that combines:
             1. Deep company research and market context
             2. Lead relevance and qualification assessment

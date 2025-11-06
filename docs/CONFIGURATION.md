@@ -149,6 +149,24 @@ AI_TIMEOUT_BASIC=30000              # Basic research timeout (ms)
 AI_TIMEOUT_DEEP=120000              # Deep research timeout (ms)
 ```
 
+### LangGraph Worker LLM Overrides
+
+Tune the worker's latency by capping per-agent token budgets or forcing lighter models:
+
+```bash
+# Optional model overrides (fallback to DEFAULT_MODEL when empty)
+BUSINESS_INTELLIGENCE_MODEL=gpt-4o-mini
+EMAIL_GENERATION_MODEL=gpt-4.1-mini
+QUALITY_ASSURANCE_MODEL=gpt-4o-mini
+
+# Hard token ceilings per agent (each clamped to MAX_TOKENS)
+BUSINESS_INTELLIGENCE_MAX_TOKENS=900
+EMAIL_GENERATION_MAX_TOKENS=1200
+QUALITY_ASSURANCE_MAX_TOKENS=600
+```
+
+These values keep the business intelligence, writing, and QA agents concise so each lead finishes ~40% faster while still allowing higher limits when needed.
+
 ## Environment Detection
 
 ```bash

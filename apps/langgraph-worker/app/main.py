@@ -727,7 +727,7 @@ async def batch_generate_emails(
     - Concurrent processing (configurable 1-100, default 20)
     - Semaphore-based concurrency control for resource management
     - Tolerant error handling (continues on failures)
-    - Progress webhooks every 10 completions
+    - Progress webhooks every 3 completions
     - Final completion webhook with all results
 
     Parameters:
@@ -824,7 +824,7 @@ async def process_batch_with_progress(
     Strategy:
     - Concurrent processing with configurable max_concurrent (default: 20)
     - Semaphore-based concurrency control for resource management
-    - Progress webhook every 10 completions (or at end)
+    - Progress webhook every 3 completions (or at end)
     - Final completion webhook with all results
     - Tolerant error handling (continues on failures)
 
@@ -935,8 +935,8 @@ async def process_batch_with_progress(
             async with progress_lock:
                 completed_count += 1
 
-                # Send progress webhook every 10 completions or at the end
-                if completed_count % 10 == 0 or completed_count == len(leads):
+                # Send progress webhook every 3 completions or at the end
+                if completed_count % 3 == 0 or completed_count == len(leads):
                     progress_percent = (completed_count / len(leads)) * 100
 
                     # Estimate time remaining

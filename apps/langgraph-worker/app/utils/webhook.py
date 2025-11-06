@@ -486,7 +486,7 @@ class WebhookClient:
         retries: int = 2
     ) -> bool:
         """
-        Send batch progress update webhook (sent every 10 leads)
+        Send batch progress update webhook (sent every 3 leads)
 
         Args:
             batch_id: Unique batch identifier
