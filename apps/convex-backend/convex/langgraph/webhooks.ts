@@ -956,6 +956,7 @@ const BatchCompletionPayload = v.object({
   results: v.array(BatchLeadResult),
   summary: v.any(),
   totalProcessingTime: v.number(),
+  timestamp: v.optional(v.string()), // Worker sends ISO timestamp for batch completion
 });
 
 /**

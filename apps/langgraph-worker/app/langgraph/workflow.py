@@ -18,6 +18,9 @@ from .nodes.aggregator import aggregator_node
 
 logger = setup_logger(__name__)
 
+# Cache compiled workflow at module level (reused across all requests)
+_cached_workflow = None
+
 def create_email_generation_workflow(
     checkpointer: Optional[MemorySaver] = None,
     debug: bool = False
@@ -87,16 +90,16 @@ async def execute_email_generation(
 ) -> Dict[str, Any]:
     """
     Execute the optimized 3-agent email generation workflow.
-    
+
     Flow: Business Intelligence → Email Generation → Quality Assurance
-    
+
     Args:
         lead: Lead information
         business_profile: Business context
         requirements: Email requirements
         request_id: Unique request identifier
         checkpointer: Optional checkpointer for persistence
-        
+
     Returns:
         Workflow execution result with quality-assured email
     """
@@ -112,9 +115,17 @@ async def execute_email_generation(
         "using_user_keys": bool(provider_keys),
     }
     capture_event("workflow_execution_started", analytics_context)
-    
-    # Create workflow
-    workflow = create_email_generation_workflow(checkpointer)
+
+    # Use cached workflow (compile once, reuse for all requests)
+    global _cached_workflow
+    if _cached_workflow is None or checkpointer is not None:
+        # Only rebuild if no cache exists or checkpointer is explicitly provided
+        logger.info("Compiling workflow (first request or custom checkpointer)")
+        _cached_workflow = create_email_generation_workflow(checkpointer)
+    else:
+        logger.debug("Reusing cached workflow (no compilation overhead)")
+
+    workflow = _cached_workflow
     
     # Prepare initial state for 3-agent workflow
     initial_state = {

@@ -441,23 +441,24 @@ async def generate_email(
                     "approved": result.get("approved", False),
                 },
             )
-            
-            # Send success webhook with quality metrics
+
+            # Send webhook in background (non-blocking) - don't hold up HTTP response
             result_obj = result["result"]
-            await webhook_client.send_result(
+            background_tasks.add_task(
+                webhook_client.send_result,
                 request_id=request.request_id,
                 status="completed",
                 result=result_obj,
                 quality_score=result.get("quality_score", 0),
                 approved=result.get("approved", False)
             )
-            
+
             # Create response with quality information
             message = f"Email generation completed via optimized 3-agent LangGraph. "
             message += f"Quality score: {result.get('quality_score', 0):.2f}. "
             message += f"Status: {'Approved' if result.get('approved') else 'Needs Review'}. "
             message += f"Processing time: {result.get('processing_time', 0):.1f}s"
-            
+
             response = EmailGenerationResponse(
                 request_id=request.request_id,
                 status="completed",
@@ -465,8 +466,9 @@ async def generate_email(
                 result=result["result"]
             )
         else:
-            # Send error webhook
-            await webhook_client.send_result(
+            # Send error webhook in background (non-blocking)
+            background_tasks.add_task(
+                webhook_client.send_result,
                 request_id=request.request_id,
                 status="error",
                 error=result.get("error", "Unknown error")
@@ -504,19 +506,15 @@ async def generate_email(
         
         # Capture the exception in Sentry
         sentry_sdk.capture_exception(e)
-        
-        try:
-            await webhook_client.send_result(
+
+        # Send error webhook in background (fire-and-forget, don't block exception handling)
+        asyncio.create_task(
+            webhook_client.send_result(
                 request_id=request.request_id,
                 status="error",
                 error=str(e),
             )
-        except Exception as webhook_error:
-            logger.error(
-                "Failed to send failure webhook for %s: %s",
-                request.request_id,
-                webhook_error,
-            )
+        )
 
         log_error_details(logger, e, {
             "request_id": request.request_id,
@@ -723,18 +721,31 @@ async def batch_generate_emails(
     authenticated: bool = Depends(verify_api_key)
 ):
     """
-    Generate personalized emails for a batch of leads (up to 100)
+    Generate personalized emails for a batch of leads (up to 200)
 
     Processing strategy:
-    - Sequential processing (leads processed one at a time)
+    - Concurrent processing (configurable 1-100, default 20)
+    - Semaphore-based concurrency control for resource management
     - Tolerant error handling (continues on failures)
-    - Progress webhooks every 10 leads
+    - Progress webhooks every 10 completions
     - Final completion webhook with all results
 
+    Parameters:
+    - max_concurrent: Number of leads to process simultaneously (1-100)
+      * Conservative: 5-10 for stability
+      * Balanced: 20 (default) for optimal throughput
+      * Aggressive: 50-100 for maximum speed
+
     Benefits:
-    - 1 HTTP request instead of 100+
+    - 1 HTTP request instead of 200+
+    - 95%+ faster processing with high concurrency
     - Predictable progress updates
-    - Efficient resource utilization
+    - Efficient resource utilization with controlled parallelism
+
+    Performance examples @ 90s per lead:
+    - 200 leads sequential: 5 hours
+    - 200 leads @ 20x: ~15 minutes (95% faster)
+    - 200 leads @ 50x: ~6 minutes (98% faster)
     """
     start_time = datetime.utcnow()
 
@@ -744,10 +755,14 @@ async def batch_generate_emails(
     )
 
     # Validate batch size
-    if len(request.leads) > 100:
-        raise HTTPException(status_code=400, detail="Maximum batch size is 100 leads")
+    if len(request.leads) > 200:
+        raise HTTPException(status_code=400, detail="Maximum batch size is 200 leads")
     if len(request.leads) == 0:
         raise HTTPException(status_code=400, detail="Batch cannot be empty")
+
+    # Validate max_concurrent
+    if request.max_concurrent < 1 or request.max_concurrent > 100:
+        raise HTTPException(status_code=400, detail="max_concurrent must be between 1 and 100")
 
     # Add Sentry context
     sentry_sdk.set_context("batch_processing", {
@@ -775,6 +790,7 @@ async def batch_generate_emails(
         business_profile=request.business_profile,
         requirements=request.requirements,
         provider_keys=request.provider_keys,
+        max_concurrent=request.max_concurrent,
     )
 
     return BatchEmailGenerationResponse(
@@ -800,22 +816,39 @@ async def process_batch_with_progress(
     business_profile: Any,
     requirements: Any,
     provider_keys: Optional[Any] = None,
+    max_concurrent: int = 20,
 ):
     """
-    Process a batch of leads with progress updates every 10 leads
+    Process a batch of leads with concurrent processing and progress updates
 
     Strategy:
-    - Sequential processing (tolerant error handling)
-    - Progress webhook every 10 leads
+    - Concurrent processing with configurable max_concurrent (default: 20)
+    - Semaphore-based concurrency control for resource management
+    - Progress webhook every 10 completions (or at end)
     - Final completion webhook with all results
+    - Tolerant error handling (continues on failures)
+
+    Performance examples @ 90s per lead:
+    - Sequential (1x): 200 leads = 5 hours
+    - 10x concurrent: 200 leads = 30 minutes (90% faster)
+    - 20x concurrent: 200 leads = 15 minutes (95% faster)
+    - 50x concurrent: 200 leads = 6 minutes (98% faster)
     """
     batch_start = time.time()
     results: list[BatchLeadResult] = []
+    completed_count = 0
     success_count = 0
     failure_count = 0
 
+    # Concurrency control using request parameter (1-100 range)
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    # Thread-safe result tracking
+    results_lock = asyncio.Lock()
+    progress_lock = asyncio.Lock()
+
     logger.info(
-        f"[Batch] Processing {len(leads)} leads for batch {batch_id}"
+        f"[Batch] Processing {len(leads)} leads with {max_concurrent}x concurrency for batch {batch_id}"
     )
 
     # Prepare provider keys payload
@@ -825,106 +858,119 @@ async def process_batch_with_progress(
         else None
     )
 
-    # Process each lead sequentially (tolerant error handling)
-    for i, lead in enumerate(leads):
-        lead_start = time.time()
-        lead_id = lead.id or f"lead_{i}"
+    async def process_single_lead(lead: Lead, lead_index: int) -> None:
+        """Process a single lead with semaphore control"""
+        nonlocal completed_count, success_count, failure_count
 
-        try:
-            logger.info(
-                f"[Batch] Processing lead {i+1}/{len(leads)}: {lead.company_name} (batch: {batch_id})"
-            )
-
-            # Execute email generation
-            result = await execute_email_generation(
-                lead=lead,
-                business_profile=business_profile,
-                requirements=requirements,
-                request_id=f"{batch_id}_{lead_id}",
-                provider_keys=provider_keys_payload,
-                user_id=user_id,
-            )
-
-            lead_time = time.time() - lead_start
-
-            if result["status"] == "completed":
-                # Success
-                results.append(BatchLeadResult(
-                    leadId=lead_id,
-                    status="completed",
-                    result=result.get("result"),
-                    processingTime=lead_time
-                ))
-                success_count += 1
-
-                logger.info(
-                    f"[Batch] ✅ Lead {i+1}/{len(leads)} completed: {lead.company_name} "
-                    f"({lead_time:.1f}s)"
-                )
-            else:
-                # Failed
-                error_msg = result.get("error", "Unknown error")
-                results.append(BatchLeadResult(
-                    leadId=lead_id,
-                    status="failed",
-                    error=error_msg,
-                    processingTime=lead_time
-                ))
-                failure_count += 1
-
-                logger.warning(
-                    f"[Batch] ❌ Lead {i+1}/{len(leads)} failed: {lead.company_name} - {error_msg}"
-                )
-
-        except Exception as e:
-            lead_time = time.time() - lead_start
-            error_msg = str(e)
-
-            # Add to results as failed
-            results.append(BatchLeadResult(
-                leadId=lead_id,
-                status="failed",
-                error=error_msg,
-                processingTime=lead_time
-            ))
-            failure_count += 1
-
-            logger.error(
-                f"[Batch] 💥 Lead {i+1}/{len(leads)} exception: {lead.company_name} - {error_msg}"
-            )
-
-        # Send progress webhook every 10 leads or at the end
-        if (i + 1) % 10 == 0 or (i + 1) == len(leads):
-            completed_count = i + 1
-            progress_percent = (completed_count / len(leads)) * 100
-
-            # Estimate time remaining
-            elapsed = time.time() - batch_start
-            avg_time_per_lead = elapsed / completed_count
-            remaining_leads = len(leads) - completed_count
-            estimated_remaining = avg_time_per_lead * remaining_leads if remaining_leads > 0 else 0
+        async with semaphore:
+            lead_start = time.time()
+            lead_id = lead.id or f"lead_{lead_index}"
 
             try:
-                await webhook_client.send_batch_progress(
-                    batch_id=batch_id,
-                    search_id=search_id,
-                    progress_percent=progress_percent,
-                    completed_count=completed_count,
-                    total_count=len(leads),
-                    success_count=success_count,
-                    failure_count=failure_count,
-                    current_lead=lead.company_name,
-                    estimated_time_remaining=estimated_remaining
+                logger.info(
+                    f"[Batch] 🚀 Starting lead {lead_index+1}/{len(leads)}: {lead.company_name} (batch: {batch_id})"
                 )
 
-                logger.info(
-                    f"[Batch] 📊 Progress update sent: {completed_count}/{len(leads)} "
-                    f"({progress_percent:.1f}%), {success_count} success, {failure_count} failed"
+                # Execute email generation
+                result = await execute_email_generation(
+                    lead=lead,
+                    business_profile=business_profile,
+                    requirements=requirements,
+                    request_id=f"{batch_id}_{lead_id}",
+                    provider_keys=provider_keys_payload,
+                    user_id=user_id,
                 )
-            except Exception as webhook_error:
-                logger.warning(
-                    f"[Batch] Failed to send progress webhook: {webhook_error}"
+
+                lead_time = time.time() - lead_start
+
+                async with results_lock:
+                    if result["status"] == "completed":
+                        # Success
+                        results.append(BatchLeadResult(
+                            leadId=lead_id,
+                            status="completed",
+                            result=result.get("result"),
+                            processingTime=lead_time
+                        ))
+                        success_count += 1
+
+                        logger.info(
+                            f"[Batch] ✅ Lead {lead_index+1}/{len(leads)} completed: {lead.company_name} "
+                            f"({lead_time:.1f}s, success: {success_count}/{completed_count+1})"
+                        )
+                    else:
+                        # Failed
+                        error_msg = result.get("error", "Unknown error")
+                        results.append(BatchLeadResult(
+                            leadId=lead_id,
+                            status="failed",
+                            error=error_msg,
+                            processingTime=lead_time
+                        ))
+                        failure_count += 1
+
+                        logger.warning(
+                            f"[Batch] ❌ Lead {lead_index+1}/{len(leads)} failed: {lead.company_name} - {error_msg}"
+                        )
+
+            except Exception as e:
+                lead_time = time.time() - lead_start
+                error_msg = str(e)
+
+                async with results_lock:
+                    # Add to results as failed
+                    results.append(BatchLeadResult(
+                        leadId=lead_id,
+                        status="failed",
+                        error=error_msg,
+                        processingTime=lead_time
+                    ))
+                    failure_count += 1
+
+                logger.error(
+                    f"[Batch] 💥 Lead {lead_index+1}/{len(leads)} exception: {lead.company_name} - {error_msg}"
                 )
+
+            # Update completed count and send progress if needed
+            async with progress_lock:
+                completed_count += 1
+
+                # Send progress webhook every 10 completions or at the end
+                if completed_count % 10 == 0 or completed_count == len(leads):
+                    progress_percent = (completed_count / len(leads)) * 100
+
+                    # Estimate time remaining
+                    elapsed = time.time() - batch_start
+                    avg_time_per_lead = elapsed / completed_count
+                    remaining_leads = len(leads) - completed_count
+                    estimated_remaining = avg_time_per_lead * remaining_leads if remaining_leads > 0 else 0
+
+                    try:
+                        await webhook_client.send_batch_progress(
+                            batch_id=batch_id,
+                            search_id=search_id,
+                            progress_percent=progress_percent,
+                            completed_count=completed_count,
+                            total_count=len(leads),
+                            success_count=success_count,
+                            failure_count=failure_count,
+                            current_lead=lead.company_name,
+                            estimated_time_remaining=estimated_remaining
+                        )
+
+                        logger.info(
+                            f"[Batch] 📊 Progress update sent: {completed_count}/{len(leads)} "
+                            f"({progress_percent:.1f}%), {success_count} success, {failure_count} failed, "
+                            f"~{estimated_remaining:.0f}s remaining"
+                        )
+                    except Exception as webhook_error:
+                        logger.warning(
+                            f"[Batch] Failed to send progress webhook: {webhook_error}"
+                        )
+
+    # Create tasks for all leads and process concurrently
+    tasks = [process_single_lead(lead, i) for i, lead in enumerate(leads)]
+    await asyncio.gather(*tasks, return_exceptions=False)
 
     # Calculate final stats
     total_time = time.time() - batch_start

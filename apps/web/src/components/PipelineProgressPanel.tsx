@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import {
   Activity,
@@ -51,6 +51,7 @@ interface PipelineProgressPanelProps {
   inlinePanel?: React.ReactNode;
   showTimeline?: boolean;
   actions?: React.ReactNode;
+  stageContent?: ReactNode;
 }
 
 // User-facing metrics only - no internal implementation details
@@ -253,6 +254,7 @@ export function PipelineProgressPanel({
   inlinePanel,
   showTimeline = true,
   actions,
+  stageContent,
 }: PipelineProgressPanelProps) {
   const {
     progress,
@@ -316,6 +318,7 @@ export function PipelineProgressPanel({
   const warnings = progress.warnings ?? [];
   const showMetrics = !isCollapsed && metrics.length > 0;
   const showWarnings = !isCollapsed && warnings.length > 0;
+  const showStageContent = !isCollapsed && Boolean(stageContent);
 
   if (layout === "compact") {
     const StageIcon = STAGE_ICONS[
@@ -466,6 +469,13 @@ export function PipelineProgressPanel({
               events={progress.timeline ?? []}
               emptyLabel="No recent updates from the research pipeline yet."
             />
+          </div>
+        )}
+
+        {showStageContent && (
+          <div className="space-y-4">
+            <Separator className="opacity-60" />
+            <div>{stageContent}</div>
           </div>
         )}
       </CardContent>

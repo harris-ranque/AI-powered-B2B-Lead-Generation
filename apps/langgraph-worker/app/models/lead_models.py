@@ -226,11 +226,11 @@ class BatchEmailGenerationRequest(BaseModel):
     batch_id: str = Field(..., alias="batchId", description="Unique batch identifier")
     search_id: str = Field(..., alias="searchId", description="Search ID for tracking")
     user_id: str = Field(..., alias="userId", description="User ID for authentication")
-    leads: List[Lead] = Field(..., description="List of leads to process (max 100)", max_length=100)
+    leads: List[Lead] = Field(..., description="List of leads to process (max 200)", max_length=200)
     business_profile: BusinessProfile = Field(..., alias="businessProfile", description="Business context")
     requirements: EmailRequirements = Field(default_factory=EmailRequirements, description="Email requirements")
     provider_keys: Optional[ProviderKeys] = Field(default=None, alias="providerKeys", description="Optional provider credentials")
-    max_concurrent: int = Field(default=1, alias="maxConcurrent", description="Max concurrent processing (default 1 for sequential)")
+    max_concurrent: int = Field(default=20, alias="maxConcurrent", description="Max concurrent processing (1-100, default 20 for optimal throughput)", ge=1, le=100)
 
 
 class BatchLeadResult(BaseModel):

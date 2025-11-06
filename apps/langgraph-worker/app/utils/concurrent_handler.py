@@ -22,18 +22,37 @@ class ResourceMonitor:
 
     def __init__(self):
         self.process = psutil.Process()
+        # Cache CPU measurement (updated asynchronously, not on every request)
+        self._cached_cpu_percent = 0.0
+        self._last_cpu_check = datetime.utcnow()
+        # Prime the pump with initial call (subsequent calls will be non-blocking)
+        try:
+            self.process.cpu_percent(interval=None)
+        except:
+            pass
 
     def get_status(self) -> Dict[str, Any]:
-        """Get current resource status"""
-        cpu_percent = self.process.cpu_percent(interval=0.1)
+        """Get current resource status (NON-BLOCKING)"""
+        # Use non-blocking CPU measurement (interval=None)
+        # This returns the CPU usage since last call, not requiring sleep
+        now = datetime.utcnow()
+        if (now - self._last_cpu_check).total_seconds() > 1.0:
+            # Only update CPU measurement once per second max
+            try:
+                self._cached_cpu_percent = self.process.cpu_percent(interval=None)
+                self._last_cpu_check = now
+            except:
+                # If measurement fails, use cached value
+                pass
+
         memory_info = self.process.memory_info()
         memory_percent = self.process.memory_percent()
 
         return {
-            "cpu_percent": cpu_percent,
+            "cpu_percent": self._cached_cpu_percent,
             "memory_mb": memory_info.rss / 1024 / 1024,
             "memory_percent": memory_percent,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": now.isoformat(),
         }
 
     def is_overloaded(self) -> bool:

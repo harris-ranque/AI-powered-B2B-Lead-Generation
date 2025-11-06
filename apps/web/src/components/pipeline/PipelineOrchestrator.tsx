@@ -38,9 +38,10 @@ import {
   AlertTriangle,
   RotateCcw,
   FileText,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useSearch } from "@/hooks/useSearches";
+import { useSearch, useSearches } from "@/hooks/useSearches";
 import { useLeads } from "@/hooks/useLeads";
 import { useSearchBroadcasts } from "@/hooks/useStatusBroadcasts";
 import { useAdminSystemControl } from "@/hooks/useAdmin";
@@ -75,6 +76,7 @@ export function PipelineOrchestrator({
 
   // Get search data and real-time updates
   const { search } = useSearch(state.searchId || undefined);
+  const { cancelSearch } = useSearches();
   const { broadcasts, latestStatus } = useSearchBroadcasts(
     state.searchId || undefined,
   );
@@ -246,14 +248,51 @@ export function PipelineOrchestrator({
     }
   }, [activeSearchId, enrichedCount, isSearchCompleted, searchStatus, totalFound]);
 
-  const unifiedPanelActions = isSearchCompleted
-    ? (
+  const handleCancelSearch = useCallback(async () => {
+    if (!activeSearchId) return;
+
+    try {
+      await cancelSearch({ searchId: activeSearchId });
+      toast({
+        title: "Search cancelled",
+        description: "The search has been stopped successfully.",
+      });
+    } catch (error) {
+      console.error("Failed to cancel search:", error);
+      toast({
+        title: "Failed to cancel",
+        description: "Could not cancel the search. Please try again.",
+        variant: "destructive",
+      });
+    }
+  }, [activeSearchId, cancelSearch, toast]);
+
+  const unifiedPanelActions = useMemo(() => {
+    if (isSearchCompleted) {
+      return (
         <Button size="sm" variant="outline" onClick={openLeadHistory} className="gap-2">
           <FileText className="h-4 w-4" />
           View results
         </Button>
-      )
-    : undefined;
+      );
+    }
+
+    if (isBusy && activeSearchId) {
+      return (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleCancelSearch}
+          className="gap-2 border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-600"
+        >
+          <X className="h-4 w-4" />
+          Cancel
+        </Button>
+      );
+    }
+
+    return undefined;
+  }, [isSearchCompleted, isBusy, activeSearchId, openLeadHistory, handleCancelSearch]);
 
   const discoveredFromSearch =
     search?.progress?.discovered ??
@@ -342,6 +381,20 @@ export function PipelineOrchestrator({
         return <SourceSelector />;
     }
   };
+
+  const interactiveStageContent = shouldHideInteractiveSections
+    ? null
+    : (
+        <div
+          className={cn(
+            "transition-all duration-500 ease-in-out",
+            (isBusy || systemStatus?.leadGenerationPaused) &&
+              "opacity-75 pointer-events-none",
+          )}
+        >
+          {renderStageContent()}
+        </div>
+      );
 
   return (
     <>
@@ -532,31 +585,24 @@ export function PipelineOrchestrator({
           <PipelineProgressPanel
             inlinePanel={trackerInlineContent}
             actions={unifiedPanelActions}
+            stageContent={interactiveStageContent}
           />
         </PipelineProgressProvider>
       ) : (
-        <StageTracker
-          current={state.currentStage}
-          completed={state.completedStages}
-          available={availableStages}
-          index={currentStageIndex + 1}
-          total={STAGE_ORDER.length}
-          inlinePanel={trackerInlineContent}
-          onStageClick={handleStageSelect}
-        />
+        <>
+          <StageTracker
+            current={state.currentStage}
+            completed={state.completedStages}
+            available={availableStages}
+            index={currentStageIndex + 1}
+            total={STAGE_ORDER.length}
+            inlinePanel={trackerInlineContent}
+            onStageClick={handleStageSelect}
+          />
+          {interactiveStageContent}
+        </>
       )}
 
-      {!shouldHideInteractiveSections && (
-        <div
-          className={cn(
-            "transition-all duration-500 ease-in-out",
-            (isBusy || systemStatus?.leadGenerationPaused) &&
-              "opacity-75 pointer-events-none",
-          )}
-        >
-          {renderStageContent()}
-        </div>
-      )}
       </div>
     </>
   );
