@@ -60,10 +60,8 @@ const leadDashboardLogger = createLogger("LeadEternityDashboard");
 
 function LeadEternityDashboardContent() {
   const [currentTab, setCurrentTab] = useState<DashboardTabName>("overview");
-  const [currentTheme, setCurrentTheme] = useState<AppThemeKey>(getStoredAppTheme());
-  const [hasSkippedOnboarding, setHasSkippedOnboarding] = useState<boolean>(
-    () => localStorage.getItem("genni_onboarding_skipped") === "true"
-  );
+  const [currentTheme, setCurrentTheme] = useState<AppThemeKey>("neon-pulse");
+  const [hasSkippedOnboarding, setHasSkippedOnboarding] = useState<boolean>(false);
   const location = useLocation();
   const completionAnnouncedRef = useRef(false);
   const isHandlingHashChangeRef = useRef(false);
@@ -86,6 +84,16 @@ function LeadEternityDashboardContent() {
 
   const dismissComponentError = useCallback(() => {
     setComponentError(null);
+  }, []);
+
+  // Sync theme and onboarding state from localStorage after mount (prevents hydration errors)
+  useEffect(() => {
+    const storedTheme = getStoredAppTheme();
+    setCurrentTheme(storedTheme);
+    applyAppTheme(storedTheme);
+
+    const skipped = localStorage.getItem("genni_onboarding_skipped") === "true";
+    setHasSkippedOnboarding(skipped);
   }, []);
 
   // Real backend integration
@@ -486,13 +494,6 @@ function LeadEternityDashboardContent() {
       description: `Switched to ${newTheme === "harborlight" ? "Horizon" : "Neon"} theme`,
     });
   }, [currentTheme, toast]);
-
-  // Apply stored theme on component mount
-  useEffect(() => {
-    const storedTheme = getStoredAppTheme();
-    setCurrentTheme(storedTheme);
-    applyAppTheme(storedTheme);
-  }, []);
 
   // Avoid flashing onboarding while loading profile
   if (isProfileLoading) {
