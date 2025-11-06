@@ -15,6 +15,12 @@ MAX_TOKENS = "{{ secrets.MAX_TOKENS }}"
 TEMPERATURE = "{{ secrets.TEMPERATURE }}"
 DEFAULT_MODEL = "{{ secrets.DEFAULT_MODEL }}"
 
+# LangSmith tracing configuration
+LANGCHAIN_TRACING_V2 = "{{ secrets.LANGCHAIN_TRACING_V2 }}"
+LANGCHAIN_ENDPOINT = "{{ secrets.LANGCHAIN_ENDPOINT }}"
+LANGCHAIN_PROJECT = "{{ secrets.LANGCHAIN_PROJECT }}"
+LANGCHAIN_API_KEY = "{{ secrets.LANGCHAIN_API_KEY }}"
+
 [deploy]
 startCommand = "./start.sh"
 healthcheckPath = "/health" 
