@@ -487,6 +487,13 @@ function LeadEternityDashboardContent() {
     });
   }, [currentTheme, toast]);
 
+  // Apply stored theme on component mount
+  useEffect(() => {
+    const storedTheme = getStoredAppTheme();
+    setCurrentTheme(storedTheme);
+    applyAppTheme(storedTheme);
+  }, []);
+
   // Avoid flashing onboarding while loading profile
   if (isProfileLoading) {
     return <div className="harborlight-shell min-h-screen bg-background" />;

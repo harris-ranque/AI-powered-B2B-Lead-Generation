@@ -53,14 +53,13 @@ interface PipelineProgressPanelProps {
   actions?: React.ReactNode;
 }
 
+// User-facing metrics only - no internal implementation details
 const METRIC_LABELS: Record<string, { label: string; icon: LucideIcon; accent: string }> = {
   discovered: { label: "Found", icon: Search, accent: "text-blue-500" },
   enriched: { label: "Contacts", icon: Users, accent: "text-emerald-500" },
   analyzed: { label: "Created", icon: Bot, accent: "text-purple-500" },
   total: { label: "Total", icon: Activity, accent: "text-slate-500" },
-  confidence: { label: "Confidence", icon: Sparkles, accent: "text-amber-500" },
   creditsReserved: { label: "Credits", icon: Timer, accent: "text-indigo-500" },
-  sourcesAnalyzed: { label: "Sources", icon: Database, accent: "text-cyan-500" },
 };
 
 const numberFormatter = new Intl.NumberFormat();
@@ -294,14 +293,18 @@ export function PipelineProgressPanel({
   }, [progress.health]);
 
   const metrics = useMemo(() => {
+    // Filter to only user-facing metrics - exclude internal implementation details
+    const EXCLUDED_METRICS = ['scheduledBatches', 'totalBatches', 'sourcesAnalyzed', 'confidence'];
+
     return Object.entries(progress.metrics)
-      .filter(([_, value]) => typeof value === "number" && value >= 0)
+      .filter(([key, value]) =>
+        typeof value === "number" &&
+        value >= 0 &&
+        !EXCLUDED_METRICS.includes(key) &&
+        key in METRIC_LABELS  // Only show explicitly defined user-facing metrics
+      )
       .map(([key, value]) => {
-        const meta = METRIC_LABELS[key] ?? {
-          label: key.replace(/_/g, " "),
-          icon: Activity,
-          accent: "text-slate-500",
-        };
+        const meta = METRIC_LABELS[key];
         return {
           key,
           value,
