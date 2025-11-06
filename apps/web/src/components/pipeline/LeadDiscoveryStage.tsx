@@ -58,6 +58,8 @@ import {
 } from "@/components/ui/collapsible";
 import { toStandardCase } from "@/utils/string";
 import { EnterpriseApiKeyBlocker } from "./EnterpriseApiKeyBlocker";
+import { createLogger } from "@/utils/logger";
+import { normalizeError } from "@/utils/errorUtils";
 
 interface LeadDiscoveryStageProps {
   userCredits: number;
@@ -92,6 +94,8 @@ const ENTERPRISE_REQUIRED_PROVIDERS = [
   "perplexity",
 ] as const;
 
+const discoveryLogger = createLogger("LeadDiscoveryStage");
+
 export function LeadDiscoveryStage({
   userCredits,
   userPlan,
@@ -110,6 +114,7 @@ export function LeadDiscoveryStage({
   const { toast } = useToast();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [showApiKeyBlocker, setShowApiKeyBlocker] = useState(false);
+  const [stageError, setStageError] = useState<string | null>(null);
 
   // Fetch user preferences for de-duplication settings
   const userPreferences = useQuery(api.users.queries.getUserPreferences);
@@ -311,6 +316,7 @@ export function LeadDiscoveryStage({
   const handleStartDiscovery = async () => {
     if (!validation.isValid) return;
 
+    setStageError(null);
     setProcessing(true);
 
     try {
@@ -399,18 +405,33 @@ export function LeadDiscoveryStage({
         }, 1000);
       }
     } catch (error) {
-      const message =
-        error instanceof Error && error.message
-          ? error.message
-          : "Failed to start lead discovery. Please try again.";
-
+      const normalizedError = normalizeError(
+        error,
+        "Failed to start lead discovery. Please try again.",
+      );
+      const errorInstance =
+        error instanceof Error ? error : new Error(String(error));
+      discoveryLogger.error(
+        "Lead discovery start failed",
+        {
+          code: normalizedError.code,
+          statusCode: normalizedError.statusCode,
+          source: state.selectedSource,
+          searchId: state.searchId,
+        },
+        errorInstance,
+      );
+      setStageError(normalizedError.message);
       toast({
         title: "Discovery Failed",
-        description: message,
+        description: normalizedError.message,
         variant: "destructive",
       });
 
-      if (isEnterprise && message.toLowerCase().includes("api key")) {
+      if (
+        isEnterprise &&
+        normalizedError.message.toLowerCase().includes("api key")
+      ) {
         setShowApiKeyBlocker(true);
       }
     } finally {
@@ -461,6 +482,22 @@ export function LeadDiscoveryStage({
         </h3>
         <p className="text-muted-foreground">{selectedSource.description}</p>
       </div>
+
+      {stageError && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>{stageError}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setStageError(null)}
+            >
+              Dismiss
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {hasActiveSearch && !showConfiguration && (
         <Card className="glass-card border-dashed">

@@ -28,6 +28,7 @@ import {
   Activity,
   Target,
   TrendingUp,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -50,6 +51,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { createLogger } from "@/utils/logger";
+import { normalizeError } from "@/utils/errorUtils";
 
 const EXPORT_FORMATS = [
   {
@@ -66,6 +69,8 @@ const numberFormatter = new Intl.NumberFormat();
 const percentFormatter = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 1,
 });
+
+const reviewLogger = createLogger("ReviewExportStage");
 
 const getString = (
   source: Record<string, unknown> | undefined,
@@ -183,6 +188,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
   const [isSendingEmails, setIsSendingEmails] = useState(false);
   const [exportedFormats, setExportedFormats] = useState<string[]>([]);
   const [sentLeadIds, setSentLeadIds] = useState<string[]>([]);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const leads = useMemo(
     () => (state.searchId && searchLeads ? searchLeads : state.leads),
@@ -429,6 +435,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
 
   const handleExport = useCallback(
     async (format: string) => {
+      setActionError(null);
       setIsExporting(true);
 
       try {
@@ -513,10 +520,26 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
           description: `Successfully exported your leads as ${format.toUpperCase()}.`,
         });
       } catch (error) {
-        console.error("Export error:", error);
+        const normalizedError = normalizeError(
+          error,
+          "Failed to export data. Please try again.",
+        );
+        const errorInstance =
+          error instanceof Error ? error : new Error(String(error));
+        reviewLogger.error(
+          "Export failed",
+          {
+            format,
+            searchId: state.searchId,
+            code: normalizedError.code,
+            statusCode: normalizedError.statusCode,
+          },
+          errorInstance,
+        );
+        setActionError(normalizedError.message);
         toast({
           title: "Export Failed",
-          description: "Failed to export data. Please try again.",
+          description: normalizedError.message,
           variant: "destructive",
         });
       } finally {
@@ -544,6 +567,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
       return;
     }
 
+    setActionError(null);
     setIsSendingEmails(true);
 
     try {
@@ -571,10 +595,26 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
         description: `Marked ${unsentReadyLeads.length} ${unsentReadyLeads.length === 1 ? "lead" : "leads"} as contacted.`,
       });
     } catch (error) {
-      console.error("Send emails error:", error);
+      const normalizedError = normalizeError(
+        error,
+        "Unable to mark emails as sent right now.",
+      );
+      const errorInstance =
+        error instanceof Error ? error : new Error(String(error));
+      reviewLogger.error(
+        "Failed to update lead statuses",
+        {
+          leadCount: unsentReadyLeads.length,
+          searchId: state.searchId,
+          code: normalizedError.code,
+          statusCode: normalizedError.statusCode,
+        },
+        errorInstance,
+      );
+      setActionError(normalizedError.message);
       toast({
         title: "Send failed",
-        description: "Unable to mark emails as sent right now.",
+        description: normalizedError.message,
         variant: "destructive",
       });
     } finally {
@@ -601,6 +641,22 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
           Review your results and export your leads and personalized emails.
         </p>
       </div>
+
+      {actionError && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>{actionError}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setActionError(null)}
+            >
+              Dismiss
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Card className="glass-card border border-slate-800/70 bg-slate-900/60 shadow-[0_20px_70px_-40px_rgba(0,255,204,0.35)]">
         <CardHeader>

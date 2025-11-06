@@ -26,11 +26,14 @@ import {
   MessageSquare,
   Sparkles,
   Info,
+  AlertTriangle,
   Plus,
   X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useProfile } from "@/hooks/useProfile";
+import { createLogger } from "@/utils/logger";
+import { normalizeError } from "@/utils/errorUtils";
 
 interface BusinessProfile {
   companyName: string;
@@ -117,6 +120,8 @@ const resolveArray = (...values: unknown[]): string[] => {
   return [];
 };
 
+const wizardLogger = createLogger("BusinessProfileWizard");
+
 export function BusinessProfileWizard({
   onComplete,
   onSkip,
@@ -125,6 +130,7 @@ export function BusinessProfileWizard({
 }: BusinessProfileWizardProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // State for form inputs
   const [newTargetIndustry, setNewTargetIndustry] = useState("");
@@ -344,16 +350,19 @@ export function BusinessProfileWizard({
   const handleComplete = async () => {
     // Basic validation
     const sanitizedContactName = normalizeContactName(profile.contactName);
+    setSaveError(null);
 
     if (
       !profile.companyName ||
       !profile.industry ||
       !sanitizedContactName
     ) {
+      const message =
+        "Please fill in the required fields (Company Name, Your Name, Industry).";
+      setSaveError(message);
       toast({
         title: "Missing Information",
-        description:
-          "Please fill in the required fields (Company Name, Your Name, Industry).",
+        description: message,
         variant: "destructive",
       });
       return;
@@ -365,10 +374,12 @@ export function BusinessProfileWizard({
       profile.valueProposition.length > 0 &&
       profile.valueProposition.length < 50
     ) {
+      const message =
+        "Value proposition must be at least 50 characters. Either provide a complete description or leave it empty to fill in later.";
+      setSaveError(message);
       toast({
         title: "Value Proposition Too Short",
-        description:
-          "Value proposition must be at least 50 characters. Either provide a complete description or leave it empty to fill in later.",
+        description: message,
         variant: "destructive",
       });
       return;
@@ -414,10 +425,25 @@ export function BusinessProfileWizard({
           "Your business profile has been saved and will be used to personalize all AI-generated emails.",
       });
     } catch (error) {
-      console.error("Error saving profile:", error);
+      const normalizedError = normalizeError(
+        error,
+        "Failed to save your profile. Please try again.",
+      );
+      const errorInstance =
+        error instanceof Error ? error : new Error(String(error));
+      wizardLogger.error(
+        "Failed to save business profile",
+        {
+          code: normalizedError.code,
+          statusCode: normalizedError.statusCode,
+          step: "createOrUpdateProfile",
+        },
+        errorInstance,
+      );
+      setSaveError(normalizedError.message);
       toast({
         title: "Save Failed",
-        description: "Failed to save your profile. Please try again.",
+        description: normalizedError.message,
         variant: "destructive",
       });
     } finally {
@@ -937,6 +963,21 @@ export function BusinessProfileWizard({
 
     return (
       <div className="max-w-3xl mx-auto p-6">
+        {saveError && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span>{saveError}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSaveError(null)}
+              >
+                Dismiss
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
         <Card className="p-4">
           <Accordion type="multiple" defaultValue={[]} className="w-full">
             <AccordionItem value="company">
@@ -1034,6 +1075,21 @@ export function BusinessProfileWizard({
   // Default wizard mode
   return (
     <div className="max-w-2xl mx-auto p-6">
+      {saveError && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>{saveError}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSaveError(null)}
+            >
+              Dismiss
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-3xl font-bold">Business Profile Setup</h1>

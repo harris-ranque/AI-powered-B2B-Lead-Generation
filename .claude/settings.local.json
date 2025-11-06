@@ -17,7 +17,11 @@
       "Bash(git merge:*)",
       "Bash(pip3 index:*)",
       "Bash(pip3 install langgraph-checkpoint==)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(npm install:*)",
+      "Bash(pnpm add:*)",
+      "Bash(cat:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []

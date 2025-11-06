@@ -888,3 +888,71 @@ export const markLeadAnalysisTimeout = internalMutation({
     });
   },
 });
+
+/**
+ * Atomically check if analysis phase should be triggered and claim the right to do so
+ *
+ * This mutation prevents race conditions when multiple enrichment actions complete simultaneously.
+ * It uses Compare-And-Set semantics to ensure only ONE action triggers analyzeLeads.
+ *
+ * Returns:
+ * - true: This caller won the race and should trigger analysis
+ * - false: Another action already triggered analysis, or conditions not met
+ */
+export const tryTriggerAnalysisPhase = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    // Get all leads for this search
+    const allLeads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    if (allLeads.length === 0) {
+      return false; // No leads to analyze
+    }
+
+    // Check if ALL enrichment is complete
+    const allEnrichmentComplete = allLeads.every((lead) =>
+      lead.enrichmentStatus === "completed" ||
+      lead.enrichmentStatus === "completed_fallback" ||
+      lead.enrichmentStatus === "failed"
+    );
+
+    if (!allEnrichmentComplete) {
+      return false; // Still waiting for enrichment to complete
+    }
+
+    // Check if analysis was already triggered by checking for any scheduled/processing/completed leads
+    const analysisAlreadyTriggered = allLeads.some((lead) =>
+      lead.analysisStatus === "scheduled" ||
+      lead.analysisStatus === "processing" ||
+      lead.analysisStatus === "completed"
+    );
+
+    if (analysisAlreadyTriggered) {
+      return false; // Analysis already triggered by another action
+    }
+
+    // WE WON THE RACE! Mark all enriched leads as ready for analysis
+    // This atomically claims the right to trigger analysis
+    const leadsToAnalyze = allLeads.filter(
+      (lead) =>
+        lead.enrichmentStatus === "completed" ||
+        lead.enrichmentStatus === "completed_fallback"
+    );
+
+    // Set analysisStatus to "pending" for all leads that should be analyzed
+    // This prevents other concurrent actions from also triggering analysis
+    for (const lead of leadsToAnalyze) {
+      await ctx.db.patch(lead._id, {
+        analysisStatus: "pending",
+        updatedAt: Date.now(),
+      });
+    }
+
+    return true; // Caller should now trigger analyzeLeads
+  },
+});

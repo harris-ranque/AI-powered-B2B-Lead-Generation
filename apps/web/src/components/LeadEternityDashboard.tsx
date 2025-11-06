@@ -754,7 +754,7 @@ function LeadEternityDashboardContent() {
 
           {currentTab === "admin" && isAdmin && (
             <div>
-              <AdminDashboard />
+              <AdminDashboard isAdmin={isAdmin} />
             </div>
           )}
         </div>

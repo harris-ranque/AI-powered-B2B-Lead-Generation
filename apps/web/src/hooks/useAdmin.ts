@@ -175,9 +175,16 @@ export function useAdminConfiguration() {
   };
 }
 
-export function useAdminSystemControl() {
-  const systemStatus = useQuery(api.admin.queries.getSystemControlStatus);
-  const systemActivity = useQuery(api.admin.queries.getSystemActivity);
+export function useAdminSystemControl(isAdmin: boolean = false) {
+  // Only query if user is admin to prevent unnecessary permission errors
+  const systemStatus = useQuery(
+    api.admin.queries.getSystemControlStatus,
+    isAdmin ? {} : "skip"
+  );
+  const systemActivity = useQuery(
+    api.admin.queries.getSystemActivity,
+    isAdmin ? {} : "skip"
+  );
   const systemConfiguration = useQuery(api.admin.queries.getSystemConfiguration);
   // Use functions from admin/systemControl module (correct paths)
   const pauseAllLeadGeneration = useSafeAdminMutation(

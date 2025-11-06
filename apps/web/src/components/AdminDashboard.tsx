@@ -655,7 +655,11 @@ function ExternalServicesPanel() {
   );
 }
 
-function AdminDashboardComponent() {
+interface AdminDashboardProps {
+  isAdmin?: boolean;
+}
+
+function AdminDashboardComponent({ isAdmin = true }: AdminDashboardProps = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -698,7 +702,7 @@ function AdminDashboardComponent() {
     clearAllActiveSearches,
     triggerLangGraphHealthCheck,
     isLoading: systemLoading,
-  } = useAdminSystemControl();
+  } = useAdminSystemControl(isAdmin);
 
   const [currentTab, setCurrentTab] = useState<(typeof TAB_KEYS)[number]>("overview");
   const [searchTerm, setSearchTerm] = useState("");
