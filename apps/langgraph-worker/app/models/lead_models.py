@@ -249,7 +249,7 @@ class BatchEmailGenerationResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     batch_id: str = Field(..., alias="batchId", description="Batch identifier")
-    status: Literal["completed", "partial", "failed"] = Field(..., description="Overall batch status")
+    status: Literal["processing", "completed", "partial", "failed"] = Field(..., description="Overall batch status")
     results: List[BatchLeadResult] = Field(..., description="Individual lead results")
     summary: Dict[str, Any] = Field(..., description="Batch processing summary")
     total_processing_time: float = Field(..., alias="totalProcessingTime", description="Total batch processing time")
