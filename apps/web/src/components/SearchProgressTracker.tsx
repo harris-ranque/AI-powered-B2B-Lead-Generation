@@ -52,7 +52,6 @@ import {
   getPriorityDisplay,
   formatBroadcastTime,
 } from "@/hooks/useStatusBroadcasts";
-import { useSearch } from "@/hooks/useSearches";
 import { useSearches } from "@/hooks/useSearches";
 import type { Id } from "@genni/convex-types/dataModel";
 import { cn } from "@/lib/utils";
@@ -98,8 +97,10 @@ export function SearchProgressTracker({
   showHistory = true,
   className,
 }: SearchProgressTrackerProps) {
-  const { search } = useSearch(searchId);
-  const { cancelSearch } = useSearches();
+  // Reuse data from UserDataContext to avoid redundant queries
+  const { searches, cancelSearch } = useSearches();
+  const search = searches.find((s) => s._id === searchId);
+
   const {
     broadcasts,
     latestStatus,

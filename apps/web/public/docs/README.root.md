@@ -46,7 +46,7 @@ This is a multi-repository system with the following structure:
               │   - FindyMail      │
               │   - OpenAI         │
               │   - Tavily Search  │
-              │   - Perplexity AI  │
+             │   - Perplexity AI  │
               │   - Stripe         │
               └───────────────────┘
 ```

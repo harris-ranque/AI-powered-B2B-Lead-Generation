@@ -1,5 +1,5 @@
 {
-  "generatedAt": 1760056040466,
+  "generatedAt": 1762457549022,
   "root": {
     "type": "dir",
     "name": "docs",
@@ -175,6 +175,27 @@
       },
       {
         "type": "file",
+        "name": "ICYPEAS_DOMAIN_SEARCH_SOLUTION.md",
+        "path": "ICYPEAS_DOMAIN_SEARCH_SOLUTION.md",
+        "title": "ICypeas Domain-Based Contact Discovery Solution",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "ICYPEAS_FIX_SUMMARY.md",
+        "path": "ICYPEAS_FIX_SUMMARY.md",
+        "title": "ICypeas API Integration Fix",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "ICYPEAS_SOLUTION.md",
+        "path": "ICYPEAS_SOLUTION.md",
+        "title": "ICypeas API Integration - RESOLVED ✅",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
         "name": "lead-generation-tweaks.md",
         "path": "lead-generation-tweaks.md",
         "title": "Lead Generation Pipeline Tweaks",
@@ -220,6 +241,13 @@
         "name": "REACT_CLERK_SETUP.md",
         "path": "REACT_CLERK_SETUP.md",
         "title": "🚀 React + Clerk Setup Guide",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "README_ICYPEAS_FIX.md",
+        "path": "README_ICYPEAS_FIX.md",
+        "title": "ICypeas API Integration Fix - Complete Guide",
         "isMarkdown": true
       },
       {
@@ -276,6 +304,13 @@
         "name": "TESTING_STRATEGY.md",
         "path": "TESTING_STRATEGY.md",
         "title": "Comprehensive Testing Strategy for Genni AI Platform",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "ui-report.md",
+        "path": "ui-report.md",
+        "title": "UI Analysis Report",
         "isMarkdown": true
       },
       {

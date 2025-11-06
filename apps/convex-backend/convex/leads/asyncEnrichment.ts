@@ -92,7 +92,10 @@ async function tryProvider(
         return { ...result, provider }; // Tag with provider that worked
       }
 
-      console.log(`[${provider}] ⚠️ No emails found for ${domain} on attempt ${attempt}`);
+      // API succeeded but no emails found - don't retry (wastes credits)
+      // The domain simply doesn't have discoverable contacts
+      console.log(`[${provider}] ⚠️ No emails found for ${domain} - API succeeded but domain has no discoverable contacts`);
+      return null; // Exit immediately, no point retrying
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
       console.error(`[${provider}] ❌ Error on attempt ${attempt}/${options.retries} for ${domain}: ${errorMsg}`);
@@ -102,6 +105,7 @@ async function tryProvider(
         break;
       }
 
+      // Only retry on actual API errors (network, timeout, 500 errors)
       // Exponential backoff: 1s, 2s, 4s, 8s, 16s (max 15s)
       const backoffDelay = Math.min(Math.pow(2, attempt) * 1000, 15000);
       console.log(`[${provider}] ⏳ Backing off ${backoffDelay}ms before retry...`);
