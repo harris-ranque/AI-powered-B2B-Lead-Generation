@@ -17,7 +17,6 @@ COPY packages/ packages/
 RUN pnpm install
 
 # Accept build-time environment variables for Vite
-ARG CONVEX_DEPLOYMENT
 ARG VITE_CONVEX_URL
 ARG VITE_CLERK_PUBLISHABLE_KEY
 ARG VITE_STRIPE_PUBLISHABLE_KEY
@@ -37,22 +36,19 @@ ENV VITE_SUPPORT_EMAIL=$VITE_SUPPORT_EMAIL
 ENV ENVIRONMENT=$ENVIRONMENT
 ENV NODE_ENV=$NODE_ENV
 
-# Generate Convex types from backend (requires CONVEX_DEPLOYMENT)
+# Use pre-generated Convex types from repo (committed for Docker builds)
 WORKDIR /app/apps/convex-backend
-RUN if [ -n "$CONVEX_DEPLOYMENT" ]; then \
-        echo "📦 Generating Convex types for deployment: $CONVEX_DEPLOYMENT"; \
-        CONVEX_DEPLOYMENT=$CONVEX_DEPLOYMENT pnpm exec convex codegen; \
-    elif [ -d "convex/_generated" ]; then \
-        echo "✅ Using pre-generated Convex types"; \
+RUN if [ -d "convex/_generated" ]; then \
+        echo "✅ Using pre-generated Convex types from repository"; \
     else \
-        echo "⚠️ WARNING: No CONVEX_DEPLOYMENT provided and no pre-generated types found"; \
+        echo "❌ ERROR: Pre-generated Convex types not found!"; \
+        echo "Run 'cd apps/convex-backend && npx convex codegen' locally and commit the files."; \
+        exit 1; \
     fi
 
-# Copy generated files to web app (if they exist)
-RUN if [ -d "convex/_generated" ]; then \
-        cp -r convex/_generated ../web/convex/; \
-        echo "✅ Copied Convex types to web app"; \
-    fi
+# Copy generated files to web app
+RUN cp -r convex/_generated ../web/convex/ && \
+    echo "✅ Copied Convex types to web app"
 
 # Build the web app
 WORKDIR /app/apps/web

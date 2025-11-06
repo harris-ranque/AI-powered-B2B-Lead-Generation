@@ -13,7 +13,6 @@ COPY . .
 RUN pnpm install
 
 # Accept build-time environment variables for Vite
-ARG CONVEX_DEPLOYMENT
 ARG VITE_CONVEX_URL
 ARG VITE_CLERK_PUBLISHABLE_KEY
 ARG VITE_STRIPE_PUBLISHABLE_KEY
@@ -73,26 +72,20 @@ ENV ENVIRONMENT=$ENVIRONMENT
 ENV NODE_ENV=$NODE_ENV
 ENV RAILWAY_ENVIRONMENT=$RAILWAY_ENVIRONMENT
 
-# Generate Convex types (requires CONVEX_DEPLOYMENT build arg)
-# Option A: Pass deployment at build time:
-#   docker build --build-arg CONVEX_DEPLOYMENT=your-deployment ...
-# Option B: Pre-generate types and commit them to repo
+# Use pre-generated Convex types from repo (committed for Docker builds)
+# Pre-generated types are committed to avoid needing Convex auth during builds
 RUN cd apps/convex-backend && \
-    if [ -n "$CONVEX_DEPLOYMENT" ]; then \
-        echo "📦 Generating Convex types for deployment: $CONVEX_DEPLOYMENT"; \
-        CONVEX_DEPLOYMENT=$CONVEX_DEPLOYMENT pnpm exec convex codegen; \
-    elif [ -d "convex/_generated" ]; then \
-        echo "✅ Using pre-generated Convex types"; \
+    if [ -d "convex/_generated" ]; then \
+        echo "✅ Using pre-generated Convex types from repository"; \
     else \
-        echo "⚠️ WARNING: No CONVEX_DEPLOYMENT provided and no pre-generated types found"; \
-        echo "⚠️ Build will continue but may fail if types are missing"; \
+        echo "❌ ERROR: Pre-generated Convex types not found!"; \
+        echo "Run 'cd apps/convex-backend && npx convex codegen' locally and commit the files."; \
+        exit 1; \
     fi
 
-# Copy generated types to web app (if they exist)
-RUN if [ -d "apps/convex-backend/convex/_generated" ]; then \
-        cp -r apps/convex-backend/convex/_generated apps/web/convex/; \
-        echo "✅ Copied Convex types to web app"; \
-    fi
+# Copy generated types to web app
+RUN cp -r apps/convex-backend/convex/_generated apps/web/convex/ && \
+    echo "✅ Copied Convex types to web app"
 
 # Run tests before building (continue even if some tests fail - configuration is fixed)
 RUN echo "🧪 Running tests before build..." && \
