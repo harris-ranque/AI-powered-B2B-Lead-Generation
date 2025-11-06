@@ -23,7 +23,8 @@
       "Bash(cat:*)",
       "Bash(npx tsc:*)",
       "Bash(pnpm lint:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []

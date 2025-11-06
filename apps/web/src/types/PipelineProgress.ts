@@ -70,8 +70,10 @@ export function computeStagePercent(
   const completedCount = new Set(
     completed.filter((stageId) => stageOrder.includes(stageId)),
   ).size;
-  const progressIndex = Math.max(currentIndex, completedCount - 1);
-  const percent = ((progressIndex + 1) / stageOrder.length) * 100;
+
+  // Only count progress from completed stages, not the current stage
+  // This ensures initial state shows 0% instead of 20%
+  const percent = (completedCount / stageOrder.length) * 100;
   return clampPercent(percent);
 }
 

@@ -362,19 +362,19 @@ export function PipelineOrchestrator({
                     Great news! We found and processed your leads.
                   </p>
                   <div className="grid grid-cols-3 gap-3 pt-3">
-                    <div className="flex flex-col items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-emerald-100">
-                      <div className="text-2xl font-bold">{totalFound}</div>
-                      <div className="text-xs text-muted-foreground">Found</div>
+                    <div className="flex flex-col items-center justify-center rounded-lg border-2 border-emerald-500/50 bg-emerald-500/10 p-3">
+                      <div className="text-2xl font-bold text-emerald-100">{totalFound}</div>
+                      <div className="text-xs font-medium text-emerald-200/80">Found</div>
                     </div>
-                    <div className="flex flex-col items-center justify-center rounded-lg border border-cyan-500/40 bg-cyan-500/10 p-3 text-cyan-100">
-                      <div className="text-2xl font-bold">{enrichedCount}</div>
-                      <div className="text-xs text-muted-foreground">Enriched</div>
+                    <div className="flex flex-col items-center justify-center rounded-lg border-2 border-cyan-500/50 bg-cyan-500/10 p-3">
+                      <div className="text-2xl font-bold text-cyan-100">{enrichedCount}</div>
+                      <div className="text-xs font-medium text-cyan-200/80">Enriched</div>
                     </div>
-                    <div className="flex flex-col items-center justify-center rounded-lg border border-purple-500/40 bg-purple-500/10 p-3 text-purple-100">
-                      <div className="text-2xl font-bold">
+                    <div className="flex flex-col items-center justify-center rounded-lg border-2 border-purple-500/50 bg-purple-500/10 p-3">
+                      <div className="text-2xl font-bold text-purple-100">
                         {search?.results?.analyzedCount || 0}
                       </div>
-                      <div className="text-xs text-muted-foreground">Analyzed</div>
+                      <div className="text-xs font-medium text-purple-200/80">Analyzed</div>
                     </div>
                   </div>
                 </div>
@@ -391,14 +391,14 @@ export function PipelineOrchestrator({
                 setStage("source_selection");
                 setIsPipelineCollapsed(false);
               }}
-              className="border border-slate-700/60 bg-slate-900 text-slate-200 hover:border-cyan-500/50 hover:text-cyan-100"
+              className="border-2 border-orange-500/50 bg-orange-500/10 text-orange-100 hover:border-orange-500/70 hover:bg-orange-500/20"
             >
               <RotateCcw className="h-4 w-4 mr-2" />
               Start New Search
             </Button>
             <Button
               onClick={openLeadHistory}
-              className="gap-2 border border-cyan-500/40 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/25"
+              className="gap-2 border-2 bg-gradient-to-r from-blue-500/20 to-pink-500/20 border-blue-500/50 text-blue-100 hover:from-blue-500/30 hover:to-pink-500/30"
             >
               <FileText className="h-4 w-4" />
               View Results

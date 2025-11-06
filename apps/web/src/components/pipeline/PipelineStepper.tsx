@@ -16,6 +16,7 @@ import {
   Bot,
   PenTool,
   Download,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +27,7 @@ const STAGE_ICONS = {
   Bot,
   PenTool,
   Download,
+  Sparkles,
 };
 
 export function PipelineStepper() {
@@ -75,9 +77,9 @@ export function PipelineStepper() {
                       status === "active" &&
                         "bg-primary/20 border-primary text-primary animate-neon-pulse",
                       status === "available" &&
-                        "bg-muted border-muted-foreground/30 text-muted-foreground hover:border-primary/50",
+                        "bg-muted/50 border-border text-muted-foreground hover:border-primary/50",
                       status === "disabled" &&
-                        "bg-muted/50 border-muted-foreground/20 text-muted-foreground/50 cursor-not-allowed",
+                        "bg-background border-border/50 text-muted-foreground/40 cursor-not-allowed",
                     )}
                     onClick={() => {
                       if (canProgressToStage(stageId)) {
