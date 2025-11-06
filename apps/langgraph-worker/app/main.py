@@ -7,6 +7,7 @@ import logging
 from datetime import datetime
 import asyncio
 import json
+import time
 from typing import List, Dict, Any, Optional
 
 # Initialize Sentry SDK before other imports
@@ -57,6 +58,9 @@ from .models.lead_models import (
     ProviderKeyValidationRequest,
     ProviderKeyValidationResponse,
     LeadAnalysisRequest,
+    BatchEmailGenerationRequest,
+    BatchEmailGenerationResponse,
+    BatchLeadResult,
 )
 from .langgraph.state import EmailGenerationState
 from .langgraph.workflow import create_email_generation_workflow, execute_email_generation, execute_with_streaming
@@ -711,6 +715,281 @@ async def analyze_lead(
             },
         )
         raise HTTPException(status_code=500, detail=f"Lead analysis failed: {str(e)}")
+
+@app.post("/batch-generate-emails", response_model=BatchEmailGenerationResponse)
+async def batch_generate_emails(
+    request: BatchEmailGenerationRequest,
+    background_tasks: BackgroundTasks,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """
+    Generate personalized emails for a batch of leads (up to 100)
+
+    Processing strategy:
+    - Sequential processing (leads processed one at a time)
+    - Tolerant error handling (continues on failures)
+    - Progress webhooks every 10 leads
+    - Final completion webhook with all results
+
+    Benefits:
+    - 1 HTTP request instead of 100+
+    - Predictable progress updates
+    - Efficient resource utilization
+    """
+    start_time = datetime.utcnow()
+
+    logger.info(
+        f"[Batch] Starting batch processing: batch_id={request.batch_id}, "
+        f"leads={len(request.leads)}, search_id={request.search_id}"
+    )
+
+    # Validate batch size
+    if len(request.leads) > 100:
+        raise HTTPException(status_code=400, detail="Maximum batch size is 100 leads")
+    if len(request.leads) == 0:
+        raise HTTPException(status_code=400, detail="Batch cannot be empty")
+
+    # Add Sentry context
+    sentry_sdk.set_context("batch_processing", {
+        "batch_id": request.batch_id,
+        "search_id": request.search_id,
+        "batch_size": len(request.leads),
+        "user_id": request.user_id,
+        "max_concurrent": request.max_concurrent
+    })
+
+    capture_event("api_batch_started", {
+        "batch_id": request.batch_id,
+        "search_id": request.search_id,
+        "batch_size": len(request.leads),
+        "user_id": request.user_id,
+    })
+
+    # Process batch in background
+    background_tasks.add_task(
+        process_batch_with_progress,
+        batch_id=request.batch_id,
+        search_id=request.search_id,
+        user_id=request.user_id,
+        leads=request.leads,
+        business_profile=request.business_profile,
+        requirements=request.requirements,
+        provider_keys=request.provider_keys,
+    )
+
+    return BatchEmailGenerationResponse(
+        batch_id=request.batch_id,
+        status="processing",
+        results=[],
+        summary={
+            "total": len(request.leads),
+            "completed": 0,
+            "success": 0,
+            "failed": 0,
+            "message": "Batch processing started, webhooks will be sent as each lead completes"
+        },
+        total_processing_time=0
+    )
+
+
+async def process_batch_with_progress(
+    batch_id: str,
+    search_id: str,
+    user_id: str,
+    leads: list[Lead],
+    business_profile: Any,
+    requirements: Any,
+    provider_keys: Optional[Any] = None,
+):
+    """
+    Process a batch of leads with progress updates every 10 leads
+
+    Strategy:
+    - Sequential processing (tolerant error handling)
+    - Progress webhook every 10 leads
+    - Final completion webhook with all results
+    """
+    batch_start = time.time()
+    results: list[BatchLeadResult] = []
+    success_count = 0
+    failure_count = 0
+
+    logger.info(
+        f"[Batch] Processing {len(leads)} leads for batch {batch_id}"
+    )
+
+    # Prepare provider keys payload
+    provider_keys_payload = (
+        provider_keys.model_dump(exclude_none=True)
+        if provider_keys
+        else None
+    )
+
+    # Process each lead sequentially (tolerant error handling)
+    for i, lead in enumerate(leads):
+        lead_start = time.time()
+        lead_id = lead.id or f"lead_{i}"
+
+        try:
+            logger.info(
+                f"[Batch] Processing lead {i+1}/{len(leads)}: {lead.company_name} (batch: {batch_id})"
+            )
+
+            # Execute email generation
+            result = await execute_email_generation(
+                lead=lead,
+                business_profile=business_profile,
+                requirements=requirements,
+                request_id=f"{batch_id}_{lead_id}",
+                provider_keys=provider_keys_payload,
+                user_id=user_id,
+            )
+
+            lead_time = time.time() - lead_start
+
+            if result["status"] == "completed":
+                # Success
+                results.append(BatchLeadResult(
+                    leadId=lead_id,
+                    status="completed",
+                    result=result.get("result"),
+                    processingTime=lead_time
+                ))
+                success_count += 1
+
+                logger.info(
+                    f"[Batch] ✅ Lead {i+1}/{len(leads)} completed: {lead.company_name} "
+                    f"({lead_time:.1f}s)"
+                )
+            else:
+                # Failed
+                error_msg = result.get("error", "Unknown error")
+                results.append(BatchLeadResult(
+                    leadId=lead_id,
+                    status="failed",
+                    error=error_msg,
+                    processingTime=lead_time
+                ))
+                failure_count += 1
+
+                logger.warning(
+                    f"[Batch] ❌ Lead {i+1}/{len(leads)} failed: {lead.company_name} - {error_msg}"
+                )
+
+        except Exception as e:
+            lead_time = time.time() - lead_start
+            error_msg = str(e)
+
+            # Add to results as failed
+            results.append(BatchLeadResult(
+                leadId=lead_id,
+                status="failed",
+                error=error_msg,
+                processingTime=lead_time
+            ))
+            failure_count += 1
+
+            logger.error(
+                f"[Batch] 💥 Lead {i+1}/{len(leads)} exception: {lead.company_name} - {error_msg}"
+            )
+
+        # Send progress webhook every 10 leads or at the end
+        if (i + 1) % 10 == 0 or (i + 1) == len(leads):
+            completed_count = i + 1
+            progress_percent = (completed_count / len(leads)) * 100
+
+            # Estimate time remaining
+            elapsed = time.time() - batch_start
+            avg_time_per_lead = elapsed / completed_count
+            remaining_leads = len(leads) - completed_count
+            estimated_remaining = avg_time_per_lead * remaining_leads if remaining_leads > 0 else 0
+
+            try:
+                await webhook_client.send_batch_progress(
+                    batch_id=batch_id,
+                    search_id=search_id,
+                    progress_percent=progress_percent,
+                    completed_count=completed_count,
+                    total_count=len(leads),
+                    success_count=success_count,
+                    failure_count=failure_count,
+                    current_lead=lead.company_name,
+                    estimated_time_remaining=estimated_remaining
+                )
+
+                logger.info(
+                    f"[Batch] 📊 Progress update sent: {completed_count}/{len(leads)} "
+                    f"({progress_percent:.1f}%), {success_count} success, {failure_count} failed"
+                )
+            except Exception as webhook_error:
+                logger.warning(
+                    f"[Batch] Failed to send progress webhook: {webhook_error}"
+                )
+
+    # Calculate final stats
+    total_time = time.time() - batch_start
+    batch_status = "completed" if failure_count == 0 else "partial" if success_count > 0 else "failed"
+
+    summary = {
+        "total": len(leads),
+        "completed": len(results),
+        "success": success_count,
+        "failed": failure_count,
+        "success_rate": (success_count / len(leads)) * 100 if len(leads) > 0 else 0,
+        "avg_time_per_lead": total_time / len(leads) if len(leads) > 0 else 0
+    }
+
+    logger.info(
+        f"[Batch] ✅ Batch {batch_id} {batch_status}: "
+        f"{success_count} success, {failure_count} failed, "
+        f"total time: {total_time:.1f}s"
+    )
+
+    # Send final completion webhook
+    try:
+        # Convert results to dict format for webhook (camelCase for JavaScript backend)
+        results_dicts = [
+            {
+                "leadId": r.lead_id,
+                "status": r.status,
+                "result": r.result.model_dump(by_alias=True) if r.result else None,
+                "error": r.error,
+                "processingTime": r.processing_time
+            }
+            for r in results
+        ]
+
+        await webhook_client.send_batch_completion(
+            batch_id=batch_id,
+            search_id=search_id,
+            status=batch_status,
+            results=results_dicts,
+            summary=summary,
+            total_processing_time=total_time
+        )
+
+        logger.info(
+            f"[Batch] 📨 Completion webhook sent for batch {batch_id}"
+        )
+
+        capture_event("api_batch_completed", {
+            "batch_id": batch_id,
+            "search_id": search_id,
+            "status": batch_status,
+            "total": len(leads),
+            "success": success_count,
+            "failed": failure_count,
+            "duration_ms": total_time * 1000,
+        })
+
+    except Exception as webhook_error:
+        logger.error(
+            f"[Batch] Failed to send completion webhook for batch {batch_id}: {webhook_error}"
+        )
+        capture_error("api_batch_webhook_failed", webhook_error, {
+            "batch_id": batch_id,
+            "search_id": search_id,
+        })
 
 @app.get("/status/{request_id}")
 async def get_request_status(

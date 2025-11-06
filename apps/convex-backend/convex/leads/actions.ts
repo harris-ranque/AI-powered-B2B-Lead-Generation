@@ -719,14 +719,14 @@ export const analyzeLeads: any = action({
       logWithCorrelation(
         "info",
         correlation,
-        "📋 AI Analysis Configuration (Async Fire-and-Forget)",
+        "📋 AI Analysis Configuration (Batch Processing)",
         {
           totalLeadsToAnalyze: leads.length,
-          architecture: "scheduled_actions",
-          concurrency: "unlimited_parallel",
+          architecture: "batch_processing",
+          batchSize: 100,
           webhookBased: true,
           langgraphUrl: langgraphUrl?.includes("localhost") ? "local" : "production",
-          scalability: "500+ leads supported",
+          scalability: "unlimited batches supported",
         },
       );
 
@@ -771,79 +771,113 @@ export const analyzeLeads: any = action({
       }
 
       // ========================================================================
-      // FIRE-AND-FORGET SCHEDULING (Async Webhook Architecture)
+      // BATCH SCHEDULING (100 leads per batch)
       // ========================================================================
-      // Schedule all leads for analysis in parallel - no waiting!
-      // Each lead gets its own scheduled action with independent 10-min timeout
-      // Webhooks handle result storage and progress updates
+      // Divide leads into batches of 100
+      // Each batch gets its own action that calls the batch endpoint
+      // Webhooks handle progress updates and final results
       // ========================================================================
+
+      // Helper function to divide leads into batches
+      function chunkArray<T>(array: T[], size: number): T[][] {
+        const chunks: T[][] = [];
+        for (let i = 0; i < array.length; i += size) {
+          chunks.push(array.slice(i, i + size));
+        }
+        return chunks;
+      }
+
+      const BATCH_SIZE = 100;
+      const batches = chunkArray(leads, BATCH_SIZE);
 
       logWithCorrelation(
         "info",
         correlation,
-        "🚀 Scheduling All Leads for Async Analysis (Fire-and-Forget)",
+        "🚀 Scheduling Lead Batches for Analysis",
         {
           totalLeads: leads.length,
-          architecture: "scheduled_actions",
-          concurrency: "unlimited",
+          batchSize: BATCH_SIZE,
+          totalBatches: batches.length,
+          architecture: "batch_processing",
           webhookBased: true,
-          estimatedSchedulingTime: leads.length * 10, // ~10ms per schedule
+          estimatedSchedulingTime: batches.length * 10, // ~10ms per batch
         },
       );
 
-      let scheduledCount = 0;
+      let scheduledBatches = 0;
       let schedulingErrors = 0;
 
-      // Schedule all leads immediately (fire-and-forget)
-      for (const lead of leads) {
+      // Schedule each batch with a 10-second stagger
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        if (!batch) continue; // Type guard for TypeScript
+        const batchId = `${args.searchId}_batch_${i + 1}`;
+
         try {
-          // Create unique request ID for tracking
-          const requestId = `${args.searchId}_${lead._id}_auto`;
-
-          // Mark lead as scheduled
-          await ctx.runMutation(internal.leads.internal.markLeadAnalysisScheduled, {
-            leadId: lead._id,
-            requestId,
-          });
-
-          // Schedule the lead analysis action (fire-and-forget)
-          await ctx.scheduler.runAfter(
-            0, // Run immediately
-            (internal as any)["leads/asyncAnalysis"].analyzeSingleLead,
+          logWithCorrelation(
+            "info",
+            correlation,
+            `📦 Scheduling Batch ${i + 1}/${batches.length}`,
             {
-              leadId: lead._id,
-              searchId: args.searchId,
-              userId: search.userId,
-              profileId: profile._id,
-              maxRetries: 3,
+              batchId,
+              leadsInBatch: batch.length,
+              batchNumber: i + 1,
+              totalBatches: batches.length,
             },
           );
 
-          scheduledCount++;
+          // Mark all leads in batch as scheduled
+          for (const lead of batch) {
+            const typedLead = lead as any; // Type assertion for filtered lead data
+            await ctx.runMutation(internal.leads.internal.markLeadAnalysisScheduled, {
+              leadId: typedLead._id,
+              requestId: `${batchId}_${typedLead._id}`,
+            });
+          }
+
+          // Schedule the batch analysis action
+          await ctx.scheduler.runAfter(
+            i * 10000, // 10-second stagger between batches
+            (internal as any)["leads/asyncAnalysis"].analyzeLeadsBatch,
+            {
+              searchId: args.searchId,
+              batchId,
+              batchNumber: i + 1,
+              leadIds: batch.map((l: any) => l._id),
+              userId: search.userId,
+              profileId: profile._id,
+            },
+          );
+
+          scheduledBatches++;
         } catch (error) {
           schedulingErrors++;
-          console.error(`Failed to schedule lead ${lead._id}:`, error);
+          console.error(`Failed to schedule batch ${i + 1}:`, error);
 
-          // Mark as failed immediately
-          await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
-            leadId: lead._id,
-            error: error instanceof Error ? error.message : "Scheduling failed",
-          });
+          // Mark all leads in failed batch as failed
+          for (const lead of batch) {
+            const typedLead = lead as any; // Type assertion for filtered lead data
+            await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
+              leadId: typedLead._id,
+              error: error instanceof Error ? error.message : "Batch scheduling failed",
+            });
+          }
 
-          // Broadcast scheduling error to user
+          // Broadcast scheduling error
           await ctx.runMutation(internal.realtime.broadcaster.broadcast, {
             userId: search.userId,
-            type: "lead_analysis_error",
-            title: `Failed to schedule ${lead.businessName}`,
-            message: "This lead could not be scheduled for analysis. It will be marked as failed.",
+            type: "batch_analysis_error",
+            title: `Failed to schedule batch ${i + 1}/${batches.length}`,
+            message: `Batch of ${batch.length} leads could not be scheduled`,
             data: {
               searchId: args.searchId,
-              leadId: lead._id,
-              leadName: lead.businessName,
+              batchId,
+              batchNumber: i + 1,
+              leadsCount: batch.length,
               error: error instanceof Error ? error.message : "Unknown error",
             },
             priority: "normal",
-            tags: ["analysis", "error"],
+            tags: ["analysis", "error", "batch"],
           });
         }
       }
@@ -853,27 +887,28 @@ export const analyzeLeads: any = action({
       logWithCorrelation(
         "info",
         correlation,
-        "🎉 PHASE 3 SCHEDULING COMPLETE: All Leads Scheduled for Async Analysis",
+        "🎉 PHASE 3 BATCH SCHEDULING COMPLETE",
         {
           totalLeads: leads.length,
-          scheduledCount,
+          totalBatches: batches.length,
+          scheduledBatches,
           schedulingErrors,
-          schedulingSuccessRate: (scheduledCount / leads.length) * 100,
+          schedulingSuccessRate: (scheduledBatches / batches.length) * 100,
           durationMs: performanceData?.duration || 0,
-          averageTimePerSchedule:
-            leads.length > 0 ? (performanceData?.duration || 0) / leads.length : 0,
-          nextPhase: "webhook_processing",
-          note: "Results will arrive via webhooks as each lead completes",
+          averageTimePerBatch:
+            batches.length > 0 ? (performanceData?.duration || 0) / batches.length : 0,
+          nextPhase: "batch_webhook_processing",
+          note: "Batches will process sequentially with progress webhooks every 10 leads",
         },
       );
 
-      // Broadcast initial progress (leads scheduled, processing will happen async)
+      // Broadcast initial progress
       await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
         userId: search.userId,
         searchId: args.searchId,
         stage: "analysis",
-        progress: 0, // 0% analyzed (scheduled but not complete)
-        message: `Scheduled ${scheduledCount} leads for AI analysis`,
+        progress: 0, // 0% analyzed (scheduled but not started)
+        message: `Scheduled ${scheduledBatches} batches (${leads.length} leads) for AI analysis`,
         data: {
           progress: {
             discovered: leads.length,
@@ -883,23 +918,24 @@ export const analyzeLeads: any = action({
                 l.enrichmentStatus === "completed_fallback",
             ).length,
             analyzed: 0, // None complete yet
-            scheduled: scheduledCount,
+            scheduledBatches,
+            totalBatches: batches.length,
             total: leads.length,
           },
         },
       });
 
       // NOTE: We do NOT call completeSearch here!
-      // The webhook handler will call it when all leads are processed
-      // This is handled by the monitoring cron job checking completion status
+      // The webhook handler will call it when all batches are processed
 
       return {
         success: true,
-        message: `Scheduled ${scheduledCount}/${leads.length} leads for async analysis`,
-        scheduledCount,
+        message: `Scheduled ${scheduledBatches}/${batches.length} batches (${leads.length} leads) for analysis`,
+        scheduledBatches,
         schedulingErrors,
         totalLeads: leads.length,
-        note: "Analysis will complete asynchronously via webhooks",
+        totalBatches: batches.length,
+        note: "Batches will complete asynchronously via webhooks with progress updates every 10 leads",
       };
     } catch (error) {
       const performanceData = endPerformanceTracking(performanceTracker);

@@ -213,3 +213,58 @@ class WebhookPayload(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     result: Optional[EmailGenerationResult] = Field(None, description="Result if completed")
     error: Optional[str] = Field(None, description="Error if failed")
+
+
+# ============================================================================
+# BATCH PROCESSING MODELS (100 leads per batch)
+# ============================================================================
+
+class BatchEmailGenerationRequest(BaseModel):
+    """Request model for batch email generation (up to 100 leads)"""
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    batch_id: str = Field(..., alias="batchId", description="Unique batch identifier")
+    search_id: str = Field(..., alias="searchId", description="Search ID for tracking")
+    user_id: str = Field(..., alias="userId", description="User ID for authentication")
+    leads: List[Lead] = Field(..., description="List of leads to process (max 100)", max_length=100)
+    business_profile: BusinessProfile = Field(..., alias="businessProfile", description="Business context")
+    requirements: EmailRequirements = Field(default_factory=EmailRequirements, description="Email requirements")
+    provider_keys: Optional[ProviderKeys] = Field(default=None, alias="providerKeys", description="Optional provider credentials")
+    max_concurrent: int = Field(default=1, alias="maxConcurrent", description="Max concurrent processing (default 1 for sequential)")
+
+
+class BatchLeadResult(BaseModel):
+    """Result for a single lead within a batch"""
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    lead_id: str = Field(..., alias="leadId", description="Lead identifier")
+    status: Literal["completed", "failed"] = Field(..., description="Processing status")
+    result: Optional[EmailGenerationResult] = Field(None, description="Generation result if successful")
+    error: Optional[str] = Field(None, description="Error message if failed")
+    processing_time: float = Field(..., alias="processingTime", description="Processing time in seconds")
+
+
+class BatchEmailGenerationResponse(BaseModel):
+    """Response model for batch email generation"""
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    batch_id: str = Field(..., alias="batchId", description="Batch identifier")
+    status: Literal["completed", "partial", "failed"] = Field(..., description="Overall batch status")
+    results: List[BatchLeadResult] = Field(..., description="Individual lead results")
+    summary: Dict[str, Any] = Field(..., description="Batch processing summary")
+    total_processing_time: float = Field(..., alias="totalProcessingTime", description="Total batch processing time")
+
+
+class BatchProgressUpdate(BaseModel):
+    """Progress update for batch processing (sent every 10 leads)"""
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    batch_id: str = Field(..., alias="batchId", description="Batch identifier")
+    search_id: str = Field(..., alias="searchId", description="Search identifier")
+    progress_percent: float = Field(..., alias="progressPercent", description="Progress percentage (0-100)")
+    completed_count: int = Field(..., alias="completedCount", description="Number of leads completed")
+    total_count: int = Field(..., alias="totalCount", description="Total leads in batch")
+    current_lead: Optional[str] = Field(None, alias="currentLead", description="Currently processing lead name")
+    success_count: int = Field(..., alias="successCount", description="Successful completions")
+    failure_count: int = Field(..., alias="failureCount", description="Failed completions")
+    estimated_time_remaining: Optional[float] = Field(None, alias="estimatedTimeRemaining", description="Estimated seconds remaining")

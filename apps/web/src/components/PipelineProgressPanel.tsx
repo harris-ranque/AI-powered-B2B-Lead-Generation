@@ -54,10 +54,10 @@ interface PipelineProgressPanelProps {
 }
 
 const METRIC_LABELS: Record<string, { label: string; icon: LucideIcon; accent: string }> = {
-  discovered: { label: "Discovered", icon: Search, accent: "text-blue-500" },
-  enriched: { label: "Enriched", icon: Users, accent: "text-emerald-500" },
-  analyzed: { label: "Analyzed", icon: Bot, accent: "text-purple-500" },
-  total: { label: "Target", icon: Activity, accent: "text-slate-500" },
+  discovered: { label: "Found", icon: Search, accent: "text-blue-500" },
+  enriched: { label: "Contacts", icon: Users, accent: "text-emerald-500" },
+  analyzed: { label: "Created", icon: Bot, accent: "text-purple-500" },
+  total: { label: "Total", icon: Activity, accent: "text-slate-500" },
   confidence: { label: "Confidence", icon: Sparkles, accent: "text-amber-500" },
   creditsReserved: { label: "Credits", icon: Timer, accent: "text-indigo-500" },
   sourcesAnalyzed: { label: "Sources", icon: Database, accent: "text-cyan-500" },

@@ -56,6 +56,8 @@ import { useSearches } from "@/hooks/useSearches";
 import type { Id } from "@genni/convex-types/dataModel";
 import { cn } from "@/lib/utils";
 import { toStandardCase } from "@/utils/string";
+import { useQuery } from "convex/react";
+import { api } from "@genni/convex-types";
 
 interface SearchProgressTrackerProps {
   searchId: Id<"searches">;
@@ -97,9 +99,18 @@ export function SearchProgressTracker({
   showHistory = true,
   className,
 }: SearchProgressTrackerProps) {
-  // Reuse data from UserDataContext to avoid redundant queries
+  // Try to reuse data from UserDataContext first (for recent searches)
   const { searches, cancelSearch } = useSearches();
-  const search = searches.find((s) => s._id === searchId);
+  const searchFromList = searches.find((s) => s._id === searchId);
+
+  // Fallback to direct query for older searches not in the paginated list
+  const searchDirect = useQuery(
+    api.search.queries.getSearchById,
+    searchFromList ? "skip" : { searchId }
+  );
+
+  // Use whichever source has the data
+  const search = searchFromList ?? searchDirect;
 
   const {
     broadcasts,
@@ -206,20 +217,20 @@ export function SearchProgressTracker({
   const timelineStages: TimelineStage[] = [
     {
       id: "discovery",
-      label: "Discovery",
+      label: "Find Leads",
       icon: Search,
       count: discoveredCount,
     },
     {
       id: "enrichment",
-      label: "Enrich",
+      label: "Get Contacts",
       icon: Mail,
       count: enrichedCount,
-      tooltip: "Uses 1 credit per lead to locate contacts",
+      tooltip: "Finding email contacts for each lead",
     },
     {
       id: "analysis",
-      label: "Analysis",
+      label: "Create Emails",
       icon: analysisStageIcon,
       count: analyzedCount,
       tooltip:
@@ -229,11 +240,11 @@ export function SearchProgressTracker({
             ? `${researchSources} research sources analyzed`
             : search.researchTier && search.researchTier !== "error"
               ? `${researchTierDisplay.label} research with AI personalization`
-              : "AI personalization & research insights",
+              : "AI-powered email personalization",
     },
     {
       id: "completion",
-      label: "Complete",
+      label: "Ready",
       icon: CheckCircle,
       count: search.results?.totalFound ?? (search.status === "completed" ? totalCount : undefined),
     },
@@ -244,22 +255,22 @@ export function SearchProgressTracker({
 
   const metrics = [
     {
-      label: "Discovered",
+      label: "Found",
       value: discoveredCount,
       stageIndex: STAGE_ORDER.indexOf("discovery"),
     },
     {
-      label: "Contacts Found",
+      label: "Contacts",
       value: enrichedCount,
       stageIndex: STAGE_ORDER.indexOf("enrichment"),
     },
     {
-      label: "Analyzed",
+      label: "Created",
       value: analyzedCount,
       stageIndex: STAGE_ORDER.indexOf("analysis"),
     },
     {
-      label: "Target",
+      label: "Total",
       value: totalCount,
       stageIndex: STAGE_ORDER.indexOf("completion"),
     },
@@ -566,7 +577,13 @@ export function SearchProgressTracker({
                 {Object.entries(latestUpdate.data.progress as Record<string, number | undefined>)
                   .filter(([key]) => ["discovered", "enriched", "analyzed", "total"].includes(key))
                   .map(([key, value]) => {
-                    const displayLabel = key === "enriched" ? "Contacts Found" : key;
+                    const labelMap: Record<string, string> = {
+                      discovered: "Found",
+                      enriched: "Contacts",
+                      analyzed: "Created",
+                      total: "Total",
+                    };
+                    const displayLabel = labelMap[key] || key;
                     return (
                       <div key={key} className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
                         <span className="uppercase tracking-wide">{displayLabel}</span>
@@ -576,32 +593,6 @@ export function SearchProgressTracker({
                   })}
               </div>
             )}
-          </section>
-
-          <section className="flex flex-wrap items-center gap-4 rounded-md bg-muted/30 px-4 py-3 text-sm">
-            {metrics.map((metric) => {
-              const isComplete = metric.stageIndex < activeIndex || search.status === "completed";
-              const isActive = metric.stageIndex === activeIndex;
-
-              return (
-                <button
-                  key={metric.label}
-                  type="button"
-                  onClick={handleViewResults}
-                  className={cn(
-                    "flex items-center gap-2 rounded-md px-3 py-1 transition-colors",
-                    isComplete
-                      ? "text-emerald-700 hover:bg-emerald-50"
-                      : isActive
-                        ? "text-primary hover:bg-primary/10"
-                        : "text-muted-foreground hover:bg-muted/50",
-                  )}
-                >
-                  <span className="text-lg font-semibold">{metric.value ?? 0}</span>
-                  <span className="text-xs uppercase tracking-wide">{metric.label}</span>
-                </button>
-              );
-            })}
           </section>
 
           {showHistory && (

@@ -923,6 +923,523 @@ export const handleAnalysisCompleted = internalMutation({
   },
 });
 
+// Batch processing webhook handlers
+
+const BatchProgressUpdate = v.object({
+  batchId: v.string(),
+  searchId: v.string(),
+  progressPercent: v.number(),
+  completedCount: v.number(),
+  totalCount: v.number(),
+  successCount: v.number(),
+  failureCount: v.number(),
+  currentLead: v.optional(v.union(v.string(), v.null())),
+  estimatedTimeRemaining: v.optional(v.union(v.number(), v.null())),
+});
+
+const BatchLeadResult = v.object({
+  leadId: v.string(),
+  status: v.union(v.literal("completed"), v.literal("failed")),
+  result: v.optional(v.any()),
+  error: v.optional(v.union(v.string(), v.null())),
+  processingTime: v.number(),
+});
+
+const BatchCompletionPayload = v.object({
+  batchId: v.string(),
+  searchId: v.string(),
+  status: v.union(
+    v.literal("completed"),
+    v.literal("partial"),
+    v.literal("failed"),
+  ),
+  results: v.array(BatchLeadResult),
+  summary: v.any(),
+  totalProcessingTime: v.number(),
+});
+
+/**
+ * Handle batch progress updates (sent every 10 leads)
+ * Non-critical webhook - logs progress and broadcasts to frontend
+ */
+export const handleBatchProgress = internalMutation({
+  args: {
+    payload: BatchProgressUpdate,
+  },
+  handler: async (ctx, args) => {
+    const logger = createOperationLogger.webhook(
+      "system",
+      "batch_progress_webhook",
+    );
+    const timer = logger.start(`Processing batch progress: ${args.payload.batchId}`);
+
+    try {
+      const { batchId, searchId, progressPercent, completedCount, totalCount, successCount, failureCount, currentLead } = args.payload;
+
+      logger.info("Batch progress update received", {
+        batchId,
+        searchId,
+        progressPercent: `${progressPercent.toFixed(1)}%`,
+        completed: `${completedCount}/${totalCount}`,
+        successRate: `${successCount}/${completedCount}`,
+      });
+
+      // Validate search ID format
+      if (!/^[a-zA-Z0-9]{16,32}$/.test(searchId)) {
+        logger.error(`Invalid searchId format: ${searchId}`, { batchId });
+        return { success: false, error: "Invalid searchId format" };
+      }
+
+      const searchIdTyped = searchId as Id<"searches">;
+
+      // Get search
+      const search = await ctx.runQuery(
+        internal.search.internal.getSearchInternal,
+        { searchId: searchIdTyped },
+      );
+
+      if (!search) {
+        logger.error(`Search not found: ${searchId}`, { batchId });
+        return { success: false, error: "Search not found" };
+      }
+
+      // Broadcast progress update to frontend
+      await ctx.runMutation(
+        internal.realtime.broadcaster.broadcastPipelineUpdate,
+        {
+          userId: search.userId,
+          searchId: searchIdTyped,
+          stage: "analysis",
+          progress: progressPercent,
+          message: currentLead
+            ? `Analyzing ${currentLead} (${completedCount}/${totalCount} complete)`
+            : `Analyzed ${completedCount} of ${totalCount} leads (${successCount} successful, ${failureCount} failed)`,
+          data: {
+            batchId,
+            stage: "batch_analysis_progress",
+            completedCount,
+            totalCount,
+            successCount,
+            failureCount,
+            currentLead,
+            progressPercent,
+          },
+        },
+      );
+
+      logger.info("Batch progress broadcast complete", {
+        batchId,
+        progressPercent: `${progressPercent.toFixed(1)}%`,
+      });
+
+      return {
+        success: true,
+        batchId,
+        progressPercent,
+      };
+    } catch (error) {
+      logger.error("Error handling batch progress webhook", {
+        batchId: args.payload.batchId,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+
+      // Non-critical webhook - don't fail
+      return {
+        success: true,
+        warning: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  },
+});
+
+/**
+ * Handle batch completion with all lead results
+ * Critical webhook - processes all lead results and triggers search completion
+ */
+export const handleBatchCompleted = internalMutation({
+  args: {
+    payload: BatchCompletionPayload,
+  },
+  handler: async (ctx, args) => {
+    const logger = createOperationLogger.webhook(
+      "system",
+      "batch_completion_webhook",
+    );
+    const timer = logger.start(`Processing batch completion: ${args.payload.batchId}`);
+
+    try {
+      const { batchId, searchId, status, results, summary, totalProcessingTime } = args.payload;
+
+      logger.info("Batch completion received", {
+        batchId,
+        searchId,
+        status,
+        totalLeads: results.length,
+        successCount: results.filter((r) => r.status === "completed").length,
+        failureCount: results.filter((r) => r.status === "failed").length,
+        processingTime: `${totalProcessingTime.toFixed(2)}s`,
+      });
+
+      // Validate search ID format
+      if (!/^[a-zA-Z0-9]{16,32}$/.test(searchId)) {
+        logger.error(`Invalid searchId format: ${searchId}`, { batchId });
+        return { success: false, error: "Invalid searchId format" };
+      }
+
+      const searchIdTyped = searchId as Id<"searches">;
+
+      // Get search
+      const search = await ctx.runQuery(
+        internal.search.internal.getSearchInternal,
+        { searchId: searchIdTyped },
+      );
+
+      if (!search) {
+        logger.error(`Search not found: ${searchId}`, { batchId });
+        return { success: false, error: "Search not found" };
+      }
+
+      const userDoc = await ctx.runQuery(internal.users.internal.getUserInternal, {
+        userId: search.userId,
+      });
+      const isEnterpriseUser = userDoc?.plan === "enterprise";
+
+      // Process each lead result
+      let processedSuccessfully = 0;
+      let processingErrors = 0;
+
+      for (const leadResult of results) {
+        try {
+          // Validate lead ID format
+          if (!/^[a-zA-Z0-9]{16,32}$/.test(leadResult.leadId)) {
+            logger.error(`Invalid leadId format: ${leadResult.leadId}`, { batchId });
+            processingErrors++;
+            continue;
+          }
+
+          const leadIdTyped = leadResult.leadId as Id<"leads">;
+
+          // Get lead
+          const lead = await ctx.runQuery(internal.leads.internal.getLeadInternal, {
+            leadId: leadIdTyped,
+          });
+
+          if (!lead) {
+            logger.error(`Lead not found: ${leadResult.leadId}`, { batchId });
+            processingErrors++;
+            continue;
+          }
+
+          if (leadResult.status === "completed" && leadResult.result) {
+            // Process successful lead result (similar to handleEmailGenerationCompleted)
+            const result = leadResult.result;
+
+            // Format follow-up emails
+            const resultRecord = result as Record<string, unknown>;
+            const followUpSequenceRaw =
+              resultRecord["follow_up_sequence"] &&
+              typeof resultRecord["follow_up_sequence"] === "object"
+                ? (resultRecord["follow_up_sequence"] as Record<string, unknown>)
+                : undefined;
+
+            const followUpEmailsRaw: Array<Record<string, unknown>> = (() => {
+              const direct = resultRecord["follow_up_emails"];
+              if (Array.isArray(direct)) {
+                return direct as Array<Record<string, unknown>>;
+              }
+
+              if (followUpSequenceRaw) {
+                const emails = Array.isArray(followUpSequenceRaw["emails"])
+                  ? (followUpSequenceRaw["emails"] as Array<Record<string, unknown>>)
+                  : [];
+                const timing = Array.isArray(followUpSequenceRaw["timing_schedule"])
+                  ? (followUpSequenceRaw["timing_schedule"] as Array<number>)
+                  : [];
+
+                return emails.map((email, index) => {
+                  const delayFromSchedule =
+                    typeof timing[index] === "number" ? timing[index] : undefined;
+                  return {
+                    ...email,
+                    delay_days: delayFromSchedule,
+                  };
+                });
+              }
+
+              return [];
+            })();
+
+            const formattedFollowUps = followUpEmailsRaw.map((followUp, index) => {
+              const subjectRaw = followUp["subject"];
+              const bodyRaw = followUp["body"];
+              const delayRawCandidate = followUp["delay_days"] ?? followUp["delayDays"];
+              const delayRaw =
+                typeof delayRawCandidate === "number"
+                  ? delayRawCandidate
+                  : undefined;
+
+              return {
+                subject:
+                  typeof subjectRaw === "string"
+                    ? subjectRaw
+                    : `Follow Up ${index + 1}`,
+                body: typeof bodyRaw === "string" ? bodyRaw : "",
+                delay_days: delayRaw ?? (index + 1) * 3,
+              };
+            });
+
+            // Update lead with AI analysis and email content
+            await ctx.runMutation(internal.leads.internal.updateLeadAnalysis, {
+              leadId: leadIdTyped as any,
+              aiAnalysis: {
+                relevanceScore: result.relevance_score || 0,
+                painPoints: result.pain_points_identified || [],
+                valueMatches: result.value_matches || [],
+                recommendations: result.recommendations || [],
+                leadAnalysis: result.lead_analysis || {},
+                processingTime: leadResult.processingTime,
+                confidence: result.relevance_score || 0.5,
+              },
+              emailContent:
+                result.primary_email && result.primary_email !== null
+                  ? {
+                      subject: result.primary_email.subject,
+                      body: result.primary_email.body,
+                      personalizationNotes:
+                        result.primary_email.personalization_notes || [],
+                      estimatedEffectiveness:
+                        result.primary_email.estimated_effectiveness || 0.5,
+                    }
+                  : undefined,
+              followUpEmails:
+                formattedFollowUps.length > 0 ? formattedFollowUps : undefined,
+            });
+
+            // Mark lead analysis as completed
+            await ctx.runMutation(internal.leads.internal.markLeadAnalysisCompleted, {
+              leadId: leadIdTyped as any,
+            });
+
+            // Handle deep research credits for non-enterprise users
+            const deepResearchUsed = Boolean(result.deep_research_used);
+            if (deepResearchUsed && !isEnterpriseUser && result.additional_credits_used > 0) {
+              await ctx.runMutation(internal.credits.transactions.recordTransaction, {
+                userId: search.userId,
+                amount: result.additional_credits_used,
+                operation: "usage",
+                description: `Deep Research - ${result.deep_research_reason || "Enhanced business intelligence"}`,
+                relatedEntityType: "lead",
+                relatedEntityId: leadIdTyped,
+              });
+            }
+
+            // Update deep research metadata
+            await ctx.db.patch(lead._id, {
+              deepResearchUsed,
+              deepResearchProvider: deepResearchUsed ? "perplexity" : "tavily",
+              deepResearchReason:
+                result.deep_research_reason ||
+                (deepResearchUsed ? "Deep research analysis" : "Level one provider satisfied"),
+              deepResearchTimestamp: Date.now(),
+              deepResearchDataPoints: deepResearchUsed
+                ? result.missing_data_points || []
+                : [],
+              deepResearchCreditsCharged:
+                deepResearchUsed && result.additional_credits_used
+                  ? result.additional_credits_used
+                  : 0,
+            });
+
+            // Create email sequence if we have email content
+            if (result.primary_email && result.primary_email !== null) {
+              const requestId = `${batchId}_${leadIdTyped}`;
+
+              // Check if sequence already exists
+              const existingForLead = await ctx.db
+                .query("emailSequences")
+                .withIndex("by_lead", (q) => q.eq("leadId", lead._id))
+                .collect();
+              const alreadyExists = existingForLead.some(
+                (seq) => seq.requestId === requestId,
+              );
+
+              if (!alreadyExists) {
+                await ctx.runMutation(internal.leads.internal.createEmailSequence, {
+                  leadId: leadIdTyped as any,
+                  userId: search.userId,
+                  requestId,
+                  emailContent: {
+                    subject: result.primary_email.subject,
+                    body: result.primary_email.body,
+                    personalizationNotes:
+                      result.primary_email.personalization_notes || [],
+                    estimatedEffectiveness:
+                      result.primary_email.estimated_effectiveness || 0.5,
+                  },
+                  agentResults: result.agent_results || [],
+                  processingTime: leadResult.processingTime,
+                  recommendations: result.recommendations || [],
+                });
+              }
+            }
+
+            processedSuccessfully++;
+          } else {
+            // Handle failed lead result
+            const errorMessage = leadResult.error || "Analysis failed";
+
+            await ctx.runMutation(internal.leads.internal.updateLeadAnalysis, {
+              leadId: leadIdTyped as any,
+              aiAnalysis: {
+                relevanceScore: 0,
+                painPoints: [],
+                valueMatches: [],
+                recommendations: [`Analysis failed: ${errorMessage}`],
+                leadAnalysis: { error: errorMessage },
+                processingTime: leadResult.processingTime,
+                confidence: 0,
+              },
+              emailContent: undefined,
+            });
+
+            await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
+              leadId: leadIdTyped as any,
+              error: errorMessage,
+            });
+
+            processedSuccessfully++;
+          }
+        } catch (error) {
+          logger.error("Error processing lead result", {
+            batchId,
+            leadId: leadResult.leadId,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+          processingErrors++;
+        }
+      }
+
+      // Calculate overall search progress
+      const allLeads = await ctx.runQuery(
+        internal.leads.internal.getSearchLeadsInternal,
+        { searchId: searchIdTyped },
+      );
+
+      const eligibleLeads = allLeads.filter((l: Doc<"leads">) => {
+        const enrichmentComplete =
+          l.enrichmentStatus === "completed" ||
+          l.enrichmentStatus === "completed_fallback";
+        const hasEmail = Boolean(l.contactInfo?.emails?.length);
+        const hasContactName = Boolean(l.contactInfo?.contacts?.[0]?.name);
+        return enrichmentComplete && hasEmail && hasContactName;
+      });
+
+      const completedLeads = eligibleLeads.filter(
+        (l: Doc<"leads">) => l.analysisStatus === "completed",
+      ).length;
+      const failedLeads = eligibleLeads.filter(
+        (l: Doc<"leads">) => l.analysisStatus === "failed",
+      ).length;
+      const totalLeads = eligibleLeads.length;
+      const processedLeads = completedLeads + failedLeads;
+      const progressPercent = totalLeads > 0 ? (processedLeads / totalLeads) * 100 : 0;
+
+      // Broadcast batch completion
+      await ctx.runMutation(
+        internal.realtime.broadcaster.broadcastPipelineUpdate,
+        {
+          userId: search.userId,
+          searchId: searchIdTyped,
+          stage: "analysis",
+          progress: progressPercent,
+          message: `Batch complete: ${completedLeads} analyzed, ${failedLeads} failed (${processedLeads}/${totalLeads} total)`,
+          data: {
+            batchId,
+            stage: "batch_analysis_completed",
+            status,
+            processedSuccessfully,
+            processingErrors,
+            totalProcessingTime,
+            progress: {
+              discovered: allLeads.length,
+              enriched: allLeads.filter(
+                (l: Doc<"leads">) =>
+                  l.enrichmentStatus === "completed" ||
+                  l.enrichmentStatus === "completed_fallback",
+              ).length,
+              analyzed: completedLeads,
+              failed: failedLeads,
+              total: totalLeads,
+            },
+          },
+        },
+      );
+
+      // Check if all leads are processed and trigger search completion
+      const scheduledOrProcessing = eligibleLeads.filter(
+        (l: Doc<"leads">) =>
+          l.analysisStatus === "scheduled" || l.analysisStatus === "processing",
+      ).length;
+
+      if (scheduledOrProcessing === 0 && processedLeads === totalLeads && totalLeads > 0) {
+        const currentSearch = await ctx.db.get(searchIdTyped);
+
+        // Atomic check-and-set to prevent race conditions from multiple batch completions
+        if (
+          currentSearch &&
+          (currentSearch.status === "processing" || currentSearch.status === "in_progress") &&
+          !currentSearch.completionTriggered // Check flag atomically
+        ) {
+          logger.info("All leads processed - triggering search completion", {
+            searchId,
+            batchId,
+            totalLeads,
+            completedLeads,
+            failedLeads,
+          });
+
+          // Set completion flag immediately to prevent duplicate triggers
+          await ctx.db.patch(searchIdTyped, {
+            completionTriggered: true,
+            completionTriggeredAt: Date.now(),
+          });
+
+          // Schedule completion after setting flag
+          await ctx.scheduler.runAfter(
+            0,
+            "search/actions:completeSearch" as any,
+            { searchId: searchIdTyped as any },
+          );
+        }
+      }
+
+      logger.info("Batch completion processed successfully", {
+        batchId,
+        processedSuccessfully,
+        processingErrors,
+        totalProcessingTime: `${totalProcessingTime.toFixed(2)}s`,
+      });
+
+      return {
+        success: true,
+        batchId,
+        processedSuccessfully,
+        processingErrors,
+      };
+    } catch (error) {
+      logger.error("Error handling batch completion webhook", {
+        batchId: args.payload.batchId,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  },
+});
+
 // Legacy handlers (kept for backward compatibility)
 export const handleAnalysisError = internalMutation({
   args: {

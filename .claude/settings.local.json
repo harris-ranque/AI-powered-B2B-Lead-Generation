@@ -22,7 +22,8 @@
       "Bash(pnpm add:*)",
       "Bash(cat:*)",
       "Bash(npx tsc:*)",
-      "Bash(pnpm lint:*)"
+      "Bash(pnpm lint:*)",
+      "Bash(git mv:*)"
     ],
     "deny": [],
     "ask": []

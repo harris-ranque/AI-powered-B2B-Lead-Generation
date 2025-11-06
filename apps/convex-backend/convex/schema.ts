@@ -158,6 +158,10 @@ export default defineSchema({
     orchestrationAttempts: v.optional(v.number()),
     lastWarningAt: v.optional(v.number()),
 
+    // Search completion tracking (prevents race conditions in batch completion)
+    completionTriggered: v.optional(v.boolean()),
+    completionTriggeredAt: v.optional(v.number()),
+
     // Research progress tracking (for tiered business context research)
     researchStage: v.optional(
       v.union(
@@ -366,6 +370,10 @@ export default defineSchema({
     analysisAttempts: v.optional(v.number()),
     lastAnalysisAttempt: v.optional(v.number()),
     analysisError: v.optional(v.string()),
+
+    // Batch processing retry tracking (for failed lead retry system)
+    analysisRetryCount: v.optional(v.number()),
+    lastRetryAttempt: v.optional(v.number()),
 
     // Async analysis tracking (for scalable webhook-based processing)
     analysisStatus: v.optional(

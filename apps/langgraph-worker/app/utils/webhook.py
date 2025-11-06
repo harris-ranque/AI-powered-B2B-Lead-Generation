@@ -471,3 +471,248 @@ class WebhookClient:
         except Exception as e:
             logger.warning(f"Status update webhook failed: {str(e)}")
             raise
+
+    async def send_batch_progress(
+        self,
+        batch_id: str,
+        search_id: str,
+        progress_percent: float,
+        completed_count: int,
+        total_count: int,
+        success_count: int,
+        failure_count: int,
+        current_lead: Optional[str] = None,
+        estimated_time_remaining: Optional[float] = None,
+        retries: int = 2
+    ) -> bool:
+        """
+        Send batch progress update webhook (sent every 10 leads)
+
+        Args:
+            batch_id: Unique batch identifier
+            search_id: Search ID for tracking
+            progress_percent: Progress percentage (0-100)
+            completed_count: Number of leads completed
+            total_count: Total leads in batch
+            success_count: Successful completions
+            failure_count: Failed completions
+            current_lead: Currently processing lead name (optional)
+            estimated_time_remaining: Estimated seconds remaining (optional)
+            retries: Number of retry attempts
+        """
+
+        if not self.webhook_url:
+            raise RuntimeError("LangGraph webhook URL not configured")
+
+        # Construct batch progress webhook URL
+        base_url = self.webhook_url.rstrip('/')
+        if "/webhooks/langgraph/email-completed" in base_url:
+            batch_webhook_url = base_url.replace(
+                "/webhooks/langgraph/email-completed",
+                "/webhooks/langgraph/batch-progress"
+            )
+        else:
+            batch_webhook_url = f"{base_url}/webhooks/langgraph/batch-progress"
+
+        payload = {
+            "batchId": batch_id,
+            "searchId": search_id,
+            "progressPercent": progress_percent,
+            "completedCount": completed_count,
+            "totalCount": total_count,
+            "successCount": success_count,
+            "failureCount": failure_count,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+        if current_lead:
+            payload["currentLead"] = current_lead
+        if estimated_time_remaining is not None:
+            payload["estimatedTimeRemaining"] = estimated_time_remaining
+
+        signature = self._compute_signature(payload)
+        headers = self._prepare_headers(
+            request_id=batch_id,
+            extra={
+                "X-Search-ID": search_id,
+                "X-Worker-Timestamp": datetime.utcnow().isoformat(),
+                "X-Webhook-Signature": signature,
+            },
+        )
+
+        for attempt in range(retries + 1):
+            try:
+                logger.info(
+                    f"Sending batch progress webhook (attempt {attempt + 1}/{retries + 1}) "
+                    f"batch_id={batch_id}, progress={progress_percent:.1f}%, "
+                    f"completed={completed_count}/{total_count}"
+                )
+
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
+                    async with session.post(
+                        batch_webhook_url,
+                        json=payload,
+                        headers=headers
+                    ) as response:
+                        response_text = await response.text()
+
+                        if response.status == 200:
+                            logger.info(
+                                f"Batch progress webhook sent successfully for batch {batch_id}"
+                            )
+                            return True
+                        elif response.status in [401, 403]:
+                            logger.error(
+                                f"Batch progress webhook authentication failed: "
+                                f"status={response.status}, batch_id={batch_id}"
+                            )
+                            raise RuntimeError(
+                                f"Batch webhook authentication failed: {response_text}"
+                            )
+                        else:
+                            logger.warning(
+                                f"Batch progress webhook error: "
+                                f"status={response.status}, batch_id={batch_id}, attempt={attempt + 1}"
+                            )
+
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Batch progress webhook timeout: batch_id={batch_id}, attempt={attempt + 1}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Batch progress webhook error: {type(e).__name__}: {str(e)}, "
+                    f"batch_id={batch_id}, attempt={attempt + 1}"
+                )
+
+            if attempt < retries:
+                wait_time = 2 ** attempt
+                logger.info(f"Retrying batch progress webhook in {wait_time} seconds...")
+                await asyncio.sleep(wait_time)
+
+        # Non-critical webhook - log warning but don't raise
+        logger.warning(
+            f"Failed to send batch progress webhook after {retries + 1} attempts for batch {batch_id}"
+        )
+        return False
+
+    async def send_batch_completion(
+        self,
+        batch_id: str,
+        search_id: str,
+        status: str,
+        results: list[Dict[str, Any]],
+        summary: Dict[str, Any],
+        total_processing_time: float,
+        retries: int = 2
+    ) -> bool:
+        """
+        Send batch completion webhook with all lead results
+
+        Args:
+            batch_id: Unique batch identifier
+            search_id: Search ID for tracking
+            status: Overall batch status (completed/partial/failed)
+            results: List of individual lead results
+            summary: Batch processing summary statistics
+            total_processing_time: Total batch processing time in seconds
+            retries: Number of retry attempts
+        """
+
+        if not self.webhook_url:
+            raise RuntimeError("LangGraph webhook URL not configured")
+
+        # Construct batch completion webhook URL
+        base_url = self.webhook_url.rstrip('/')
+        if "/webhooks/langgraph/email-completed" in base_url:
+            batch_webhook_url = base_url.replace(
+                "/webhooks/langgraph/email-completed",
+                "/webhooks/langgraph/batch-completed"
+            )
+        else:
+            batch_webhook_url = f"{base_url}/webhooks/langgraph/batch-completed"
+
+        payload = {
+            "batchId": batch_id,
+            "searchId": search_id,
+            "status": status,
+            "results": results,
+            "summary": summary,
+            "totalProcessingTime": total_processing_time,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+        signature = self._compute_signature(payload)
+        headers = self._prepare_headers(
+            request_id=batch_id,
+            extra={
+                "X-Search-ID": search_id,
+                "X-Worker-Timestamp": datetime.utcnow().isoformat(),
+                "X-Webhook-Signature": signature,
+            },
+        )
+
+        for attempt in range(retries + 1):
+            try:
+                logger.info(
+                    f"Sending batch completion webhook (attempt {attempt + 1}/{retries + 1}) "
+                    f"batch_id={batch_id}, status={status}, "
+                    f"results_count={len(results)}"
+                )
+
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
+                    async with session.post(
+                        batch_webhook_url,
+                        json=payload,
+                        headers=headers
+                    ) as response:
+                        response_text = await response.text()
+
+                        if response.status == 200:
+                            logger.info(
+                                f"Batch completion webhook sent successfully for batch {batch_id}"
+                            )
+                            return True
+                        elif response.status in [401, 403]:
+                            logger.error(
+                                f"Batch completion webhook authentication failed: "
+                                f"status={response.status}, batch_id={batch_id}"
+                            )
+                            raise RuntimeError(
+                                f"Batch webhook authentication failed: {response_text}"
+                            )
+                        elif response.status == 400:
+                            logger.error(
+                                f"Batch completion webhook validation failed: "
+                                f"batch_id={batch_id}, response={response_text[:500]}"
+                            )
+                            raise RuntimeError(
+                                f"Batch webhook validation failed: {response_text}"
+                            )
+                        else:
+                            logger.warning(
+                                f"Batch completion webhook error: "
+                                f"status={response.status}, batch_id={batch_id}, attempt={attempt + 1}"
+                            )
+
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Batch completion webhook timeout: batch_id={batch_id}, attempt={attempt + 1}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Batch completion webhook error: {type(e).__name__}: {str(e)}, "
+                    f"batch_id={batch_id}, attempt={attempt + 1}"
+                )
+
+            if attempt < retries:
+                wait_time = 2 ** attempt
+                logger.info(f"Retrying batch completion webhook in {wait_time} seconds...")
+                await asyncio.sleep(wait_time)
+
+        logger.error(
+            f"Failed to send batch completion webhook after {retries + 1} attempts for batch {batch_id}"
+        )
+        raise RuntimeError(
+            f"Unable to deliver batch completion webhook for batch {batch_id} after retries"
+        )

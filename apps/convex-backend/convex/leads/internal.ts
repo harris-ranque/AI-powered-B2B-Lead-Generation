@@ -856,6 +856,21 @@ export const markLeadAnalysisFailed = internalMutation({
   },
 });
 
+// Update lead retry count for failed lead retry system
+export const updateLeadRetryCount = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+    retryCount: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.leadId, {
+      analysisRetryCount: args.retryCount,
+      lastRetryAttempt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 // Internal query to get stuck leads (scheduled but not completed)
 export const getStuckLeads = internalQuery({
   args: {

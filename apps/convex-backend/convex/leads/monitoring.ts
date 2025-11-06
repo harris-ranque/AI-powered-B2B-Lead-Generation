@@ -82,13 +82,39 @@ export const monitorStuckLeads: any = internalAction({
       let retriedLeads = 0;
       let timeoutLeads = 0;
 
-      // Process each stuck lead
+      // Group stuck leads by search for batch retry
+      const leadsGroupedBySearch = new Map<string, Doc<"leads">[]>();
+
       for (const lead of stuckLeads) {
-        const attempts = lead.analysisAttempts || 0;
+        const searchId = lead.searchId;
+        if (!leadsGroupedBySearch.has(searchId)) {
+          leadsGroupedBySearch.set(searchId, []);
+        }
+        leadsGroupedBySearch.get(searchId)!.push(lead);
+      }
+
+      logWithCorrelation(
+        "info",
+        correlation,
+        "📦 Grouped Stuck Leads by Search",
+        {
+          totalLeads: stuckLeads.length,
+          uniqueSearches: leadsGroupedBySearch.size,
+        },
+      );
+
+      // Process each search's stuck leads
+      for (const [searchId, leads] of leadsGroupedBySearch) {
+        if (leads.length === 0) continue; // Skip empty lead arrays
+        const attempts = leads[0]?.analysisAttempts || 0;
         const maxRetries = 3;
 
-        if (attempts >= maxRetries) {
-          // Mark as timeout
+        // Filter leads by retry count
+        const leadsToTimeout = leads.filter((l) => (l.analysisAttempts || 0) >= maxRetries);
+        const leadsToRetry = leads.filter((l) => (l.analysisAttempts || 0) < maxRetries);
+
+        // Mark exceeded leads as timeout
+        for (const lead of leadsToTimeout) {
           await ctx.runMutation(internal.leads.internal.markLeadAnalysisTimeout, {
             leadId: lead._id,
           });
@@ -101,16 +127,19 @@ export const monitorStuckLeads: any = internalAction({
             {
               leadId: lead._id,
               businessName: lead.businessName,
-              attempts,
+              attempts: lead.analysisAttempts || 0,
               status: "timeout",
             },
           );
-        } else {
-          // Get search and profile for retry
+        }
+
+        // Retry eligible leads using batch system
+        if (leadsToRetry.length > 0) {
+          // Get search and profile
           const search = await ctx.runQuery(
             internal.search.internal.getSearchInternal,
             {
-              searchId: lead.searchId,
+              searchId: searchId as any,
             },
           );
 
@@ -118,10 +147,10 @@ export const monitorStuckLeads: any = internalAction({
             logWithCorrelation(
               "error",
               correlation,
-              "❌ Search Not Found for Stuck Lead",
+              "❌ Search Not Found for Stuck Leads",
               {
-                leadId: lead._id,
-                searchId: lead.searchId,
+                searchId,
+                leadCount: leadsToRetry.length,
               },
             );
             continue;
@@ -138,49 +167,44 @@ export const monitorStuckLeads: any = internalAction({
             logWithCorrelation(
               "error",
               correlation,
-              "❌ Profile Not Found for Stuck Lead",
+              "❌ Profile Not Found for Stuck Leads",
               {
-                leadId: lead._id,
+                searchId,
                 userId: search.userId,
               },
             );
             continue;
           }
 
-          // Create new request ID for retry
-          const requestId = `${lead.searchId}_${lead._id}_retry${attempts + 1}`;
-
-          // Mark as scheduled again
-          await ctx.runMutation(internal.leads.internal.markLeadAnalysisScheduled, {
-            leadId: lead._id,
-            requestId,
-          });
-
-          // Schedule retry
-          await ctx.scheduler.runAfter(
-            0,
-            (internal as any)["leads/asyncAnalysis"].analyzeSingleLead,
-            {
+          // Mark all leads as failed so retry system can pick them up
+          for (const lead of leadsToRetry) {
+            await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
               leadId: lead._id,
-              searchId: lead.searchId,
+              error: "Stuck in processing - marked for batch retry",
+            });
+          }
+
+          // Use batch retry system (handles batching, scheduling, and retry tracking)
+          const retryResult = await ctx.runAction(
+            (internal as any)["leads/asyncAnalysis"].retryFailedLeads,
+            {
+              searchId: search._id,
               userId: search.userId,
               profileId: profile._id,
-              maxRetries: maxRetries - attempts, // Remaining retries
+              maxRetries: 2, // Allow 2 more retries
             },
           );
 
-          retriedLeads++;
+          retriedLeads += leadsToRetry.length;
 
           logWithCorrelation(
             "info",
             correlation,
-            "🔄 Lead Retry Scheduled",
+            "🔄 Batch Retry Scheduled for Stuck Leads",
             {
-              leadId: lead._id,
-              businessName: lead.businessName,
-              attempt: attempts + 1,
-              maxRetries,
-              requestId,
+              searchId,
+              leadsRetried: leadsToRetry.length,
+              batchesScheduled: retryResult?.batchCount || 0,
             },
           );
         }

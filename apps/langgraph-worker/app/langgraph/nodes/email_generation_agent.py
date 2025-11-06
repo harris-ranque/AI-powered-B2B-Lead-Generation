@@ -937,7 +937,7 @@ Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excludin
             company_size=getattr(lead, 'company_size', '') or "your organization",
             qualification_level=qualification_level,
             relevance_score=relevance_score,
-            
+
             # Business intelligence
             company_overview=company_overview[:500],  # Limit length for prompt
             pain_points_list="\n".join(f"- {pp}" for pp in pain_points[:5]),
@@ -947,7 +947,7 @@ Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excludin
             messaging_strategy=messaging_strategy,
             industry_insights=industry_insights[:300] if industry_insights else "No specific industry insights available",
             competitor_context=competitor_context or "No competitor data available",
-            
+
             # Our company profile
             our_company=business_profile.company_name,
             our_contact_name=sender_name or business_profile.company_name,
@@ -957,14 +957,23 @@ Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excludin
             our_value_prop=business_profile.value_proposition,
             our_services=", ".join(business_profile.services[:5]),
             our_differentiators=", ".join(business_profile.key_differentiators[:3]),
-            
+
             # Requirements
             tone=requirements.tone,
             length=requirements.length,
             cta=requirements.call_to_action,
             include_case_study=requirements.include_case_study,
             personalization_level=requirements.personalization_level,
-            follow_up_sequence=requirements.follow_up_sequence
+            follow_up_sequence=requirements.follow_up_sequence,
+
+            # Signature template variables (for follow-up signature examples in prompt)
+            **{
+                "Sender Name": sender_name or business_profile.company_name,
+                "Company Name": business_profile.company_name,
+                "Email": sender_email or "not provided",
+                "Phone": sender_phone or "not provided",
+                "Website/LinkedIn": sender_website or sender_linkedin or "not provided"
+            }
         ))
         
         execution_time = time.time() - start_time

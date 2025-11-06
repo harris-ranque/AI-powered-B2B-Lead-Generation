@@ -23,7 +23,6 @@ import { STAGE_CONFIGS, STAGE_ORDER } from "@/pipeline/config";
 import { SourceSelector } from "./SourceSelector";
 import { LeadDiscoveryStage } from "./LeadDiscoveryStage";
 import { EnrichmentStage } from "./EnrichmentStage";
-import { AIPersonalizationStage } from "./AIPersonalizationStage";
 import { ReviewExportStage } from "./ReviewExportStage";
 import { SearchProgressTracker } from "../SearchProgressTracker";
 import { StageTracker } from "./StageTracker";
@@ -335,7 +334,8 @@ export function PipelineOrchestrator({
       case "enrichment":
         return <EnrichmentStage />;
       case "ai_personalization":
-        return <AIPersonalizationStage />;
+        // AI personalization is tracked via SearchProgressTracker below
+        return null;
       case "review_export":
         return <ReviewExportStage onViewResults={openLeadHistory} />;
       default:
@@ -619,7 +619,7 @@ export function PipelineOrchestrator({
                     <div className="text-lg font-semibold text-slate-100">
                       {optimisticMetrics.discovered}
                     </div>
-                    <div className="text-xs text-muted-foreground">Discovered</div>
+                    <div className="text-xs text-muted-foreground">Found</div>
                   </div>
                 </div>
 
@@ -631,7 +631,7 @@ export function PipelineOrchestrator({
                     <div className="text-lg font-semibold text-slate-100">
                       {optimisticMetrics.enriched}
                     </div>
-                    <div className="text-xs text-muted-foreground">Enriched</div>
+                    <div className="text-xs text-muted-foreground">Contacts</div>
                   </div>
                 </div>
 
@@ -643,7 +643,7 @@ export function PipelineOrchestrator({
                     <div className="text-lg font-semibold text-slate-100">
                       {optimisticMetrics.analyzed}
                     </div>
-                    <div className="text-xs text-muted-foreground">Analyzed</div>
+                    <div className="text-xs text-muted-foreground">Created</div>
                   </div>
                 </div>
 

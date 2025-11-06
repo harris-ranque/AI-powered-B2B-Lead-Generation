@@ -1755,4 +1755,235 @@ http.route({
   }),
 });
 
+// LangGraph webhook handler for batch progress updates (sent every 10 leads)
+http.route({
+  path: "/webhooks/langgraph/batch-progress",
+  method: "POST",
+  handler: httpAction(async (ctx, request: Request) => {
+    const headerBatchId = request.headers.get("X-Batch-ID") || "unknown";
+    const workerTimestamp = request.headers.get("X-Worker-Timestamp") || "unknown";
+
+    console.log(`[Webhook:batch-progress] Received request`, {
+      batchId: headerBatchId,
+      workerTimestamp,
+      url: request.url,
+    });
+
+    // Check rate limit (batch progress is frequent, use batch ID)
+    const rateLimitError = checkRateLimit(`webhook:batch-progress:${headerBatchId}`);
+    if (rateLimitError) {
+      console.warn(`[Webhook:batch-progress] Rate limit exceeded`, { batchId: headerBatchId });
+      return rateLimitError;
+    }
+
+    logWebhookSignature(request);
+
+    try {
+      const sizeError = validatePayloadSize(request);
+      if (sizeError) {
+        console.error(`[Webhook:batch-progress] Payload too large`, { batchId: headerBatchId });
+        return sizeError;
+      }
+
+      const authResult = authorizeLanggraphWebhook(request);
+      if (authResult instanceof Response) {
+        console.error(`[Webhook:batch-progress] Authentication failed`, {
+          batchId: headerBatchId,
+          status: authResult.status,
+        });
+        return authResult;
+      }
+
+      const contentTypeError = ensureJsonRequest(request);
+      if (contentTypeError) {
+        return contentTypeError;
+      }
+
+      let payload: unknown;
+      try {
+        payload = await request.json();
+      } catch (error) {
+        console.error("Failed to parse batch progress webhook payload", error);
+        return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (!payload || typeof payload !== "object") {
+        return new Response(JSON.stringify({ error: "Invalid payload" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const payloadRecord = payload as Record<string, unknown>;
+      const batchId = payloadRecord.batchId;
+      if (typeof batchId !== "string" || batchId.length === 0) {
+        return new Response(
+          JSON.stringify({ error: "Missing batchId in payload" }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      const result = await ctx.runMutation(
+        internal.langgraph.webhooks.handleBatchProgress,
+        {
+          payload: payloadRecord as any,
+        },
+      );
+
+      // Non-critical webhook - always return success
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("Batch progress webhook error:", error);
+
+      // Non-critical webhook - return 200 to prevent retries
+      return new Response(
+        JSON.stringify({
+          success: true,
+          warning: error instanceof Error ? error.message : "Unknown error",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+  }),
+});
+
+// LangGraph webhook handler for batch completion
+http.route({
+  path: "/webhooks/langgraph/batch-completed",
+  method: "POST",
+  handler: httpAction(async (ctx, request: Request) => {
+    const headerBatchId = request.headers.get("X-Batch-ID") || "unknown";
+    const workerTimestamp = request.headers.get("X-Worker-Timestamp") || "unknown";
+
+    console.log(`[Webhook:batch-completed] Received request`, {
+      batchId: headerBatchId,
+      workerTimestamp,
+      url: request.url,
+    });
+
+    // Check rate limit
+    const rateLimitError = checkRateLimit(`webhook:batch-completed:${headerBatchId}`);
+    if (rateLimitError) {
+      console.warn(`[Webhook:batch-completed] Rate limit exceeded`, { batchId: headerBatchId });
+      return rateLimitError;
+    }
+
+    logWebhookSignature(request);
+
+    try {
+      const sizeError = validatePayloadSize(request);
+      if (sizeError) {
+        console.error(`[Webhook:batch-completed] Payload too large`, { batchId: headerBatchId });
+        return sizeError;
+      }
+
+      const authResult = authorizeLanggraphWebhook(request);
+      if (authResult instanceof Response) {
+        console.error(`[Webhook:batch-completed] Authentication failed`, {
+          batchId: headerBatchId,
+          status: authResult.status,
+        });
+        return authResult;
+      }
+
+      const contentTypeError = ensureJsonRequest(request);
+      if (contentTypeError) {
+        return contentTypeError;
+      }
+
+      let payload: unknown;
+      try {
+        payload = await request.json();
+      } catch (error) {
+        console.error("Failed to parse batch completion webhook payload", error);
+        return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (!payload || typeof payload !== "object") {
+        return new Response(JSON.stringify({ error: "Invalid payload" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const payloadRecord = payload as Record<string, unknown>;
+      const batchId = payloadRecord.batchId;
+      if (typeof batchId !== "string" || batchId.length === 0) {
+        return new Response(
+          JSON.stringify({ error: "Missing batchId in payload" }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      const result = await ctx.runMutation(
+        internal.langgraph.webhooks.handleBatchCompleted,
+        {
+          payload: payloadRecord as any,
+        },
+      );
+
+      if (!result.success) {
+        console.error(`Batch completion processing failed: ${result.error}`);
+        return new Response(JSON.stringify({ error: result.error }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          processedSuccessfully: result.processedSuccessfully,
+          processingErrors: result.processingErrors,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    } catch (error) {
+      console.error("Batch completion webhook error:", error);
+
+      const isRetryable =
+        error instanceof Error &&
+        (error.message.includes("timeout") ||
+          error.message.includes("connection") ||
+          error.message.includes("unavailable") ||
+          error.message.includes("overloaded"));
+
+      const statusCode = isRetryable ? 500 : 400;
+
+      return new Response(
+        JSON.stringify({
+          error: "Webhook processing failed",
+          retryable: isRetryable,
+          message: error instanceof Error ? error.message : "Unknown error",
+        }),
+        {
+          status: statusCode,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+  }),
+});
+
 export default http;
