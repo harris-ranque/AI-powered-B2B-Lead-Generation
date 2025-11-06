@@ -1,5 +1,6 @@
 # Convex generated files
-_generated/
+# NOTE: _generated is committed to support Docker builds without Convex auth
+# _generated/
 
 # Environment variables
 .env.local
