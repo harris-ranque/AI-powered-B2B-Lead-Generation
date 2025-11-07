@@ -282,9 +282,9 @@ Your emails consistently achieve exceptional results because they:
 Email best practices:
 
 SUBJECT LINES (CRITICAL - HIGHEST PRIORITY):
-- Format: MUST start with "Hi {FirstName}" then add curiosity-provoking content
+- Format: MUST start with "Hi {contact_first_name}" then add curiosity-provoking content
 - NEVER use hyphens in subject lines
-- Use comma or colon after name: "Hi {FirstName}, [statement]" or "Hi {FirstName}: [statement]"
+- Use comma or colon after name: "Hi {contact_first_name}, [statement]" or "Hi {contact_first_name}: [statement]"
 - Create strong curiosity gaps that make recipients want to open
 - Use specific numbers, stats, and concrete details from research
 - Reference competitors, peers, or insider insights when relevant
