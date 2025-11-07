@@ -532,6 +532,23 @@ export const searchGoogleMaps: any = action({
         processedPlaceIds.add(place.place_id);
 
         const detailedPlace = await fetchDetailedPlace(place);
+
+        // 🚫 CRITICAL FILTER: Discard leads without website URLs
+        // Without a website, leads cannot be enriched or researched effectively
+        if (!detailedPlace.website) {
+          logWithCorrelation(
+            "debug",
+            discoveryCorrelation,
+            "⏭️ Skipping lead without website URL",
+            {
+              placeId: place.place_id,
+              businessName: detailedPlace.name || "Unknown",
+              reason: "no_website_url",
+            },
+          );
+          return;
+        }
+
         const basePlaceInfo = place as GooglePlaceDetails;
         const addressComponents =
           detailedPlace.address_components ??
@@ -589,7 +606,7 @@ export const searchGoogleMaps: any = action({
                 detailedPlace.formatted_phone_number ||
                 (detailedPlace as any).international_phone_number ||
                 undefined,
-              website: detailedPlace.website || undefined,
+              website: detailedPlace.website, // Always has value due to filter above
               rating: detailedPlace.rating || undefined,
               reviewCount: detailedPlace.user_ratings_total || undefined,
               category: detailedPlace.types?.[0] || undefined,

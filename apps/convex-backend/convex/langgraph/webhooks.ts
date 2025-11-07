@@ -218,7 +218,37 @@ export const handleEmailGenerationCompleted = internalMutation({
           return { success: false, error: "Missing result payload" };
         }
 
-        // Process successful email generation
+        // IMPORTANT: Validate approval status and quality score before processing
+        // Only accept emails that are explicitly approved (approved=true) AND meet quality threshold (≥0.60)
+        const isApproved = args.payload.approved === true;
+        const qualityScore = args.payload.quality_score || 0;
+        const meetsQualityThreshold = qualityScore >= 0.60;
+
+        if (!isApproved || !meetsQualityThreshold) {
+          logger.warning("Email webhook rejected - not approved or below quality threshold", {
+            requestId: args.payload.request_id,
+            approved: isApproved,
+            qualityScore: qualityScore,
+            meetsThreshold: meetsQualityThreshold,
+          });
+
+          // Mark lead as failed analysis rather than accepting unapproved email
+          await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
+            leadId: leadId as any,
+            error: `Email not approved: Quality score ${qualityScore.toFixed(2)} (threshold: 0.60), Approved: ${isApproved}`,
+          });
+
+          // Acknowledge webhook but don't store unapproved email
+          return {
+            success: true,
+            rejected: true,
+            reason: "Email not approved or below quality threshold",
+            qualityScore,
+            approved: isApproved,
+          };
+        }
+
+        // Process successful email generation (only approved emails reach here)
         const result = args.payload.result;
 
         const resultRecord = result as Record<string, unknown>;

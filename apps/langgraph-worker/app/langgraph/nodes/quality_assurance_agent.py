@@ -250,7 +250,7 @@ CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
    - For sequences: ALL emails MUST have identical signature format
 
 Quality Scoring Standards:
-- Overall Quality: ≥0.65 = Approved, 0.4-0.65 = Needs_Improvement, <0.4 = Rejected
+- Overall Quality: ≥0.60 = Approved, 0.35-0.60 = Needs_Improvement, <0.35 = Rejected
 - NO HYPHENS violation = Auto-deduct 0.3 from overall score minimum
 - Length over 150 words = Auto-deduct 0.2 from overall score
 - Fabricated data = Auto-deduct 0.3 from overall score
@@ -376,9 +376,9 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
 
             APPROVAL DECISION:
             - Calculate final overall_quality_score after all penalties
-            - ≥0.65 = "Approved"
-            - 0.4-0.65 = "Needs_Improvement"
-            - <0.4 = "Rejected"
+            - ≥0.60 = "Approved"
+            - 0.35-0.60 = "Needs_Improvement"
+            - <0.35 = "Rejected"
 
             Provide detailed assessment with:
             - Specific scores (after penalties)
@@ -610,7 +610,7 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
         previous_feedback = state.get("previous_quality_feedback", [])
 
         # If this email needs improvement and hasn't hit retry limit, save feedback for retry
-        if approval_status == "Needs_Improvement" and overall_score >= 0.40:
+        if approval_status == "Needs_Improvement" and overall_score >= 0.35:
             feedback_entry = {
                 "attempt": retry_count + 1,
                 "quality_score": overall_score,

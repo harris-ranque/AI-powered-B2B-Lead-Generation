@@ -916,14 +916,18 @@ async def process_batch_with_progress(
                         primary_email = final_result.get("primary_email") if isinstance(final_result, dict) else getattr(final_result, "primary_email", None)
                         has_email = primary_email is not None
 
-                        # Check approval status from QA
-                        is_approved = result.get("approved", False)
+                        # Check approval status from QA (strict check - must be explicitly True)
+                        is_approved = result.get("approved") is True
+
+                        # Also check quality_score threshold (≥0.60 for approval)
+                        quality_score = result.get("quality_score", 0)
+                        meets_quality_threshold = quality_score >= 0.60
 
                         # Check for errors in lead_analysis (where aggregator stores them)
                         lead_analysis = final_result.get("lead_analysis") if isinstance(final_result, dict) else getattr(final_result, "lead_analysis", {})
                         has_error = bool(lead_analysis.get("error") if isinstance(lead_analysis, dict) else False)
 
-                        if has_email and is_approved and not has_error:
+                        if has_email and is_approved and meets_quality_threshold and not has_error:
                             # True success - email generated and approved
                             results.append(BatchLeadResult(
                                 leadId=lead_id,
@@ -953,7 +957,7 @@ async def process_batch_with_progress(
 
                             logger.warning(
                                 f"[Batch] ❌ Lead {lead_index+1}/{len(leads)} FAILED: {lead.company_name} - {error_msg} "
-                                f"(has_email={has_email}, approved={is_approved}, has_error={has_error})"
+                                f"(has_email={has_email}, approved={is_approved}, quality={quality_score:.2f}, meets_threshold={meets_quality_threshold}, has_error={has_error})"
                             )
                     else:
                         # Workflow error

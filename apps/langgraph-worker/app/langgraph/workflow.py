@@ -77,28 +77,28 @@ def create_email_generation_workflow(
         Route after QA: decide whether to approve, retry, or reject.
 
         Hybrid quality strategy:
-        - Score ≥0.65: Approve immediately (high quality)
-        - Score 0.40-0.65: Retry once with QA feedback (1 retry attempt)
-        - Score <0.40: Reject immediately (poor quality, not worth retrying)
+        - Score ≥0.60: Approve immediately (high quality)
+        - Score 0.35-0.60: Retry up to twice with QA feedback (2 retry attempts)
+        - Score <0.35: Reject immediately (poor quality, not worth retrying)
         """
         qa = state.get("quality_assessment", {})
         approval_status = qa.get("approval_status", "Unknown")
         quality_score = qa.get("overall_quality_score", 0)
         retry_count = state.get("retry_count", 0)
-        max_retries = state.get("max_retries", 1)
+        max_retries = state.get("max_retries", 2)  # Increased from 1 to 2 for better quality
 
         # If approved or error state, go to aggregator
         if approval_status == "Approved" or state.get("current_stage") == "error":
             logger.info(f"QA {approval_status} - proceeding to aggregator (score={quality_score:.2f})")
             return "aggregator"
 
-        # If quality is too poor (<0.4), reject immediately without retry
-        if quality_score < 0.40:
+        # If quality is too poor (<0.35), reject immediately without retry
+        if quality_score < 0.35:
             logger.warning(f"QA score too low ({quality_score:.2f}) - rejecting without retry")
             return "aggregator"
 
-        # If we have retries left and quality is in retry range (0.40-0.65), retry
-        if retry_count < max_retries and 0.40 <= quality_score < 0.65:
+        # If we have retries left and quality is in retry range (0.35-0.60), retry
+        if retry_count < max_retries and 0.35 <= quality_score < 0.60:
             logger.info(f"QA needs improvement (score={quality_score:.2f}) - retry {retry_count + 1}/{max_retries}")
             return "retry_email_generation"
 
