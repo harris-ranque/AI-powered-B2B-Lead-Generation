@@ -321,29 +321,46 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
             },
         )
         
-        # Create minimal result on error
+        # Determine error source - check which agent failed
+        errors = state.get("errors", [])
+        failed_agent = "Unknown"
+        if any("business intelligence" in str(err).lower() or "bi" in str(err).lower() for err in errors):
+            failed_agent = "Business Intelligence"
+        elif any("email generation" in str(err).lower() for err in errors):
+            failed_agent = "Email Generation"
+        elif any("qa" in str(err).lower() or "quality" in str(err).lower() for err in errors):
+            failed_agent = "Quality Assurance"
+        else:
+            failed_agent = "Aggregator"
+
+        # Create minimal result on error with explicit error tracking
         minimal_result = EmailGenerationResult(
             request_id=state["request_id"],
-            lead_analysis={"error": str(e)},
-            relevance_score=state.get("relevance_score", 0.5),
+            lead_analysis={
+                "error": str(e),
+                "failed_agent": failed_agent,
+                "all_errors": errors,
+                "success": False
+            },
+            relevance_score=state.get("relevance_score", 0.1),  # Low score on error
             pain_points_identified=state.get("pain_points", []),
             value_matches=state.get("value_matches", []),
-            primary_email=state.get("primary_email"),
+            primary_email=state.get("primary_email"),  # Will be None if email gen failed
             follow_up_sequence=None,
             agent_results=state.get("agent_results", []),
             processing_time=execution_time,
-            recommendations=["Error during aggregation - manual review recommended"],
+            recommendations=[f"Error in {failed_agent} - manual review recommended"],
             # Deep research metadata (preserve whatever was collected)
             deep_research_used=state.get("deep_research_triggered", False),
             deep_research_reason=state.get("deep_research_reason"),
             additional_credits_used=max(0, state.get("research_credit_cost", 0) - __import__('app.config', fromlist=['CREDIT_COSTS']).CREDIT_COSTS['AI_ANALYSIS']),
             missing_data_points=state.get("missing_data_points", []),
-            data_completeness_score=state.get("base_data_validation_score", 1.0)
+            data_completeness_score=state.get("base_data_validation_score", 0.0)  # Zero on error
         )
-        
+
         return {
             "final_result": minimal_result,
-            "errors": [*state.get("errors", []), f"Aggregator error: {str(e)}"],
+            "errors": [*errors, f"Aggregator error: {str(e)}"],
             "current_stage": "error",
             "total_processing_time": execution_time
         }

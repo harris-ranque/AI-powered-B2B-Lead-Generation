@@ -847,6 +847,10 @@ async def process_batch_with_progress(
     results_lock = asyncio.Lock()
     progress_lock = asyncio.Lock()
 
+    # Global circuit breaker for quota exhaustion
+    quota_exhausted = False
+    quota_lock = asyncio.Lock()
+
     logger.info(
         f"[Batch] Processing {len(leads)} leads with {max_concurrent}x concurrency for batch {batch_id}"
     )
@@ -860,9 +864,27 @@ async def process_batch_with_progress(
 
     async def process_single_lead(lead: Lead, lead_index: int) -> None:
         """Process a single lead with semaphore control"""
-        nonlocal completed_count, success_count, failure_count
+        nonlocal completed_count, success_count, failure_count, quota_exhausted
 
         async with semaphore:
+            # Circuit breaker: Skip if quota exhausted
+            async with quota_lock:
+                if quota_exhausted:
+                    logger.warning(
+                        f"[Batch] ⛔ Skipping lead {lead_index+1}/{len(leads)}: {lead.company_name} - Quota exhausted"
+                    )
+                    async with results_lock:
+                        results.append(BatchLeadResult(
+                            leadId=lead.id or f"lead_{lead_index}",
+                            status="failed",
+                            error="OpenAI quota exhausted - batch stopped",
+                            processingTime=0
+                        ))
+                        failure_count += 1
+                    async with progress_lock:
+                        completed_count += 1
+                    return
+
             lead_start = time.time()
             lead_id = lead.id or f"lead_{lead_index}"
 
@@ -884,22 +906,57 @@ async def process_batch_with_progress(
                 lead_time = time.time() - lead_start
 
                 async with results_lock:
-                    if result["status"] == "completed":
-                        # Success
-                        results.append(BatchLeadResult(
-                            leadId=lead_id,
-                            status="completed",
-                            result=result.get("result"),
-                            processingTime=lead_time
-                        ))
-                        success_count += 1
+                    completed_count += 1
 
-                        logger.info(
-                            f"[Batch] ✅ Lead {lead_index+1}/{len(leads)} completed: {lead.company_name} "
-                            f"({lead_time:.1f}s, success: {success_count}/{completed_count+1})"
-                        )
+                    if result["status"] == "completed":
+                        # Validate actual success - check if email was generated
+                        final_result = result.get("result", {})
+
+                        # Check for email (can be EmailContent object or dict)
+                        primary_email = final_result.get("primary_email") if isinstance(final_result, dict) else getattr(final_result, "primary_email", None)
+                        has_email = primary_email is not None
+
+                        # Check approval status from QA
+                        is_approved = result.get("approved", False)
+
+                        # Check for errors in lead_analysis (where aggregator stores them)
+                        lead_analysis = final_result.get("lead_analysis") if isinstance(final_result, dict) else getattr(final_result, "lead_analysis", {})
+                        has_error = bool(lead_analysis.get("error") if isinstance(lead_analysis, dict) else False)
+
+                        if has_email and is_approved and not has_error:
+                            # True success - email generated and approved
+                            results.append(BatchLeadResult(
+                                leadId=lead_id,
+                                status="completed",
+                                result=final_result,
+                                processingTime=lead_time
+                            ))
+                            success_count += 1
+
+                            logger.info(
+                                f"[Batch] ✅ Lead {lead_index+1}/{len(leads)} SUCCESS: {lead.company_name} "
+                                f"({lead_time:.1f}s, success: {success_count}/{completed_count})"
+                            )
+                        else:
+                            # Workflow completed but failed to generate valid email
+                            error_msg = (
+                                lead_analysis.get("error") if isinstance(lead_analysis, dict)
+                                else "Email generation failed or not approved"
+                            )
+                            results.append(BatchLeadResult(
+                                leadId=lead_id,
+                                status="failed",
+                                error=error_msg,
+                                processingTime=lead_time
+                            ))
+                            failure_count += 1
+
+                            logger.warning(
+                                f"[Batch] ❌ Lead {lead_index+1}/{len(leads)} FAILED: {lead.company_name} - {error_msg} "
+                                f"(has_email={has_email}, approved={is_approved}, has_error={has_error})"
+                            )
                     else:
-                        # Failed
+                        # Workflow error
                         error_msg = result.get("error", "Unknown error")
                         results.append(BatchLeadResult(
                             leadId=lead_id,
@@ -910,14 +967,25 @@ async def process_batch_with_progress(
                         failure_count += 1
 
                         logger.warning(
-                            f"[Batch] ❌ Lead {lead_index+1}/{len(leads)} failed: {lead.company_name} - {error_msg}"
+                            f"[Batch] ❌ Lead {lead_index+1}/{len(leads)} FAILED: {lead.company_name} - {error_msg}"
                         )
 
             except Exception as e:
                 lead_time = time.time() - lead_start
                 error_msg = str(e)
 
+                # Detect quota exhaustion and trigger circuit breaker
+                if "insufficient_quota" in error_msg.lower() or "quota" in error_msg.lower() and "429" in error_msg:
+                    async with quota_lock:
+                        if not quota_exhausted:
+                            quota_exhausted = True
+                            logger.critical(
+                                f"[Batch] 🚨 QUOTA EXHAUSTED - Circuit breaker activated! "
+                                f"Stopping batch after lead {lead_index+1}/{len(leads)}"
+                            )
+
                 async with results_lock:
+                    completed_count += 1
                     # Add to results as failed
                     results.append(BatchLeadResult(
                         leadId=lead_id,
@@ -931,10 +999,8 @@ async def process_batch_with_progress(
                     f"[Batch] 💥 Lead {lead_index+1}/{len(leads)} exception: {lead.company_name} - {error_msg}"
                 )
 
-            # Update completed count and send progress if needed
+            # Send progress if needed (completed_count already updated above)
             async with progress_lock:
-                completed_count += 1
-
                 # Send progress webhook every 3 completions or at the end
                 if completed_count % 3 == 0 or completed_count == len(leads):
                     progress_percent = (completed_count / len(leads)) * 100

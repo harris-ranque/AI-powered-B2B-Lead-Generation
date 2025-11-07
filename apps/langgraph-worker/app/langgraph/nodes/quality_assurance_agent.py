@@ -96,10 +96,46 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
     capture_event("qa_agent_started", analytics_context)
     
     try:
-        # Validate required data availability
+        # Validate required data availability - skip gracefully if no email
         if not primary_email:
-            raise ValueError("No email content available for quality assessment")
-        
+            logger.warning("No email content available for quality assessment - skipping QA")
+            capture_event("qa_agent_skipped", {
+                **analytics_context,
+                "skip_reason": "no_email_content",
+                "duration_ms": 0
+            })
+
+            # Return skip result instead of raising error
+            return {
+                "current_stage": "quality_assurance_complete",
+                "quality_assessment": {
+                    "overall_quality_score": 0.0,
+                    "approval_status": "Skipped - Missing Email",
+                    "skip_reason": "no_email_content",
+                    "personalization_score": 0.0,
+                    "professionalism_score": 0.0,
+                    "effectiveness_score": 0.0,
+                    "issues_found": ["No email content to assess"],
+                    "strengths_identified": [],
+                    "improvement_suggestions": ["Generate email content before quality assessment"]
+                },
+                "final_result": {
+                    "email_approved": False,
+                    "quality_score": 0.0,
+                    "skipped": True,
+                    "skip_reason": "missing_email_content",
+                    "error": "No email content available for quality assessment"
+                },
+                "agent_results": [*state.get("agent_results", []), AgentResult(
+                    agent_name="Quality Assurance Agent",
+                    role="Email quality validation and approval",
+                    output="Skipped - No email content available for quality assessment",
+                    confidence_score=0.0,
+                    execution_time=0.0
+                )],
+                "errors": [*state.get("errors", []), "QA skipped: No email content"]
+            }
+
         if not business_intelligence:
             logger.warning("No business intelligence available for quality assessment")
         

@@ -282,10 +282,6 @@ export default function LandingPage() {
                 No credit card required
               </div>
               <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                50 free credits
-              </div>
-              <div className="flex items-center gap-2">
                 <CheckCircle className="h-4 w-4 text-green-500" />5 minute setup
               </div>
             </div>

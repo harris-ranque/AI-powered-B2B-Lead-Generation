@@ -50,18 +50,48 @@ def create_email_generation_workflow(
     
     # Initialize the state graph
     workflow = StateGraph(EmailGenerationState)
-    
+
     # Add the 3 optimized agents to the graph
     workflow.add_node("business_intelligence", business_intelligence_agent_node)
     workflow.add_node("email_generation", email_generation_agent_node)
     workflow.add_node("quality_assurance", quality_assurance_agent_node)
     workflow.add_node("aggregator", aggregator_node)
-    
-    # Define the streamlined linear workflow
-    # Direct linear flow: Start → BI → Email → QA → End
+
+    # Define conditional routing functions for error-aware workflow
+    def should_continue_after_bi(state: EmailGenerationState) -> str:
+        """Route after BI agent: skip Email Gen if BI failed"""
+        if state.get("current_stage") == "error":
+            logger.warning("BI agent failed - skipping Email Generation and QA, going to aggregator")
+            return "aggregator"
+        return "email_generation"
+
+    def should_continue_after_email(state: EmailGenerationState) -> str:
+        """Route after Email Gen: skip QA if email generation failed or no email"""
+        if state.get("current_stage") == "error" or not state.get("primary_email"):
+            logger.warning("Email Generation failed or no email - skipping QA, going to aggregator")
+            return "aggregator"
+        return "quality_assurance"
+
+    # Define the error-aware conditional workflow
+    # Conditional flow: Start → BI → (if success) Email → (if success) QA → End
+    #                              → (if error) skip to aggregator
     workflow.add_edge(START, "business_intelligence")
-    workflow.add_edge("business_intelligence", "email_generation")
-    workflow.add_edge("email_generation", "quality_assurance")
+    workflow.add_conditional_edges(
+        "business_intelligence",
+        should_continue_after_bi,
+        {
+            "email_generation": "email_generation",
+            "aggregator": "aggregator"
+        }
+    )
+    workflow.add_conditional_edges(
+        "email_generation",
+        should_continue_after_email,
+        {
+            "quality_assurance": "quality_assurance",
+            "aggregator": "aggregator"
+        }
+    )
     workflow.add_edge("quality_assurance", "aggregator")
     workflow.add_edge("aggregator", END)
     
