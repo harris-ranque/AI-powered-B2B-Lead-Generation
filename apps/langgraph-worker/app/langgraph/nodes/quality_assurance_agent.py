@@ -157,8 +157,8 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         logger.debug(f"Email body preview for {lead.company_name}: {email_body[:500]}...")
         
         # Initialize LLM for quality assessment
-        # gpt-5-nano uses max_completion_tokens instead of max_tokens
-        # Use medium reasoning effort for QA - we need accurate scoring, not just speed
+        # GPT-5-mini: Reasoning model with 1500 token budget for scoring and validation
+        # Supports reasoning_effort parameter for optimized quality assessment
         openai_api_key = provider_key_map.get("openai") if using_user_keys else None
         qa_model = settings.quality_assurance_model or settings.default_model
         qa_token_budget = settings.clamp_tokens(settings.quality_assurance_max_tokens)

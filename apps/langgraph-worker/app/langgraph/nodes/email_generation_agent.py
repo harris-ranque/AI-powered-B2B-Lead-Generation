@@ -262,7 +262,7 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
             return f"{body}\n\n" + "\n".join(signature_lines)
         
         # Initialize LLM for email generation
-        # gpt-5-nano uses max_completion_tokens instead of max_tokens
+        # GPT-5-mini: 128K max output, optimized for fast generation with 3000 token budget
         openai_api_key = provider_key_map.get("openai") if using_user_keys else None
         email_model = settings.email_generation_model or settings.default_model
         email_token_budget = settings.clamp_tokens(settings.email_generation_max_tokens)

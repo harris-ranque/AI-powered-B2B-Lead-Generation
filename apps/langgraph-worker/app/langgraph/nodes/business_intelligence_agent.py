@@ -25,57 +25,37 @@ logger = setup_logger(__name__)
 settings = get_settings()
 
 class BusinessIntelligence(BaseModel):
-    """Comprehensive business intelligence analysis"""
+    """Streamlined business intelligence analysis optimized for token efficiency"""
     model_config = ConfigDict(extra="forbid")
 
-    # Company overview and context
-    company_overview: str = Field(..., description="Comprehensive company overview")
-    industry_focus: str = Field(..., description="Primary industry and market focus")
-    business_model: str = Field(..., description="Core business model and revenue streams")
-    key_services: List[str] = Field(..., description="Primary services or products")
-    target_customers: str = Field(..., description="Target customer segments")
-    competitive_landscape: str = Field(..., description="Competitive positioning and market presence")
-    growth_stage: str = Field(..., description="Company growth stage and maturity")
-    technology_stack: List[str] = Field(default_factory=list, description="Technologies and tools used")
-    recent_news: List[str] = Field(default_factory=list, description="Recent company developments")
-    
-    # Research metadata
+    # Core company context (consolidated)
+    company_overview: str = Field(..., description="2-sentence company overview with industry focus, business model, and growth stage")
+    key_services: List[str] = Field(..., max_length=5, description="Top 3-5 primary services or products")
+    target_customers: str = Field(..., description="1-sentence description of target customer segments")
+
+    # Research metadata (essential only)
     research_tier: str = Field(..., description="Research tier used (tavily/perplexity)")
     confidence_score: float = Field(..., ge=0, le=1, description="Research confidence score")
-    data_sources: List[str] = Field(..., description="Sources of information gathered")
-    competitors: List[CompetitorInsight] = Field(
-        default_factory=list,
-        description="Discovered competitor companies",
-    )
-    industry_insights: str = Field(default="", description="Deep industry analysis and trends")
-    
-    # Relevance analysis
+
+    # Relevance analysis (core metrics)
     relevance_score: float = Field(..., ge=0, le=1, description="Overall relevance score for this lead")
     qualification_level: str = Field(..., description="High, Medium, or Low qualification")
-    fit_assessment: str = Field(..., description="Detailed fit assessment")
-    key_factors: List[str] = Field(..., description="Key factors affecting relevance")
-    decision_factors: List[str] = Field(..., description="Decision-making factors identified")
-    timing_assessment: str = Field(..., description="Urgency and timing assessment")
-    red_flags: List[str] = Field(default_factory=list, description="Any concerns or red flags")
-    opportunities: List[str] = Field(..., description="Key opportunities identified")
-    
-    # Pain points and challenges
-    pain_points: List[str] = Field(..., description="Identified business pain points")
-    pain_point_categories: List[str] = Field(..., description="Categories of pain points")
-    urgency_indicators: List[str] = Field(..., description="Signs of urgency or pressure")
-    impact_assessment: str = Field(..., description="Potential impact of addressing pain points")
-    
-    # Value propositions and matching
-    value_matches: List[str] = Field(..., description="How our services match their needs")
+    fit_assessment: str = Field(..., description="2-sentence fit assessment with key factors")
+    opportunities: List[str] = Field(..., max_length=3, description="Top 3 key opportunities identified")
+    red_flags: List[str] = Field(default_factory=list, max_length=3, description="Top 3 concerns or red flags")
+
+    # Pain points (consolidated)
+    pain_points: List[str] = Field(..., max_length=5, description="Top 3-5 business pain points with urgency indicators")
+    impact_assessment: str = Field(..., description="1-sentence potential impact of addressing pain points")
+
+    # Value propositions (consolidated)
+    value_matches: List[str] = Field(..., max_length=5, description="Top 3-5 matches between our services and their needs")
     value_alignment_score: float = Field(..., ge=0, le=1, description="Value alignment score")
-    quantified_benefits: List[str] = Field(..., description="Quantified potential benefits")
-    risk_mitigation: List[str] = Field(..., description="How we mitigate their risks")
-    competitive_advantages: List[str] = Field(..., description="Our advantages over alternatives")
-    
-    # Personalization insights
-    personalization_elements: List[str] = Field(..., description="Key elements for personalization")
-    messaging_strategy: str = Field(..., description="Recommended messaging approach")
-    engagement_hooks: List[str] = Field(..., description="Potential engagement hooks")
+    competitive_advantages: List[str] = Field(..., max_length=3, description="Top 3 advantages over alternatives")
+
+    # Personalization (essential only)
+    personalization_elements: List[str] = Field(..., max_length=5, description="Top 3-5 elements for personalization")
+    messaging_strategy: str = Field(..., description="1-sentence recommended messaging approach")
 
 async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[str, Any]:
     """
@@ -182,115 +162,100 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         analysis_start = time.time()
         
         # Initialize LLM for comprehensive analysis
-        # gpt-5-nano uses max_completion_tokens instead of max_tokens
         openai_api_key = provider_key_map.get("openai") if using_user_keys else None
         bi_model = settings.business_intelligence_model or settings.default_model
         bi_token_budget = settings.clamp_tokens(settings.business_intelligence_max_tokens)
-        llm = registry.get_openai_client(
-            api_key=openai_api_key,
-            model=bi_model,
-            temperature=0.3,
-            max_completion_tokens=bi_token_budget,
-            reasoning_effort="minimal",
-            require_user_key=using_user_keys,
-        ).with_structured_output(BusinessIntelligence)
+
+        # Detect reasoning models: o1 series and gpt-5 series support reasoning_effort
+        model_lower = bi_model.lower()
+        is_reasoning_model = "o1" in model_lower or "gpt-5" in model_lower
+
+        if is_reasoning_model:
+            # Reasoning models (o1, gpt-5, gpt-5-mini): Use reasoning_effort parameter
+            # GPT-5-mini supports "minimal" for fastest responses with structured output
+            reasoning_level = "minimal" if "gpt-5" in model_lower else "low"
+
+            llm = registry.get_openai_client(
+                api_key=openai_api_key,
+                model=bi_model,
+                temperature=0.3,
+                max_completion_tokens=bi_token_budget,
+                reasoning_effort=reasoning_level,  # minimal for gpt-5, low for o1
+                require_user_key=using_user_keys,
+            ).with_structured_output(BusinessIntelligence)
+            logger.info(f"Using reasoning model: {bi_model} with {bi_token_budget} tokens, reasoning_effort={reasoning_level}")
+        else:
+            # Standard GPT models (gpt-4o, gpt-4o-mini, etc.)
+            llm = registry.get_openai_client(
+                api_key=openai_api_key,
+                model=bi_model,
+                temperature=0.3,
+                max_completion_tokens=bi_token_budget,
+                # No reasoning_effort for standard models
+                require_user_key=using_user_keys,
+            ).with_structured_output(BusinessIntelligence)
+            logger.info(f"Using standard GPT model: {bi_model} with {bi_token_budget} tokens")
         
-        # Create comprehensive analysis prompt
+        # Create streamlined analysis prompt optimized for token efficiency
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an elite business intelligence analyst with expertise in:
-            - Company research and competitive analysis
-            - Lead qualification and market assessment  
-            - Pain point identification and business challenge analysis
-            - Value proposition alignment and benefit quantification
-            - Personalization strategy and messaging optimization
-            
-            Keep every field to at most two crisp sentences and lists to three bullet points.
-            Your role is to perform comprehensive business intelligence analysis that combines:
-            1. Deep company research and market context
-            2. Lead relevance and qualification assessment
-            3. Pain point identification and urgency analysis
-            4. Value proposition matching and benefit quantification
-            5. Personalization insights and messaging strategy
-            
-            Use the tiered research data to create actionable intelligence for highly 
-            personalized B2B email outreach that demonstrates deep understanding of 
-            the prospect's business context, challenges, and opportunities.
-            
-            Quality standards:
-            - Relevance scores: >0.7 = High, 0.4-0.7 = Medium, <0.4 = Low
-            - Value alignment: Focus on quantifiable business impact
-            - Pain points: Prioritize by urgency and business impact
-            - Personalization: Identify specific, unique elements for this company
+            ("system", """You are an elite business intelligence analyst specializing in concise, actionable insights.
+
+CRITICAL CONSTRAINTS FOR TOKEN EFFICIENCY:
+- Company overview: EXACTLY 2 sentences (industry focus, business model, growth stage)
+- All text fields: MAXIMUM 2 sentences
+- All lists: MAXIMUM 3-5 items (use max_length limit)
+- Pain points: Include urgency indicators in bullet text
+- Fit assessment: 2 sentences covering key factors and decision-making elements
+
+ANALYSIS FOCUS:
+1. Company Context: Synthesize research into crisp company overview
+2. Relevance Assessment: Score lead fit (High >0.7, Medium 0.4-0.7, Low <0.4)
+3. Pain Points: Top 3-5 challenges with urgency/impact
+4. Value Matching: Top 3-5 service-to-need alignments
+5. Personalization: Top 3-5 unique elements for this prospect
+
+OUTPUT QUALITY:
+- Be specific and actionable, not generic
+- Use quantifiable impacts where possible
+- Prioritize by urgency and business value
+- Focus on unique differentiators for this company
             """),
-            ("human", """Perform comprehensive business intelligence analysis:
-            
-            LEAD INFORMATION:
-            Company: {company_name}
-            Contact: {contact_name} ({title})
-            Industry: {industry}
-            Company Size: {company_size}
-            Location: {location}
-            Website: {website}
-            Description: {description}
-            Technologies: {technologies}
-            Revenue: {revenue}
-            
-            TIERED RESEARCH RESULTS:
-            Research Tier: {research_tier}
-            Confidence Score: {confidence_score}
-            Company Overview: {company_overview}
-            Services/Products: {services_products}
-            Industry Insights: {industry_insights}
-            Competitors: {competitors_summary}
-            Recent News: {recent_news}
-            Research Time: {research_time}s
-            Sources Analyzed: {sources_analyzed}
-            
-            OUR BUSINESS PROFILE:
-            Company: {our_company}
-            Industry: {our_industry}
-            Value Proposition: {our_value_prop}
-            Services: {our_services}
-            Target Markets: {our_targets}
-            Differentiators: {our_differentiators}
-            
-            COMPREHENSIVE ANALYSIS REQUIRED:
-            
-            1. COMPANY INTELLIGENCE:
-            - Synthesize research into comprehensive company overview
-            - Analyze business model, growth stage, and market position
-            - Identify technology stack and innovation focus
-            - Extract recent developments and strategic initiatives
-            
-            2. RELEVANCE ASSESSMENT:
-            - Score lead relevance (0-1) based on fit with our services
-            - Determine qualification level (High/Medium/Low)
-            - Identify key factors affecting relevance
-            - Assess decision-making factors and timing
-            - Flag any red flags or concerns
-            - Highlight key opportunities
-            
-            3. PAIN POINT ANALYSIS:
-            - Identify specific business challenges and pain points
-            - Categorize pain points by type and urgency
-            - Assess potential impact of addressing these challenges
-            - Look for urgency indicators and market pressures
-            
-            4. VALUE PROPOSITION ALIGNMENT:
-            - Map our services to their specific needs
-            - Quantify potential benefits and business impact
-            - Identify competitive advantages over alternatives
-            - Assess risk mitigation we provide
-            - Calculate value alignment score (0-1)
-            
-            5. PERSONALIZATION STRATEGY:
-            - Extract unique personalization elements
-            - Recommend messaging strategy and tone
-            - Identify engagement hooks and conversation starters
-            - Suggest specific value propositions for this prospect
-            
-            Provide actionable intelligence for creating highly personalized, 
-            value-driven email outreach that resonates with this specific prospect.
+            ("human", """Perform streamlined business intelligence analysis (remember: 2 sentences max per text field, 3-5 items max per list):
+
+LEAD DATA:
+Company: {company_name} | Contact: {contact_name} ({title})
+Industry: {industry} | Size: {company_size} | Location: {location}
+Website: {website} | Technologies: {technologies}
+
+RESEARCH RESULTS ({research_tier} tier, confidence: {confidence_score}):
+Overview: {company_overview}
+Services: {services_products}
+Insights: {industry_insights}
+Competitors: {competitors_summary}
+
+OUR PROFILE:
+{our_company} - {our_industry}
+Value Prop: {our_value_prop}
+Services: {our_services}
+Target Markets: {our_targets}
+Differentiators: {our_differentiators}
+
+DELIVER CONCISE ANALYSIS:
+1. Company overview (2 sentences: industry, model, growth stage)
+2. Top 3-5 services
+3. Target customers (1 sentence)
+4. Relevance score (0-1) and qualification (High/Medium/Low)
+5. Fit assessment (2 sentences with key factors)
+6. Top 3 opportunities and red flags
+7. Top 3-5 pain points with urgency
+8. Impact assessment (1 sentence)
+9. Top 3-5 value matches
+10. Value alignment score (0-1)
+11. Top 3 competitive advantages
+12. Top 3-5 personalization elements
+13. Messaging strategy (1 sentence)
+
+Focus on actionable, specific insights unique to this prospect.
             """)
         ])
         
@@ -339,18 +304,17 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         analysis_time = time.time() - analysis_start
         total_time = time.time() - start_time
         
-        # Create comprehensive agent result
+        # Create streamlined agent result
         agent_result = AgentResult(
             agent_name="Business Intelligence Agent",
-            role="Comprehensive business intelligence and analysis",
-            output=f"Complete business intelligence analysis for {lead.company_name}. "
-                   f"Research tier: {research_result.tier.value}. "
+            role="Streamlined business intelligence and analysis",
+            output=f"Business intelligence for {lead.company_name}. "
+                   f"Research: {research_result.tier.value} tier. "
                    f"Relevance: {intelligence.relevance_score:.2f} ({intelligence.qualification_level}). "
-                   f"Found {len(intelligence.pain_points)} pain points, {len(intelligence.value_matches)} value matches, "
-                   f"{len(intelligence.competitors)} competitors. "
+                   f"Pain points: {len(intelligence.pain_points)}, Value matches: {len(intelligence.value_matches)}. "
                    f"Value alignment: {intelligence.value_alignment_score:.2f}. "
-                   f"Personalization elements: {len(intelligence.personalization_elements)}. "
-                   f"{intelligence.company_overview[:200]}...",
+                   f"Personalization: {len(intelligence.personalization_elements)} elements. "
+                   f"{intelligence.company_overview}",
             confidence_score=max(research_result.confidence_score, intelligence.relevance_score),
             execution_time=total_time
         )
@@ -374,9 +338,9 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
                 "qualification_level": intelligence.qualification_level,
                 "pain_points_found": len(intelligence.pain_points),
                 "value_matches_found": len(intelligence.value_matches),
-                "competitors_found": len(intelligence.competitors),
                 "value_alignment_score": intelligence.value_alignment_score,
                 "personalization_elements": len(intelligence.personalization_elements),
+                "token_optimization": "streamlined_schema_v2",  # Track optimization version
             },
         )
 

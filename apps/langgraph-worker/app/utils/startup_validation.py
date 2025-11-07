@@ -197,12 +197,12 @@ class StartupValidator:
             return
         try:
             # Test basic OpenAI connection with a minimal request
-            # gpt-5-nano uses max_completion_tokens instead of max_tokens
+            # GPT-5-mini: Reasoning model supporting up to 128K output tokens
             llm = ChatOpenAI(
                 model=self.settings.default_model,
                 temperature=0,
                 max_completion_tokens=min(50, self.settings.max_tokens or 50),
-                reasoning_effort="minimal",  # Optimize for speed with gpt-5-nano
+                # Note: reasoning_effort works with o1 and gpt-5 series models
                 openai_api_key=self.settings.openai_api_key
             )
 

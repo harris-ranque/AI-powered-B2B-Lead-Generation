@@ -141,13 +141,22 @@ class Settings(BaseSettings):
     max_execution_time: int = int(os.getenv("MAX_EXECUTION_TIME_OPTIONAL", "300"))  # 5 minutes
     
     # Model Configuration
-    default_model: str = os.getenv("DEFAULT_MODEL", "gpt-5-nano")
+    # GPT-5-mini: Released August 2025, supports up to 128K output tokens
+    # - Reasoning model with minimal/low/medium/high reasoning_effort settings
+    # - Optimized for lighter reasoning tasks with reduced latency
+    # - Context window: ~400K tokens, Knowledge cutoff: May 30, 2024
+    default_model: str = os.getenv("DEFAULT_MODEL", "gpt-5-mini")
     business_intelligence_model: str = os.getenv("BUSINESS_INTELLIGENCE_MODEL", "")
     email_generation_model: str = os.getenv("EMAIL_GENERATION_MODEL", "")
     quality_assurance_model: str = os.getenv("QUALITY_ASSURANCE_MODEL", "")
-    business_intelligence_max_tokens: int = int(os.getenv("BUSINESS_INTELLIGENCE_MAX_TOKENS", "900") or "900")
-    email_generation_max_tokens: int = int(os.getenv("EMAIL_GENERATION_MAX_TOKENS", "1200") or "1200")
-    quality_assurance_max_tokens: int = int(os.getenv("QUALITY_ASSURANCE_MAX_TOKENS", "600") or "600")
+
+    # Token limits optimized for GPT-5-mini (max 128K output)
+    # Business Intelligence: Complex structured output (14 fields) needs higher budget
+    business_intelligence_max_tokens: int = int(os.getenv("BUSINESS_INTELLIGENCE_MAX_TOKENS", "5000") or "5000")
+    # Email Generation: Email content + follow-up sequences
+    email_generation_max_tokens: int = int(os.getenv("EMAIL_GENERATION_MAX_TOKENS", "3000") or "3000")
+    # Quality Assurance: Scoring, validation, and feedback
+    quality_assurance_max_tokens: int = int(os.getenv("QUALITY_ASSURANCE_MAX_TOKENS", "1500") or "1500")
 
     @property
     def temperature(self) -> float:

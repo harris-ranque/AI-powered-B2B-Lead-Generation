@@ -103,29 +103,10 @@ export const createOrUpdateProfile = mutation({
       );
     }
 
-    if (sanitizedData.services.length === 0) {
-      throw createError(
-        "At least one service is required",
-        ERROR_CODES.VALIDATION_ERROR,
-        400,
-      );
-    }
-
-    if (sanitizedData.targetMarkets.length === 0) {
-      throw createError(
-        "At least one target market is required",
-        ERROR_CODES.VALIDATION_ERROR,
-        400,
-      );
-    }
-
-    if (sanitizedData.keyDifferentiators.length === 0) {
-      throw createError(
-        "At least one key differentiator is required",
-        ERROR_CODES.VALIDATION_ERROR,
-        400,
-      );
-    }
+    // Note: We don't enforce strict validation for array fields here
+    // to allow partial saves during the wizard flow. The frontend
+    // will guide users to fill all fields, and isComplete flag
+    // will track whether profile is ready for use.
 
     // Check if profile already exists
     const existingProfile = await ctx.db
