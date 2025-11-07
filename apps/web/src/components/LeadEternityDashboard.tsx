@@ -92,9 +92,19 @@ function LeadEternityDashboardContent() {
     setCurrentTheme(storedTheme);
     applyAppTheme(storedTheme);
 
-    const skipped = localStorage.getItem("genni_onboarding_skipped") === "true";
-    setHasSkippedOnboarding(skipped);
-  }, []);
+    // Check if onboarding was skipped for THIS specific user
+    if (user) {
+      const skippedKey = `genni_onboarding_skipped_${user._id}`;
+      const skipped = localStorage.getItem(skippedKey) === "true";
+      setHasSkippedOnboarding(skipped);
+
+      // Clean up old global flag if it exists (legacy migration)
+      const oldGlobalFlag = localStorage.getItem("genni_onboarding_skipped");
+      if (oldGlobalFlag) {
+        localStorage.removeItem("genni_onboarding_skipped");
+      }
+    }
+  }, [user]);
 
   // Real backend integration
   const { user } = useAuth();
@@ -400,8 +410,11 @@ function LeadEternityDashboardContent() {
   const handleCompleteOnboarding = useCallback(
     (profileData: BusinessProfileInput) => {
       try {
-        // Clear skip flag if it was set
-        localStorage.removeItem("genni_onboarding_skipped");
+        // Clear skip flag if it was set (user-specific key)
+        if (user) {
+          const skippedKey = `genni_onboarding_skipped_${user._id}`;
+          localStorage.removeItem(skippedKey);
+        }
         setHasSkippedOnboarding(false);
 
         handleTabChange("overview");
@@ -433,8 +446,11 @@ function LeadEternityDashboardContent() {
 
   const handleSkipOnboarding = useCallback(() => {
     try {
-      // Store skip preference in localStorage to bypass onboarding gate
-      localStorage.setItem("genni_onboarding_skipped", "true");
+      // Store skip preference in localStorage to bypass onboarding gate (user-specific key)
+      if (user) {
+        const skippedKey = `genni_onboarding_skipped_${user._id}`;
+        localStorage.setItem(skippedKey, "true");
+      }
       setHasSkippedOnboarding(true);
 
       handleTabChange("overview");
