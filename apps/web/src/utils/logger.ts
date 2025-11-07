@@ -2,6 +2,7 @@
  * Logging utility for web app with environment-based configuration.
  */
 
+import { useMemo } from 'react';
 import { captureException } from "@/utils/sentry-loader";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
@@ -311,7 +312,8 @@ export const createLogger = (component: string): Logger =>
 
 // Hook for React components
 export const useLogger = (component: string): Logger => {
-  return new Logger(component);
+  // Memoize logger to prevent infinite re-render loops
+  return useMemo(() => new Logger(component), [component]);
 };
 
 // Convenience functions using default logger

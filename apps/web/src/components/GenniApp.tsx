@@ -13,7 +13,7 @@ export function GenniApp() {
     return () => {
       logger.componentUnmount("GenniApp");
     };
-  }, [logger]);
+  }, []); // Empty deps - logger is now stable via useMemo
 
   return (
     <div className="min-h-screen bg-background">
