@@ -86,24 +86,40 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
       const batch = batches[batchIndex]!;
       console.log(`[FindyMail] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} domains) - using 5 concurrent requests`);
 
-      // Process batch with retries
+      // Process batch with retries (only for transient errors)
       const batchPromises = batch.map(async (domain) => {
         for (let attempt = 0; attempt <= RETRY_ATTEMPTS; attempt++) {
           try {
             const enrichmentResult = await this.enrichSingle(domain, options);
             return { domain, result: enrichmentResult };
           } catch (error: any) {
+            // Only retry on transient errors (rate limits, gateway timeouts, network errors)
             const isRateLimitError = error?.message?.includes("429") || error?.message?.includes("Too Many Requests");
             const isGatewayError = error?.message?.includes("504") || error?.message?.includes("Gateway");
+            const isNetworkError = error?.message?.includes("ECONNRESET") ||
+                                   error?.message?.includes("ETIMEDOUT") ||
+                                   error?.message?.includes("ENOTFOUND") ||
+                                   error?.message?.includes("fetch failed");
 
-            if ((isRateLimitError || isGatewayError) && attempt < RETRY_ATTEMPTS) {
-              // Increased backoff: 1s, 2s, 4s, 8s, 15s max (504 errors need more time)
-              const backoffDelay = Math.min(1000 * Math.pow(2, attempt), 15000); // Exponential backoff, max 15s
-              console.log(`[FindyMail] Rate limit/gateway error for ${domain}, retrying in ${backoffDelay}ms (attempt ${attempt + 1}/${RETRY_ATTEMPTS})`);
+            // Check if this is a non-retriable error (4xx client errors except 429)
+            const is4xxError = error?.message?.match(/API error: (4\d{2})/);
+            const isNonRetriable = is4xxError && !isRateLimitError;
+
+            if (isNonRetriable) {
+              // Don't retry 4xx errors (404, 400, etc.) - these are permanent failures
+              console.log(`[FindyMail] Non-retriable error for ${domain}: ${error?.message} - not retrying`);
+              return { domain, result: null };
+            }
+
+            if ((isRateLimitError || isGatewayError || isNetworkError) && attempt < RETRY_ATTEMPTS) {
+              // Exponential backoff for transient errors: 1s, 2s, 4s, 8s, max 15s
+              const backoffDelay = Math.min(1000 * Math.pow(2, attempt), 15000);
+              console.log(`[FindyMail] Transient error for ${domain}, retrying in ${backoffDelay}ms (attempt ${attempt + 1}/${RETRY_ATTEMPTS})`);
               await new Promise(resolve => setTimeout(resolve, backoffDelay));
               continue;
             }
 
+            // Exhausted retries or non-transient error
             console.error(`[FindyMail] Failed to enrich ${domain} after ${attempt + 1} attempts:`, error?.message || error);
             return { domain, result: null };
           }
@@ -132,39 +148,41 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
 
   /**
    * Enrich a single domain using FindyMail's domain search endpoint
+   * Throws errors for retry logic, returns null only for JSON parsing issues
    */
   async enrichSingle(
     domain: string,
     options?: EnrichmentOptions,
   ): Promise<EnrichmentResult | null> {
-    try {
-      console.log(`[FindyMail] Enriching domain: ${domain}`);
+    console.log(`[FindyMail] Enriching domain: ${domain}`);
 
-      const response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          domain: domain,
-          roles: resolveRoles(options),
-          limit: 1, // Get top contact per domain
-        }),
+    const response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        domain: domain,
+        roles: resolveRoles(options),
+        limit: 1, // Get top contact per domain
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[FindyMail] API error for ${domain}:`, {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
       });
+      // Throw error to allow retry logic to handle it
+      throw new Error(
+        `FindyMail API error: ${response.status} ${response.statusText}`
+      );
+    }
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[FindyMail] API error for ${domain}:`, {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText,
-        });
-        throw new Error(
-          `FindyMail API error: ${response.status} ${response.statusText}`
-        );
-      }
-
+    try {
       const findyMailData = await response.json();
       console.log(`[FindyMail] Response for ${domain}:`, {
         hasData: !!findyMailData,
@@ -174,7 +192,8 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
 
       return this.transformToEnrichmentResult(findyMailData);
     } catch (error) {
-      console.error(`[FindyMail] Failed to enrich ${domain}:`, error);
+      // JSON parsing error - return null without retrying
+      console.error(`[FindyMail] Failed to parse response for ${domain}:`, error);
       return null;
     }
   }
