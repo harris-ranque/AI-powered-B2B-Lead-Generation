@@ -83,7 +83,7 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
         "user_tier": state.get("user_tier", "free"),
     }
     capture_event("aggregator_started", analytics_context)
-    
+
     try:
         # Calculate total processing time
         end_time = datetime.utcnow()
@@ -96,7 +96,77 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
                 total_time = 0.0
         else:
             total_time = 0.0
-        
+
+        # Check for upstream agent failures before normal processing
+        current_stage = state.get("current_stage")
+        errors = state.get("errors", [])
+
+        if current_stage == "error" or errors:
+            # Determine which agent failed
+            failed_agent = "Unknown"
+            error_message = "Workflow error occurred"
+
+            # Check business_intelligence for errors
+            business_intelligence = state.get("business_intelligence", {})
+            if isinstance(business_intelligence, dict) and business_intelligence.get("error"):
+                failed_agent = "Business Intelligence"
+                error_message = business_intelligence.get("error")
+            # Check for explicit errors list
+            elif errors:
+                error_message = errors[0] if errors else "Unknown error"
+                if any("business intelligence" in str(err).lower() or "bi" in str(err).lower() for err in errors):
+                    failed_agent = "Business Intelligence"
+                elif any("email generation" in str(err).lower() for err in errors):
+                    failed_agent = "Email Generation"
+                elif any("qa" in str(err).lower() or "quality" in str(err).lower() for err in errors):
+                    failed_agent = "Quality Assurance"
+
+            logger.warning(f"Upstream agent failure detected: {failed_agent} - {error_message}")
+
+            # Create explicit error result
+            error_result = EmailGenerationResult(
+                request_id=state["request_id"],
+                lead_analysis={
+                    "error": error_message,
+                    "failed_agent": failed_agent,
+                    "all_errors": errors,
+                    "success": False,
+                    "company_name": lead.company_name,
+                    "error_stage": current_stage
+                },
+                relevance_score=state.get("relevance_score", 0.1),
+                pain_points_identified=state.get("pain_points", []),
+                value_matches=state.get("value_matches", []),
+                primary_email=None,  # No email on error
+                follow_up_sequence=None,
+                agent_results=state.get("agent_results", []),
+                processing_time=total_time,
+                recommendations=[f"{failed_agent} agent failed - manual review required"],
+                deep_research_used=state.get("deep_research_triggered", False),
+                deep_research_reason=state.get("deep_research_reason"),
+                additional_credits_used=0,
+                missing_data_points=state.get("missing_data_points", []),
+                data_completeness_score=0.0
+            )
+
+            capture_event(
+                "aggregator_error_result",
+                {
+                    **analytics_context,
+                    "failed_agent": failed_agent,
+                    "error_message": error_message,
+                    "total_duration_ms": total_time * 1000,
+                },
+            )
+
+            return {
+                "final_result": error_result,
+                "current_stage": "error",
+                "total_processing_time": total_time,
+                "errors": errors
+            }
+
+        # Normal processing continues here if no errors detected
         # Compile recommendations based on analysis
         recommendations = list(state.get("recommendations", []))
         relevance_score = state.get("relevance_score", 0)
