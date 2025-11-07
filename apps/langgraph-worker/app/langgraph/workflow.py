@@ -72,9 +72,48 @@ def create_email_generation_workflow(
             return "aggregator"
         return "quality_assurance"
 
-    # Define the error-aware conditional workflow
-    # Conditional flow: Start → BI → (if success) Email → (if success) QA → End
-    #                              → (if error) skip to aggregator
+    def should_retry_after_qa(state: EmailGenerationState) -> str:
+        """
+        Route after QA: decide whether to approve, retry, or reject.
+
+        Hybrid quality strategy:
+        - Score ≥0.65: Approve immediately (high quality)
+        - Score 0.40-0.65: Retry once with QA feedback (1 retry attempt)
+        - Score <0.40: Reject immediately (poor quality, not worth retrying)
+        """
+        qa = state.get("quality_assessment", {})
+        approval_status = qa.get("approval_status", "Unknown")
+        quality_score = qa.get("overall_quality_score", 0)
+        retry_count = state.get("retry_count", 0)
+        max_retries = state.get("max_retries", 1)
+
+        # If approved or error state, go to aggregator
+        if approval_status == "Approved" or state.get("current_stage") == "error":
+            logger.info(f"QA {approval_status} - proceeding to aggregator (score={quality_score:.2f})")
+            return "aggregator"
+
+        # If quality is too poor (<0.4), reject immediately without retry
+        if quality_score < 0.40:
+            logger.warning(f"QA score too low ({quality_score:.2f}) - rejecting without retry")
+            return "aggregator"
+
+        # If we have retries left and quality is in retry range (0.40-0.65), retry
+        if retry_count < max_retries and 0.40 <= quality_score < 0.65:
+            logger.info(f"QA needs improvement (score={quality_score:.2f}) - retry {retry_count + 1}/{max_retries}")
+            return "retry_email_generation"
+
+        # Otherwise, max retries exhausted, go to aggregator
+        logger.warning(f"Max retries exhausted ({retry_count}/{max_retries}) - proceeding to aggregator (score={quality_score:.2f})")
+        return "aggregator"
+
+    # Define the error-aware conditional workflow with retry loop
+    # Conditional flow: Start → BI → (if success) Email → (if success) QA → [Check quality]
+    #                              → (if error) skip to aggregator              ↓
+    #                                                                  ┌─ retry ←┘
+    #                                                                  ↓
+    #                                                              Email Gen (with feedback)
+    #                                                                  ↓
+    #                                                                 QA → approve/reject
     workflow.add_edge(START, "business_intelligence")
     workflow.add_conditional_edges(
         "business_intelligence",
@@ -92,7 +131,14 @@ def create_email_generation_workflow(
             "aggregator": "aggregator"
         }
     )
-    workflow.add_edge("quality_assurance", "aggregator")
+    workflow.add_conditional_edges(
+        "quality_assurance",
+        should_retry_after_qa,
+        {
+            "retry_email_generation": "email_generation",  # Retry loop back to email gen
+            "aggregator": "aggregator"  # Approve or reject final
+        }
+    )
     workflow.add_edge("aggregator", END)
     
     # Compile the workflow
@@ -178,7 +224,11 @@ async def execute_email_generation(
         "follow_up_sequence": None,
         "email_metadata": {},
         "quality_assessment": {},
-        "final_result": {}
+        "final_result": {},
+        # Quality retry tracking
+        "retry_count": 0,
+        "max_retries": 1,
+        "previous_quality_feedback": []
     }
     
     # Configuration for execution
@@ -302,7 +352,11 @@ async def execute_with_streaming(
         "follow_up_sequence": None,
         "email_metadata": {},
         "quality_assessment": {},
-        "final_result": {}
+        "final_result": {},
+        # Quality retry tracking
+        "retry_count": 0,
+        "max_retries": 1,
+        "previous_quality_feedback": []
     }
     
     # Configuration

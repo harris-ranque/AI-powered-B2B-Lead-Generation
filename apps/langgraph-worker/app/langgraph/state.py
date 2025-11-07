@@ -89,3 +89,8 @@ class EmailGenerationState(TypedDict):
     competitors_found: Optional[List[Dict[str, Any]]]  # Discovered competitors from research
     industry_insights: Optional[str]  # Industry analysis and trends
     escalation_reason: Optional[str]  # Reason for research tier escalation
+
+    # Quality assurance retry tracking
+    retry_count: Optional[int]  # Number of email regeneration attempts (max 1)
+    max_retries: Optional[int]  # Maximum retry attempts allowed (default 1)
+    previous_quality_feedback: Optional[List[Dict[str, Any]]]  # QA feedback from previous attempts

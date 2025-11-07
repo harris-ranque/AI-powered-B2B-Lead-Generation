@@ -190,7 +190,7 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
             - Compliance with email marketing and communication best practices
             
             Quality Standards:
-            - Overall Quality: >0.8 = Excellent, 0.6-0.8 = Good, 0.4-0.6 = Needs Improvement, <0.4 = Poor
+            - Overall Quality: ≥0.8 = Excellent, 0.65-0.8 = Good, 0.4-0.65 = Needs Improvement, <0.4 = Poor
             - Personalization: Must use specific business intelligence elements
             - Length: 150-250 words for body, subject <50 characters
             - Tone: Professional but conversational, avoiding spam triggers
@@ -205,8 +205,8 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
             5. Call-to-Action Score (0-1): CTA effectiveness and appropriateness
             
             Approval Levels:
-            - Approved: Ready for sending (overall score >0.7)
-            - Needs_Improvement: Requires revisions (score 0.4-0.7)
+            - Approved: Ready for sending (overall score ≥0.65)
+            - Needs_Improvement: Requires revisions (score 0.4-0.65)
             - Rejected: Significant issues, major revision needed (score <0.4)
             """),
             ("human", """Conduct comprehensive quality assessment of this generated email:
@@ -507,9 +507,37 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
             },
         )
         
+        # Prepare quality feedback for potential retry
+        retry_count = state.get("retry_count", 0)
+        previous_feedback = state.get("previous_quality_feedback", [])
+
+        # If this email needs improvement and hasn't hit retry limit, save feedback for retry
+        if approval_status == "Needs_Improvement" and quality_score >= 0.40:
+            feedback_entry = {
+                "attempt": retry_count + 1,
+                "quality_score": quality_score,
+                "issues": quality_assessment.quality_issues[:5],  # Top 5 issues
+                "suggestions": quality_assessment.improvement_suggestions[:5],  # Top 5 suggestions
+                "missing_elements": quality_assessment.missing_elements[:3],  # Top 3 missing
+                "weak_areas": {
+                    "personalization": quality_assessment.personalization_score < 0.65,
+                    "business_context": quality_assessment.business_context_score < 0.65,
+                    "value_proposition": quality_assessment.value_proposition_score < 0.65,
+                    "call_to_action": quality_assessment.call_to_action_score < 0.65,
+                }
+            }
+            updated_feedback = [*previous_feedback, feedback_entry]
+            new_retry_count = retry_count + 1
+            logger.info(f"Saving QA feedback for retry attempt {new_retry_count}")
+        else:
+            updated_feedback = previous_feedback
+            new_retry_count = retry_count
+
         # Update state with quality assessment
         return {
             "current_stage": "quality_assurance_complete",
+            "retry_count": new_retry_count,
+            "previous_quality_feedback": updated_feedback,
             "quality_assessment": {
                 "overall_quality_score": quality_assessment.overall_quality_score,
                 "approval_status": quality_assessment.approval_status,

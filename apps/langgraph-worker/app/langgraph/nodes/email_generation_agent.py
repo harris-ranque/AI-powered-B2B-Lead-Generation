@@ -481,6 +481,8 @@ Integration requirements:
 """),
             ("human", """Create a highly personalized email sequence using comprehensive business intelligence:
 
+{qa_improvement_context}
+
 PROSPECT INFORMATION:
 Company: {company_name}
 Contact: {contact_name} ({title})
@@ -929,8 +931,40 @@ Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excludin
         # Extract contact first name for subject line personalization
         contact_first_name = (lead.contact_name or "there").split()[0] if lead.contact_name else "there"
 
-        # Execute email generation
+        # Check if this is a retry attempt with previous QA feedback
+        retry_count = state.get("retry_count", 0)
+        previous_feedback = state.get("previous_quality_feedback", [])
+
+        # Build QA improvement context for retry attempts
+        qa_improvement_context = ""
+        if retry_count > 0 and previous_feedback:
+            latest_feedback = previous_feedback[-1]
+            qa_improvement_context = f"""
+IMPORTANT - QUALITY IMPROVEMENT REQUIRED (Retry Attempt {retry_count}):
+
+Previous Email Issues:
+{chr(10).join(f"- {issue}" for issue in latest_feedback.get("issues", [])[:5])}
+
+Required Improvements:
+{chr(10).join(f"- {suggestion}" for suggestion in latest_feedback.get("suggestions", [])[:5])}
+
+Missing Elements:
+{chr(10).join(f"- {element}" for element in latest_feedback.get("missing_elements", [])[:3])}
+
+Weak Areas to Strengthen:
+{chr(10).join(f"- {area.replace('_', ' ').title()}" for area, is_weak in latest_feedback.get("weak_areas", {}).items() if is_weak)}
+
+You MUST address all issues and incorporate all suggestions to create a significantly improved email.
+Focus especially on the weak areas identified above. Previous quality score: {latest_feedback.get("quality_score", 0):.2f}
+Target score: ≥0.65 for approval.
+"""
+            logger.info(f"Retry {retry_count}: Using QA feedback to improve email generation")
+
+        # Execute email generation with optional QA feedback
         email_sequence: EmailSequence = await llm.ainvoke(prompt.format_messages(
+            # Quality improvement context (for retries)
+            qa_improvement_context=qa_improvement_context,
+
             # Prospect information
             company_name=lead.company_name,
             contact_name=lead.contact_name or "there",
