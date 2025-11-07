@@ -171,122 +171,220 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
             require_user_key=using_user_keys,
         ).with_structured_output(QualityAssessment)
         
-        # Create comprehensive quality assessment prompt
+        # Create comprehensive quality assessment prompt - ALIGNED WITH EXACT EMAIL GENERATION STANDARDS
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an expert email quality assurance specialist with extensive experience in:
-            - B2B email communication standards and best practices
-            - Personalization depth assessment and validation
-            - Business intelligence integration evaluation
-            - Professional tone and language analysis
-            - Value proposition clarity and effectiveness assessment
-            - Call-to-action optimization and conversion principles
-            
-            Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per bullet).
-            Your role is to conduct rigorous quality assessment of generated emails to ensure:
-            - High personalization standards using available business intelligence
-            - Professional communication that builds credibility and trust
-            - Clear value propositions that resonate with prospect needs
-            - Appropriate calls-to-action for the prospect's buying stage
-            - Compliance with email marketing and communication best practices
-            
-            Quality Standards:
-            - Overall Quality: ≥0.8 = Excellent, 0.65-0.8 = Good, 0.4-0.65 = Needs Improvement, <0.4 = Poor
-            - Personalization: Must use specific business intelligence elements
-            - Length: 150-250 words for body, subject <50 characters
-            - Tone: Professional but conversational, avoiding spam triggers
-            - Value: Clear benefit statements, not feature-focused
-            - CTA: Specific, low-pressure, appropriate for prospect stage
-            
-            Assessment Criteria:
-            1. Personalization Score (0-1): Depth and accuracy of personalization
-            2. Business Context Score (0-1): Effective use of business intelligence
-            3. Professional Tone Score (0-1): Communication quality and professionalism
-            4. Value Proposition Score (0-1): Clarity and relevance of value offered
-            5. Call-to-Action Score (0-1): CTA effectiveness and appropriateness
-            
-            Approval Levels:
-            - Approved: Ready for sending (overall score ≥0.65)
-            - Needs_Improvement: Requires revisions (score 0.4-0.65)
-            - Rejected: Significant issues, major revision needed (score <0.4)
-            """),
-            ("human", """Conduct comprehensive quality assessment of this generated email:
-            
+            ("system", """You are an expert email quality assurance specialist validating emails against STRICT B2B email standards.
+
+Your role is to rigorously validate emails against these EXACT requirements from the email generation system:
+
+CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
+
+1. NO HYPHENS RULE (MANDATORY - AUTO-REJECT IF VIOLATED):
+   - NEVER allow hyphens in subject lines or email body
+   - Subject format MUST be: "Hi {FirstName}, [content]" or "Hi {FirstName}: [content]"
+   - In body: commas, periods, or separate sentences only
+   - Any hyphen usage = INSTANT FAILURE, score penalty of -0.3 minimum
+   - Check EVERY line for hyphens, including P.S. and signature
+
+2. SUBJECT LINE VALIDATION (MANDATORY):
+   - MUST start with "Hi {FirstName}" (first name only, not full name)
+   - MUST use comma or colon after name (no hyphens!)
+   - Total length MUST be under 60 characters
+   - MUST avoid generic phrases: "touching base", "following up", "checking in", "quick question"
+   - MUST be based on ACTUAL business intelligence (no fabricated curiosity hooks)
+   - MUST use one of these proven patterns:
+     * Specific Discovery: "Hi {name}, spotted 3 quick wins..."
+     * What If Scenario: "Hi {name}, what if {company} could..."
+     * Competitive Intelligence: "Hi {name}, why {company}'s competitors..."
+     * Hidden Insight: "Hi {name}: the overlooked fix..."
+     * Contrarian/Pattern Interrupt: "Hi {name}, {company} + this = ..."
+     * Peer Proof: "Hi {name}, what companies like {company}..."
+
+3. LENGTH VALIDATION (MANDATORY):
+   - Email body MUST be 100-150 words (excluding signature)
+   - Each paragraph MUST be 1-2 sentences maximum
+   - Total paragraphs MUST be 3-4 maximum
+   - If over 150 words = FAILURE, significant score penalty
+   - Count words carefully, do not estimate
+
+4. NATURAL LANGUAGE VALIDATION (MANDATORY):
+   - MUST use complete sentences with proper grammar
+   - MUST include articles (a, an, the) appropriately
+   - MUST include pronouns (I, we, our) naturally
+   - MUST NOT drop pronouns or articles
+   - Examples:
+     GOOD: "I noticed RevCo closed a Series A last month"
+     BAD: "Noticed RevCo closed Series A last month"
+
+5. DATA INTEGRITY VALIDATION (CRITICAL):
+   - Every claim MUST come from provided business intelligence
+   - MUST use REAL competitor names from research (never "a similar company")
+   - MUST use REAL numbers from research (no placeholder numbers like "87 leads in 48 hours")
+   - Subject line curiosity hooks MUST reflect actual research findings
+   - NO fabricated or assumed information
+   - If claims cannot be verified from business intelligence = FAILURE
+
+6. P.S. VALIDATION (if present):
+   - Numbers MUST be VAGUE unless exact data from research
+   - Use qualitative language: "several", "some", "multiple"
+   - NO specific placeholder numbers like "47 prospects", "143 accounts"
+   - Must add genuine value, not filler
+
+7. HYPE LANGUAGE VALIDATION:
+   - NO "10x" language allowed
+   - Use realistic multipliers (2x, 3x, 5x with context)
+   - Avoid Grant Cardone style exaggeration
+
+8. STRUCTURE VALIDATION:
+   - Opening: 1-2 sentences with personalized hook
+   - Body paragraph 1: Challenge/opportunity (1-2 sentences)
+   - Body paragraph 2: Proof point with results (1-2 sentences)
+   - Body paragraph 3: Specific offer (1 sentence)
+   - CTA: One simple sentence, immediately following offer
+   - Closing + Signature: Professional and complete
+
+9. SIGNATURE VALIDATION:
+   - MUST include professional closing ("Best,", "Cheers,", "Best regards,")
+   - MUST include complete signature (Name, Company, Email, Phone, Website)
+   - NO placeholder text like "[Your Name]", "Company Name"
+   - For sequences: ALL emails MUST have identical signature format
+
+Quality Scoring Standards:
+- Overall Quality: ≥0.65 = Approved, 0.4-0.65 = Needs_Improvement, <0.4 = Rejected
+- NO HYPHENS violation = Auto-deduct 0.3 from overall score minimum
+- Length over 150 words = Auto-deduct 0.2 from overall score
+- Fabricated data = Auto-deduct 0.3 from overall score
+- Missing articles/pronouns = Deduct 0.1 per occurrence (up to 0.3 total)
+
+Assessment Criteria (all 0-1 scale):
+1. Personalization Score: Depth and accuracy using real business intelligence
+2. Business Context Score: Effective use of real research data
+3. Professional Tone Score: Natural language, proper grammar, no hyphens
+4. Value Proposition Score: Clarity and relevance with real proof points
+5. Call-to-Action Score: Clear, specific, low-pressure, well-positioned
+
+Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per bullet).
+"""),
+            ("human", """Conduct STRICT quality assessment of this generated email against EXACT requirements:
+
             PROSPECT CONTEXT:
             Company: {company_name}
             Contact: {contact_name} ({title})
             Industry: {industry}
-            
-            BUSINESS INTELLIGENCE AVAILABLE:
+
+            BUSINESS INTELLIGENCE AVAILABLE (for verification):
             Pain Points Identified: {pain_points}
             Value Matches: {value_matches}
             Personalization Elements: {personalization_elements}
             Company Overview: {company_overview}
-            
+
             EMAIL TO ASSESS:
-            
+
             Subject: {email_subject}
-            
+
             Body:
             {email_body}
-            
+
             Declared Personalization Elements: {declared_personalization}
-            
-            QUALITY ASSESSMENT REQUIRED:
-            
-            1. PERSONALIZATION ANALYSIS:
-            - Identify specific personalization elements used in the email
-            - Verify accuracy against available business intelligence
-            - Assess depth: Deep (company-specific insights), Medium (industry/role), Surface (name only), Minimal (template)
-            - Check for generic language that could apply to any company
-            
-            2. BUSINESS INTELLIGENCE INTEGRATION:
-            - Evaluate how well business intelligence was incorporated
-            - Check if pain points are meaningfully addressed
-            - Assess value proposition alignment with prospect needs
-            - Verify industry insights and competitive context usage
-            
-            3. PROFESSIONAL COMMUNICATION STANDARDS:
-            - Assess tone appropriateness (professional but approachable)
-            - Check grammar, spelling, and language quality
-            - Evaluate credibility and trust-building elements
-            - Identify any spam triggers or unprofessional language
-            
-            4. VALUE PROPOSITION CLARITY:
-            - Assess clarity of benefits offered
-            - Check relevance to prospect's situation
-            - Evaluate differentiation from competitors
-            - Verify quantified or specific value statements
-            
-            5. CALL-TO-ACTION EFFECTIVENESS:
-            - Evaluate CTA clarity and specificity
-            - Assess appropriateness for prospect's likely buying stage
-            - Check for low-pressure, value-focused approach
-            - Verify single, clear next step
-            
-            6. CONTENT COMPLIANCE:
-            - Check email length (150-250 words ideal)
-            - Verify subject line length (<50 characters)
-            - Assess overall structure and flow
-            - Identify any missing critical elements
 
-            7. SIGNATURE AND FORMATTING CONSISTENCY:
-            - Verify email includes professional closing ("Best,", "Cheers,", "Best regards,")
-            - Confirm complete signature is present (Name, Company, Email, Phone, Website)
-            - Check for placeholder text in signature (e.g., "[Your Name]", "Company Name")
-            - For follow-up sequences: Verify ALL emails have identical signature format
-            - Flag any missing or inconsistent signature elements
-            - Ensure no emails in sequence are missing closings or signatures
+            MANDATORY QUALITY VALIDATION (CHECK EVERY RULE):
 
-            8. IMPROVEMENT RECOMMENDATIONS:
-            - Identify specific areas needing improvement
-            - Provide actionable suggestions for enhancement
-            - Highlight missing personalization opportunities
-            - Recommend value proposition strengthening
-            - Flag any signature or formatting inconsistencies
-            
-            Provide detailed quality assessment with specific scores, identified issues, 
-            and actionable improvement recommendations. Focus on measurable quality 
-            improvements that will increase email effectiveness and response rates.
+            1. NO HYPHENS CHECK (CRITICAL - HIGHEST PRIORITY):
+            - Scan ENTIRE email (subject + body + P.S. + every line) for ANY hyphens
+            - Check subject line format: MUST be "Hi {{FirstName}}, [content]" or "Hi {{FirstName}}: [content]"
+            - ANY hyphen found = INSTANT FAILURE with -0.3 minimum score penalty
+            - Flag EVERY hyphen location in quality_issues
+            - Add to improvement_suggestions: "Remove ALL hyphens - use commas, periods, or rewrite sentences"
+
+            2. SUBJECT LINE STRICT VALIDATION (MANDATORY):
+            - Does it start with "Hi {{FirstName}}" (first name only)?
+            - Does it use comma or colon after name (NO HYPHENS)?
+            - Is total length under 60 characters?
+            - Does it avoid generic phrases ("touching base", "following up", "checking in", "quick question")?
+            - Is curiosity hook based on ACTUAL business intelligence data above?
+            - Does it match one of the 6 proven patterns (Specific Discovery, What If, Competitive Intelligence, Hidden Insight, Contrarian, Peer Proof)?
+            - Flag violations in quality_issues with specific pattern it should use
+
+            3. LENGTH VALIDATION (MANDATORY - COUNT CAREFULLY):
+            - Count EXACT words in email body (excluding signature)
+            - MUST be 100-150 words
+            - Count paragraphs: MUST be 3-4 maximum
+            - Count sentences per paragraph: MUST be 1-2 maximum
+            - If over 150 words = add to quality_issues: "Email exceeds 150 word limit ([ACTUAL_COUNT] words)" and deduct 0.2 from score
+            - If under 100 words = add to quality_issues: "Email under 100 word minimum"
+
+            4. NATURAL LANGUAGE CHECK (MANDATORY):
+            - Check for dropped pronouns or articles
+            - Find sentences starting without "I", "We", articles
+            - Example violations:
+              * "Noticed RevCo closed..." (should be "I noticed RevCo closed...")
+              * "Saw your blog post..." (should be "I saw your blog post...")
+            - Flag EACH violation in quality_issues
+            - Deduct 0.1 per violation (up to 0.3 total)
+
+            5. DATA INTEGRITY VALIDATION (CRITICAL):
+            - Cross-check EVERY claim against business intelligence provided above
+            - Verify competitor names are from actual research (not "a similar company")
+            - Verify numbers are from research (not placeholders like "87 leads", "143 accounts")
+            - Check subject line claims against pain points and personalization elements
+            - Find ANY fabricated information = add to quality_issues with -0.3 score penalty
+            - List unverifiable claims in improvement_suggestions
+
+            6. P.S. VALIDATION (if present):
+            - Check for specific numbers ("47 prospects", "87 leads", "143 accounts")
+            - MUST use vague qualitative language: "several", "some", "multiple", "examples"
+            - Flag any specific placeholder numbers as violations
+            - Verify P.S. adds genuine value (not filler)
+
+            7. HYPE LANGUAGE CHECK:
+            - Scan for "10x" language
+            - Check for unrealistic claims or Grant Cardone style exaggeration
+            - Flag any hype language in quality_issues
+
+            8. STRUCTURE VALIDATION:
+            - Opening: 1-2 sentences with personalized hook? (check)
+            - Body paragraph 1: Challenge/opportunity in 1-2 sentences? (check)
+            - Body paragraph 2: Proof point with results in 1-2 sentences? (check)
+            - Body paragraph 3: Specific offer in 1 sentence? (check)
+            - CTA: One simple sentence immediately following offer? (check)
+            - Flag any structure violations in quality_issues
+
+            9. SIGNATURE VALIDATION:
+            - Has professional closing ("Best,", "Cheers,", "Best regards,")? (check)
+            - Has complete signature (Name, Company, Email, Phone, Website)? (check)
+            - NO placeholder text like "[Your Name]", "Company Name"? (check)
+            - For sequences: ALL emails have identical signature? (check if follow-ups exist)
+            - Flag any signature issues in quality_issues
+
+            10. GRAMMAR AND SENTENCE STRUCTURE:
+            - Complete sentences with proper subject-verb agreement? (check)
+            - Natural pronoun usage (I, we, our)? (check)
+            - Logical flow and transitions? (check)
+            - CTA immediately follows offer? (check)
+            - Flag grammar issues in quality_issues
+
+            SCORING RULES (APPLY PENALTIES STRICTLY):
+            - Start with base scores for each dimension
+            - Apply automatic penalties:
+              * ANY hyphens found: -0.3 minimum from overall_quality_score
+              * Over 150 words: -0.2 from overall_quality_score
+              * Fabricated data: -0.3 from overall_quality_score
+              * Missing articles/pronouns: -0.1 each (up to -0.3 total)
+              * "10x" hype language: -0.15 from overall_quality_score
+              * Vague competitor references: -0.2 from business_context_score
+              * Specific P.S. numbers without data: -0.1 from overall_quality_score
+
+            APPROVAL DECISION:
+            - Calculate final overall_quality_score after all penalties
+            - ≥0.65 = "Approved"
+            - 0.4-0.65 = "Needs_Improvement"
+            - <0.4 = "Rejected"
+
+            Provide detailed assessment with:
+            - Specific scores (after penalties)
+            - Every violation found (be thorough and surgical)
+            - Actionable improvement recommendations (≤3 bullets, ≤2 sentences each)
+            - Focus on CRITICAL issues first (hyphens, length, data integrity, natural language)
             """)
         ])
         

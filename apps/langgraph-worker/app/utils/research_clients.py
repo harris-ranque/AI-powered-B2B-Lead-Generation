@@ -106,19 +106,32 @@ class TavilyClient:
                 error="Tavily API key not configured"
             )
         
-        # OPTIMIZATION: Construct focused query with domain prioritization (Tavily best practice)
-        # Keep query under 400 chars, use site: operator for domain focus
-        query = f"{company_name} company overview business model products services"
-        if domain:
-            query += f" site:{domain}"  # Prioritize company website
+        # EMAIL-OPTIMIZED COMPREHENSIVE QUERY: Tavily is PRIMARY source (Perplexity is fallback)
+        # Search for ALL the same data points as Perplexity prompt to avoid escalation
+        # Keep query comprehensive but under 400 chars for optimal results
+        query_parts = [
+            f"{company_name}",
+            "recent milestones funding rounds Series hiring announcements product launches",
+            "competitors names case studies results metrics percentages",
+            "pain points time savings cost reduction efficiency improvements",
+            "industry benchmarks typical results peer comparison",
+            "technology stack tools partnerships integrations"
+        ]
 
-        # OPTIMIZATION: Target business-focused domains for better research quality
+        query = " ".join(query_parts)
+        if domain:
+            query += f" site:{domain}"  # Prioritize company website first
+
+        # EMAIL-OPTIMIZED DOMAINS: Sources with recent news, funding, and competitor data
         business_domains = []
         if domain:
-            business_domains.append(domain)  # Company's own website
+            business_domains.append(domain)  # Company website (press releases, news, about page)
         business_domains.extend([
-            "linkedin.com/company",  # Company LinkedIn profiles
-            "crunchbase.com",        # Startup/funding info
+            "linkedin.com/company",    # Company LinkedIn (recent posts, job listings, milestones)
+            "crunchbase.com",          # Funding rounds, leadership changes, competitors
+            "techcrunch.com",          # Recent news, funding announcements, launches
+            "businesswire.com",        # Press releases, official announcements
+            "prnewswire.com",          # Press releases, company news
         ])
 
         try:
@@ -178,15 +191,21 @@ class TavilyClient:
         # Fall back to all results if filtering is too aggressive
         results_to_process = high_quality_results if high_quality_results else sorted_results
 
-        # Extract services/products with enhanced metadata filtering
+        # COMPREHENSIVE EMAIL-OPTIMIZED EXTRACTION: Match Perplexity data points
         services = []
         overview_parts = []
+        recent_news = []  # Recent milestones with dates
+        competitor_mentions = []  # Competitor names and case studies
+        quantifiable_metrics = []  # Numbers, percentages, results
+        pain_points = []  # Business challenges with impact
+        industry_benchmarks = []  # Typical improvements, peer data
+        technology_stack = []  # Tools, platforms, integrations
 
         # Add answer if available (high-quality summary from Tavily)
         if tavily_result.answer:
             overview_parts.append(tavily_result.answer)
 
-        # Process content snippets with metadata-aware extraction
+        # Process content snippets with comprehensive extraction
         for i, result in enumerate(results_to_process):
             content = result.get('content', '')
             title = result.get('title', '')
@@ -196,10 +215,51 @@ class TavilyClient:
             if not content:
                 continue
 
+            title_lower = title.lower()
+            content_lower = content.lower()
+            content_for_analysis = raw_content if raw_content else content
+
+            # 1. RECENT MILESTONES: Extract funding, hiring, launches with dates
+            news_keywords = ['funding', 'series a', 'series b', 'series c', 'raised', 'million',
+                           'hiring', 'launched', 'announced', 'expands', 'grows', 'milestone',
+                           'acquisition', 'partnership', 'appoints', 'names', 'opens']
+            if any(keyword in title_lower or keyword in content_lower for keyword in news_keywords):
+                recent_news.append(f"{title}: {content[:250]}")
+
+            # 2. COMPETITOR INTELLIGENCE: Extract competitor names and results
+            competitor_keywords = ['competitor', 'versus', 'vs', 'compared to', 'alternative',
+                                 'rival', 'compete', 'similar companies', 'peer', 'industry leader']
+            if any(keyword in content_lower for keyword in competitor_keywords):
+                competitor_mentions.append(f"{title}: {content[:300]}")
+
+            # 3. QUANTIFIABLE METRICS: Extract numbers, percentages, results
+            metrics_keywords = ['%', 'percent', 'increase', 'decrease', 'improved', 'reduced',
+                              'saved', 'hours', 'minutes', 'revenue', 'growth', 'roi', 'conversion']
+            if any(keyword in content_lower for keyword in metrics_keywords):
+                quantifiable_metrics.append(f"{title}: {content[:250]}")
+
+            # 4. PAIN POINTS: Extract business challenges
+            pain_keywords = ['challenge', 'problem', 'struggle', 'difficult', 'bottleneck',
+                           'manual', 'time-consuming', 'inefficient', 'costly', 'friction']
+            if any(keyword in content_lower for keyword in pain_keywords):
+                pain_points.append(f"{title}: {content[:250]}")
+
+            # 5. INDUSTRY BENCHMARKS: Extract typical results and peer comparisons
+            benchmark_keywords = ['typical', 'average', 'industry standard', 'benchmark',
+                                'similar companies', 'peers', 'companies like', 'best practice']
+            if any(keyword in content_lower for keyword in benchmark_keywords):
+                industry_benchmarks.append(f"{title}: {content[:250]}")
+
+            # 6. TECHNOLOGY STACK: Extract tools, platforms, integrations
+            tech_keywords = ['uses', 'powered by', 'built with', 'integration', 'platform',
+                           'software', 'tool', 'saas', 'crm', 'erp', 'api']
+            if any(keyword in content_lower for keyword in tech_keywords):
+                technology_stack.append(f"{title}: {content[:200]}")
+
             # OPTIMIZATION: Use title for keyword filtering (Tavily best practice)
             # Titles often indicate relevance better than content body
             is_business_relevant = any(
-                keyword in title.lower()
+                keyword in title_lower
                 for keyword in ['company', 'business', 'about', 'services', 'products', 'solutions']
             )
 
@@ -258,6 +318,30 @@ class TavilyClient:
                     "images": tavily_result.images,
                     "follow_up_questions": tavily_result.follow_up_questions,
                     "total_results": tavily_result.total_results
+                },
+                # COMPREHENSIVE EMAIL-READY DATA: All Perplexity data points
+                "recent_news": recent_news[:5],  # Top 5 recent milestones for opening personalization
+                "competitor_mentions": competitor_mentions[:5],  # Top 5 competitor references for proof points
+                "quantifiable_metrics": quantifiable_metrics[:5],  # Top 5 metrics with numbers
+                "pain_points": pain_points[:5],  # Top 5 business challenges
+                "industry_benchmarks": industry_benchmarks[:5],  # Top 5 benchmark references
+                "technology_stack": technology_stack[:5],  # Top 5 tech mentions
+                # Data completeness tracking
+                "data_completeness": {
+                    "has_recent_news": len(recent_news) > 0,
+                    "has_competitors": len(competitor_mentions) > 0,
+                    "has_metrics": len(quantifiable_metrics) > 0,
+                    "has_pain_points": len(pain_points) > 0,
+                    "has_benchmarks": len(industry_benchmarks) > 0,
+                    "has_tech_stack": len(technology_stack) > 0,
+                    "completeness_score": sum([
+                        len(recent_news) > 0,
+                        len(competitor_mentions) > 0,
+                        len(quantifiable_metrics) > 0,
+                        len(pain_points) > 0,
+                        len(industry_benchmarks) > 0,
+                        len(technology_stack) > 0
+                    ]) / 6.0  # 0.0 to 1.0 score
                 }
             }
         )
@@ -410,34 +494,73 @@ class PerplexityClient:
             )
     
     def _build_comprehensive_query(self, company_name: str, domain: str, context: str) -> str:
-        """Build comprehensive research query for Perplexity"""
+        """Build comprehensive research query for Perplexity - EMAIL-OPTIMIZED FOR PERSONALIZATION"""
         query_parts = [
-            f"Provide a comprehensive business intelligence report for {company_name}",
+            f"Provide email-ready business intelligence for {company_name}",
         ]
-        
+
         if domain:
             query_parts.append(f"(website: {domain})")
-            
+
         query_parts.extend([
-            "Include the following analysis:",
-            "1. Business model and revenue streams",
-            "2. Market position and competitive landscape", 
-            "3. Recent news, developments, and growth initiatives",
-            "4. Target customers and market segments",
-            "5. Technology stack and innovation focus",
-            "6. Financial performance and funding history",
-            "7. Key partnerships and strategic alliances",
-            "8. Potential business challenges and opportunities"
+            "Include the following with SPECIFIC DETAILS and NUMBERS:",
+            "",
+            "1. RECENT COMPANY MILESTONES (critical for email opening):",
+            "   - Funding rounds with amounts and dates (e.g., 'closed Series A $15M in March 2024')",
+            "   - Hiring activity with numbers (e.g., 'posted 5 SDR roles', 'hired new VP Sales')",
+            "   - Product launches or announcements with dates",
+            "   - Growth indicators with numbers (e.g., 'doubled customer base to 500+', 'expanded to 3 new markets')",
+            "",
+            "2. COMPETITOR INTELLIGENCE (must include REAL company names):",
+            "   - List 3-5 SPECIFIC competitor names (not 'similar companies')",
+            "   - What tools/solutions competitors use (with specific product names)",
+            "   - Competitor case studies with quantifiable results (e.g., 'Salesforce reduced churn by 40%')",
+            "   - Competitor migrations or switches (e.g., 'Zendesk switched from X to Y')",
+            "",
+            "3. QUANTIFIABLE PAIN POINTS WITH METRICS:",
+            "   - Time wasted per week/month (e.g., '25+ hours/week on manual prospecting')",
+            "   - Cost impacts with dollar amounts (e.g., '$50K/year in wasted resources')",
+            "   - Efficiency losses with percentages (e.g., 'SDRs spend only 20% of time selling')",
+            "   - Growth bottlenecks with numbers (e.g., 'can only handle 50 leads/week')",
+            "",
+            "4. INDUSTRY BENCHMARKS AND PROOF POINTS:",
+            "   - Typical improvement percentages for their challenges (e.g., 'companies in this space typically reduce X by 30-40%')",
+            "   - Time-to-value metrics (e.g., 'most companies see ROI in 60-90 days')",
+            "   - Peer comparison data (e.g., 'similar-sized companies process 3x more leads')",
+            "   - Success stories with specific numbers (e.g., 'Mixpanel achieved 80% SDR efficiency')",
+            "",
+            "5. BUSINESS CONTEXT FOR PERSONALIZATION:",
+            "   - Business model and revenue streams",
+            "   - Target customers and market segments",
+            "   - Technology stack and tools in use (specific product names)",
+            "   - Current business challenges with impact assessment",
+            "",
+            "6. STRATEGIC OPPORTUNITIES:",
+            "   - Growth initiatives and expansion plans",
+            "   - Market trends affecting their business (with data)",
+            "   - Partnerships or integrations they might need",
         ])
-        
+
         if context:
             query_parts.append(f"Additional context: {context[:300]}")
-            
+
         query_parts.extend([
-            "Provide specific, factual information with citations.",
-            "Focus on actionable business intelligence for sales and marketing."
+            "",
+            "CRITICAL REQUIREMENTS FOR OUTPUT:",
+            "- Use REAL company names for competitors (never say 'a similar company' or 'companies like them')",
+            "- Include SPECIFIC NUMBERS and PERCENTAGES wherever possible",
+            "- Provide DATES for recent events (month/year minimum)",
+            "- Include QUANTIFIABLE RESULTS for any case studies mentioned",
+            "- Format proof points as: '[Company Name] + [Action] + [Specific Result with Number]'",
+            "- Cite sources for all claims",
+            "",
+            "This intelligence will be used to craft highly personalized B2B emails, so prioritize:",
+            "1. Recent, dateable events for opening personalization",
+            "2. Real competitor names and their results for proof points",
+            "3. Specific numbers for subject line curiosity hooks",
+            "4. Quantifiable pain points for relevance"
         ])
-        
+
         return " ".join(query_parts)
     
     def _process_perplexity_response(self, company_name: str, data: Dict[str, Any], response_time: float) -> ResearchResult:

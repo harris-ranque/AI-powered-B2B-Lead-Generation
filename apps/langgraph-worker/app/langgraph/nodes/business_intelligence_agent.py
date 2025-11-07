@@ -196,31 +196,61 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
             ).with_structured_output(BusinessIntelligence)
             logger.info(f"Using standard GPT model: {bi_model} with {bi_token_budget} tokens")
         
-        # Create streamlined analysis prompt optimized for token efficiency
+        # Create streamlined analysis prompt optimized for EMAIL GENERATION
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an elite business intelligence analyst specializing in concise, actionable insights.
+            ("system", """You are an elite business intelligence analyst specializing in EMAIL-READY, actionable insights.
+
+CRITICAL PURPOSE: Extract intelligence that enables highly personalized B2B emails with:
+- Recent, dateable events for opening personalization
+- REAL competitor names and quantifiable proof points for body
+- Specific numbers for subject line curiosity hooks
+- Verifiable claims for credibility
 
 CRITICAL CONSTRAINTS FOR TOKEN EFFICIENCY:
 - Company overview: EXACTLY 2 sentences (industry focus, business model, growth stage)
 - All text fields: MAXIMUM 2 sentences
 - All lists: MAXIMUM 3-5 items (use max_length limit)
-- Pain points: Include urgency indicators in bullet text
+- Pain points: Include urgency indicators AND quantifiable impact in bullet text
 - Fit assessment: 2 sentences covering key factors and decision-making elements
 
-ANALYSIS FOCUS:
-1. Company Context: Synthesize research into crisp company overview
-2. Relevance Assessment: Score lead fit (High >0.7, Medium 0.4-0.7, Low <0.4)
-3. Pain Points: Top 3-5 challenges with urgency/impact
-4. Value Matching: Top 3-5 service-to-need alignments
-5. Personalization: Top 3-5 unique elements for this prospect
+EMAIL-OPTIMIZED ANALYSIS FOCUS:
 
-OUTPUT QUALITY:
-- Be specific and actionable, not generic
-- Use quantifiable impacts where possible
-- Prioritize by urgency and business value
-- Focus on unique differentiators for this company
+1. RECENT MILESTONES (for email opening personalization):
+   - Extract SPECIFIC events with DATES (funding, hiring, launches, growth)
+   - Format: "[Event] in [Month Year]" or "[Number] [thing] [timeframe]"
+   - Examples: "closed Series A in March 2024", "posted 5 SDR roles", "doubled to 500+ customers"
+
+2. COMPETITOR INTELLIGENCE (for proof points):
+   - Extract REAL competitor NAMES (never "similar companies")
+   - Include what competitors did and quantifiable results
+   - Format: "[Competitor Name]: [Action] + [Specific Result with Number]"
+   - Examples: "Salesforce: reduced churn by 40%", "Zendesk: switched from X to Y"
+
+3. QUANTIFIABLE PAIN POINTS (for subject lines and relevance):
+   - Include SPECIFIC NUMBERS: time wasted, cost, efficiency percentages
+   - Format: "[Challenge] + [Quantifiable Impact]"
+   - Examples: "25+ hours/week on manual prospecting", "SDRs spend only 20% time selling"
+
+4. PROOF POINTS WITH NUMBERS (for email body):
+   - Extract industry benchmarks with percentages
+   - Include peer comparison data with numbers
+   - Format: "[What] achieved [Number]% [Result]"
+   - Examples: "Similar companies reduce X by 30-40%", "Mixpanel achieved 80% SDR efficiency"
+
+5. PERSONALIZATION ELEMENTS (for deep customization):
+   - Recent news with dates
+   - Growth indicators with numbers
+   - Technology stack with specific product names
+   - Business challenges with quantifiable impact
+
+OUTPUT REQUIREMENTS:
+- Use REAL company/product names (never generic references)
+- Include SPECIFIC NUMBERS and PERCENTAGES in every bullet
+- Provide DATES for recent events (month/year minimum)
+- Format for easy email insertion
+- Prioritize EMAIL-USABLE insights over generic analysis
             """),
-            ("human", """Perform streamlined business intelligence analysis (remember: 2 sentences max per text field, 3-5 items max per list):
+            ("human", """Extract EMAIL-READY business intelligence (2 sentences max per text field, 3-5 items per list):
 
 LEAD DATA:
 Company: {company_name} | Contact: {contact_name} ({title})
@@ -232,6 +262,7 @@ Overview: {company_overview}
 Services: {services_products}
 Insights: {industry_insights}
 Competitors: {competitors_summary}
+Recent News: {recent_news}
 
 OUR PROFILE:
 {our_company} - {our_industry}
@@ -240,22 +271,53 @@ Services: {our_services}
 Target Markets: {our_targets}
 Differentiators: {our_differentiators}
 
-DELIVER CONCISE ANALYSIS:
-1. Company overview (2 sentences: industry, model, growth stage)
-2. Top 3-5 services
-3. Target customers (1 sentence)
-4. Relevance score (0-1) and qualification (High/Medium/Low)
-5. Fit assessment (2 sentences with key factors)
-6. Top 3 opportunities and red flags
-7. Top 3-5 pain points with urgency
-8. Impact assessment (1 sentence)
-9. Top 3-5 value matches
-10. Value alignment score (0-1)
-11. Top 3 competitive advantages
-12. Top 3-5 personalization elements
-13. Messaging strategy (1 sentence)
+EXTRACT EMAIL-OPTIMIZED INTELLIGENCE:
 
-Focus on actionable, specific insights unique to this prospect.
+1. Company overview (2 sentences: industry, model, growth stage + any recent milestone with date)
+
+2. Top 3-5 services (specific, not generic)
+
+3. Target customers (1 sentence with specifics)
+
+4. Relevance score (0-1) and qualification (High/Medium/Low)
+
+5. Fit assessment (2 sentences with key factors)
+
+6. Top 3 opportunities and red flags
+
+7. Top 3-5 pain points with QUANTIFIABLE IMPACT:
+   - MUST include specific numbers: hours/week, percentage, dollar amount
+   - Format: "[Challenge]: [Quantifiable Impact]"
+   - Examples: "Manual prospecting: 25+ hours/week wasted", "Low conversion: Only 20% of leads qualify"
+   - Extract from research or infer from industry standards
+
+8. Impact assessment (1 sentence with quantifiable benefit if possible)
+
+9. Top 3-5 value matches:
+   - Match our services to their needs with potential impact
+   - Include competitor examples if available: "[Competitor Name] achieved [Number]% [Result]"
+   - Examples: "Automated lead gen: Similar companies reduce manual work by 30-40%"
+
+10. Value alignment score (0-1)
+
+11. Top 3 competitive advantages (specific to this prospect, with proof points if available)
+
+12. Top 3-5 personalization elements for EMAIL OPENING:
+    - PRIORITIZE recent events with dates: "closed Series A in [Month Year]"
+    - Include hiring indicators: "posted [Number] [roles]"
+    - Growth milestones with numbers: "doubled customer base to [Number]"
+    - Technology stack: "uses [Specific Tool Names]"
+    - Extract from recent_news first, then company_overview
+
+13. Messaging strategy (1 sentence with specific angle based on their situation)
+
+CRITICAL REQUIREMENTS:
+- Extract REAL competitor names from research (list actual company names)
+- Include SPECIFIC NUMBERS in pain points (percentages, hours, dollars)
+- Add DATES to recent events (month/year minimum)
+- Use ACTUAL company/product names (never generic "similar companies")
+- Format insights for direct email insertion
+- If research lacks numbers, use industry standard ranges (e.g., "typical 25-30% improvement")
             """)
         ])
         
