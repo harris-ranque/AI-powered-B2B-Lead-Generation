@@ -209,6 +209,52 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         relevance_score = business_intelligence.get("relevance_score", 0.5)
         qualification_level = business_intelligence.get("qualification_level", "Medium")
 
+        # CRITICAL: Extract raw research data with ALL bullet points from Tavily/Perplexity
+        # This contains the full, unfiltered research results before LLM summarization
+        research_metadata = business_intelligence.get("research_metadata", {})
+        recent_news = research_metadata.get("recent_news", [])
+        competitor_mentions = research_metadata.get("competitor_mentions", [])
+        quantifiable_metrics = research_metadata.get("quantifiable_metrics", [])
+        pain_point_research = research_metadata.get("pain_points", [])
+        industry_benchmarks = research_metadata.get("industry_benchmarks", [])
+        technology_stack = research_metadata.get("technology_stack", [])
+
+        logger.info(f"Raw research data available: {len(recent_news)} news items, "
+                   f"{len(competitor_mentions)} competitor refs, {len(quantifiable_metrics)} metrics, "
+                   f"{len(pain_point_research)} pain point refs, {len(industry_benchmarks)} benchmarks")
+
+        # TODO: REMOVE BEFORE PRODUCTION - Detailed logging of raw research data for verification
+        logger.info("=" * 80)
+        logger.info(f"DETAILED RAW RESEARCH DATA FOR {lead.company_name}")
+        logger.info("=" * 80)
+
+        logger.info("\n📰 RECENT NEWS & MILESTONES:")
+        for i, item in enumerate(recent_news[:10], 1):
+            logger.info(f"  {i}. {item[:200]}...")
+
+        logger.info("\n🏢 COMPETITOR REFERENCES:")
+        for i, item in enumerate(competitor_mentions[:10], 1):
+            logger.info(f"  {i}. {item[:200]}...")
+
+        logger.info("\n📊 QUANTIFIABLE METRICS:")
+        for i, item in enumerate(quantifiable_metrics[:10], 1):
+            logger.info(f"  {i}. {item[:200]}...")
+
+        logger.info("\n⚠️ PAIN POINTS RESEARCH:")
+        for i, item in enumerate(pain_point_research[:10], 1):
+            logger.info(f"  {i}. {item[:200]}...")
+
+        logger.info("\n📈 INDUSTRY BENCHMARKS:")
+        for i, item in enumerate(industry_benchmarks[:10], 1):
+            logger.info(f"  {i}. {item[:200]}...")
+
+        logger.info("\n💻 TECHNOLOGY STACK:")
+        for i, item in enumerate(technology_stack[:10], 1):
+            logger.info(f"  {i}. {item[:200]}...")
+
+        logger.info("=" * 80)
+        # END TODO: REMOVE DETAILED LOGGING
+
         logger.info(f"Using business intelligence: {len(pain_points)} pain points, "
                    f"{len(value_matches)} value matches, relevance {relevance_score:.2f}")
 
@@ -320,13 +366,15 @@ EMAIL STRUCTURE (CRITICAL - KEEP IT SHORT):
 - NEVER use hyphens anywhere in the email body
 - Use commas, periods, or separate sentences instead of hyphens
 
-OPENING (1-2 sentences):
-- Quick personalized reference (recent news, growth stage, challenge)
+OPENING (greeting + 1-2 sentences):
+- MUST start with "Hi {contact_first_name}," on first line
+- Then quick personalized reference (recent news, growth stage, challenge)
 - Must be immediately relevant to their business
 - Use proper grammar with pronouns and articles
 - Examples:
-  GOOD: "I noticed RevCo closed a Series A last month"
-  BAD: "Noticed RevCo closed Series A last month"
+  GOOD: "Hi Sarah,\n\nI noticed RevCo closed a Series A last month"
+  BAD: "I noticed RevCo closed a Series A last month" (missing greeting)
+  BAD: "Noticed RevCo closed Series A last month" (missing greeting and article)
 - No long-winded context setting
 
 BODY (2-3 short paragraphs):
@@ -388,13 +436,15 @@ CRITICAL WRITING REQUIREMENTS:
 Natural, Human Language:
 - Write like a real person, not a bot
 - Use complete sentences with proper grammar
+- MUST start email body with "Hi {contact_first_name},"
 - Always use articles (a, an, the) where grammatically appropriate
 - Include pronouns (I, we, our) naturally
 - Examples:
-  GOOD: "I noticed RevCo closed a Series A last month"
-  BAD: "Noticed RevCo closed Series A last month"
-  GOOD: "I saw Q3 numbers posted"
-  BAD: "Q3 numbers posted"
+  GOOD: "Hi Sarah,\n\nI noticed RevCo closed a Series A last month"
+  BAD: "I noticed RevCo closed a Series A last month" (missing greeting)
+  BAD: "Noticed RevCo closed Series A last month" (missing greeting and article)
+  GOOD: "Hi John,\n\nI saw Q3 numbers posted"
+  BAD: "Q3 numbers posted" (missing greeting and article)
 - Proofread for natural flow and correctness
 
 NO HYPHENS RULE (CRITICAL):
@@ -497,6 +547,28 @@ Industry Insights: {industry_insights}
 
 Competitor Context: {competitor_context}
 
+RAW RESEARCH DATA (Complete Tavily/Perplexity Search Results):
+Use this comprehensive research data for maximum personalization depth and accuracy.
+These bullet points contain ALL discovered information before AI summarization.
+
+Recent News & Milestones:
+{recent_news_raw}
+
+Competitor References & Case Studies:
+{competitor_mentions_raw}
+
+Quantifiable Metrics & Results:
+{quantifiable_metrics_raw}
+
+Pain Points Research:
+{pain_points_raw}
+
+Industry Benchmarks & Standards:
+{industry_benchmarks_raw}
+
+Technology Stack & Tools:
+{technology_stack_raw}
+
 OUR COMPANY PROFILE:
 Company: {our_company}
 Primary Contact Name: {our_contact_name}
@@ -581,13 +653,15 @@ You have access to comprehensive business intelligence. USE IT EXCLUSIVELY.
    - Use proper grammar and complete sentences
    - Include pronouns (I, we, our) naturally
    - Use articles (a, an, the) appropriately
+   - MUST start body with "Hi {contact_first_name},"
    - NEVER use hyphens for pauses, breaks, or emphasis
    - Use commas, periods, or rewrite sentences instead
    - Examples:
-     GOOD: "I noticed RevCo closed a Series A last month"
-     BAD: "Noticed RevCo closed Series A last month"
-     GOOD: "I saw Q3 numbers posted"
-     BAD: "Q3 numbers posted"
+     GOOD: "Hi Sarah,\n\nI noticed RevCo closed a Series A last month"
+     BAD: "I noticed RevCo closed a Series A last month" (missing greeting)
+     BAD: "Noticed RevCo closed Series A last month" (missing greeting and article)
+     GOOD: "Hi John,\n\nI saw Q3 numbers posted"
+     BAD: "Q3 numbers posted" (missing greeting and article)
      GOOD: "The agent runs on autopilot. It finds leads, verifies contact info, and filters out junk."
      BAD: "The agent runs on autopilot - finds leads - verifies contact info - filters junk"
    - Proofread for natural flow
@@ -690,19 +764,25 @@ Subject line (CRITICAL):
 
 Email Structure (100-150 words max):
 
-Opening (1-2 sentences):
+MANDATORY Greeting:
+- MUST start with "Hi {contact_first_name},"
+- This is the very first line of the email body
+- Matches the format used in follow-up emails
+- Example: "Hi Sarah,"
+
+Opening (1-2 sentences after greeting):
 - Quick personalized reference based on business intelligence
 - Must use proper grammar with pronouns and articles
 - Examples:
-  GOOD: "I noticed RevCo closed a Series A last month"
-  BAD: "Noticed RevCo closed Series A last month"
-  GOOD: "I saw your blog post about manual prospecting challenges"
-  BAD: "Saw your blog post"
+  GOOD: "Hi Sarah,\n\nI noticed RevCo closed a Series A last month"
+  BAD: "I noticed RevCo closed a Series A last month" (missing greeting)
+  GOOD: "Hi John,\n\nI saw your blog post about manual prospecting challenges"
+  BAD: "Noticed RevCo closed Series A last month" (missing greeting and article)
 - Must be immediately relevant
-- Examples of openings:
-  * "I noticed [Company] closed a Series A last month"
-  * "I saw [Company] posted several SDR roles recently"
-  * "I read your earnings call transcript mentioning pipeline challenges"
+- Full examples of complete openings:
+  * "Hi Sarah,\n\nI noticed [Company] closed a Series A last month"
+  * "Hi John,\n\nI saw [Company] posted several SDR roles recently"
+  * "Hi David,\n\nI read your earnings call transcript mentioning pipeline challenges"
 
 Body Paragraph 1 (1-2 sentences):
 - State their challenge or opportunity identified in business intelligence
@@ -893,7 +973,7 @@ DON'T:
 - Use specific numbers in P.S. without real data
 
 FINAL INSTRUCTION:
-Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excluding signature). Every sentence must justify its existence. Use ONLY real data from the business intelligence provided. Use real competitor names, never vague references. Never use hyphens anywhere. The subject line should make {contact_first_name} think "I need to read this" while the body gets straight to the value without wasting their time. Write like you're texting a colleague who respects research and specificity, not pitching a stranger. If your email is longer than 150 words, cut it down ruthlessly until it is. Base every claim on the business intelligence data provided.
+Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excluding signature). MANDATORY: Start the email body with "Hi {contact_first_name}," - this is non-negotiable. Every sentence must justify its existence. Use ONLY real data from the business intelligence provided. Use real competitor names, never vague references. Never use hyphens anywhere. The subject line should make {contact_first_name} think "I need to read this" while the body gets straight to the value without wasting their time. Write like you're texting a colleague who respects research and specificity, not pitching a stranger. If your email is longer than 150 words, cut it down ruthlessly until it is. Base every claim on the business intelligence data provided.
 """)
         ])
         
@@ -961,6 +1041,15 @@ Target score: ≥0.65 for approval.
             messaging_strategy=messaging_strategy,
             industry_insights=industry_insights[:300] if industry_insights else "No specific industry insights available",
             competitor_context=competitor_context or "No competitor data available",
+
+            # RAW RESEARCH DATA - ALL bullet points from Tavily/Perplexity searches
+            # This ensures COMPLETE research results are available for email personalization
+            recent_news_raw="\n".join(f"- {item}" for item in recent_news[:10]) or "No recent news available",
+            competitor_mentions_raw="\n".join(f"- {item}" for item in competitor_mentions[:10]) or "No competitor mentions available",
+            quantifiable_metrics_raw="\n".join(f"- {item}" for item in quantifiable_metrics[:10]) or "No quantifiable metrics available",
+            pain_points_raw="\n".join(f"- {item}" for item in pain_point_research[:10]) or "No pain point research available",
+            industry_benchmarks_raw="\n".join(f"- {item}" for item in industry_benchmarks[:10]) or "No industry benchmarks available",
+            technology_stack_raw="\n".join(f"- {item}" for item in technology_stack[:10]) or "No technology stack data available",
 
             # Our company profile
             our_company=business_profile.company_name,

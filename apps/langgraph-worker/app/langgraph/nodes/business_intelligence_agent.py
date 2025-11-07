@@ -385,6 +385,28 @@ CRITICAL REQUIREMENTS:
                    f"Relevance={intelligence.relevance_score:.2f}, "
                    f"Value alignment={intelligence.value_alignment_score:.2f}, "
                    f"Time={total_time:.2f}s")
+
+        # TODO: REMOVE BEFORE PRODUCTION - Log raw research data being stored
+        raw_data = research_result.raw_data
+        logger.info("=" * 80)
+        logger.info(f"RAW RESEARCH DATA STORED FOR {lead.company_name}")
+        logger.info("=" * 80)
+        logger.info(f"📰 Recent news items: {len(raw_data.get('recent_news', []))}")
+        logger.info(f"🏢 Competitor mentions: {len(raw_data.get('competitor_mentions', []))}")
+        logger.info(f"📊 Quantifiable metrics: {len(raw_data.get('quantifiable_metrics', []))}")
+        logger.info(f"⚠️ Pain point research: {len(raw_data.get('pain_points', []))}")
+        logger.info(f"📈 Industry benchmarks: {len(raw_data.get('industry_benchmarks', []))}")
+        logger.info(f"💻 Technology stack: {len(raw_data.get('technology_stack', []))}")
+
+        # Log first item from each category as sample
+        if raw_data.get('recent_news'):
+            logger.info(f"\nSample recent news: {raw_data['recent_news'][0][:150]}...")
+        if raw_data.get('competitor_mentions'):
+            logger.info(f"Sample competitor: {raw_data['competitor_mentions'][0][:150]}...")
+        if raw_data.get('quantifiable_metrics'):
+            logger.info(f"Sample metric: {raw_data['quantifiable_metrics'][0][:150]}...")
+        logger.info("=" * 80)
+        # END TODO: REMOVE LOGGING
         
         intelligence_data = intelligence.model_dump()
         capture_event(
@@ -407,11 +429,14 @@ CRITICAL REQUIREMENTS:
         )
 
         # Update state with comprehensive business intelligence
+        # IMPORTANT: research_metadata contains ALL raw bullet points from Tavily/Perplexity searches
+        # This includes complete, unfiltered research results for downstream agents to use
+        # Email Generation Agent extracts these for maximum personalization depth
         return {
             "current_stage": "business_intelligence_complete",
             "business_intelligence": {
                 **intelligence_data,
-                "research_metadata": research_result.raw_data,
+                "research_metadata": research_result.raw_data,  # Complete research data preserved here
                 "analysis_time": total_time,
             },
             # Populate legacy/top-level compatibility fields used by downstream components

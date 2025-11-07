@@ -871,15 +871,10 @@ async def process_batch_with_progress(
             async with quota_lock:
                 if quota_exhausted:
                     logger.warning(
-                        f"[Batch] ⛔ Skipping lead {lead_index+1}/{len(leads)}: {lead.company_name} - Quota exhausted"
+                        f"[Batch] ⛔ Skipping lead {lead_index+1}/{len(leads)}: {lead.company_name} - Quota exhausted (excluded from export)"
                     )
                     async with results_lock:
-                        results.append(BatchLeadResult(
-                            leadId=lead.id or f"lead_{lead_index}",
-                            status="failed",
-                            error="OpenAI quota exhausted - batch stopped",
-                            processingTime=0
-                        ))
+                        # Do NOT add quota-exhausted leads to results (excluded from CSV export)
                         failure_count += 1
                     async with progress_lock:
                         completed_count += 1
@@ -943,35 +938,26 @@ async def process_batch_with_progress(
                             )
                         else:
                             # Workflow completed but failed to generate valid email
+                            # Do NOT add to results - failed leads should not appear in CSV export
                             error_msg = (
                                 lead_analysis.get("error") if isinstance(lead_analysis, dict)
                                 else "Email generation failed or not approved"
                             )
-                            results.append(BatchLeadResult(
-                                leadId=lead_id,
-                                status="failed",
-                                error=error_msg,
-                                processingTime=lead_time
-                            ))
+                            # Increment failure count but don't add to results array
                             failure_count += 1
 
                             logger.warning(
-                                f"[Batch] ❌ Lead {lead_index+1}/{len(leads)} FAILED: {lead.company_name} - {error_msg} "
+                                f"[Batch] ❌ Lead {lead_index+1}/{len(leads)} FAILED (excluded from export): {lead.company_name} - {error_msg} "
                                 f"(has_email={has_email}, approved={is_approved}, quality={quality_score:.2f}, meets_threshold={meets_quality_threshold}, has_error={has_error})"
                             )
                     else:
-                        # Workflow error
+                        # Workflow error - do NOT add to results (excluded from CSV export)
                         error_msg = result.get("error", "Unknown error")
-                        results.append(BatchLeadResult(
-                            leadId=lead_id,
-                            status="failed",
-                            error=error_msg,
-                            processingTime=lead_time
-                        ))
+                        # Increment failure count but don't add to results array
                         failure_count += 1
 
                         logger.warning(
-                            f"[Batch] ❌ Lead {lead_index+1}/{len(leads)} FAILED: {lead.company_name} - {error_msg}"
+                            f"[Batch] ❌ Lead {lead_index+1}/{len(leads)} FAILED (excluded from export): {lead.company_name} - {error_msg}"
                         )
 
             except Exception as e:
@@ -990,17 +976,12 @@ async def process_batch_with_progress(
 
                 async with results_lock:
                     completed_count += 1
-                    # Add to results as failed
-                    results.append(BatchLeadResult(
-                        leadId=lead_id,
-                        status="failed",
-                        error=error_msg,
-                        processingTime=lead_time
-                    ))
+                    # Do NOT add exception failures to results (excluded from CSV export)
+                    # Only increment failure count
                     failure_count += 1
 
                 logger.error(
-                    f"[Batch] 💥 Lead {lead_index+1}/{len(leads)} exception: {lead.company_name} - {error_msg}"
+                    f"[Batch] 💥 Lead {lead_index+1}/{len(leads)} exception (excluded from export): {lead.company_name} - {error_msg}"
                 )
 
             # Send progress if needed (completed_count already updated above)
