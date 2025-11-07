@@ -273,7 +273,7 @@ export const analyzeLeadsBatch: any = internalAction({
           followUpSequence: true,
         },
         providerKeys,
-        maxConcurrent: 1, // Sequential processing for tolerant error handling
+        maxConcurrent: 20, // Concurrent processing for optimal performance (default: 20)
       };
 
       // Call batch endpoint

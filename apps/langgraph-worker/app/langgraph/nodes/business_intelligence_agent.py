@@ -455,7 +455,7 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
             "request_id": error_details['request_id'],
             "execution_time_seconds": error_details['execution_time'],
             "has_business_profile": business_profile is not None,
-            "has_requirements": requirements is not None
+            "has_lead": lead is not None
         })
 
         # Capture exception in Sentry with full context
