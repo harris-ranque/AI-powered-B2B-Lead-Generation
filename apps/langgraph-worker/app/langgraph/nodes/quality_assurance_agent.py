@@ -181,24 +181,24 @@ CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
 
 1. NO HYPHENS RULE (MANDATORY - AUTO-REJECT IF VIOLATED):
    - NEVER allow hyphens in subject lines or email body
-   - Subject format MUST be: "Hi {FirstName}, [content]" or "Hi {FirstName}: [content]"
+   - Subject format MUST be: "Hi [FirstName], [content]" or "Hi [FirstName]: [content]"
    - In body: commas, periods, or separate sentences only
    - Any hyphen usage = INSTANT FAILURE, score penalty of -0.3 minimum
    - Check EVERY line for hyphens, including P.S. and signature
 
 2. SUBJECT LINE VALIDATION (MANDATORY):
-   - MUST start with "Hi {FirstName}" (first name only, not full name)
+   - MUST start with "Hi [FirstName]" (first name only, not full name)
    - MUST use comma or colon after name (no hyphens!)
    - Total length MUST be under 60 characters
    - MUST avoid generic phrases: "touching base", "following up", "checking in", "quick question"
    - MUST be based on ACTUAL business intelligence (no fabricated curiosity hooks)
    - MUST use one of these proven patterns:
-     * Specific Discovery: "Hi {name}, spotted 3 quick wins..."
-     * What If Scenario: "Hi {name}, what if {company} could..."
-     * Competitive Intelligence: "Hi {name}, why {company}'s competitors..."
-     * Hidden Insight: "Hi {name}: the overlooked fix..."
-     * Contrarian/Pattern Interrupt: "Hi {name}, {company} + this = ..."
-     * Peer Proof: "Hi {name}, what companies like {company}..."
+     * Specific Discovery: "Hi [name], spotted 3 quick wins..."
+     * What If Scenario: "Hi [name], what if [company] could..."
+     * Competitive Intelligence: "Hi [name], why [company]'s competitors..."
+     * Hidden Insight: "Hi [name]: the overlooked fix..."
+     * Contrarian/Pattern Interrupt: "Hi [name], [company] + this = ..."
+     * Peer Proof: "Hi [name], what companies like [company]..."
 
 3. LENGTH VALIDATION (MANDATORY):
    - Email body MUST be 100-150 words (excluding signature)
@@ -291,13 +291,13 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
 
             1. NO HYPHENS CHECK (CRITICAL - HIGHEST PRIORITY):
             - Scan ENTIRE email (subject + body + P.S. + every line) for ANY hyphens
-            - Check subject line format: MUST be "Hi {{FirstName}}, [content]" or "Hi {{FirstName}}: [content]"
+            - Check subject line format: MUST be "Hi [FirstName], [content]" or "Hi [FirstName]: [content]"
             - ANY hyphen found = INSTANT FAILURE with -0.3 minimum score penalty
             - Flag EVERY hyphen location in quality_issues
             - Add to improvement_suggestions: "Remove ALL hyphens - use commas, periods, or rewrite sentences"
 
             2. SUBJECT LINE STRICT VALIDATION (MANDATORY):
-            - Does it start with "Hi {{FirstName}}" (first name only)?
+            - Does it start with "Hi [FirstName]" (first name only)?
             - Does it use comma or colon after name (NO HYPHENS)?
             - Is total length under 60 characters?
             - Does it avoid generic phrases ("touching base", "following up", "checking in", "quick question")?
