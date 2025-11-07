@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useMutation } from "convex/react";
 import { api } from "@genni/convex-types";
@@ -508,37 +508,44 @@ export function BusinessProfileWizard({
     });
   };
 
-  const validateStep = (step: number): boolean => {
-    const errors: Record<string, string> = {};
-    let fieldsToValidate: Array<keyof BusinessProfile> = [];
-
-    switch (step) {
-      case 1:
-        fieldsToValidate = ["companyName", "contactName", "industry"];
-        break;
-      case 2:
-        fieldsToValidate = ["targetMarkets", "services"];
-        break;
-      case 3:
-        fieldsToValidate = ["valueProposition", "keyDifferentiators"];
-        break;
-      case 4:
-        fieldsToValidate = ["contactPhone", "contactWebsite", "contactLinkedin"];
-        break;
-    }
-
-    // Validate only the fields in the current step
-    fieldsToValidate.forEach((field) => {
-      const value = profile[field];
-      const error = validateField(field, value);
-      if (error) {
-        errors[field] = error;
-      }
-    });
-
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
+  const STEP_FIELD_MAP: Record<number, Array<keyof BusinessProfile>> = {
+    1: ["companyName", "contactName", "industry"],
+    2: ["targetMarkets", "services"],
+    3: ["valueProposition", "keyDifferentiators"],
+    4: ["contactPhone", "contactWebsite", "contactLinkedin"],
   };
+
+  const buildStepErrors = useCallback(
+    (step: number) => {
+      const errors: Record<string, string> = {};
+      const fieldsToValidate = STEP_FIELD_MAP[step] ?? [];
+
+      fieldsToValidate.forEach((field) => {
+        const value = profile[field];
+        const error = validateField(field, value);
+        if (error) {
+          errors[field] = error;
+        }
+      });
+
+      return errors;
+    },
+    [profile],
+  );
+
+  const validateStep = useCallback(
+    (step: number): boolean => {
+      const errors = buildStepErrors(step);
+      setValidationErrors(errors);
+      return Object.keys(errors).length === 0;
+    },
+    [buildStepErrors],
+  );
+
+  const isCurrentStepValid = useMemo(
+    () => Object.keys(buildStepErrors(currentStep)).length === 0,
+    [buildStepErrors, currentStep],
+  );
 
   const handleNext = async () => {
     if (!validateStep(currentStep)) {
@@ -628,10 +635,6 @@ export function BusinessProfileWizard({
       setCurrentStep((prev) => prev - 1);
       setSaveError(null);
     }
-  };
-
-  const isStepValid = () => {
-    return validateStep(currentStep);
   };
 
   const renderStep1 = (opts?: { header?: boolean }) => (
@@ -1240,7 +1243,7 @@ export function BusinessProfileWizard({
 
           <Button
             onClick={handleNext}
-            disabled={isSaving || !isStepValid()}
+            disabled={isSaving || !isCurrentStepValid}
             className="flex items-center gap-2"
             aria-label={currentStep === totalSteps ? "Complete setup" : "Go to next step"}
           >

@@ -24,7 +24,8 @@
       "Bash(npx tsc:*)",
       "Bash(pnpm lint:*)",
       "Bash(git mv:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "WebFetch(domain:legacy.reactjs.org)"
     ],
     "deny": [],
     "ask": []

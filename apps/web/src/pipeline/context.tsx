@@ -3,6 +3,7 @@ import React, {
   useContext,
   useReducer,
   useCallback,
+  useMemo,
 } from "react";
 import type { PipelineState, PipelineStage, LeadSourceType } from "./types";
 import type { Lead, EmailGenerationResult } from "@/lib/api-client";
@@ -191,20 +192,36 @@ export function PipelineProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.currentStage, canProgressToStage, setStage]);
 
-  const value: PipelineContextType = {
-    state,
-    setStage,
-    setSource,
-    setSearchId,
-    setLeads,
-    setEnrichedLeads,
-    setEmails,
-    setProcessing,
-    markStageComplete,
-    resetPipeline,
-    canProgressToStage,
-    progressToNextStage,
-  };
+  const value: PipelineContextType = useMemo(
+    () => ({
+      state,
+      setStage,
+      setSource,
+      setSearchId,
+      setLeads,
+      setEnrichedLeads,
+      setEmails,
+      setProcessing,
+      markStageComplete,
+      resetPipeline,
+      canProgressToStage,
+      progressToNextStage,
+    }),
+    [
+      state,
+      setStage,
+      setSource,
+      setSearchId,
+      setLeads,
+      setEnrichedLeads,
+      setEmails,
+      setProcessing,
+      markStageComplete,
+      resetPipeline,
+      canProgressToStage,
+      progressToNextStage,
+    ]
+  );
 
   return (
     <PipelineContext.Provider value={value}>

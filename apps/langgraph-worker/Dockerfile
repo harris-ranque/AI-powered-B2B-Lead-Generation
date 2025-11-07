@@ -48,7 +48,7 @@ RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir \
     fastapi==0.109.0 \
     uvicorn[standard]==0.24.0 \
-    gunicorn==21.2.0 \
+    gunicorn==23.0.0 \
     pydantic==2.7.0 \
     pydantic-settings==2.9.1 \
     python-dotenv==1.0.0 \
@@ -90,6 +90,10 @@ RUN echo "🧪 Running Python tests before deployment..." && \
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash langgraph
 RUN chown -R langgraph:langgraph /app
+
+# Ensure Python bin directory is in PATH for non-root user
+ENV PATH="/usr/local/bin:${PATH}"
+
 USER langgraph
 
 # Set default PORT environment variable
