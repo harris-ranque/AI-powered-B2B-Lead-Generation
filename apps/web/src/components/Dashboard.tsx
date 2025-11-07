@@ -1,3 +1,24 @@
+/**
+ * ⚠️ WARNING: THIS COMPONENT IS CURRENTLY UNUSED ⚠️
+ *
+ * This Dashboard component is imported in LeadEternityDashboard.tsx but NEVER RENDERED.
+ *
+ * Active tabs that ARE rendered:
+ * - "overview" → DashboardOverview.tsx
+ * - "pipeline" → PipelineOrchestrator.tsx
+ * - "search-history" → LeadSearchHistory.tsx
+ * - "performance" → PerformanceWorkspace.tsx
+ * - "profile" → BusinessProfileWizard.tsx
+ * - "settings" → Settings.tsx
+ * - "admin" → AdminDashboard.tsx
+ *
+ * The "dashboard" and "credits" tab names exist in typeValidation.ts
+ * but have no corresponding render logic in LeadEternityDashboard.tsx.
+ *
+ * TODO: Either wire this component up or remove it entirely.
+ * Last updated: 2025-01-07
+ */
+
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -47,7 +68,11 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 const dashboardLogger = createLogger("Dashboard");
 
-function DashboardComponent() {
+export interface DashboardProps {
+  onNavigate?: (tab: "pipeline" | "search-history" | "profile" | "settings") => void;
+}
+
+function DashboardComponent({ onNavigate }: DashboardProps) {
   // Real Convex hooks
   const {
     leadStats,
@@ -80,8 +105,7 @@ function DashboardComponent() {
     enrichmentsPercentage,
     exportsPercentage,
   } = useUsage();
-  const { canGenerateEmails, canUseBulkOperations, canPerformAction } =
-    useSubscriptionGuard();
+  const { canPerformAction } = useSubscriptionGuard();
 
   const combinedLeadStats = leadStats ?? userLeadStats;
   const totalLeads = combinedLeadStats?.totalLeads ?? 0;
@@ -886,6 +910,7 @@ function DashboardComponent() {
               <Button
                 className="bg-primary hover:bg-primary/90 text-primary-foreground"
                 disabled={!canPerformAction("search").allowed}
+                onClick={() => onNavigate?.("pipeline")}
               >
                 Start New Search
                 {!canPerformAction("search").allowed && (
@@ -895,28 +920,14 @@ function DashboardComponent() {
               <Button
                 variant="outline"
                 className="border-border"
-                disabled={!canGenerateEmails}
-              >
-                Create Email Template
-                {!canGenerateEmails && (
-                  <span className="ml-2 text-xs">(Upgrade needed)</span>
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                className="border-border"
                 disabled={!canPerformAction("export").allowed}
+                onClick={() => onNavigate?.("search-history")}
               >
                 Export Leads
                 {!canPerformAction("export").allowed && (
                   <span className="ml-2 text-xs">(Limit reached)</span>
                 )}
               </Button>
-              {canUseBulkOperations && (
-                <Button variant="outline" className="border-border">
-                  Bulk Operations
-                </Button>
-              )}
               {isStarter && (
                 <Button
                   variant="default"

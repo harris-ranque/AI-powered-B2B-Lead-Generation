@@ -966,8 +966,7 @@ http.route({
         "body_follow_up_1",
         "subject_follow_up_2",
         "body_follow_up_2",
-        "subject_follow_up_3",
-        "body_follow_up_3",
+        // Removed follow_up_3 - now limited to 2 follow-ups
       ];
 
       const csvRows = leads.map((lead) => {
@@ -988,7 +987,7 @@ http.route({
         const defaultFollowUp: FollowUpEmail = { subject: "", body: "" };
         const followUp1: FollowUpEmail = followUps[0] ?? defaultFollowUp;
         const followUp2: FollowUpEmail = followUps[1] ?? defaultFollowUp;
-        const followUp3: FollowUpEmail = followUps[2] ?? defaultFollowUp;
+        // Removed followUp3 - now limited to 2 follow-ups
 
         const contactDetails = extractContactDetails(lead);
         const companyProfile = extractCompanyProfile(lead);
@@ -1027,8 +1026,7 @@ http.route({
           followUp1.body,
           followUp2.subject,
           followUp2.body,
-          followUp3.subject,
-          followUp3.body,
+          // Removed followUp3 - now limited to 2 follow-ups
         ];
 
         return rowValues.map(escapeCsvValue).join(",");

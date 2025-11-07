@@ -25,7 +25,8 @@
       "Bash(pnpm lint:*)",
       "Bash(git mv:*)",
       "Bash(git restore:*)",
-      "WebFetch(domain:legacy.reactjs.org)"
+      "WebFetch(domain:legacy.reactjs.org)",
+      "Bash(npx convex deploy:*)"
     ],
     "deny": [],
     "ask": []

@@ -935,6 +935,7 @@ const BatchProgressUpdate = v.object({
   failureCount: v.number(),
   currentLead: v.optional(v.union(v.string(), v.null())),
   estimatedTimeRemaining: v.optional(v.union(v.number(), v.null())),
+  timestamp: v.optional(v.string()), // Worker sends ISO timestamp for batch progress
 });
 
 const BatchLeadResult = v.object({

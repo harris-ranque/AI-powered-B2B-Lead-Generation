@@ -24,6 +24,7 @@ logger = setup_logger(__name__)
 settings = get_settings()
 
 MIN_FOLLOW_UP_EMAILS = 2
+MAX_FOLLOW_UP_EMAILS = 2  # Limit to exactly 2 follow-ups
 
 class FollowUpEmailPlan(BaseModel):
     """Structured follow-up email draft returned by the LLM"""
@@ -147,23 +148,7 @@ def _generate_fallback_followups(
         )
     )
 
-    # Optionally add a third follow-up aligned to strategy if needed later
-    if follow_up_strategy:
-        strategy_body = (
-            f"Hi {contact_name},\n\n"
-            f"Following the {follow_up_strategy.lower()} we discussed, I captured a few quick wins your team "
-            f"could activate immediately. They focus on {pressing_pain_point_text.lower()} and leverage {primary_service_text.lower()}.\n\n"
-            f"Open to a brief sync to prioritize which one makes the most sense to pilot first?"
-        )
-        fallback_followups.append(
-            FollowUpEmailPlan(
-                subject=f"Quick wins for {pressing_pain_point_text}",
-                body=strategy_body,
-                objective="Deliver actionable next steps",
-                call_to_action=call_to_action,
-            )
-        )
-
+    # Only return exactly 2 follow-ups (removed optional third follow-up)
     return fallback_followups
 
 
@@ -386,7 +371,7 @@ FOLLOW-UPS (if requested):
 - Each follow-up must have unique angle
 - Different curiosity hook in each subject line
 - No hyphens in follow-up subject lines or bodies
-- Provide at least two distinct follow-up emails when a sequence is requested
+- Provide exactly TWO distinct follow-up emails when a sequence is requested (no more)
 - Vary the proof points and value angles
 - Never repeat content from previous emails
 
@@ -530,7 +515,7 @@ Call to Action: {cta}
 Include Case Study: {include_case_study}
 Personalization Level: {personalization_level}
 Follow-up Sequence: {follow_up_sequence}
-Follow-up Expectation: Always include at least two follow-up emails with unique angles and CTAs when follow_up_sequence is true
+Follow-up Expectation: Include exactly TWO follow-up emails with unique angles and CTAs when follow_up_sequence is true (no more, no less)
 
 CRITICAL DATA INTEGRITY REQUIREMENTS:
 
@@ -845,13 +830,6 @@ Email 2 (1 week after Email 1):
 - NO hyphens anywhere
 - MUST include closing + full signature
 
-Email 3 (2 weeks after Email 2, optional):
-- Soft breakup or final value offer
-- 80-120 words max (EXCLUDING signature)
-- Summary approach
-- Last chance, low-pressure CTA
-- NO hyphens anywhere
-- MUST include closing + full signature
 
 MANDATORY Requirements for ALL follow-ups:
 
@@ -1140,6 +1118,9 @@ Target score: ≥0.65 for approval.
 
             for plan in follow_up_plans:
                 _add_plan(plan)
+                # Stop if we've reached the maximum
+                if len(deduped_plans) >= MAX_FOLLOW_UP_EMAILS:
+                    break
 
             if len(deduped_plans) < MIN_FOLLOW_UP_EMAILS:
                 fallback_plans = _generate_fallback_followups(
@@ -1163,10 +1144,14 @@ Target score: ≥0.65 for approval.
 
                     _add_plan(fallback_plan)
 
+                    # Stop if we've reached minimum OR maximum
+                    if len(deduped_plans) >= MAX_FOLLOW_UP_EMAILS:
+                        break
                     if len(deduped_plans) >= MIN_FOLLOW_UP_EMAILS:
                         break
 
-            while len(deduped_plans) < MIN_FOLLOW_UP_EMAILS:
+            # Only add automatic follow-ups if we're still below minimum AND below maximum
+            while len(deduped_plans) < MIN_FOLLOW_UP_EMAILS and len(deduped_plans) < MAX_FOLLOW_UP_EMAILS:
                 index = len(deduped_plans) + 1
                 auto_subject = f"Follow-up {index}"
                 if auto_subject.lower() in seen_subjects:
@@ -1189,8 +1174,11 @@ Target score: ≥0.65 for approval.
                 deduped_plans.append(auto_plan)
 
             if deduped_plans:
+                # Enforce maximum follow-up limit
+                final_plans = deduped_plans[:MAX_FOLLOW_UP_EMAILS]
+
                 follow_up_emails: List[EmailContent] = []
-                for i, follow_up in enumerate(deduped_plans):
+                for i, follow_up in enumerate(final_plans):
                     subject = follow_up.subject or f"Follow-up {i + 1}"
                     body_parts = [follow_up.body.strip()]
                     if follow_up.call_to_action:
