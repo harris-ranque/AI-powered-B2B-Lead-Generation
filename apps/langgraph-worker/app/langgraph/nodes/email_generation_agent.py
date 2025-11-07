@@ -292,12 +292,12 @@ SUBJECT LINES (CRITICAL - HIGHEST PRIORITY):
 - Never use generic phrases: "touching base", "following up", "checking in", "quick question"
 
 Subject Line Patterns (Choose based on context):
-  1. Specific Discovery: "Hi {name}, spotted 3 pipeline gaps at {company}"
-  2. What If Scenario: "Hi {name}, what if {company} could cut churn by 30%?"
-  3. Competitive Intelligence: "Hi {name}, why {company}'s competitors switched from {tool}"
-  4. Hidden Insight: "Hi {name}: the overlooked fix for {company}'s {challenge}"
-  5. Contrarian/Pattern Interrupt: "Hi {name}, {company} + this = {outcome}"
-  6. Peer Proof: "Hi {name}, what companies like {company} are doing now"
+  1. Specific Discovery: "Hi [name], spotted 3 pipeline gaps at [company]"
+  2. What If Scenario: "Hi [name], what if [company] could cut churn by 30%?"
+  3. Competitive Intelligence: "Hi [name], why [company]'s competitors switched from [tool]"
+  4. Hidden Insight: "Hi [name]: the overlooked fix for [company]'s [challenge]"
+  5. Contrarian/Pattern Interrupt: "Hi [name], [company] + this = [outcome]"
+  6. Peer Proof: "Hi [name], what companies like [company] are doing now"
 
 Curiosity Triggers to Use:
   - Specific numbers/stats from research (3 quick wins, 40% faster, 15hrs/week saved)
@@ -400,7 +400,7 @@ Natural, Human Language:
 NO HYPHENS RULE (CRITICAL):
 - NEVER use hyphens anywhere in subject lines or email body
 - This is non-negotiable
-- Subject format: "Hi {Name}, [statement]" or "Hi {Name}: [statement]"
+- Subject format: "Hi [Name], [statement]" or "Hi [Name]: [statement]"
 - In body: use commas, periods, or separate sentences instead
 - Examples:
   GOOD: "The agent runs 24/7, finds leads matching your ICP, and verifies contact info"
@@ -429,7 +429,7 @@ Avoid Dated/Hype Language:
 - Never use "10x" language (sounds like 2022 hype)
 - Avoid Grant Cardone style exaggeration
 - Use realistic, credible multipliers (2x, 3x, 5x with context)
-- Prefer: "What would it mean if {Company} could double revenue by increasing lead gen 5 fold?"
+- Prefer: "What would it mean if [Company] could double revenue by increasing lead gen 5 fold?"
 - Avoid: "10x your lead gen without hiring"
 
 Grammar and Sentence Structure:
