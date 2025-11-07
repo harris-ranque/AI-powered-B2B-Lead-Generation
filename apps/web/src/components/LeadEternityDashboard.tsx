@@ -66,6 +66,7 @@ function LeadEternityDashboardContent() {
   const completionAnnouncedRef = useRef(false);
   const isHandlingHashChangeRef = useRef(false);
   const [componentError, setComponentError] = useState<string | null>(null);
+  const { user } = useAuth();
 
   const handleComponentError = useCallback(
     (error: unknown, context: string, extra?: Record<string, unknown>) => {
@@ -107,7 +108,6 @@ function LeadEternityDashboardContent() {
   }, [user]);
 
   // Real backend integration
-  const { user } = useAuth();
   const {
     profile,
     isComplete: hasCompletedOnboarding,
@@ -430,7 +430,7 @@ function LeadEternityDashboardContent() {
         handleComponentError(error, "handle-complete-onboarding");
       }
     },
-    [handleComponentError, handleTabChange, toast],
+    [handleComponentError, handleTabChange, toast, user],
   );
 
   const handleOverviewNavigate = useCallback(
@@ -463,7 +463,7 @@ function LeadEternityDashboardContent() {
     } catch (error) {
       handleComponentError(error, "handle-skip-onboarding");
     }
-  }, [handleComponentError, handleTabChange, toast]);
+  }, [handleComponentError, handleTabChange, toast, user]);
 
   const handleUpgradePlan = (planId: string) => {
     // In real app, this would integrate with Stripe

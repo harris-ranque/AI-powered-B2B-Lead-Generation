@@ -83,10 +83,7 @@ interface ProviderKeyManagerProps {
 }
 
 export function ProviderKeyManager({ plan }: ProviderKeyManagerProps) {
-  if (plan !== "enterprise") {
-    return null;
-  }
-
+  // Always call ALL hooks at the top level - never conditionally
   const userApiKeys = useQuery(api.userApiKeys.queries.getUserApiKeys);
   const status = useQuery(api.userApiKeys.queries.getApiKeyStatus);
   const validateKey = useAction(api.apiKeys.validateKey);
@@ -150,6 +147,11 @@ export function ProviderKeyManager({ plan }: ProviderKeyManagerProps) {
     return states;
   }, [userApiKeys]);
 
+  // Check plan AFTER all hooks are defined
+  if (plan !== "enterprise") {
+    return null;
+  }
+
   const handleInputChange = (provider: ProviderId, value: string) => {
     setKeyInputs((prev) => ({
       ...prev,
@@ -190,13 +192,8 @@ export function ProviderKeyManager({ plan }: ProviderKeyManagerProps) {
     }
   };
 
-  const requiresOwnKeys = plan === "enterprise";
-
-  // Only show for enterprise users
-  if (!requiresOwnKeys) {
-    return null;
-  }
-
+  // Component already returns early if not enterprise plan (line 104-106)
+  // No need for additional check here
   return (
     <Card className="mt-8">
       <CardHeader>
