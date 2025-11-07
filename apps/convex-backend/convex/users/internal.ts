@@ -41,7 +41,7 @@ export const createUserInternal = internalMutation({
       return existingUser._id;
     }
 
-    // Create new user with default credits and settings
+    // Create new user with default settings (no free credits)
     const userId = await ctx.db.insert("users", {
       clerkId: args.clerkId,
       email: args.email,
@@ -49,7 +49,7 @@ export const createUserInternal = internalMutation({
       avatar: args.avatar,
       role: "user",
       plan: "free",
-      credits: 10, // Free tier starting credits
+      credits: 0, // No free credits - users must purchase
       isActive: true,
       preferences: {
         emailNotifications: true,
@@ -61,19 +61,37 @@ export const createUserInternal = internalMutation({
       updatedAt: Date.now(),
     });
 
+    // Create initial incomplete business profile
+    await ctx.db.insert("businessProfiles", {
+      userId,
+      companyName: "",
+      industry: "",
+      valueProposition: "",
+      services: [],
+      targetMarkets: [],
+      keyDifferentiators: [],
+      contactInfo: {
+        name: args.name,
+        email: args.email,
+      },
+      isComplete: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
     // Create welcome notification
     await ctx.db.insert("notifications", {
       userId,
       type: "system_alert",
       title: "Welcome to Genni!",
-      message: "You've received 10 free credits to get started. Start generating personalized emails today!",
-      data: { creditsGranted: 10 },
+      message: "Complete your business profile to unlock AI-powered lead generation. Purchase credits to start generating personalized outreach emails!",
+      data: {},
       read: false,
       sent: false,
       createdAt: Date.now(),
     });
 
-    console.log(`User created: ${userId} (${args.email})`);
+    console.log(`User created with profile: ${userId} (${args.email})`);
     return userId;
   },
 });
