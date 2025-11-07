@@ -512,10 +512,10 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         previous_feedback = state.get("previous_quality_feedback", [])
 
         # If this email needs improvement and hasn't hit retry limit, save feedback for retry
-        if approval_status == "Needs_Improvement" and quality_score >= 0.40:
+        if approval_status == "Needs_Improvement" and overall_score >= 0.40:
             feedback_entry = {
                 "attempt": retry_count + 1,
-                "quality_score": quality_score,
+                "quality_score": overall_score,
                 "issues": quality_assessment.quality_issues[:5],  # Top 5 issues
                 "suggestions": quality_assessment.improvement_suggestions[:5],  # Top 5 suggestions
                 "missing_elements": quality_assessment.missing_elements[:3],  # Top 3 missing
