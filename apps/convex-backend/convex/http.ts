@@ -947,7 +947,6 @@ http.route({
 
       const csvHeaders = [
         "id",
-        "request_id",
         "company_name",
         "country",
         "city",
@@ -1009,7 +1008,6 @@ http.route({
 
         const rowValues: unknown[] = [
           leadKey,
-          emailDetails?.requestId ?? "",
           lead.businessName ?? "",
           location.country ?? "",
           location.city ?? "",
