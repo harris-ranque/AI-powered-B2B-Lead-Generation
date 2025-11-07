@@ -966,9 +966,9 @@ Target score: ≥0.65 for approval.
             # Our company profile
             our_company=business_profile.company_name,
             our_contact_name=sender_name or business_profile.company_name,
-            our_contact_email=sender_email or "not provided",
-            our_contact_phone=sender_phone or "not provided",
-            our_contact_website=sender_website or sender_linkedin or "not provided",
+            our_contact_email=sender_email or "",
+            our_contact_phone=sender_phone or "",
+            our_contact_website=sender_website or sender_linkedin or "",
             our_value_prop=business_profile.value_proposition,
             our_services=", ".join(business_profile.services[:5]),
             our_differentiators=", ".join(business_profile.key_differentiators[:3]),
@@ -985,9 +985,9 @@ Target score: ≥0.65 for approval.
             **{
                 "Sender Name": sender_name or business_profile.company_name,
                 "Company Name": business_profile.company_name,
-                "Email": sender_email or "not provided",
-                "Phone": sender_phone or "not provided",
-                "Website/LinkedIn": sender_website or sender_linkedin or "not provided"
+                "Email": sender_email or "",
+                "Phone": sender_phone or "",
+                "Website/LinkedIn": sender_website or sender_linkedin or ""
             }
         ))
         
@@ -1030,32 +1030,9 @@ Target score: ≥0.65 for approval.
             for index, follow_up in enumerate(follow_up_plans):
                 subject = (follow_up.subject or "").strip() or f"Follow-up {index + 1}"
 
-                email_body_sections = [
-                    f"Hi {contact_name},",
-                    "",
-                    follow_up.body.strip() if follow_up.body else "",
-                ]
-
-                if follow_up.objective:
-                    email_body_sections.extend([
-                        "",
-                        f"Objective: {follow_up.objective.strip()}",
-                    ])
-
-                if follow_up.call_to_action:
-                    email_body_sections.extend([
-                        "",
-                        follow_up.call_to_action.strip(),
-                    ])
-                elif primary_value:
-                    email_body_sections.extend([
-                        "",
-                        f"Let's revisit how {primary_value} can help {company_name}.",
-                    ])
-
-                email_body = "\n".join(
-                    section for section in email_body_sections if section
-                )
+                # Follow-up body already contains greeting, body, and CTA from LLM
+                # Just use it directly and add signature
+                email_body = follow_up.body.strip() if follow_up.body else f"Hi {contact_name},\n\nFollowing up on our previous conversation."
                 email_body = append_signature(email_body)
 
                 estimated_effectiveness = max(
@@ -1180,10 +1157,10 @@ Target score: ≥0.65 for approval.
                 follow_up_emails: List[EmailContent] = []
                 for i, follow_up in enumerate(final_plans):
                     subject = follow_up.subject or f"Follow-up {i + 1}"
-                    body_parts = [follow_up.body.strip()]
-                    if follow_up.call_to_action:
-                        body_parts.append(follow_up.call_to_action.strip())
-                    body_text = "\n\n".join(part for part in body_parts if part)
+                    # Follow-up body already contains the CTA from LLM
+                    # Just use it directly and add signature
+                    body_text = follow_up.body.strip()
+                    body_text = append_signature(body_text)
 
                     follow_up_email = EmailContent(
                         subject=subject,
