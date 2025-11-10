@@ -819,11 +819,10 @@ class ResearchOrchestrator:
     def __init__(self, client_registry: Optional[ClientRegistry] = None):
         self.client_registry = client_registry or ClientRegistry.get_instance()
         self.data_validator = BaseDataValidator()
-        
+
         # Configuration thresholds - use environment variables
         from ..config import DEEP_RESEARCH_CONFIG
         self.deep_research_confidence_threshold = DEEP_RESEARCH_CONFIG['CONFIDENCE_THRESHOLD']
-        self.premium_lead_value_threshold = DEEP_RESEARCH_CONFIG['HIGH_VALUE_THRESHOLD']
         
     async def research_company(self,
                              company_name: str,
@@ -1135,13 +1134,10 @@ class ResearchOrchestrator:
         
         if tier1_result.data_points < 3:
             reasons.append(f"Sparse data ({tier1_result.data_points} points)")
-            
+
         if tier1_result.error:
             reasons.append("Basic research failed")
-            
-        if lead_value >= self.premium_lead_value_threshold:
-            reasons.append(f"High-value lead (${lead_value:,.0f})")
-            
+
         return "; ".join(reasons) if reasons else "Premium research requested"
     
     def _merge_research_results(self, base_result: ResearchResult, additional_result: ResearchResult) -> ResearchResult:
