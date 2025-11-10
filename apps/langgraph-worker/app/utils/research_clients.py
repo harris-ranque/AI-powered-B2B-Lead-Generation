@@ -200,7 +200,6 @@ class TavilyClient:
         quantifiable_metrics = []  # Numbers, percentages, results
         pain_points = []  # Business challenges with impact
         industry_benchmarks = []  # Typical improvements, peer data
-        technology_stack = []  # Tools, platforms, integrations
 
         # Add answer if available (high-quality summary from Tavily)
         if tavily_result.answer:
@@ -250,12 +249,6 @@ class TavilyClient:
                                 'similar companies', 'peers', 'companies like', 'best practice']
             if any(keyword in content_lower for keyword in benchmark_keywords):
                 industry_benchmarks.append(f"{title}: {content[:250]}")
-
-            # 6. TECHNOLOGY STACK: Extract tools, platforms, integrations
-            tech_keywords = ['uses', 'powered by', 'built with', 'integration', 'platform',
-                           'software', 'tool', 'saas', 'crm', 'erp', 'api']
-            if any(keyword in content_lower for keyword in tech_keywords):
-                technology_stack.append(f"{title}: {content[:200]}")
 
             # OPTIMIZATION: Use title for keyword filtering (Tavily best practice)
             # Titles often indicate relevance better than content body
@@ -320,29 +313,26 @@ class TavilyClient:
                     "follow_up_questions": tavily_result.follow_up_questions,
                     "total_results": tavily_result.total_results
                 },
-                # COMPREHENSIVE EMAIL-READY DATA: All Perplexity data points
+                # COMPREHENSIVE EMAIL-READY DATA: Matches Perplexity's 5 critical data points
                 "recent_news": recent_news[:5],  # Top 5 recent milestones for opening personalization
                 "competitor_mentions": competitor_mentions[:5],  # Top 5 competitor references for proof points
                 "quantifiable_metrics": quantifiable_metrics[:5],  # Top 5 metrics with numbers
                 "pain_points": pain_points[:5],  # Top 5 business challenges
                 "industry_benchmarks": industry_benchmarks[:5],  # Top 5 benchmark references
-                "technology_stack": technology_stack[:5],  # Top 5 tech mentions
-                # Data completeness tracking
+                # Data completeness tracking - aligned with 5 critical data points
                 "data_completeness": {
                     "has_recent_news": len(recent_news) > 0,
                     "has_competitors": len(competitor_mentions) > 0,
                     "has_metrics": len(quantifiable_metrics) > 0,
                     "has_pain_points": len(pain_points) > 0,
                     "has_benchmarks": len(industry_benchmarks) > 0,
-                    "has_tech_stack": len(technology_stack) > 0,
                     "completeness_score": sum([
                         len(recent_news) > 0,
                         len(competitor_mentions) > 0,
                         len(quantifiable_metrics) > 0,
                         len(pain_points) > 0,
                         len(industry_benchmarks) > 0,
-                        len(technology_stack) > 0
-                    ]) / 6.0  # 0.0 to 1.0 score
+                    ]) / 5.0  # 0.0 to 1.0 score (5 data points)
                 }
             }
         )
@@ -403,18 +393,20 @@ class PerplexityClient:
         if not self.api_key:
             logger.warning("Perplexity API key not configured")
     
-    async def comprehensive_research(self, 
+    async def comprehensive_research(self,
                                    company_name: str,
                                    domain: str = "",
+                                   location: str = "",
                                    previous_context: str = "") -> ResearchResult:
         """
         Generate comprehensive business research report using Perplexity.
-        
+
         Args:
             company_name: Name of the company to research
             domain: Company domain/website
+            location: Company physical location/address for context
             previous_context: Context from previous research tiers
-            
+
         Returns:
             ResearchResult with comprehensive business intelligence
         """
@@ -430,7 +422,7 @@ class PerplexityClient:
         
         try:
             # Construct comprehensive research query
-            query = self._build_comprehensive_query(company_name, domain, previous_context)
+            query = self._build_comprehensive_query(company_name, domain, location, previous_context)
             
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
                 payload = {
@@ -494,76 +486,179 @@ class PerplexityClient:
                 error=f"Perplexity error: {str(e)}"
             )
     
-    def _build_comprehensive_query(self, company_name: str, domain: str, context: str) -> str:
-        """Build comprehensive research query for Perplexity - EMAIL-OPTIMIZED FOR PERSONALIZATION"""
+    def _build_comprehensive_query(self, company_name: str, domain: str, location: str, context: str) -> str:
+        """Build comprehensive research query for Perplexity - FOCUSED ON 5 REQUIRED DATA POINTS"""
         query_parts = [
-            f"Provide email-ready business intelligence for {company_name}",
+            f"Provide comprehensive business intelligence for {company_name}",
         ]
 
         if domain:
             query_parts.append(f"(website: {domain})")
 
+        if location:
+            query_parts.append(f"(location: {location})")
+
         query_parts.extend([
-            "Include the following with SPECIFIC DETAILS and NUMBERS:",
             "",
-            "1. RECENT COMPANY MILESTONES (critical for email opening):",
-            "   - Funding rounds with amounts and dates (e.g., 'closed Series A $15M in March 2024')",
-            "   - Hiring activity with numbers (e.g., 'posted 5 SDR roles', 'hired new VP Sales')",
-            "   - Product launches or announcements with dates",
-            "   - Growth indicators with numbers (e.g., 'doubled customer base to 500+', 'expanded to 3 new markets')",
+            "Research and provide the following 5 CRITICAL DATA POINTS with SPECIFIC DETAILS:",
             "",
-            "2. COMPETITOR INTELLIGENCE (must include REAL company names):",
-            "   - List 3-5 SPECIFIC competitor names (not 'similar companies')",
-            "   - What tools/solutions competitors use (with specific product names)",
-            "   - Competitor case studies with quantifiable results (e.g., 'Salesforce reduced churn by 40%')",
-            "   - Competitor migrations or switches (e.g., 'Zendesk switched from X to Y')",
+            "1. ANNUAL REVENUE:",
+            "   - Current annual revenue or revenue range (e.g., '$5M-10M ARR', '$50M annual revenue')",
+            "   - Revenue growth rate if available (e.g., 'grew 200% YoY to $10M')",
+            "   - Revenue model (subscription, transaction, services, etc.)",
+            "   - If exact revenue not available, provide company size indicators and funding as proxy",
             "",
-            "3. QUANTIFIABLE PAIN POINTS WITH METRICS:",
-            "   - Time wasted per week/month (e.g., '25+ hours/week on manual prospecting')",
-            "   - Cost impacts with dollar amounts (e.g., '$50K/year in wasted resources')",
-            "   - Efficiency losses with percentages (e.g., 'SDRs spend only 20% of time selling')",
-            "   - Growth bottlenecks with numbers (e.g., 'can only handle 50 leads/week')",
+            "2. EMPLOYEE COUNT:",
+            "   - Current employee count or range (e.g., '50-100 employees', '250+ team members')",
+            "   - Recent hiring activity with numbers (e.g., 'hired 15 SDRs in Q1 2024', 'posted 20 open roles')",
+            "   - Key department sizes if available (e.g., '30-person sales team', '10 engineers')",
+            "   - Growth trajectory (e.g., 'doubled headcount from 50 to 100 in 2023')",
             "",
-            "4. INDUSTRY BENCHMARKS AND PROOF POINTS:",
-            "   - Typical improvement percentages for their challenges (e.g., 'companies in this space typically reduce X by 30-40%')",
-            "   - Time-to-value metrics (e.g., 'most companies see ROI in 60-90 days')",
-            "   - Peer comparison data (e.g., 'similar-sized companies process 3x more leads')",
-            "   - Success stories with specific numbers (e.g., 'Mixpanel achieved 80% SDR efficiency')",
+            "3. LEADERSHIP NAMES:",
+            "   - CEO/Founder name and background",
+            "   - C-level executives (CTO, CFO, COO, CMO, etc.) with names",
+            "   - VP-level leaders if C-suite not available",
+            "   - Recent leadership changes or appointments with dates",
+            "   - LinkedIn profiles or professional backgrounds when relevant",
             "",
-            "5. BUSINESS CONTEXT FOR PERSONALIZATION:",
-            "   - Business model and revenue streams",
-            "   - Target customers and market segments",
-            "   - Technology stack and tools in use (specific product names)",
-            "   - Current business challenges with impact assessment",
+            "4. RECENT COMPANY NEWS (≤6 MONTHS):",
+            "   - Funding announcements with amounts and dates (e.g., 'closed Series B $25M in March 2024')",
+            "   - Product launches or major feature releases with dates",
+            "   - Partnership announcements with partner names and dates",
+            "   - Acquisitions or market expansions with dates",
+            "   - Awards, recognition, or major milestones with dates",
+            "   - Press releases or news coverage from last 6 months",
             "",
-            "6. STRATEGIC OPPORTUNITIES:",
-            "   - Growth initiatives and expansion plans",
-            "   - Market trends affecting their business (with data)",
-            "   - Partnerships or integrations they might need",
+            "5. FUNDING/INVESTMENTS:",
+            "   - Total funding raised (e.g., '$50M total funding across 3 rounds')",
+            "   - Latest funding round details (Series A/B/C, amount, date, lead investors)",
+            "   - Key investors and venture capital firms",
+            "   - Valuation if publicly disclosed",
+            "   - Bootstrap status if not venture-backed",
+            "   - IPO status or acquisition history if applicable",
         ])
 
         if context:
-            query_parts.append(f"Additional context: {context[:300]}")
+            query_parts.append(f"Additional context from previous research: {context[:300]}")
 
         query_parts.extend([
             "",
-            "CRITICAL REQUIREMENTS FOR OUTPUT:",
-            "- Use REAL company names for competitors (never say 'a similar company' or 'companies like them')",
-            "- Include SPECIFIC NUMBERS and PERCENTAGES wherever possible",
-            "- Provide DATES for recent events (month/year minimum)",
-            "- Include QUANTIFIABLE RESULTS for any case studies mentioned",
-            "- Format proof points as: '[Company Name] + [Action] + [Specific Result with Number]'",
+            "CRITICAL REQUIREMENTS:",
+            "- Provide REAL NAMES for all people (CEO, executives, investors)",
+            "- Include SPECIFIC NUMBERS for revenue, employees, funding (never say 'approximately' without a range)",
+            "- Include DATES for all recent news (must be within 6 months - after {6 months ago date})",
+            "- Use REAL COMPANY NAMES for investors, partners, competitors",
+            "- If data point is not available, explicitly state 'Not publicly disclosed' rather than guessing",
             "- Cite sources for all claims",
             "",
-            "This intelligence will be used to craft highly personalized B2B emails, so prioritize:",
-            "1. Recent, dateable events for opening personalization",
-            "2. Real competitor names and their results for proof points",
-            "3. Specific numbers for subject line curiosity hooks",
-            "4. Quantifiable pain points for relevance"
+            "THESE 5 DATA POINTS ARE REQUIRED FOR EMAIL PERSONALIZATION:",
+            "- Annual revenue helps establish company stage and decision-making authority",
+            "- Employee count indicates organizational complexity and buying process",
+            "- Leadership names enable personalized outreach and research",
+            "- Recent news provides timely hooks for email opening lines",
+            "- Funding details show growth trajectory and available budget",
         ])
 
         return " ".join(query_parts)
-    
+
+    async def deep_research(self,
+                           company_name: str,
+                           domain: str = "",
+                           location: str = "",
+                           previous_context: str = "") -> ResearchResult:
+        """
+        Generate exhaustive research report using Perplexity Deep Research model.
+        Runs 30-60 seconds and searches hundreds of sources for comprehensive analysis.
+
+        Args:
+            company_name: Name of the company to research
+            domain: Company domain/website
+            location: Company physical location/address for context
+            previous_context: Context from previous research tiers
+
+        Returns:
+            ResearchResult with exhaustive business intelligence
+        """
+        start_time = time.time()
+
+        if not self.api_key:
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.PERPLEXITY,
+                confidence_score=0.0,
+                error="Perplexity API key not configured"
+            )
+
+        try:
+            # Construct deep research query using same query builder
+            query = self._build_comprehensive_query(company_name, domain, location, previous_context)
+
+            # Longer timeout for deep research (60 seconds vs 20 seconds)
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60.0)) as session:
+                payload = {
+                    # Use sonar-deep-research model for exhaustive analysis
+                    "model": "sonar-deep-research",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are an expert business intelligence analyst conducting exhaustive research. Analyze hundreds of sources and provide comprehensive insights with detailed citations for all 5 required data points: annual revenue, employee count, leadership names, recent news (≤6 months), and funding details."
+                        },
+                        {
+                            "role": "user",
+                            "content": query
+                        }
+                    ],
+                    "max_tokens": 8000,  # Higher for detailed reports
+                    "temperature": 0.2,  # Lower for more focused research
+                    "stream": False,
+                    "return_citations": True,
+                    "return_images": False,
+                    # Deep research specific parameters
+                    "reasoning_effort": "high",  # Use high reasoning effort for exhaustive analysis
+                }
+
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                }
+
+                async with session.post(
+                    f"{self.base_url}/chat/completions",
+                    json=payload,
+                    headers=headers
+                ) as response:
+
+                    if response.status != 200:
+                        error_text = await response.text()
+                        raise Exception(f"Perplexity Deep Research API error {response.status}: {error_text}")
+
+                    data = await response.json()
+                    response_time = time.time() - start_time
+
+                    result = self._process_perplexity_response(
+                        company_name, data, response_time
+                    )
+                    result.final_tier_used = "deep"
+                    return result
+
+        except asyncio.TimeoutError:
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.PERPLEXITY,
+                confidence_score=0.2,
+                response_time=time.time() - start_time,
+                error="Deep research timeout (60s)"
+            )
+        except Exception as e:
+            logger.error(f"Deep research error for {company_name}: {str(e)}")
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.PERPLEXITY,
+                confidence_score=0.2,
+                response_time=time.time() - start_time,
+                error=f"Deep research error: {str(e)}"
+            )
+
     def _process_perplexity_response(self, company_name: str, data: Dict[str, Any], response_time: float) -> ResearchResult:
         """Process Perplexity API response into standardized format"""
         choices = data.get("choices", [])
@@ -827,6 +922,7 @@ class ResearchOrchestrator:
     async def research_company(self,
                              company_name: str,
                              domain: str = "",
+                             location: str = "",
                              user_tier: str = "free",
                              lead_value: float = 0.0,
                              force_tier: Optional[ResearchTier] = None,
@@ -839,6 +935,7 @@ class ResearchOrchestrator:
         Args:
             company_name: Company to research
             domain: Company website domain
+            location: Company physical location/address for context
             user_tier: User subscription tier (free, pro, enterprise)
             lead_value: Estimated lead value for premium research decisions
             force_tier: Force specific research tier (for testing)
@@ -1004,6 +1101,7 @@ class ResearchOrchestrator:
         sonar_pro_result = await perplexity_client.comprehensive_research(
             company_name,
             domain,
+            location,
             tier1_result.company_overview,
         )
         sonar_pro_duration_ms = (time.time() - tier2_start) * 1000
@@ -1041,11 +1139,10 @@ class ResearchOrchestrator:
         )
 
         # Check if we need Deep Research based on Sonar Pro results
+        # Only escalates on: low confidence OR missing data points
         should_escalate, validation_reason = self.data_validator.should_trigger_deep_research(
             validation_result=sonar_validation_result,
-            user_tier=user_tier,
             confidence_score=tier2_result.confidence_score,
-            lead_value=lead_value,
         )
 
         if force_tier == ResearchTier.PERPLEXITY:
@@ -1082,11 +1179,11 @@ class ResearchOrchestrator:
             distinct_id=analytics_id,
         )
 
-        # TODO: Add deep_research method to PerplexityClient (using sonar-deep-research model)
-        # For now, use comprehensive_research but mark as deep tier
-        deep_research_result = await perplexity_client.comprehensive_research(
+        # Use deep_research method with sonar-deep-research model for exhaustive analysis
+        deep_research_result = await perplexity_client.deep_research(
             company_name,
             domain,
+            location,
             tier2_result.company_overview,
         )
         deep_research_duration_ms = (time.time() - tier3_start) * 1000

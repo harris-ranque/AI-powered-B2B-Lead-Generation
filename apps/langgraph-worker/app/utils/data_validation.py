@@ -220,9 +220,7 @@ class BaseDataValidator:
     
     def should_trigger_deep_research(self,
                                    validation_result: DataValidationResult,
-                                   user_tier: str = "free",
-                                   confidence_score: float = 1.0,
-                                   lead_value: float = 0.0) -> tuple[bool, str]:
+                                   confidence_score: float = 1.0) -> tuple[bool, str]:
         """
         Trigger deep research based ONLY on data quality after Sonar Pro.
 
@@ -235,9 +233,7 @@ class BaseDataValidator:
 
         Args:
             validation_result: Result from validate_research_result
-            user_tier: User subscription tier (unused, kept for compatibility)
             confidence_score: Research confidence score (adjusted by validation)
-            lead_value: Estimated lead value (unused, kept for compatibility)
 
         Returns:
             Tuple of (should_trigger, reason)
@@ -268,3 +264,97 @@ class BaseDataValidator:
 
         # Sonar Pro research was sufficient
         return False, "Sonar Pro research sufficient"
+
+    def validate_research_relevance(self,
+                                   result: "ResearchResult",
+                                   company_name: str,
+                                   industry: Optional[str] = None) -> tuple[float, List[str]]:
+        """
+        Validate if research is actually relevant to the target company.
+        Prevents garbage research results from being used in email generation.
+
+        Args:
+            result: ResearchResult to validate
+            company_name: Target company name
+            industry: Target company industry (optional)
+
+        Returns:
+            Tuple of (relevance_score, warning_messages)
+            - relevance_score: 0.0-1.0 (0.7+ is good, <0.5 is poor)
+            - warning_messages: List of relevance issues found
+        """
+        warnings = []
+        relevance_score = 1.0
+
+        # Extract all text content for analysis
+        content_text = self._extract_all_text(result).lower()
+        company_name_lower = company_name.lower()
+
+        # Remove common business suffixes for matching
+        company_core = re.sub(r'\s+(inc|llc|ltd|corp|corporation|company|co)\.?$', '', company_name_lower, flags=re.IGNORECASE)
+
+        # Check 1: Company name appears in research (most important)
+        company_mentions = content_text.count(company_core)
+        if company_mentions == 0:
+            relevance_score -= 0.4
+            warnings.append(f"Company name '{company_name}' not found in research content")
+        elif company_mentions < 3:
+            relevance_score -= 0.2
+            warnings.append(f"Company name only mentioned {company_mentions} times (low relevance)")
+
+        # Check 2: Detect obviously wrong content
+        wrong_content_indicators = [
+            (r'job losses in basic industries', 'Labor/employment article (not company-specific)'),
+            (r'full text of ["\']', 'Generic document dump (not research)'),
+            (r'massive job losses', 'Generic economic article (not relevant)'),
+            (r'part.?time and contractual employment', 'Generic employment article (not company research)'),
+            (r'this page intentionally left blank', 'Empty/placeholder content'),
+            (r'error|not found|404', 'Error page content'),
+            (r'cookie policy|privacy policy|terms of service', 'Website boilerplate (not research)'),
+        ]
+
+        for pattern, description in wrong_content_indicators:
+            if re.search(pattern, content_text, re.IGNORECASE):
+                relevance_score -= 0.3
+                warnings.append(f"Irrelevant content detected: {description}")
+                break  # Only penalize once for wrong content
+
+        # Check 3: Industry relevance (if provided)
+        if industry:
+            industry_lower = industry.lower()
+            # Remove generic words for better matching
+            industry_keywords = [word for word in industry_lower.split()
+                               if word not in ['services', 'company', 'inc', 'llc', 'and', 'the', 'of']]
+
+            industry_matches = sum(1 for keyword in industry_keywords if keyword in content_text)
+            if len(industry_keywords) > 0 and industry_matches == 0:
+                relevance_score -= 0.2
+                warnings.append(f"Industry '{industry}' not reflected in research content")
+
+        # Check 4: Minimum content quality
+        if len(content_text) < 100:
+            relevance_score -= 0.3
+            warnings.append(f"Research content too short ({len(content_text)} chars) - likely incomplete")
+
+        # Check 5: Has actual business information
+        business_indicators = [
+            'revenue', 'employee', 'founded', 'ceo', 'product', 'service',
+            'customer', 'client', 'market', 'industry', 'business', 'company'
+        ]
+        business_indicator_count = sum(1 for indicator in business_indicators if indicator in content_text)
+        if business_indicator_count < 3:
+            relevance_score -= 0.2
+            warnings.append(f"Limited business information ({business_indicator_count}/12 indicators)")
+
+        # Ensure score stays in valid range
+        relevance_score = max(0.0, min(1.0, relevance_score))
+
+        # Log relevance assessment
+        if relevance_score < 0.7:
+            logger.warning(f"Research relevance check for {company_name}: Score={relevance_score:.2f}, Warnings={len(warnings)}")
+            for warning in warnings:
+                logger.warning(f"  - {warning}")
+        else:
+            logger.info(f"Research relevance check for {company_name}: Score={relevance_score:.2f} (GOOD)")
+
+        return relevance_score, warnings

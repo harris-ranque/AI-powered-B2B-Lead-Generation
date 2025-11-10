@@ -157,24 +157,18 @@ export function DashboardOverview({
   const planMeta = formatPlan(planId);
   const greetingName = userName || businessName || "there";
 
+  const totalLeads = leadStats?.totalLeads ?? 0;
+  const targetedEmailsCount = totalLeads * 3;
+
   const stats = [
     {
       label: "Total leads",
-      value: (leadStats?.totalLeads ?? 0).toLocaleString(),
+      value: totalLeads.toLocaleString(),
       sublabel:
         leadStats?.thisWeek && leadStats.thisWeek > 0
           ? `+${leadStats.thisWeek} this week`
           : "No new leads this week",
       icon: Sparkles,
-    },
-    {
-      label: "Active searches",
-      value: activeSearchCount.toString(),
-      sublabel:
-        usageSummary.searchesThisMonth > 0
-          ? `${usageSummary.searchesThisMonth} this month`
-          : "Start your first search",
-      icon: Search,
     },
     {
       label: "Credits available",
@@ -186,9 +180,9 @@ export function DashboardOverview({
       icon: CreditCard,
     },
     {
-      label: "AI emails",
-      value: emailCount.toLocaleString(),
-      sublabel: emailCount > 0 ? `${emailCount} email${emailCount !== 1 ? 's' : ''} generated` : "No emails generated yet",
+      label: "Highly targeted emails created",
+      value: targetedEmailsCount > 0 ? targetedEmailsCount.toLocaleString() : "0",
+      sublabel: targetedEmailsCount > 0 ? `${targetedEmailsCount} personalized email${targetedEmailsCount !== 1 ? 's' : ''} ready` : "No emails generated yet",
       icon: Mail,
     },
   ];
@@ -209,18 +203,21 @@ export function DashboardOverview({
           </p>
         </div>
         <div className="flex items-center gap-3 self-start lg:self-auto">
-          <Badge variant={planMeta.badgeVariant} className="text-sm">
-            {planMeta.label} plan
+          <Badge
+            variant={planMeta.badgeVariant}
+            className="text-sm px-4 py-1.5 font-semibold bg-gradient-to-r from-primary/90 to-primary shadow-md border-primary/20"
+          >
+            {planMeta.label} Plan
           </Badge>
           <Button onClick={() => onNavigate("pipeline")} className="inline-flex items-center gap-2">
             <PlayCircle className="h-4 w-4" />
-            Launch lead pipeline
+            Launch Lead Pipeline
           </Button>
         </div>
       </header>
 
       <section>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {stats.map((stat) => {
             const Icon = stat.icon;
             return (

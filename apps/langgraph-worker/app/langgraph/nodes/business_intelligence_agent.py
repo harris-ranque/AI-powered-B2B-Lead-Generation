@@ -239,7 +239,10 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         domain = lead.website or ""
         if not domain and hasattr(lead, 'contact_info') and hasattr(lead.contact_info, 'website'):
             domain = lead.contact_info.website or ""
-        
+
+        # Extract location from lead
+        location = getattr(lead, 'location', '') or ""
+
         # Determine user tier and lead value
         user_tier = state.get("user_tier", "free")
         lead_value = float(getattr(lead, 'estimated_value', 0))
@@ -249,6 +252,7 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         research_result = await orchestrator.research_company(
             company_name=lead.company_name,
             domain=domain,
+            location=location,
             user_tier=user_tier,
             lead_value=lead_value,
             provider_keys=provider_key_map if using_user_keys else None,
@@ -265,7 +269,19 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         # Validate data completeness for tracking
         data_validator = BaseDataValidator()
         validation_result = data_validator.validate_research_result(research_result)
-        
+
+        # Validate research relevance to prevent garbage results
+        relevance_score, relevance_warnings = data_validator.validate_research_relevance(
+            research_result,
+            company_name=lead.company_name,
+            industry=getattr(lead, 'industry', None)
+        )
+
+        # Log relevance issues if score is low
+        if relevance_score < 0.7:
+            logger.warning(f"Research quality concern for {lead.company_name}: "
+                          f"Relevance={relevance_score:.2f}, Issues={len(relevance_warnings)}")
+
         # Calculate credit cost (base cost + deep research cost if used)
         from ...config import CREDIT_COSTS
         base_credit_cost = CREDIT_COSTS['AI_ANALYSIS']

@@ -76,6 +76,27 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(value, max));
 }
 
+/**
+ * Smart radius estimation for large searches
+ * Ensures adequate coverage area for requested result count
+ * @param maxResults - Requested number of leads
+ * @param userRadiusMiles - User's specified radius in miles
+ * @returns Recommended radius in miles
+ */
+function estimateOptimalRadius(maxResults: number, userRadiusMiles: number): number {
+  // For small searches, respect user's radius
+  if (maxResults <= 50) return userRadiusMiles;
+
+  // For medium searches, suggest minimum 15 miles
+  if (maxResults <= 150) return Math.max(userRadiusMiles, 15);
+
+  // For large searches, suggest minimum 25 miles
+  if (maxResults <= 300) return Math.max(userRadiusMiles, 25);
+
+  // For very large searches (500+), suggest minimum 35 miles
+  return Math.max(userRadiusMiles, 35);
+}
+
 function normalizeLongitude(lng: number) {
   if (lng > 180) {
     return ((lng + 180) % 360) - 180;
@@ -397,7 +418,6 @@ export const searchGoogleMaps: any = action({
         throw new Error("Google Places API key not configured");
       }
 
-      const requestedResults = search.parameters.maxResults;
       const deduplicationConfig = {
         enablePlaceNameDedup:
           search.parameters.deduplication?.enablePlaceNameDedup ??
@@ -659,9 +679,29 @@ export const searchGoogleMaps: any = action({
 
       // Build search query
       const params: any = search.parameters;
-      const query = params.keywords.join(" ");
       const location = params.location;
-      const radiusMiles = params.radius;
+      const requestedResults = search.parameters.maxResults;
+
+      // 🎯 SMART RADIUS: Estimate optimal radius based on request size
+      const userRadiusMiles = params.radius;
+      const optimalRadiusMiles = estimateOptimalRadius(requestedResults, userRadiusMiles);
+      const radiusMiles = optimalRadiusMiles;
+
+      // Log if we're suggesting a larger radius
+      if (optimalRadiusMiles > userRadiusMiles) {
+        logWithCorrelation(
+          "info",
+          discoveryCorrelation,
+          "📏 Increasing search radius for large request",
+          {
+            requestedResults,
+            userRadiusMiles,
+            optimalRadiusMiles,
+            reason: "Large searches need wider coverage area",
+          },
+        );
+      }
+
       const requestedRadiusMeters = Math.max(radiusMiles, 0) * METERS_PER_MILE;
       const radius = Math.round(
         Math.min(requestedRadiusMeters, MAX_PLACES_RADIUS_METERS),
@@ -678,6 +718,25 @@ export const searchGoogleMaps: any = action({
           },
         );
       }
+
+      // 🔍 BUILD QUERY: Add location context for better Google ranking
+      // For Text Search API, including location in query improves local result relevance
+      const keywords = params.keywords.join(" ");
+      const query = location
+        ? `${keywords} in ${location}`
+        : keywords;
+
+      logWithCorrelation(
+        "info",
+        discoveryCorrelation,
+        "🔍 Search Query Construction",
+        {
+          keywords,
+          location,
+          queryWithLocation: query,
+          radiusMiles,
+        },
+      );
 
       // Enhanced geocoding: Get both coordinates AND bounding box for tiling
       let lat: number, lng: number;
@@ -761,8 +820,16 @@ export const searchGoogleMaps: any = action({
         bounds = undefined;
       }
 
-      // 🎯 ADAPTIVE STRATEGY: Choose between simple pagination or spatial tiling
-      useTiling = params.maxResults > 60 && (!!bounds || (lat !== 0 && lng !== 0));
+      // 🎯 ADAPTIVE STRATEGY: Always use spatial tiling for location-based searches
+      // This ensures STRICT geographic filtering via Nearby Search API
+      // Text Search API only used as fallback when geocoding fails
+      useTiling = (!!bounds || (lat !== 0 && lng !== 0));
+
+      // 📊 SCALE MAX TILES: Increase capacity for large searches
+      // Google Places API returns max 60 results per query (20 per page × 3 pages)
+      // More tiles = more coverage for large result requirements
+      const maxTilesForSearch = requestedResults > 300 ? 400 : requestedResults > 150 ? 300 : 250;
+      const concurrencyForSearch = requestedResults > 300 ? 7 : 5;
 
       let places: Place[] = [];
       totalApiCalls = 0;
@@ -771,15 +838,18 @@ export const searchGoogleMaps: any = action({
         logWithCorrelation(
           "info",
           discoveryCorrelation,
-          "🗺️ Using SPATIAL TILING strategy (maxResults > 60)",
+          "🗺️ Using SPATIAL TILING strategy with STRICT geographic filtering",
           {
             maxResults: requestedResults,
             hasBounds: !!bounds,
             hasCenter: lat !== 0 && lng !== 0,
-            strategy: "tiled_search",
+            strategy: "tiled_search_nearby_api",
             fetchMultiplier: INITIAL_FETCH_MULTIPLIER,
+            maxTiles: maxTilesForSearch,
+            concurrency: concurrencyForSearch,
             estimatedTiles: Math.ceil(requestedResults / 50),
             estimatedApiCalls: Math.ceil(requestedResults / 50) * 3,
+            apiNote: "Using Nearby Search API for strict radius enforcement",
           },
         );
 
@@ -796,8 +866,8 @@ export const searchGoogleMaps: any = action({
           center: bounds ? undefined : { lat, lng },
           radiusMeters: bounds ? undefined : radius,
           maxResults: initialFetchCount,
-          maxTiles: 250,
-          concurrency: 5,
+          maxTiles: maxTilesForSearch,
+          concurrency: concurrencyForSearch,
           correlation: discoveryCorrelation,
           shouldCancel: async () => !(await ensureSearchActive()),
         });
@@ -827,17 +897,20 @@ export const searchGoogleMaps: any = action({
         );
       } else {
         logWithCorrelation(
-          "info",
+          "warn",
           discoveryCorrelation,
-          "📄 Using SIMPLE PAGINATION strategy (maxResults ≤ 60)",
+          "⚠️ FALLBACK: Using Text Search API (geocoding failed)",
           {
             maxResults: params.maxResults,
-            strategy: "simple_pagination",
+            strategy: "text_search_fallback",
             maxPages: 3,
+            reason: "No valid coordinates or bounds from geocoding",
+            note: "Location bias will be WEAK - results may include distant businesses",
           },
         );
 
-        // Use simple pagination for small result sets (≤60 results)
+        // FALLBACK: Use Text Search API when geocoding fails completely
+        // Note: This has WEAK location filtering - results may span large geographic areas
         let nextPageToken: string | undefined = undefined;
         const maxPages = 3;
         let currentPage = 0;
@@ -1014,6 +1087,10 @@ export const searchGoogleMaps: any = action({
               requestedResults,
             );
 
+            // 📊 SCALE EXPANSION RESOURCES: Increase for large searches
+            const expansionMaxTiles = requestedResults > 300 ? 200 : requestedResults > 150 ? 150 : 120;
+            const expansionConcurrency = requestedResults > 300 ? 6 : 4;
+
             const expansionResult = await searchPlacesWithTiling({
               apiKey: googleMapsApiKey,
               query,
@@ -1022,8 +1099,8 @@ export const searchGoogleMaps: any = action({
               bounds: segment,
               radiusMeters: nextRadiusMeters,
               maxResults: segmentFetchCount,
-              maxTiles: 120,
-              concurrency: 4,
+              maxTiles: expansionMaxTiles,
+              concurrency: expansionConcurrency,
               correlation: discoveryCorrelation,
               shouldCancel: async () => !(await ensureSearchActive()),
             });

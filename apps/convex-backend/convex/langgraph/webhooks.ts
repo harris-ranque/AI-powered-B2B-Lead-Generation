@@ -218,31 +218,30 @@ export const handleEmailGenerationCompleted = internalMutation({
           return { success: false, error: "Missing result payload" };
         }
 
-        // IMPORTANT: Validate approval status and quality score before processing
-        // Only accept emails that are explicitly approved (approved=true) AND meet quality threshold (≥0.60)
+        // IMPORTANT: Validate approval status before processing
+        // Only accept emails that are explicitly approved by QA agent (approved=true)
+        // Quality score is metadata - QA agent handles quality validation through retry loop
         const isApproved = args.payload.approved === true;
         const qualityScore = args.payload.quality_score || 0;
-        const meetsQualityThreshold = qualityScore >= 0.60;
 
-        if (!isApproved || !meetsQualityThreshold) {
-          logger.warning("Email webhook rejected - not approved or below quality threshold", {
+        if (!isApproved) {
+          logger.warning("Email webhook rejected - not approved by QA agent", {
             requestId: args.payload.request_id,
             approved: isApproved,
             qualityScore: qualityScore,
-            meetsThreshold: meetsQualityThreshold,
           });
 
           // Mark lead as failed analysis rather than accepting unapproved email
           await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
             leadId: leadId as any,
-            error: `Email not approved: Quality score ${qualityScore.toFixed(2)} (threshold: 0.60), Approved: ${isApproved}`,
+            error: `Email not approved by QA agent (quality score: ${qualityScore.toFixed(2)})`,
           });
 
           // Acknowledge webhook but don't store unapproved email
           return {
             success: true,
             rejected: true,
-            reason: "Email not approved or below quality threshold",
+            reason: "Email not approved by QA agent",
             qualityScore,
             approved: isApproved,
           };

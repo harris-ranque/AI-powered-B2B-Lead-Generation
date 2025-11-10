@@ -419,6 +419,24 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
                        f"CTA={quality_assessment.call_to_action_score:.2f}, "
                        f"Status={quality_assessment.approval_status}")
 
+            # Detailed penalty breakdown for debugging failures
+            if quality_assessment.overall_quality_score < 0.60:
+                logger.warning(f"QA Penalty Breakdown for {lead.company_name} (Score: {quality_assessment.overall_quality_score:.2f}):")
+                logger.warning(f"  Quality Issues Found ({len(quality_assessment.quality_issues)}):")
+                for idx, issue in enumerate(quality_assessment.quality_issues[:10], 1):  # Top 10 issues
+                    logger.warning(f"    {idx}. {issue}")
+                logger.warning(f"  Improvement Suggestions ({len(quality_assessment.improvement_suggestions)}):")
+                for idx, suggestion in enumerate(quality_assessment.improvement_suggestions[:5], 1):  # Top 5 suggestions
+                    logger.warning(f"    {idx}. {suggestion}")
+                logger.warning(f"  Missing Elements ({len(quality_assessment.missing_elements)}):")
+                for idx, missing in enumerate(quality_assessment.missing_elements[:5], 1):  # Top 5 missing
+                    logger.warning(f"    {idx}. {missing}")
+                logger.warning(f"  Quality Gates: Length={quality_assessment.length_appropriate}, "
+                              f"Subject={quality_assessment.subject_line_effective}, "
+                              f"Professional={quality_assessment.professional_standards}")
+                logger.warning(f"  Personalization Depth: {quality_assessment.personalization_depth}")
+                logger.warning(f"  Final Recommendation: {quality_assessment.final_recommendation}")
+
         except Exception as llm_error:
             logger.error(f"LLM quality assessment failed for {lead.company_name}: {str(llm_error)}")
             raise

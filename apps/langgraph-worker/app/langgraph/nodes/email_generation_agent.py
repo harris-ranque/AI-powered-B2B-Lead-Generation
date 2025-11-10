@@ -337,13 +337,37 @@ SUBJECT LINES (CRITICAL - HIGHEST PRIORITY):
 - Keep under 60 characters total including greeting
 - Never use generic phrases: "touching base", "following up", "checking in", "quick question"
 
-Subject Line Patterns (Choose based on context):
+Subject Line Patterns (Choose based on context and available research data):
   1. Specific Discovery: "Hi [name], spotted 3 pipeline gaps at [company]"
+     → Requires: 3+ identifiable opportunities from research
   2. What If Scenario: "Hi [name], what if [company] could cut churn by 30%?"
+     → Requires: Specific metrics or pain points from research
   3. Competitive Intelligence: "Hi [name], why [company]'s competitors switched from [tool]"
+     → Requires: Real competitor names from research (NEVER use without data)
   4. Hidden Insight: "Hi [name]: the overlooked fix for [company]'s [challenge]"
+     → Requires: Specific identified challenge from research
   5. Contrarian/Pattern Interrupt: "Hi [name], [company] + this = [outcome]"
+     → Requires: Specific data point from research
   6. Peer Proof: "Hi [name], what companies like [company] are doing now"
+     → Requires: Peer examples from research
+  7. Limited Data Approach (USE WHEN RESEARCH IS SPARSE):
+     → Use when: Missing competitor names, metrics, or recent news
+     → Focus: Confirmed data only (bootstrapped status, employee range, founder role, stage)
+
+     Pattern 7A - Company Insight:
+     "Hi [name], bootstrapped agencies like [company] miss this"
+     "Hi [name], [verified fact about company] + this = [outcome]"
+     Example: "Hi Ziad, bootstrapped agencies like yours miss this growth hack"
+
+     Pattern 7B - Stage/Size Focus:
+     "Hi [name], [company] at the [size/stage] inflection point"
+     "Hi [name], most [role] at [company size] hit this wall"
+     Example: "Hi Ziad, Cedarsphere at the 40-person inflection point"
+
+     Pattern 7C - Role/Industry Specific:
+     "Hi [name], founder-led [industry] face this [challenge]"
+     "Hi [name]: the [industry] scaling challenge no one talks about"
+     Example: "Hi Ziad, founder-led agencies face this ops challenge"
 
 Curiosity Triggers to Use:
   - Specific numbers/stats from research (3 quick wins, 40% faster, 15hrs/week saved)
@@ -393,6 +417,81 @@ PERSONALIZATION:
 - Show research without listing everything you know
 - Always use REAL data from business intelligence
 - Never fabricate or assume information not in research
+
+DATA INTEGRITY - CRITICAL CONSTRAINTS (HIGHEST PRIORITY):
+⚠️ ZERO FABRICATION TOLERANCE - ALL CLAIMS MUST BE VERIFIED ⚠️
+
+1. ONLY use data explicitly provided in the business intelligence section below
+2. Competitor References - CRITICAL ALIGNMENT WITH QA:
+   - ONLY use competitor names explicitly mentioned in business intelligence
+   - If NO competitor names in research → DO NOT reference competitors at all
+   - Instead: Focus on industry trends, general challenges, or the prospect's specific situation
+   - NEVER use vague references: "similar companies", "industry peers", "competitors in your space"
+   - QA will penalize vague competitor references with -0.2 score penalty
+3. If specific metrics/numbers not provided → use qualitative language: "several", "some", "multiple", "many"
+4. If funding details not in research → reference general "growth stage" or omit entirely
+5. If employee counts not in research → use "team", "organization" without numbers
+6. If specific pain points not researched → reference general industry challenges only
+7. Subject line curiosity hooks MUST reflect actual research findings, not assumptions
+
+Examples of CORRECT data usage when research is limited:
+- GOOD: "I noticed your team has been growing" (when no numbers available)
+- BAD: "I noticed you doubled from 50 to 100 employees" (fabricated numbers)
+- GOOD: "Most bootstrapped agencies at your stage hit scaling challenges" (when no competitor names)
+- BAD: "Acme Corp and Beta Inc switched from [tool]" (fabricated competitor names)
+- BAD: "Similar companies in your space are switching from [tool]" (vague competitor reference - QA penalty)
+- GOOD: "Many teams at your stage face [challenge]" (generic industry insight)
+- BAD: "Your Q3 numbers show 30% churn" (fabricated metric)
+
+HANDLING LIMITED RESEARCH DATA (CRITICAL FOR QA PASS RATE):
+
+When business intelligence is sparse (missing competitors, metrics, or recent news):
+
+1. Subject Line Strategy - Use Pattern #7 (Limited Data Approach):
+   - Focus on confirmed data: bootstrapped status, employee range, founder role, company stage
+   - Avoid patterns requiring competitors (#3), specific metrics (#2), or recent news (#1)
+   - See Pattern #7 in Subject Line Patterns section below for specific examples
+
+2. Email Body Strategy:
+   - Open with verified company fact (employee count, bootstrapped status, founder role)
+   - Address industry-level challenge relevant to their stage/size
+   - Use vague social proof: "a [location] [type] company", "teams at your stage"
+   - Keep proof point generic but relevant
+   - Example opening: "I noticed [Company] bootstrapped to 40+ employees..."
+
+3. Competitor Reference Strategy - NEVER FABRICATE:
+   - NO competitor names available → DO NOT reference competitors
+   - Focus on industry trends or stage-based challenges
+   - Examples:
+     ✅ "Most bootstrapped agencies at 40+ people hit this wall"
+     ✅ "We worked with a Waco service company to solve this"
+     ✅ "Founder-led teams at your stage face operations complexity"
+     ❌ "Companies like HubSpot and Salesforce switched from X" (fabricated)
+     ❌ "Similar agencies in your space are doing Y" (vague - QA penalty)
+     ❌ "Competitors like yours..." (vague - QA penalty)
+
+4. P.S. Strategy for Sparse Data:
+   - Keep numbers VAGUE unless exact data from research
+   - Use qualitative language: "several", "some", "multiple", "a number of"
+   - NEVER use specific placeholder numbers: 47, 87, 143, etc.
+   - Examples:
+     ✅ "I've worked with several [location]-based service companies..."
+     ✅ "Happy to share examples from bootstrapped agencies..."
+     ✅ "I have case studies from companies at your stage..."
+     ❌ "I found 47 agencies matching your profile..." (placeholder number)
+     ❌ "The system identified 143 prospects like yours..." (placeholder number)
+
+5. Metrics Strategy:
+   - NO specific numbers in research → Use qualitative language only
+   - Never fabricate ROI, time savings, or growth percentages
+   - Use conservative estimates based on industry norms
+   - Always prefer vague over specific when data is missing
+
+REMEMBER: QA agent will penalize fabricated data with -0.3 score deduction per violation:
+- Vague competitor references ("similar companies"): -0.2 penalty
+- Fabricated data (metrics, funding, competitors): -0.3 penalty
+- Placeholder numbers in P.S.: -0.1 penalty
+- Total penalties can cause automatic "Needs_Improvement" or "Rejected" status
 
 CALL TO ACTION:
 - One simple sentence
@@ -600,16 +699,20 @@ You have access to comprehensive business intelligence. USE IT EXCLUSIVELY.
    - If research doesn't contain the information, DON'T make it up
    - Never assume or fabricate prospect situations
 
-2. Competitor References:
+2. Competitor References - CRITICAL ALIGNMENT WITH QA:
    - Business intelligence includes: {competitor_context}
-   - When referencing competitors, use REAL names from this data
-   - Never say "a similar company" or use vague references
-   - Always use actual competitor names from the research
-   - If no competitor data available, use industry peer approach with real company names
-   - Example:
-     GOOD: "Salesforce customers switched to HubSpot" (if competitors show this)
-     BAD: "A similar CRM company made the switch"
-   - Using real competitor names builds credibility and shows research depth
+   - ONLY use competitor names explicitly mentioned in business intelligence
+   - If NO competitor names in research → DO NOT reference competitors at all
+   - NEVER use vague references: "similar companies", "industry peers", "competitors in your space"
+   - QA will penalize vague competitor references with -0.2 score penalty
+   - Instead: Focus on industry trends, stage-based challenges, or verified company facts
+   - Examples:
+     ✅ GOOD: "Salesforce customers switched to HubSpot" (if competitors explicitly listed in research)
+     ✅ GOOD: "Most bootstrapped agencies at your stage hit this wall" (industry trend, no competitor fabrication)
+     ✅ GOOD: "We worked with a [location] service company to solve this" (vague but not claiming competitor knowledge)
+     ❌ BAD: "A similar CRM company made the switch" (vague competitor reference - QA penalty)
+     ❌ BAD: "Companies like [prospect] are switching..." (fabricated competitor behavior)
+   - Using real competitor names builds credibility, but fabricating them destroys it
 
 3. Subject Line Accuracy:
    - Subject curiosity hooks must reflect ACTUAL research findings
@@ -791,10 +894,12 @@ Body Paragraph 1 (1-2 sentences):
 
 Body Paragraph 2 (1-2 sentences):
 - Quick proof point with specific results
-- Reference REAL competitors from business intelligence
+- Reference REAL competitors ONLY if they're in business intelligence
+- If NO competitor names available → use vague social proof: "a [location] [type] company", "teams at your stage"
 - Include concrete numbers from research or industry data
-- Example: "Mixpanel and Amplitude both solved this by automating lead generation. Amplitude saw their SDR team focus 80% of time on qualified conversations instead of list building."
-- NEVER say "a similar company", always use real competitor names
+- Example with competitors: "Mixpanel and Amplitude both solved this by automating lead generation. Amplitude saw their SDR team focus 80% of time on qualified conversations instead of list building."
+- Example without competitors: "We worked with a Waco service company to solve this. They reclaimed 15 hours per week without hiring."
+- NEVER fabricate competitor names or use "similar companies" as placeholder
 
 Body Paragraph 3 (1 sentence):
 - What you can offer them specifically
@@ -844,8 +949,9 @@ Be selective with business intelligence:
 Focus areas:
 - Most pressing pain point (pick ONE from research)
 - Most relevant value proposition (pick ONE from research)
-- Most compelling proof point (pick ONE, use real competitor names)
-- Strongest competitive or peer insight (if relevant, use real names)
+- Most compelling proof point (pick ONE, use ONLY real competitor names from research)
+- Strongest competitive or peer insight (ONLY if competitor names are in research)
+- If NO competitor data → use stage/size-based insights or vague social proof instead
 
 3. FOLLOW-UP SEQUENCE (if requested):
 
@@ -930,7 +1036,8 @@ CONTENT REQUIREMENTS:
 - NEVER use hyphens in any follow-up subject lines or bodies
 - Each must use DIFFERENT curiosity pattern from primary and other follow-ups
 - No repeated content or angles
-- Use different real competitor names in each follow-up when possible
+- Use different real competitor names in each follow-up ONLY if available in research
+- If NO competitor data → vary the industry/stage-based insights across follow-ups
 - Every follow-up should feel fresh and provide new value
 - Keep the same tight, punchy writing style
 - All information must come from business intelligence
@@ -953,7 +1060,8 @@ DO:
 - Be conversational and confident
 - Lead with outcomes, not features
 - Use proper grammar with pronouns and articles
-- Use real competitor names from research
+- Use ONLY real competitor names explicitly in business intelligence
+- If NO competitor names → focus on stage/size/industry insights
 - Base all claims on business intelligence data
 - Keep P.S. numbers vague unless exact data exists
 

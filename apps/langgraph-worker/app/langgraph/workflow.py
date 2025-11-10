@@ -85,7 +85,7 @@ def create_email_generation_workflow(
         approval_status = qa.get("approval_status", "Unknown")
         quality_score = qa.get("overall_quality_score", 0)
         retry_count = state.get("retry_count", 0)
-        max_retries = state.get("max_retries", 3)  # 3 total attempts (1 initial + 2 retries)
+        max_retries = state.get("max_retries", 2)  # 3 total attempts (1 initial + 2 retries)
 
         # If approved or error state, go to aggregator
         if approval_status == "Approved" or state.get("current_stage") == "error":
@@ -227,7 +227,7 @@ async def execute_email_generation(
         "final_result": {},
         # Quality retry tracking
         "retry_count": 0,
-        "max_retries": 3,  # Allow 3 total attempts (1 initial + 2 retries) for quality improvement
+        "max_retries": 2,  # Allow 3 total attempts (1 initial + 2 retries) for quality improvement
         "previous_quality_feedback": []
     }
 
@@ -355,7 +355,7 @@ async def execute_with_streaming(
         "final_result": {},
         # Quality retry tracking
         "retry_count": 0,
-        "max_retries": 3,  # Allow 3 total attempts (1 initial + 2 retries) for quality improvement
+        "max_retries": 2,  # Allow 3 total attempts (1 initial + 2 retries) for quality improvement
         "previous_quality_feedback": []
     }
 

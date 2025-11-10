@@ -110,6 +110,12 @@ export const exportLeads = query({
         fundingLatestRound: companyData?.funding_details?.latest_round || "",
         fundingSource: companyData?.funding_details?.source || "",
 
+        // Full research report fields (3 columns)
+        fullResearchReport: lead.aiAnalysis?.leadAnalysis?.research_metadata?.comprehensive_report ||
+                           lead.aiAnalysis?.leadAnalysis?.comprehensive_report || "",
+        perplexityCitations: JSON.stringify(lead.aiAnalysis?.leadAnalysis?.research_metadata?.citations || []),
+        researchConfidenceScore: lead.aiAnalysis?.leadAnalysis?.research_metadata?.confidence_score || "",
+
         // Timestamps
         createdAt: new Date(lead.createdAt || lead._creationTime).toISOString(),
         updatedAt: new Date(lead.updatedAt || lead._creationTime).toISOString(),
