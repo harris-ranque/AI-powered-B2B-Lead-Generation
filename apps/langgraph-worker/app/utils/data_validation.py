@@ -105,17 +105,25 @@ class BaseDataValidator:
             DataValidationResult with validation details
         """
         logger.info(f"Validating data completeness for research tier: {result.tier.value}")
-        
-        # Combine all text content for analysis
-        content_text = self._extract_all_text(result)
-        
-        # Check each required data point
+
+        # Check each required data point using structured fields first, then fallback to text analysis
         data_point_scores = {}
-        data_point_scores["annual_revenue"] = self._check_annual_revenue(content_text)
-        data_point_scores["employee_count"] = self._check_employee_count(content_text)
-        data_point_scores["leadership_names"] = self._check_leadership_names(content_text)
-        data_point_scores["recent_news"] = self._check_recent_news(content_text, result)
-        data_point_scores["funding_investments"] = self._check_funding_investments(content_text)
+
+        # Check structured fields first (preferred for Perplexity results)
+        data_point_scores["annual_revenue"] = bool(result.annual_revenue and result.annual_revenue != "")
+        data_point_scores["employee_count"] = bool(result.employee_count and result.employee_count != "")
+        data_point_scores["leadership_names"] = bool(result.leadership_names and len(result.leadership_names) > 0)
+        data_point_scores["recent_news"] = bool(result.recent_news and len(result.recent_news) > 0)
+        data_point_scores["funding_investments"] = bool(result.funding_investments and result.funding_investments != "")
+
+        # Fallback to text-based checking if structured fields are empty (for Tavily results)
+        if not any(data_point_scores.values()):
+            content_text = self._extract_all_text(result)
+            data_point_scores["annual_revenue"] = self._check_annual_revenue(content_text)
+            data_point_scores["employee_count"] = self._check_employee_count(content_text)
+            data_point_scores["leadership_names"] = self._check_leadership_names(content_text)
+            data_point_scores["recent_news"] = self._check_recent_news(content_text, result)
+            data_point_scores["funding_investments"] = self._check_funding_investments(content_text)
         
         # Calculate missing data points
         missing_data_points = [

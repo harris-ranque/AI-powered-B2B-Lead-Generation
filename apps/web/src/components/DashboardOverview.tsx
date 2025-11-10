@@ -82,8 +82,8 @@ const pipelineStageCopy: Record<PipelineStage, { title: string; helper: string }
     helper: "We’re gathering prospects that match your filters.",
   },
   enrichment: {
-    title: "Enriching lead details",
-    helper: "Enhancing leads with contact data and firmographics.",
+    title: "Finding contact details",
+    helper: "Discovering contact information for your leads.",
   },
   ai_analysis: {
     title: "Analyzing ideal matches",
@@ -254,7 +254,7 @@ export function DashboardOverview({
               {[
                 {
                   title: "Lead pipeline",
-                  description: "Set your criteria, enrich leads, and export in minutes.",
+                  description: "Set your criteria, find contacts, and export in minutes.",
                   icon: PlayCircle,
                   tab: "pipeline" as DashboardTabName,
                 },

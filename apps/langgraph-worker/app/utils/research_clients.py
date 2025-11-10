@@ -46,6 +46,13 @@ class ResearchResult(BaseModel):
     industry_insights: str = ""
     competitors: List[Dict[str, Any]] = Field(default_factory=list)
 
+    # 5 CRITICAL STRUCTURED DATA POINTS for email personalization
+    annual_revenue: str = ""  # e.g., "$5M-10M ARR", "$50M annual revenue", "Not publicly disclosed"
+    employee_count: str = ""  # e.g., "50-100 employees", "250+ team members", "Doubled from 50 to 100 in 2023"
+    leadership_names: List[str] = Field(default_factory=list)  # CEO, C-level executives with names
+    recent_news: List[str] = Field(default_factory=list)  # Recent milestones with dates (≤6 months)
+    funding_investments: str = ""  # Total funding, latest round details, key investors
+
     # Metadata
     raw_data: Dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
@@ -660,7 +667,7 @@ class PerplexityClient:
             )
 
     def _process_perplexity_response(self, company_name: str, data: Dict[str, Any], response_time: float) -> ResearchResult:
-        """Process Perplexity API response into standardized format"""
+        """Process Perplexity API response into standardized format with structured data extraction"""
         choices = data.get("choices", [])
         if not choices:
             return ResearchResult(
@@ -670,27 +677,150 @@ class PerplexityClient:
                 response_time=response_time,
                 error="No response content from Perplexity"
             )
-        
+
         content = choices[0].get("message", {}).get("content", "")
         citations = data.get("citations", [])
-        
+
+        # Extract structured data from content
+        structured_data = self._extract_structured_data(content, company_name)
+
         # Calculate confidence based on content quality and citations
         confidence = self._calculate_perplexity_confidence(content, citations)
-        
+
+        # Count actual extracted data points (not sentences)
+        actual_data_points = sum([
+            1 if structured_data.get("annual_revenue") else 0,
+            1 if structured_data.get("employee_count") else 0,
+            1 if structured_data.get("leadership_names") else 0,
+            1 if structured_data.get("recent_news") else 0,
+            1 if structured_data.get("funding_investments") else 0
+        ])
+
         return ResearchResult(
             query=company_name,
             tier=ResearchTier.PERPLEXITY,
             confidence_score=confidence,
-            data_points=len(content.split(".")) if content else 0,  # Rough data point count
+            data_points=actual_data_points,
             sources_analyzed=len(citations),
             response_time=response_time,
             company_overview=content,
+            # STRUCTURED DATA POINTS for email personalization
+            annual_revenue=structured_data.get("annual_revenue", ""),
+            employee_count=structured_data.get("employee_count", ""),
+            leadership_names=structured_data.get("leadership_names", []),
+            recent_news=structured_data.get("recent_news", []),
+            funding_investments=structured_data.get("funding_investments", ""),
             raw_data={
                 "comprehensive_report": content,
                 "citations": citations,
-                "word_count": len(content.split()) if content else 0
+                "word_count": len(content.split()) if content else 0,
+                "extracted_data": structured_data
             }
         )
+
+    def _extract_structured_data(self, content: str, company_name: str) -> Dict[str, Any]:
+        """Extract 5 critical data points from Perplexity response text"""
+        import re
+        from datetime import datetime, timedelta
+
+        extracted = {
+            "annual_revenue": "",
+            "employee_count": "",
+            "leadership_names": [],
+            "recent_news": [],
+            "funding_investments": ""
+        }
+
+        if not content:
+            return extracted
+
+        # Split content into sections for easier parsing
+        lines = content.split("\n")
+        content_lower = content.lower()
+
+        # Extract annual revenue
+        revenue_patterns = [
+            r"\$[\d,]+[mkb]?\s*(?:arr|annual revenue|revenue|in sales)",
+            r"revenue of \$[\d,]+[mkb]?",
+            r"generated \$[\d,]+[mkb]?",
+            r"\$[\d,.]+-\$?[\d,.]+[mkb]?\s*(?:arr|revenue)"
+        ]
+        for pattern in revenue_patterns:
+            match = re.search(pattern, content, re.IGNORECASE)
+            if match:
+                extracted["annual_revenue"] = match.group(0)
+                break
+
+        if not extracted["annual_revenue"] and "not publicly disclosed" in content_lower:
+            extracted["annual_revenue"] = "Not publicly disclosed"
+
+        # Extract employee count
+        employee_patterns = [
+            r"\d+[\+\-]?\s*(?:employees?|team members?|staff)",
+            r"(?:employs|team of|staff of)\s*\d+[\+\-]?",
+            r"\d+-\d+\s*(?:employees?|team members?)",
+            r"(?:doubled|grew).*?(?:from|to)\s*\d+.*?employees?"
+        ]
+        for pattern in employee_patterns:
+            match = re.search(pattern, content, re.IGNORECASE)
+            if match:
+                extracted["employee_count"] = match.group(0)
+                break
+
+        # Extract leadership names
+        leadership_patterns = [
+            r"CEO:?\s*([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
+            r"Founder:?\s*([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
+            r"(?:CTO|CFO|COO|CMO):?\s*([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
+            r"([A-Z][a-z]+\s+[A-Z][a-z]+),\s*(?:CEO|Founder|CTO|CFO|COO|CMO)"
+        ]
+        seen_names = set()
+        for pattern in leadership_patterns:
+            matches = re.findall(pattern, content)
+            for match in matches:
+                name = match if isinstance(match, str) else match[0]
+                if name and name not in seen_names:
+                    extracted["leadership_names"].append(name)
+                    seen_names.add(name)
+
+        # Extract recent news (look for dates and milestones)
+        # Focus on recent items within last 6 months
+        six_months_ago = datetime.now() - timedelta(days=180)
+        news_items = []
+
+        # Look for sentences with dates and business keywords
+        news_keywords = ["launched", "raised", "announced", "acquired", "partnership", "funding", "series", "round", "hired", "expanded"]
+        for line in lines:
+            line_lower = line.lower()
+            # Check if line contains news keywords and looks like recent news
+            if any(keyword in line_lower for keyword in news_keywords):
+                # Extract meaningful news items (at least 30 chars)
+                if len(line.strip()) > 30:
+                    news_items.append(line.strip())
+
+        extracted["recent_news"] = news_items[:5]  # Top 5 most recent
+
+        # Extract funding/investments
+        funding_patterns = [
+            r"\$[\d,]+[mkb]?\s*(?:Series [A-E]|seed|funding)",
+            r"raised \$[\d,]+[mkb]?",
+            r"total funding of \$[\d,]+[mkb]?",
+            r"\$[\d,]+[mkb]?\s*(?:valuation|investment)",
+            r"(?:led by|investors include).*?(?:[A-Z][a-z]+\s+Capital|[A-Z][a-z]+\s+Ventures)"
+        ]
+        funding_parts = []
+        for pattern in funding_patterns:
+            matches = re.findall(pattern, content, re.IGNORECASE)
+            for match in matches:
+                if match and match not in funding_parts:
+                    funding_parts.append(match)
+
+        extracted["funding_investments"] = "; ".join(funding_parts[:3]) if funding_parts else ""
+
+        if not extracted["funding_investments"] and ("bootstrap" in content_lower or "self-funded" in content_lower):
+            extracted["funding_investments"] = "Bootstrapped / Self-funded"
+
+        return extracted
     
     def _calculate_perplexity_confidence(self, content: str, citations: List[Dict]) -> float:
         """Calculate confidence score for Perplexity results"""
@@ -1019,69 +1149,26 @@ class ResearchOrchestrator:
             distinct_id=analytics_id,
         )
 
-        # Tier 1: Tavily baseline research
-        tavily_client = self.client_registry.get_tavily_client(
-            api_key=provider_keys.get("tavily") if using_user_keys else None,
-            require_user_key=using_user_keys,
-        )
-        tier1_start = time.time()
-        capture_event(
-            "research_tier_invoked",
-            {
-                "tier": ResearchTier.TAVILY.value,
-                "company_name": company_name,
-                "user_tier": user_tier,
-                "lead_value": lead_value,
-                "using_user_keys": using_user_keys,
-                "provider_keys_supplied": provider_key_labels,
-            },
-            distinct_id=analytics_id,
-        )
-        tier1_result = await tavily_client.search(company_name, domain)
-        tavily_duration_ms = (time.time() - tier1_start) * 1000
-        capture_event(
-            "research_tier_completed",
-            {
-                "tier": ResearchTier.TAVILY.value,
-                "company_name": company_name,
-                "success": tier1_result.error is None,
-                "error": tier1_result.error,
-                "confidence_score": tier1_result.confidence_score,
-                "data_points": tier1_result.data_points,
-                "sources_analyzed": tier1_result.sources_analyzed,
-                "duration_ms": tavily_duration_ms,
-            },
-            distinct_id=analytics_id,
-        )
-        tavily_error = tier1_result.error
-        tavily_confidence = tier1_result.confidence_score
-        tavily_data_points = tier1_result.data_points
-        tavily_sources = tier1_result.sources_analyzed
+        # Tier 1: SKIPPED - Going straight to Perplexity Sonar Pro
+        # Tavily is disabled to optimize for quality and cost-effectiveness
+        logger.info(f"Skipping Tavily tier 1, using Perplexity Sonar Pro directly for {company_name}")
 
-        # Validate Tavily result quality and adjust confidence accordingly
-        validation_result = self.data_validator.validate_research_result(tier1_result)
-        logger.info(
-            f"Data validation: {len(validation_result.data_point_scores) - len(validation_result.missing_data_points)}/5 data points present, score: {validation_result.validation_score:.2f}"
+        # Create empty tier1_result for backwards compatibility with analytics
+        tier1_result = ResearchResult(
+            query=company_name,
+            tier=ResearchTier.TAVILY,
+            confidence_score=0.0,
+            data_points=0,
+            sources_analyzed=0,
+            error="Skipped - using Perplexity Sonar Pro directly"
         )
+        tavily_duration_ms = 0.0
+        tavily_error = "Skipped"
+        tavily_confidence = 0.0
+        tavily_data_points = 0
+        tavily_sources = 0
 
-        base_confidence_value = tier1_result.confidence_score
-        adjusted_confidence = base_confidence_value * validation_result.validation_score
-        tier1_result.confidence_score = adjusted_confidence
-        tavily_confidence = adjusted_confidence
-        logger.info(
-            f"Confidence adjusted: base={base_confidence_value:.2f} → adjusted={adjusted_confidence:.2f} based on data validation"
-        )
-
-        if force_tier == ResearchTier.TAVILY:
-            tier1_result.final_tier_used = "basic"
-            _emit_summary(
-                tier1_result,
-                validation_score=validation_result.validation_score,
-                missing_data_points=validation_result.missing_data_points,
-            )
-            return tier1_result
-
-        # Tier 2: Sonar Pro (ALWAYS run for all leads)
+        # Tier 2: Sonar Pro (PRIMARY research tier - runs for ALL leads)
         logger.info(f"Running Sonar Pro research for {company_name}")
         perplexity_client = self.client_registry.get_perplexity_client(
             api_key=provider_keys.get("perplexity") if using_user_keys else None,
@@ -1102,7 +1189,7 @@ class ResearchOrchestrator:
             company_name,
             domain,
             location,
-            tier1_result.company_overview,
+            "",  # No previous context since we skipped Tavily
         )
         sonar_pro_duration_ms = (time.time() - tier2_start) * 1000
         sonar_pro_result.final_tier_used = "pro"  # Mark as Sonar Pro tier

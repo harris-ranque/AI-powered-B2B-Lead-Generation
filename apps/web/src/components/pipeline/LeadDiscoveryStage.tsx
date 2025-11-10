@@ -139,7 +139,6 @@ export function LeadDiscoveryStage({
   const [industry, setIndustry] = useState("");
   const [leadsCount, setLeadsCount] = useState([50]);
   const [radius, setRadius] = useState([DEFAULT_RADIUS_MILES]);
-  const [employeeRange, setEmployeeRange] = useState([10, 1000]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([
     ...DEFAULT_ROLE_SELECTION,
   ]);
@@ -241,7 +240,7 @@ export function LeadDiscoveryStage({
 
     if (exists) {
       if (selectedRoles.length <= 1) {
-        setRoleError("At least one role is required for enrichment.");
+        setRoleError("At least one role is required to find contacts.");
         return;
       }
 
@@ -281,8 +280,6 @@ export function LeadDiscoveryStage({
         industry,
         leadsCount: leadsCount[0],
         radius: radius[0],
-        minEmployees: employeeRange[0],
-        maxEmployees: employeeRange[1],
         includeEmails: true, // Always enabled
         aiAnalysis: true, // Always enabled
         roles: selectedRoles,
@@ -359,10 +356,6 @@ export function LeadDiscoveryStage({
             radius: radius[0],
             keywords: [formattedIndustry],
             roles: rolesForSearch,
-            filters: {
-              minEmployees: employeeRange[0],
-              maxEmployees: employeeRange[1],
-            },
             deduplication: {
               enablePlaceNameDedup: filterPlaceNames,
               enableEmailDedup: filterEmails,
@@ -611,24 +604,6 @@ export function LeadDiscoveryStage({
                     <span>
                       {MAX_RADIUS_MILES} miles
                     </span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>
-                    Employee Count: {employeeRange[0]} - {employeeRange[1]}
-                  </Label>
-                  <Slider
-                    value={employeeRange}
-                    onValueChange={setEmployeeRange}
-                    max={10000}
-                    min={1}
-                    step={10}
-                    className="transition-neo"
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>1</span>
-                    <span>10,000+</span>
                   </div>
                 </div>
               </div>
@@ -931,7 +906,7 @@ export function LeadDiscoveryStage({
                     Ready to discover new leads?
                   </h4>
                   <p className="text-sm text-slate-300">
-                    Kick off this search and we&apos;ll start enriching leads immediately. Results will flow into your workspace as they are found.
+                    Kick off this search and we&apos;ll start finding contacts immediately. Results will flow into your workspace as they are found.
                   </p>
                 </div>
                 <button

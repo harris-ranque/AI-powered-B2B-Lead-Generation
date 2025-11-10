@@ -52,6 +52,10 @@ const EmailGenerationResult = v.object({
       additional_credits_used: v.optional(v.number()),
       missing_data_points: v.optional(v.array(v.string())),
       data_completeness_score: v.optional(v.number()),
+      // Research tier tracking from LangGraph
+      research_tier: v.optional(v.string()),
+      // Structured company data from research extraction
+      company_data: v.optional(v.any()),
       follow_up_sequence: v.optional(
         v.union(
           v.null(),
@@ -225,7 +229,7 @@ export const handleEmailGenerationCompleted = internalMutation({
         const qualityScore = args.payload.quality_score || 0;
 
         if (!isApproved) {
-          logger.warning("Email webhook rejected - not approved by QA agent", {
+          logger.warn("Email webhook rejected - not approved by QA agent", {
             requestId: args.payload.request_id,
             approved: isApproved,
             qualityScore: qualityScore,

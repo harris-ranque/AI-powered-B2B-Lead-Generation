@@ -104,10 +104,6 @@ interface Search {
     excludeTerms?: string[];
     minRating?: number;
     maxResults: number;
-    filters?: {
-      minEmployees?: number;
-      maxEmployees?: number;
-    };
   };
   status:
     | "pending"
@@ -1073,12 +1069,6 @@ export const searchParametersValidator = v.object({
   excludeTerms: v.optional(v.array(v.string())),
   minRating: v.optional(v.number()),
   maxResults: v.number(),
-  filters: v.optional(
-    v.object({
-      minEmployees: v.optional(v.number()),
-      maxEmployees: v.optional(v.number()),
-    }),
-  ),
 });
 
 export const enrichmentDataValidator = v.object({

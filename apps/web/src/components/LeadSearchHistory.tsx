@@ -271,7 +271,7 @@ export function LeadSearchHistory() {
                             {s.results?.totalFound ?? 0} leads found
                           </span>
                           <span>
-                            {enrichmentRate}% enriched • {analysisRate}%
+                            {enrichmentRate}% with contacts • {analysisRate}%
                             analyzed
                           </span>
                         </div>
@@ -428,22 +428,6 @@ export function LeadSearchHistory() {
                         </div>
                       )}
 
-                      {/* Employee Filter */}
-                      {(s.parameters?.filters?.minEmployees ||
-                        s.parameters?.filters?.maxEmployees) && (
-                        <div className="space-y-1">
-                          <div className="font-medium text-muted-foreground">
-                            Company Size
-                          </div>
-                          <div className="flex items-center gap-1.5 text-foreground">
-                            <Users className="h-3.5 w-3.5" />
-                            {s.parameters.filters.minEmployees || 0}-
-                            {s.parameters.filters.maxEmployees || "∞"}{" "}
-                            employees
-                          </div>
-                        </div>
-                      )}
-
                       {/* Deduplication Settings */}
                       {s.parameters?.deduplication && (
                         <div className="space-y-1 col-span-full">
@@ -484,7 +468,7 @@ export function LeadSearchHistory() {
                         </div>
                         <div className="space-y-1">
                           <div className="text-muted-foreground">
-                            Enrichment
+                            Contact Finding
                           </div>
                           <div className="text-lg font-medium">
                             {s.actualCosts.enrichment}
@@ -523,7 +507,7 @@ export function LeadSearchHistory() {
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
                       <div className="space-y-1">
                         <div className="text-muted-foreground">
-                          Enrichment Rate
+                          Contact Rate
                         </div>
                         <div className="flex items-baseline gap-2">
                           <div className="text-lg font-medium">

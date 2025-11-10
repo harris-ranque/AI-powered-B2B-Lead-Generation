@@ -63,12 +63,6 @@ export const createSearch = mutation({
       roles: v.optional(v.array(v.string())),
       minRating: v.optional(v.number()),
       maxResults: v.number(),
-      filters: v.optional(
-        v.object({
-          minEmployees: v.optional(v.number()),
-          maxEmployees: v.optional(v.number()),
-        }),
-      ),
       deduplication: v.optional(
         v.object({
           enablePlaceNameDedup: v.optional(v.boolean()),
@@ -238,12 +232,6 @@ export const createSearchCompleted = mutation({
       roles: v.optional(v.array(v.string())),
       minRating: v.optional(v.number()),
       maxResults: v.number(),
-      filters: v.optional(
-        v.object({
-          minEmployees: v.optional(v.number()),
-          maxEmployees: v.optional(v.number()),
-        }),
-      ),
       deduplication: v.optional(
         v.object({
           enablePlaceNameDedup: v.optional(v.boolean()),

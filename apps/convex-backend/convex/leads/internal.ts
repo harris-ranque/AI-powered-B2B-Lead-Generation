@@ -602,6 +602,10 @@ export const updateLeadAnalysis = internalMutation({
       leadAnalysis: v.any(),
       processingTime: v.number(),
       confidence: v.optional(v.number()),
+      // Research tier tracking from LangGraph
+      researchTier: v.optional(v.string()),
+      // Structured company data from research extraction
+      companyData: v.optional(v.any()),
       // Legacy fields for backward compatibility
       fitAssessment: v.optional(v.string()),
       recommendedApproach: v.optional(v.string()),

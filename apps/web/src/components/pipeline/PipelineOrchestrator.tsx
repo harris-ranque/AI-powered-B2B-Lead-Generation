@@ -67,7 +67,7 @@ export function PipelineOrchestrator({
   onOpenLeadHistory,
   onNavigateToSettings,
 }: PipelineOrchestratorProps) {
-  const { state, setStage, canProgressToStage, setLeads, setEnrichedLeads } =
+  const { state, setStage, canProgressToStage, setLeads, setEnrichedLeads, resetPipeline } =
     usePipeline();
   const [isPipelineCollapsed, setIsPipelineCollapsed] = useState(false);
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
@@ -421,7 +421,7 @@ export function PipelineOrchestrator({
                     </div>
                     <div className="flex flex-col items-center justify-center rounded-lg border-2 border-cyan-500/50 bg-cyan-500/10 p-3">
                       <div className="text-2xl font-bold text-cyan-100">{enrichedCount}</div>
-                      <div className="text-xs font-medium text-cyan-200/80">Enriched</div>
+                      <div className="text-xs font-medium text-cyan-200/80">Contacts Found</div>
                     </div>
                     <div className="flex flex-col items-center justify-center rounded-lg border-2 border-purple-500/50 bg-purple-500/10 p-3">
                       <div className="text-2xl font-bold text-purple-100">
@@ -441,7 +441,7 @@ export function PipelineOrchestrator({
               variant="outline"
               onClick={() => {
                 setShowCompletionDialog(false);
-                setStage("source_selection");
+                resetPipeline();
                 setIsPipelineCollapsed(false);
               }}
               className="border-2 border-orange-500/50 bg-orange-500/10 text-orange-100 hover:border-orange-500/70 hover:bg-orange-500/20"
