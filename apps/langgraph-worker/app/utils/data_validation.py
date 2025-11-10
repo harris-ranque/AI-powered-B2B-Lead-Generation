@@ -224,17 +224,20 @@ class BaseDataValidator:
                                    confidence_score: float = 1.0,
                                    lead_value: float = 0.0) -> tuple[bool, str]:
         """
-        TIGHTENED: Deep research is now a LAST RESORT.
-        Only triggers when MULTIPLE critical conditions are met simultaneously.
+        Trigger deep research based ONLY on data quality after Sonar Pro.
 
-        With optimized Tavily (advanced search, domain targeting, metadata extraction),
-        deep research should rarely be needed.
+        Deep research escalation triggers when EITHER:
+        - Missing 2+ of 5 required data points after Sonar Pro, OR
+        - Confidence score < 0.6 after Sonar Pro
+
+        With Sonar Pro providing comprehensive research, deep research should only
+        be needed for ~10-15% of leads with incomplete or low-confidence data.
 
         Args:
             validation_result: Result from validate_research_result
-            user_tier: User subscription tier
+            user_tier: User subscription tier (unused, kept for compatibility)
             confidence_score: Research confidence score (adjusted by validation)
-            lead_value: Estimated lead value
+            lead_value: Estimated lead value (unused, kept for compatibility)
 
         Returns:
             Tuple of (should_trigger, reason)
@@ -245,46 +248,23 @@ class BaseDataValidator:
         if not DEEP_RESEARCH_CONFIG['ENABLED']:
             return False, "Deep research is currently disabled"
 
-        # REMOVED: User tier restrictions - all users can access deep research when needed
-        # Previously checked MINIMUM_TIER config - now open to all tiers
-
-        # DISABLED: High-value lead automatic deep research (functionality preserved for future)
-        # Uncomment below to re-enable automatic deep research for high-value leads
-        # value_threshold = DEEP_RESEARCH_CONFIG['HIGH_VALUE_THRESHOLD']
-        # if lead_value >= value_threshold:
-        #     return True, f"High-value lead (${lead_value:,.0f}) - comprehensive research justified"
-
-        # PRIORITY: Multiple critical failures required (AND logic, not OR)
-        # Deep research only if BOTH data quality AND confidence are critically low
         min_missing = DEEP_RESEARCH_CONFIG['MIN_MISSING_DATA_POINTS']
         data_threshold = DEEP_RESEARCH_CONFIG['DATA_COMPLETENESS_THRESHOLD']
         confidence_threshold = DEEP_RESEARCH_CONFIG['CONFIDENCE_THRESHOLD']
 
-        is_data_critically_incomplete = (
-            len(validation_result.missing_data_points) >= min_missing  # Missing 4+ of 5 data points
-            and validation_result.validation_score < data_threshold     # Data quality <0.4
-        )
-
-        is_confidence_critically_low = confidence_score < confidence_threshold  # Confidence <0.3
-
-        # Trigger only if BOTH conditions are true
-        if is_data_critically_incomplete and is_confidence_critically_low:
+        # Check if missing 2+ data points after Sonar Pro
+        if len(validation_result.missing_data_points) >= min_missing:
             return True, (
-                f"Critical data failure: {len(validation_result.missing_data_points)}/5 missing, "
-                f"quality={validation_result.validation_score:.2f}, confidence={confidence_score:.2f}"
+                f"Missing {len(validation_result.missing_data_points)}/5 data points "
+                f"after Sonar Pro - comprehensive research needed"
             )
 
-        # If only one condition is met, explain why we're NOT escalating
-        if is_data_critically_incomplete:
-            return False, (
-                f"Data incomplete ({validation_result.validation_score:.2f}) but confidence acceptable ({confidence_score:.2f}) - "
-                f"Baseline research should be sufficient"
+        # Check if confidence is low after Sonar Pro
+        if confidence_score < confidence_threshold:
+            return True, (
+                f"Low confidence ({confidence_score:.2f}) after Sonar Pro - "
+                f"additional research depth needed"
             )
 
-        if is_confidence_critically_low:
-            return False, (
-                f"Confidence low ({confidence_score:.2f}) but data quality acceptable ({validation_result.validation_score:.2f}) - "
-                f"Baseline research should be sufficient"
-            )
-
-        return False, "Tavily research sufficient - deep research not needed"
+        # Sonar Pro research was sufficient
+        return False, "Sonar Pro research sufficient"

@@ -367,6 +367,10 @@ export const handleEmailGenerationCompleted = internalMutation({
             leadAnalysis: result.lead_analysis || {},
             processingTime: result.processing_time || 0,
             confidence: result.relevance_score || 0.5,
+            // Research tier tracking from LangGraph ("basic", "pro", or "deep")
+            researchTier: result.research_tier,
+            // Structured company data from research extraction
+            companyData: result.company_data,
           },
           emailContent: result.primary_email && result.primary_email !== null
             ? {

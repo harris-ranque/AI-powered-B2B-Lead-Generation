@@ -339,6 +339,53 @@ export default defineSchema({
         leadAnalysis: v.optional(v.any()), // Full analysis object from LangGraph
         processingTime: v.optional(v.number()),
         confidence: v.optional(v.number()),
+        // Research tier tracking ("basic" = Tavily, "pro" = Sonar Pro, "deep" = Deep Research)
+        researchTier: v.optional(v.string()),
+        // Structured company data extracted from research
+        companyData: v.optional(
+          v.object({
+            annual_revenue: v.optional(
+              v.object({
+                amount: v.string(),
+                year: v.string(),
+                source: v.string(),
+              })
+            ),
+            employee_count: v.optional(
+              v.object({
+                count: v.string(),
+                as_of: v.string(),
+                source: v.string(),
+              })
+            ),
+            leadership_names: v.optional(
+              v.array(
+                v.object({
+                  name: v.string(),
+                  title: v.string(),
+                  source: v.string(),
+                })
+              )
+            ),
+            recent_news: v.optional(
+              v.array(
+                v.object({
+                  event: v.string(),
+                  date: v.string(),
+                  source: v.string(),
+                })
+              )
+            ),
+            funding_details: v.optional(
+              v.object({
+                total_raised: v.string(),
+                latest_round: v.string(),
+                investors: v.array(v.string()),
+                source: v.string(),
+              })
+            ),
+          })
+        ),
         // Legacy fields for backward compatibility
         fitAssessment: v.optional(v.string()),
         recommendedApproach: v.optional(v.string()),

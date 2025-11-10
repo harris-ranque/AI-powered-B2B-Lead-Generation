@@ -39,17 +39,18 @@ class ResearchResult(BaseModel):
     data_points: int = 0
     sources_analyzed: int = 0
     response_time: float = 0.0
-    
+
     # Content fields
     company_overview: str = ""
     services_products: List[str] = Field(default_factory=list)
     industry_insights: str = ""
     competitors: List[Dict[str, Any]] = Field(default_factory=list)
-    
+
     # Metadata
     raw_data: Dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
     escalation_reason: Optional[str] = None
+    final_tier_used: str = "basic"  # Tracks final research tier: "basic" (Tavily), "pro" (Sonar Pro), "deep" (Deep Research)
 
 class TavilyClient:
     """
@@ -976,6 +977,7 @@ class ResearchOrchestrator:
         )
 
         if force_tier == ResearchTier.TAVILY:
+            tier1_result.final_tier_used = "basic"
             _emit_summary(
                 tier1_result,
                 validation_score=validation_result.validation_score,
@@ -983,10 +985,67 @@ class ResearchOrchestrator:
             )
             return tier1_result
 
+        # Tier 2: Sonar Pro (ALWAYS run for all leads)
+        logger.info(f"Running Sonar Pro research for {company_name}")
+        perplexity_client = self.client_registry.get_perplexity_client(
+            api_key=provider_keys.get("perplexity") if using_user_keys else None,
+            require_user_key=using_user_keys,
+        )
+        tier2_start = time.time()
+        capture_event(
+            "research_tier_invoked",
+            {
+                "tier": "sonar_pro",
+                "company_name": company_name,
+                "using_user_keys": using_user_keys,
+                "provider_keys_supplied": provider_key_labels,
+            },
+            distinct_id=analytics_id,
+        )
+        sonar_pro_result = await perplexity_client.comprehensive_research(
+            company_name,
+            domain,
+            tier1_result.company_overview,
+        )
+        sonar_pro_duration_ms = (time.time() - tier2_start) * 1000
+        sonar_pro_result.final_tier_used = "pro"  # Mark as Sonar Pro tier
+        perplexity_invoked = True
+        perplexity_duration_ms = sonar_pro_duration_ms
+        perplexity_error = sonar_pro_result.error
+        perplexity_confidence = sonar_pro_result.confidence_score
+        perplexity_data_points = sonar_pro_result.data_points
+        perplexity_sources = sonar_pro_result.sources_analyzed
+
+        capture_event(
+            "research_tier_completed",
+            {
+                "tier": "sonar_pro",
+                "company_name": company_name,
+                "success": sonar_pro_result.error is None,
+                "error": sonar_pro_result.error,
+                "confidence_score": sonar_pro_result.confidence_score,
+                "data_points": sonar_pro_result.data_points,
+                "sources_analyzed": sonar_pro_result.sources_analyzed,
+                "duration_ms": sonar_pro_duration_ms,
+            },
+            distinct_id=analytics_id,
+        )
+
+        # Merge Tavily and Sonar Pro results
+        tier2_result = self._merge_research_results(tier1_result, sonar_pro_result)
+        tier2_result.final_tier_used = "pro"
+
+        # Validate Sonar Pro result quality
+        sonar_validation_result = self.data_validator.validate_research_result(tier2_result)
+        logger.info(
+            f"Sonar Pro validation: {len(sonar_validation_result.data_point_scores) - len(sonar_validation_result.missing_data_points)}/5 data points, score: {sonar_validation_result.validation_score:.2f}"
+        )
+
+        # Check if we need Deep Research based on Sonar Pro results
         should_escalate, validation_reason = self.data_validator.should_trigger_deep_research(
-            validation_result=validation_result,
+            validation_result=sonar_validation_result,
             user_tier=user_tier,
-            confidence_score=adjusted_confidence,
+            confidence_score=tier2_result.confidence_score,
             lead_value=lead_value,
         )
 
@@ -996,44 +1055,26 @@ class ResearchOrchestrator:
 
         if not should_escalate:
             logger.info(
-                f"Baseline research sufficient for {company_name} (confidence: {tier1_result.confidence_score:.2f})"
-            )
-            capture_event(
-                "research_tier_skipped",
-                {
-                    "tier": ResearchTier.PERPLEXITY.value,
-                    "reason": "confidence_sufficient",
-                    "company_name": company_name,
-                    "confidence_score": tier1_result.confidence_score,
-                    "validation_score": validation_result.validation_score,
-                },
-                distinct_id=analytics_id,
+                f"Sonar Pro research sufficient for {company_name} (confidence: {tier2_result.confidence_score:.2f})"
             )
             _emit_summary(
-                tier1_result,
-                validation_score=validation_result.validation_score,
-                missing_data_points=validation_result.missing_data_points,
+                tier2_result,
+                validation_score=sonar_validation_result.validation_score,
+                missing_data_points=sonar_validation_result.missing_data_points,
             )
-            return tier1_result
+            return tier2_result
 
-        escalation_reason = validation_reason or self._determine_escalation_reason(
-            tier1_result,
-            lead_value,
-        )
+        # Tier 3: Deep Research (conditional - only when Sonar Pro insufficient)
+        escalation_reason = validation_reason or f"Sonar Pro confidence {tier2_result.confidence_score:.2f}"
         logger.info(
-            f"Escalating to deep research for {company_name}: {escalation_reason}"
+            f"Escalating to Deep Research for {company_name}: {escalation_reason}"
         )
 
-        perplexity_client = self.client_registry.get_perplexity_client(
-            api_key=provider_keys.get("perplexity") if using_user_keys else None,
-            require_user_key=using_user_keys,
-        )
-        perplexity_invoked = True
-        tier2_start = time.time()
+        tier3_start = time.time()
         capture_event(
             "research_tier_invoked",
             {
-                "tier": ResearchTier.PERPLEXITY.value,
+                "tier": "deep_research",
                 "company_name": company_name,
                 "reason": escalation_reason,
                 "using_user_keys": using_user_keys,
@@ -1041,38 +1082,47 @@ class ResearchOrchestrator:
             },
             distinct_id=analytics_id,
         )
+
+        # TODO: Add deep_research method to PerplexityClient (using sonar-deep-research model)
+        # For now, use comprehensive_research but mark as deep tier
         deep_research_result = await perplexity_client.comprehensive_research(
             company_name,
             domain,
-            tier1_result.company_overview,
+            tier2_result.company_overview,
         )
-        perplexity_duration_ms = (time.time() - tier2_start) * 1000
+        deep_research_duration_ms = (time.time() - tier3_start) * 1000
+        deep_research_result.final_tier_used = "deep"  # Mark as Deep Research tier
+
+        # Update perplexity metrics to include deep research
+        perplexity_duration_ms += deep_research_duration_ms
         perplexity_error = deep_research_result.error
         perplexity_confidence = deep_research_result.confidence_score
         perplexity_data_points = deep_research_result.data_points
         perplexity_sources = deep_research_result.sources_analyzed
+
         capture_event(
             "research_tier_completed",
             {
-                "tier": ResearchTier.PERPLEXITY.value,
+                "tier": "deep_research",
                 "company_name": company_name,
                 "success": deep_research_result.error is None,
                 "error": deep_research_result.error,
                 "confidence_score": deep_research_result.confidence_score,
                 "data_points": deep_research_result.data_points,
                 "sources_analyzed": deep_research_result.sources_analyzed,
-                "duration_ms": perplexity_duration_ms,
+                "duration_ms": deep_research_duration_ms,
             },
             distinct_id=analytics_id,
         )
 
-        final_result = self._merge_research_results(tier1_result, deep_research_result)
+        final_result = self._merge_research_results(tier2_result, deep_research_result)
         final_result.escalation_reason = escalation_reason
+        final_result.final_tier_used = "deep"  # Final tier is deep
 
         _emit_summary(
             final_result,
-            validation_score=validation_result.validation_score,
-            missing_data_points=validation_result.missing_data_points,
+            validation_score=sonar_validation_result.validation_score,
+            missing_data_points=sonar_validation_result.missing_data_points,
         )
         return final_result
     

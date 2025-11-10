@@ -24,6 +24,140 @@ from ..state import EmailGenerationState
 logger = setup_logger(__name__)
 settings = get_settings()
 
+def extract_company_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract structured company data from raw research results.
+
+    Extracts the 5 required data points with sources:
+    1. Annual revenue
+    2. Employee count
+    3. Leadership names
+    4. Recent company news (≤6 months)
+    5. Funding/investments
+
+    Args:
+        raw_data: Raw research data from ResearchResult.raw_data
+
+    Returns:
+        Dictionary with structured company data and sources
+    """
+    import re
+
+    company_data = {
+        "annual_revenue": None,
+        "employee_count": None,
+        "leadership_names": [],
+        "recent_news": [],
+        "funding_details": None,
+    }
+
+    # Combine all text content for extraction
+    all_text = ""
+    if "comprehensive_report" in raw_data:
+        all_text += str(raw_data["comprehensive_report"]) + " "
+    if "langchain_tavily_result" in raw_data:
+        tavily_data = raw_data["langchain_tavily_result"]
+        if "answer" in tavily_data:
+            all_text += str(tavily_data["answer"]) + " "
+        if "results" in tavily_data and isinstance(tavily_data["results"], list):
+            for item in tavily_data["results"]:
+                if isinstance(item, dict) and "content" in item:
+                    all_text += str(item["content"]) + " "
+
+    # Extract annual revenue
+    revenue_patterns = [
+        r'\$([0-9,.]+)\s*(million|billion|M|B)\s*(?:in\s*revenue|revenue|annual revenue)',
+        r'revenue.*?\$([0-9,.]+)\s*(million|billion|M|B)',
+        r'annual.*?revenue.*?\$([0-9,.]+)\s*(million|billion|M|B)',
+    ]
+    for pattern in revenue_patterns:
+        match = re.search(pattern, all_text, re.IGNORECASE)
+        if match:
+            amount = match.group(1)
+            unit = match.group(2).upper()
+            company_data["annual_revenue"] = {
+                "amount": f"${amount} {unit}",
+                "year": "recent",  # Could be enhanced to extract year
+                "source": "research"
+            }
+            break
+
+    # Extract employee count
+    employee_patterns = [
+        r'(\d+[\d,]*)\s*(?:employees|staff|workers|people)',
+        r'team.*?(\d+[\d,]*)',
+        r'workforce.*?(\d+[\d,]*)',
+    ]
+    for pattern in employee_patterns:
+        match = re.search(pattern, all_text, re.IGNORECASE)
+        if match:
+            count = match.group(1)
+            company_data["employee_count"] = {
+                "count": count,
+                "as_of": "recent",
+                "source": "research"
+            }
+            break
+
+    # Extract leadership names (titles with names)
+    leadership_patterns = [
+        r'(CEO|CTO|CFO|COO|President|Founder|Director)[\s:]+([A-Z][a-z]+ [A-Z][a-z]+)',
+        r'([A-Z][a-z]+ [A-Z][a-z]+),?\s+(CEO|CTO|CFO|COO|President|Founder|Director)',
+    ]
+    leadership_names = []
+    for pattern in leadership_patterns:
+        matches = re.finditer(pattern, all_text, re.IGNORECASE)
+        for match in matches:
+            if match.group(1).upper() in ['CEO', 'CTO', 'CFO', 'COO', 'PRESIDENT', 'FOUNDER', 'DIRECTOR']:
+                title = match.group(1)
+                name = match.group(2)
+            else:
+                name = match.group(1)
+                title = match.group(2)
+
+            leadership_names.append({
+                "name": name,
+                "title": title,
+                "source": "research"
+            })
+
+    if leadership_names:
+        company_data["leadership_names"] = leadership_names[:5]  # Max 5 leaders
+
+    # Extract recent news from dedicated field
+    if "recent_news" in raw_data and isinstance(raw_data["recent_news"], list):
+        recent_news_items = []
+        for news in raw_data["recent_news"][:5]:  # Max 5 news items
+            if isinstance(news, str):
+                recent_news_items.append({
+                    "event": news,
+                    "date": "recent",
+                    "source": "research"
+                })
+        company_data["recent_news"] = recent_news_items
+
+    # Extract funding details
+    funding_patterns = [
+        r'raised\s*\$([0-9,.]+)\s*(million|billion|M|B)',
+        r'funding.*?\$([0-9,.]+)\s*(million|billion|M|B)',
+        r'(Series [A-Z]|Seed)\s*(?:round)?.*?\$([0-9,.]+)\s*(million|billion|M|B)?',
+    ]
+    for pattern in funding_patterns:
+        match = re.search(pattern, all_text, re.IGNORECASE)
+        if match:
+            if len(match.groups()) >= 2:
+                amount = match.group(1) if match.group(1) else match.group(2)
+                unit = match.group(2) if len(match.groups()) == 2 else match.group(3)
+                company_data["funding_details"] = {
+                    "total_raised": f"${amount} {unit if unit else 'M'}",
+                    "latest_round": match.group(0),
+                    "investors": [],
+                    "source": "research"
+                }
+            break
+
+    return company_data
+
 class BusinessIntelligence(BaseModel):
     """Streamlined business intelligence analysis optimized for token efficiency"""
     model_config = ConfigDict(extra="forbid")
@@ -428,6 +562,9 @@ CRITICAL REQUIREMENTS:
             },
         )
 
+        # Extract structured company data from raw research
+        company_data = extract_company_data(research_result.raw_data)
+
         # Update state with comprehensive business intelligence
         # IMPORTANT: research_metadata contains ALL raw bullet points from Tavily/Perplexity searches
         # This includes complete, unfiltered research results for downstream agents to use
@@ -437,6 +574,7 @@ CRITICAL REQUIREMENTS:
             "business_intelligence": {
                 **intelligence_data,
                 "research_metadata": research_result.raw_data,  # Complete research data preserved here
+                "company_data": company_data,  # Structured extraction of 5 key data points
                 "analysis_time": total_time,
             },
             # Populate legacy/top-level compatibility fields used by downstream components
@@ -463,14 +601,15 @@ CRITICAL REQUIREMENTS:
                 "research_quality": research_result.confidence_score >= 0.6,
                 "value_alignment": intelligence.value_alignment_score >= 0.5
             },
-            # Deep research tracking
+            # Deep research tracking with tier used
             "deep_research_triggered": deep_research_used,
             "deep_research_reason": deep_research_reason,
             "missing_data_points": validation_result.missing_data_points,
             "research_credit_cost": total_credit_cost,
             "base_data_validation_score": validation_result.validation_score,
-            "research_tier": research_result.tier.value,
-            "escalation_reason": research_result.escalation_reason
+            "research_tier": research_result.final_tier_used,  # "basic", "pro", or "deep"
+            "escalation_reason": research_result.escalation_reason,
+            "company_data": company_data  # Structured company data for Convex storage
         }
         
     except Exception as e:

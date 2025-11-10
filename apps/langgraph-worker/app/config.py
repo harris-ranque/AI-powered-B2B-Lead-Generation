@@ -48,23 +48,19 @@ CREDIT_COSTS = {
 }
 
 # Deep Research Configuration
-# TIGHTENED: Deep research is now a LAST RESORT for only the most critical cases
+# Triggers ONLY when Sonar Pro fails to get sufficient data (data quality-based escalation)
 DEEP_RESEARCH_CONFIG = {
-    # TIGHTENED: Only trigger if confidence is critically low (was 0.5)
-    # With optimized Tavily, most searches should score 0.6-0.8
-    'CONFIDENCE_THRESHOLD': get_env_float('DEEP_RESEARCH_CONFIDENCE_THRESHOLD', 0.3),
+    # Trigger if confidence is low after Sonar Pro
+    # With Sonar Pro, we expect 0.7-0.9 confidence - trigger deep research if <0.6
+    'CONFIDENCE_THRESHOLD': get_env_float('DEEP_RESEARCH_CONFIDENCE_THRESHOLD', 0.6),
 
-    # TIGHTENED: Only trigger if data is severely incomplete (was 0.6)
-    # With advanced Tavily + Perplexity, should get 0.7+ data completeness
-    'DATA_COMPLETENESS_THRESHOLD': get_env_float('DEEP_RESEARCH_DATA_THRESHOLD', 0.4),
+    # Trigger if data is incomplete after Sonar Pro
+    # With Sonar Pro, we expect 0.8+ data completeness - trigger deep research if <0.7
+    'DATA_COMPLETENESS_THRESHOLD': get_env_float('DEEP_RESEARCH_DATA_THRESHOLD', 0.7),
 
-    # TIGHTENED: Must be missing 4+ data points (was 3)
-    # Only trigger when nearly all data is missing
-    'MIN_MISSING_DATA_POINTS': get_env_int('DEEP_RESEARCH_MIN_MISSING_POINTS', 4),
-
-    # DISABLED: High-value lead threshold (functionality preserved, not currently used)
-    # If re-enabled in data_validation.py, this threshold applies: $5k+ opportunities
-    'HIGH_VALUE_THRESHOLD': get_env_int('DEEP_RESEARCH_HIGH_VALUE_THRESHOLD', 5000),
+    # Trigger if missing 2+ of 5 data points after Sonar Pro
+    # With Sonar Pro, we expect 4-5/5 data points - trigger deep research if ≤2/5 missing
+    'MIN_MISSING_DATA_POINTS': get_env_int('DEEP_RESEARCH_MIN_MISSING_POINTS', 2),
 
     # Enable/disable deep research globally
     'ENABLED': get_env_bool('DEEP_RESEARCH_ENABLED', True),
