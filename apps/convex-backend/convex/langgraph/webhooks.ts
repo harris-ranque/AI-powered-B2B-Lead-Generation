@@ -393,7 +393,7 @@ export const handleEmailGenerationCompleted = internalMutation({
           leadId: leadId as any,
         });
 
-        // Track deep research usage for analytics (not for per-lead charging)
+        // Track deep research usage for per-lead credit charging
         const deepResearchUsed = Boolean(result.deep_research_used);
         const deepResearchProvider = deepResearchUsed ? "perplexity" : "tavily";
         const deepResearchReason = deepResearchUsed
@@ -408,24 +408,8 @@ export const handleEmailGenerationCompleted = internalMutation({
           deepResearchDataPoints: deepResearchUsed
             ? result.missing_data_points || []
             : [],
-          deepResearchCreditsCharged: 0, // Deprecated: Credits now charged per-search, not per-lead
+          deepResearchCreditsCharged: 0, // Credits charged at search completion, not per-lead
         });
-
-        // Update search research tier if using Perplexity deep research (tier 3)
-        // This enables per-search credit charging instead of per-lead
-        if (deepResearchUsed && search.researchTier !== "perplexity") {
-          logger.info("Upgrading search research tier to Perplexity", {
-            searchId: search._id,
-            leadId,
-            reason: deepResearchReason,
-          });
-
-          await ctx.db.patch(search._id, {
-            researchTier: "perplexity",
-            researchStage: "tier2_perplexity",
-            researchEscalationReason: deepResearchReason,
-          });
-        }
 
         // Create email sequence record if we have email content (idempotent by request_id per lead)
         if (result.primary_email && result.primary_email !== null) {
@@ -1391,7 +1375,19 @@ export const handleBatchCompleted = internalMutation({
       const processedLeads = completedLeads + failedLeads;
       const progressPercent = totalLeads > 0 ? (processedLeads / totalLeads) * 100 : 0;
 
-      // Broadcast batch completion
+      // Broadcast batch completion with clear success messaging
+      const successRate = totalLeads > 0 ? (completedLeads / totalLeads) * 100 : 0;
+      const isHighSuccess = successRate >= 95; // 95%+ success rate
+
+      let completionMessage: string;
+      if (failedLeads === 0) {
+        completionMessage = `Batch complete: All ${completedLeads} leads analyzed successfully`;
+      } else if (isHighSuccess) {
+        completionMessage = `Batch complete: ${completedLeads} analyzed successfully (${failedLeads} skipped, ${successRate.toFixed(1)}% success)`;
+      } else {
+        completionMessage = `Batch complete: ${completedLeads} analyzed, ${failedLeads} skipped (${processedLeads}/${totalLeads} total)`;
+      }
+
       await ctx.runMutation(
         internal.realtime.broadcaster.broadcastPipelineUpdate,
         {
@@ -1399,7 +1395,7 @@ export const handleBatchCompleted = internalMutation({
           searchId: searchIdTyped,
           stage: "analysis",
           progress: progressPercent,
-          message: `Batch complete: ${completedLeads} analyzed, ${failedLeads} failed (${processedLeads}/${totalLeads} total)`,
+          message: completionMessage,
           data: {
             batchId,
             stage: "batch_analysis_completed",
@@ -1407,6 +1403,7 @@ export const handleBatchCompleted = internalMutation({
             processedSuccessfully,
             processingErrors,
             totalProcessingTime,
+            successRate,
             progress: {
               discovered: allLeads.length,
               enriched: allLeads.filter(

@@ -746,7 +746,8 @@ export const searchGoogleMaps: any = action({
       );
 
       // Enhanced location resolution: Use Place Details API with place_id OR geocoding fallback
-      let lat: number, lng: number;
+      let lat: number | undefined;
+      let lng: number | undefined;
       let bounds: Bounds | undefined;
       const locationPlaceId = params.locationPlaceId;
 
@@ -1438,6 +1439,23 @@ export const searchGoogleMaps: any = action({
         },
       );
 
+      // Update results.totalFound immediately after discovery so frontend shows live count
+      await ctx.runMutation(internal.search.internal.updateSearchResults, {
+        searchId: args.searchId,
+        results: {
+          totalFound: deliveredLeads,
+          enrichedCount: 0, // Will be updated during enrichment phase
+          analyzedCount: 0, // Will be updated during analysis phase
+          avgRelevanceScore: 0, // Will be updated during analysis phase
+        },
+        progress: {
+          discovered: deliveredLeads,
+          enriched: 0,
+          analyzed: 0,
+          total: deliveredLeads,
+        },
+      });
+
       const performanceData = endPerformanceTracking(performanceTracker);
       
       logWithCorrelation(
@@ -1480,7 +1498,24 @@ export const searchGoogleMaps: any = action({
             reason: "zero_results",
           },
         );
-        
+
+        // Update results to show 0 leads found
+        await ctx.runMutation(internal.search.internal.updateSearchResults, {
+          searchId: args.searchId,
+          results: {
+            totalFound: 0,
+            enrichedCount: 0,
+            analyzedCount: 0,
+            avgRelevanceScore: 0,
+          },
+          progress: {
+            discovered: 0,
+            enriched: 0,
+            analyzed: 0,
+            total: 0,
+          },
+        });
+
         await ctx.runMutation(
           internal.search.internal.updateSearchStatusInternal,
           {
@@ -1623,20 +1658,26 @@ export const completeSearch: any = action({
       const analyzedCount =
         typeof results.analyzedCount === "number" ? results.analyzedCount : 0;
 
-      // Determine credit costs for this search execution using new per-search model
-      // Base cost: 1 credit per search (includes discovery, enrichment, and AI analysis)
-      // Additional cost: +1 credit if using Perplexity deep research (tier 3)
-      const baseCost = CREDIT_COSTS.SEARCH_BASE;
-      const deepResearchCost = search.researchTier === "perplexity"
-        ? CREDIT_COSTS.SEARCH_DEEP_RESEARCH
-        : 0;
+      // Get all leads to count tier 2 vs tier 3 usage
+      const allLeads = await ctx.runQuery(internal.leads.internal.getSearchLeadsInternal, {
+        searchId: args.searchId,
+      });
 
-      const totalCreditsUsed = baseCost + deepResearchCost;
+      // Count leads by research tier
+      const tier3Leads = allLeads.filter((lead: any) => lead.deepResearchUsed === true).length;
+      const tier2Leads = analyzedCount - tier3Leads; // All analyzed leads minus tier 3
 
-      // For backward compatibility and analytics, track breakdown
+      // Calculate per-lead pricing: 1 credit per tier 2 lead, 2 credits per tier 3 lead
+      const tier2Cost = tier2Leads * CREDIT_COSTS.AI_ANALYSIS_TIER2;
+      const tier3Cost = tier3Leads * CREDIT_COSTS.AI_ANALYSIS_TIER3;
+      const totalCreditsUsed = tier2Cost + tier3Cost;
+
+      // For analytics, track breakdown
       const creditBreakdown = {
-        base: baseCost,
-        deepResearch: deepResearchCost,
+        tier2Leads,
+        tier2Cost,
+        tier3Leads,
+        tier3Cost,
         total: totalCreditsUsed,
       } as const;
 
@@ -1654,12 +1695,14 @@ export const completeSearch: any = action({
       );
 
       if (creditsToCharge > 0 && !bypassCredits) {
-        const researchTierLabel = search.researchTier === "perplexity" ? " (Tier 3 - Deep Research)" : "";
+        const tierBreakdown = tier3Leads > 0
+          ? ` (${tier2Leads} tier 2 + ${tier3Leads} tier 3)`
+          : ` (${tier2Leads} tier 2)`;
         await ctx.runMutation(internal.credits.transactions.recordTransaction, {
           userId: search.userId,
           amount: creditsToCharge,
           operation: "usage",
-          description: `Search "${search.name}"${researchTierLabel} - ${totalCreditsUsed} credit${totalCreditsUsed > 1 ? 's' : ''}`,
+          description: `Search "${search.name}"${tierBreakdown} - ${totalCreditsUsed} credit${totalCreditsUsed > 1 ? 's' : ''}`,
           relatedEntityType: "search",
           relatedEntityId: args.searchId as unknown as string,
         });
@@ -1669,9 +1712,6 @@ export const completeSearch: any = action({
         );
 
         // Log the credit bypass for audit trail
-        const results = await ctx.runQuery(internal.search.internal.getSearchResults, {
-          searchId: args.searchId,
-        });
         await ctx.runMutation(internal.lib.auditLog.logCreditBypass, {
           userId: search.userId,
           operation: `Search "${search.name}" completed`,
@@ -1680,10 +1720,11 @@ export const completeSearch: any = action({
           relatedEntityType: "search",
           relatedEntityId: args.searchId as unknown as string,
           metadata: {
-            totalFound: results.totalFound,
-            enrichedCount: results.enrichedCount,
-            analyzedCount: results.analyzedCount,
-            researchTier: search.researchTier,
+            totalFound,
+            enrichedCount,
+            analyzedCount,
+            tier2Leads,
+            tier3Leads,
             creditBreakdown,
           },
         });

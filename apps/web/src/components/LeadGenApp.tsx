@@ -68,7 +68,7 @@ export function LeadGenApp() {
             <div className="flex-1 overflow-y-auto p-8">{renderPage()}</div>
 
             {/* Activity Panel */}
-            <div className="hidden xl:block w-80 border-l border-border overflow-y-auto p-6 bg-muted/5">
+            <div className="hidden xl:flex xl:flex-col w-80 border-l border-border p-6 bg-muted/5">
               <ActivityPanel />
             </div>
           </div>

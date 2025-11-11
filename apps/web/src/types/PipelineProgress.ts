@@ -252,11 +252,17 @@ export function gatherWarnings(
     warnings.push("The search was cancelled before completion.");
   }
 
-  const stageText = (search?.researchStage || latestBroadcast?.message || "")
-    .toString()
-    .toLowerCase();
-  if (FAILURE_HINTS.some((hint) => stageText.includes(hint))) {
-    warnings.push("Pipeline reported an error in the research stage.");
+  // Only show pipeline errors for searches that are NOT completed successfully
+  // Completed searches may have partial batch failures but overall succeeded
+  const isCompleted = search?.status === "completed";
+
+  if (!isCompleted) {
+    const stageText = (search?.researchStage || latestBroadcast?.message || "")
+      .toString()
+      .toLowerCase();
+    if (FAILURE_HINTS.some((hint) => stageText.includes(hint))) {
+      warnings.push("Pipeline reported an error in the research stage.");
+    }
   }
 
   if (
