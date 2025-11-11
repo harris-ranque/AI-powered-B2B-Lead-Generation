@@ -8,14 +8,24 @@ export type Search = Doc<"searches">;
 export type BusinessProfile = Doc<"businessProfiles">;
 export type EmailSequence = Doc<"emailSequences">;
 
-// Credit costs for different operations
+// Credit costs for different operations - Per-Search Model
 export const CREDIT_COSTS = {
-  LEAD_DISCOVERY: 1,
-  EMAIL_ENRICHMENT: 2,
-  AI_ANALYSIS: 3,
+  // Base search cost - 1 credit per search (includes all discovery, enrichment, and AI analysis)
+  SEARCH_BASE: 1,
+
+  // Deep research tier 3 - additional 1 credit when using Perplexity deep research
+  SEARCH_DEEP_RESEARCH: 1,
+
+  // Legacy costs for backward compatibility with email generation features
   EMAIL_GENERATION: 5,
-  BULK_ANALYSIS: 10,
-  DEEP_RESEARCH: 5, // Additional cost for Perplexity deep research
+  EMAIL_SEQUENCE: 10,
+
+  // Deprecated - kept for backward compatibility (not used in new credit model)
+  LEAD_DISCOVERY: 0, // Included in SEARCH_BASE
+  EMAIL_ENRICHMENT: 0, // Included in SEARCH_BASE
+  AI_ANALYSIS: 0, // Included in SEARCH_BASE
+  BULK_ANALYSIS: 0, // Deprecated
+  DEEP_RESEARCH: 1, // Alias for SEARCH_DEEP_RESEARCH
 } as const;
 
 // Plan limits
@@ -63,22 +73,36 @@ export function canPerformOperation(
   return hasCredits(user, cost);
 }
 
+/**
+ * Calculate search cost based on new per-search pricing model
+ * @param researchTier - Research tier used (1=basic, 2=standard, 3=deep research with Perplexity)
+ * @returns Total credit cost for the search
+ */
 export function calculateSearchCost(
+  researchTier: 1 | 2 | 3 = 2,
+): number {
+  // Base cost: 1 credit per search (includes discovery, enrichment, and standard AI analysis)
+  let cost = CREDIT_COSTS.SEARCH_BASE;
+
+  // Tier 3: Add 1 additional credit for Perplexity deep research
+  if (researchTier === 3) {
+    cost += CREDIT_COSTS.SEARCH_DEEP_RESEARCH;
+  }
+
+  return cost;
+}
+
+/**
+ * Legacy function for backward compatibility
+ * @deprecated Use calculateSearchCost(researchTier) instead
+ */
+export function calculateSearchCostLegacy(
   maxResults: number,
   includeEnrichment: boolean = true,
   includeAI: boolean = true,
 ): number {
-  let cost = maxResults * CREDIT_COSTS.LEAD_DISCOVERY;
-
-  if (includeEnrichment) {
-    cost += maxResults * CREDIT_COSTS.EMAIL_ENRICHMENT;
-  }
-
-  if (includeAI) {
-    cost += maxResults * CREDIT_COSTS.AI_ANALYSIS;
-  }
-
-  return cost;
+  // Always return base search cost in new model (per-search, not per-lead)
+  return CREDIT_COSTS.SEARCH_BASE;
 }
 
 export function formatPhoneNumber(phone: string): string {

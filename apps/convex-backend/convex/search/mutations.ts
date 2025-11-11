@@ -56,6 +56,7 @@ export const createSearch = mutation({
     name: v.string(),
     parameters: v.object({
       location: v.string(),
+      locationPlaceId: v.optional(v.string()),
       radius: v.number(),
       keywords: v.array(v.string()),
       industries: v.optional(v.array(v.string())),
@@ -216,6 +217,7 @@ export const createSearchCompleted = mutation({
     name: v.string(),
     parameters: v.object({
       location: v.string(),
+      locationPlaceId: v.optional(v.string()),
       radius: v.number(),
       keywords: v.array(v.string()),
       industries: v.optional(v.array(v.string())),

@@ -28,14 +28,17 @@ function getEnvBoolean(key: string, defaultValue: boolean): boolean {
   return value.toLowerCase() === 'true';
 }
 
-// Credit Cost Configuration
+// Credit Cost Configuration - Per-Search Model
 export const CREDIT_COSTS = {
-  SEARCH: getEnvNumber('CREDIT_COST_SEARCH', 1),
-  LEAD_ENRICHMENT: getEnvNumber('CREDIT_COST_LEAD_ENRICHMENT', 2),
+  // Base search cost - charged per search (includes discovery + enrichment + AI analysis)
+  SEARCH_BASE: getEnvNumber('CREDIT_COST_SEARCH_BASE', 1),
+
+  // Deep research tier 3 - additional 1 credit when using Perplexity deep research
+  SEARCH_DEEP_RESEARCH: getEnvNumber('CREDIT_COST_SEARCH_DEEP_RESEARCH', 1),
+
+  // Legacy costs for backward compatibility with email generation features
   EMAIL_GENERATION: getEnvNumber('CREDIT_COST_EMAIL_GENERATION', 3),
   EMAIL_SEQUENCE: getEnvNumber('CREDIT_COST_EMAIL_SEQUENCE', 5),
-  AI_ANALYSIS: getEnvNumber('CREDIT_COST_AI_ANALYSIS', 2),
-  DEEP_RESEARCH: getEnvNumber('CREDIT_COST_DEEP_RESEARCH', 5), // Additional cost for Perplexity deep research
 } as const;
 
 // Deep Research Configuration

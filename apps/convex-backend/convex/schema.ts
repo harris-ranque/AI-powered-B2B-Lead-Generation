@@ -95,6 +95,7 @@ export default defineSchema({
     name: v.string(),
     parameters: v.object({
       location: v.string(),
+      locationPlaceId: v.optional(v.string()), // Google Places place_id for accurate geocoding
       radius: v.number(),
       keywords: v.array(v.string()),
       industries: v.optional(v.array(v.string())),

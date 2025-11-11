@@ -393,6 +393,7 @@ export const handleEmailGenerationCompleted = internalMutation({
           leadId: leadId as any,
         });
 
+        // Track deep research usage for analytics (not for per-lead charging)
         const deepResearchUsed = Boolean(result.deep_research_used);
         const deepResearchProvider = deepResearchUsed ? "perplexity" : "tavily";
         const deepResearchReason = deepResearchUsed
@@ -407,38 +408,23 @@ export const handleEmailGenerationCompleted = internalMutation({
           deepResearchDataPoints: deepResearchUsed
             ? result.missing_data_points || []
             : [],
-          deepResearchCreditsCharged:
-            deepResearchUsed && result.additional_credits_used
-              ? result.additional_credits_used
-              : 0,
+          deepResearchCreditsCharged: 0, // Deprecated: Credits now charged per-search, not per-lead
         });
 
-        // Process deep research tracking and credit charges
-        if (deepResearchUsed && !isEnterpriseUser) {
-          logger.info("Processing deep research charge", {
+        // Update search research tier if using Perplexity deep research (tier 3)
+        // This enables per-search credit charging instead of per-lead
+        if (deepResearchUsed && search.researchTier !== "perplexity") {
+          logger.info("Upgrading search research tier to Perplexity", {
+            searchId: search._id,
             leadId,
             reason: deepResearchReason,
-            additionalCredits: result.additional_credits_used,
-            missingDataPoints: result.missing_data_points,
           });
 
-          // Charge additional credits for deep research
-          if (result.additional_credits_used && result.additional_credits_used > 0) {
-            await ctx.runMutation(internal.credits.transactions.recordTransaction, {
-              userId: search.userId,
-              amount: result.additional_credits_used,
-              operation: "usage",
-              description: `Deep Research - ${deepResearchReason || "Enhanced business intelligence"}`,
-              relatedEntityType: "lead",
-              relatedEntityId: leadId,
-            });
-
-            logger.info("Deep research credits charged", {
-              userId: search.userId,
-              credits: result.additional_credits_used,
-              leadId,
-            });
-          }
+          await ctx.db.patch(search._id, {
+            researchTier: "perplexity",
+            researchStage: "tier2_perplexity",
+            researchEscalationReason: deepResearchReason,
+          });
         }
 
         // Create email sequence record if we have email content (idempotent by request_id per lead)

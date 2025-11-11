@@ -745,86 +745,243 @@ export const searchGoogleMaps: any = action({
         },
       );
 
-      // Enhanced geocoding: Get both coordinates AND bounding box for tiling
+      // Enhanced location resolution: Use Place Details API with place_id OR geocoding fallback
       let lat: number, lng: number;
       let bounds: Bounds | undefined;
-      try {
-        const geocodeUrl = new URL(
-          "https://maps.googleapis.com/maps/api/geocode/json",
-        );
-        geocodeUrl.searchParams.set("address", location);
-        geocodeUrl.searchParams.set("key", googleMapsApiKey);
+      const locationPlaceId = params.locationPlaceId;
 
-        const geocodeResponse = await fetch(geocodeUrl.toString());
-        const geocodeData = (await geocodeResponse.json()) as {
-          status: string;
-          results?: Array<{
-            geometry: {
-              location: { lat: number; lng: number };
-              viewport?: {
-                northeast: { lat: number; lng: number };
-                southwest: { lat: number; lng: number };
+      // 🎯 STRATEGY 1: Use Place Details API with place_id (most accurate)
+      if (locationPlaceId) {
+        try {
+          const placeDetailsUrl = new URL(
+            "https://maps.googleapis.com/maps/api/place/details/json",
+          );
+          placeDetailsUrl.searchParams.set("place_id", locationPlaceId);
+          // Request only needed fields to minimize billing (per Google's best practices)
+          placeDetailsUrl.searchParams.set(
+            "fields",
+            "geometry,formatted_address,types,address_components",
+          );
+          placeDetailsUrl.searchParams.set("key", googleMapsApiKey);
+
+          const placeDetailsResponse = await fetch(placeDetailsUrl.toString());
+          const placeDetailsData = (await placeDetailsResponse.json()) as {
+            status: string;
+            result?: {
+              geometry: {
+                location: { lat: number; lng: number };
+                viewport: {
+                  northeast: { lat: number; lng: number };
+                  southwest: { lat: number; lng: number };
+                };
               };
-              bounds?: {
-                northeast: { lat: number; lng: number };
-                southwest: { lat: number; lng: number };
-              };
+              formatted_address: string;
+              types: string[];
+              address_components?: Array<{
+                long_name: string;
+                short_name: string;
+                types: string[];
+              }>;
             };
-          }>;
-        };
-
-        if (geocodeData.status !== "OK" || !geocodeData.results?.[0]) {
-          throw new Error(`Geocoding failed: ${geocodeData.status}`);
-        }
-
-        const result = geocodeData.results[0];
-        const coordinates = result.geometry.location;
-        lat = coordinates.lat;
-        lng = coordinates.lng;
-
-        // Extract bounds (prefer bounds, fallback to viewport)
-        const geoBounds = result.geometry.bounds || result.geometry.viewport;
-        if (geoBounds) {
-          bounds = {
-            ne: {
-              lat: geoBounds.northeast.lat,
-              lng: geoBounds.northeast.lng,
-            },
-            sw: {
-              lat: geoBounds.southwest.lat,
-              lng: geoBounds.southwest.lng,
-            },
           };
-        }
 
-        logWithCorrelation(
-          "info",
-          discoveryCorrelation,
-          "📍 Enhanced Geocoding Successful",
-          {
-            originalLocation: location,
-            geocodedCoordinates: { lat, lng },
-            hasBounds: !!bounds,
-            boundsArea: bounds
-              ? {
+          if (
+            placeDetailsData.status === "OK" &&
+            placeDetailsData.result?.geometry
+          ) {
+            const result = placeDetailsData.result;
+            lat = result.geometry.location.lat;
+            lng = result.geometry.location.lng;
+
+            // Place Details API always provides viewport bounds
+            bounds = {
+              ne: {
+                lat: result.geometry.viewport.northeast.lat,
+                lng: result.geometry.viewport.northeast.lng,
+              },
+              sw: {
+                lat: result.geometry.viewport.southwest.lat,
+                lng: result.geometry.viewport.southwest.lng,
+              },
+            };
+
+            // Validate location type to detect city vs county ambiguity
+            const isCity = result.types.includes("locality");
+            const isCounty = result.types.includes("administrative_area_level_2");
+            const locationType = isCity
+              ? "city"
+              : isCounty
+                ? "county"
+                : result.types[0] || "unknown";
+
+            logWithCorrelation(
+              "info",
+              discoveryCorrelation,
+              "✅ Place Details API Resolution Successful (using place_id)",
+              {
+                placeId: locationPlaceId,
+                formattedAddress: result.formatted_address,
+                locationType,
+                types: result.types,
+                coordinates: { lat, lng },
+                hasBounds: !!bounds,
+                isCity,
+                isCounty,
+                boundsArea: {
                   latSpan: bounds.ne.lat - bounds.sw.lat,
                   lngSpan: bounds.ne.lng - bounds.sw.lng,
-                }
-              : undefined,
-          },
-        );
-      } catch (geocodeError) {
-        logWithCorrelation(
-          "warn",
-          discoveryCorrelation,
-          "⚠️ Geocoding Failed - Using Text Search Fallback",
-          { originalLocation: location },
-          geocodeError as Error,
-        );
-        // Fallback: use text search without location bias
-        lat = 0;
-        lng = 0;
-        bounds = undefined;
+                },
+              },
+            );
+
+            // ⚠️ Warning: Detect if we got a county instead of a city
+            if (isCounty && !isCity) {
+              logWithCorrelation(
+                "warn",
+                discoveryCorrelation,
+                "⚠️ Location is a COUNTY, not a city - results may span large area",
+                {
+                  locationType: "county",
+                  formattedAddress: result.formatted_address,
+                  suggestion:
+                    "User may have intended a city. Consider UI hint for location selection.",
+                },
+              );
+            }
+          } else {
+            // Place Details API failed (expired place_id, etc.)
+            throw new Error(
+              `Place Details API failed: ${placeDetailsData.status}`,
+            );
+          }
+        } catch (placeDetailsError) {
+          logWithCorrelation(
+            "warn",
+            discoveryCorrelation,
+            "⚠️ Place Details API Failed - Falling back to Geocoding API",
+            {
+              placeId: locationPlaceId,
+              reason: (placeDetailsError as Error).message,
+            },
+            placeDetailsError as Error,
+          );
+          // Fall through to geocoding fallback below
+        }
+      }
+
+      // 🔄 STRATEGY 2: Geocoding API fallback (when place_id not available or failed)
+      if (!lat || !lng) {
+        try {
+          const geocodeUrl = new URL(
+            "https://maps.googleapis.com/maps/api/geocode/json",
+          );
+          geocodeUrl.searchParams.set("address", location);
+          geocodeUrl.searchParams.set("key", googleMapsApiKey);
+
+          const geocodeResponse = await fetch(geocodeUrl.toString());
+          const geocodeData = (await geocodeResponse.json()) as {
+            status: string;
+            results?: Array<{
+              geometry: {
+                location: { lat: number; lng: number };
+                viewport?: {
+                  northeast: { lat: number; lng: number };
+                  southwest: { lat: number; lng: number };
+                };
+                bounds?: {
+                  northeast: { lat: number; lng: number };
+                  southwest: { lat: number; lng: number };
+                };
+              };
+              formatted_address: string;
+              types: string[];
+            }>;
+          };
+
+          if (geocodeData.status !== "OK" || !geocodeData.results?.[0]) {
+            throw new Error(`Geocoding failed: ${geocodeData.status}`);
+          }
+
+          const result = geocodeData.results[0];
+          const coordinates = result.geometry.location;
+          lat = coordinates.lat;
+          lng = coordinates.lng;
+
+          // Extract bounds (prefer bounds, fallback to viewport)
+          const geoBounds = result.geometry.bounds || result.geometry.viewport;
+          if (geoBounds) {
+            bounds = {
+              ne: {
+                lat: geoBounds.northeast.lat,
+                lng: geoBounds.northeast.lng,
+              },
+              sw: {
+                lat: geoBounds.southwest.lat,
+                lng: geoBounds.southwest.lng,
+              },
+            };
+          }
+
+          // Validate location type for geocoding results too
+          const isCity = result.types.includes("locality");
+          const isCounty = result.types.includes("administrative_area_level_2");
+          const locationType = isCity
+            ? "city"
+            : isCounty
+              ? "county"
+              : result.types[0] || "unknown";
+
+          logWithCorrelation(
+            "info",
+            discoveryCorrelation,
+            "📍 Geocoding API Resolution Successful (string-based)",
+            {
+              originalLocation: location,
+              formattedAddress: result.formatted_address,
+              locationType,
+              types: result.types,
+              geocodedCoordinates: { lat, lng },
+              hasBounds: !!bounds,
+              isCity,
+              isCounty,
+              boundsArea: bounds
+                ? {
+                    latSpan: bounds.ne.lat - bounds.sw.lat,
+                    lngSpan: bounds.ne.lng - bounds.sw.lng,
+                  }
+                : undefined,
+            },
+          );
+
+          // ⚠️ Warning: Detect county ambiguity in geocoding results
+          if (isCounty && !isCity) {
+            logWithCorrelation(
+              "warn",
+              discoveryCorrelation,
+              "⚠️ Geocoding returned COUNTY instead of CITY - may cause geographic mismatch",
+              {
+                searchedFor: location,
+                geocodedTo: result.formatted_address,
+                locationType: "county",
+                types: result.types,
+                suggestion:
+                  "Results may be far from intended location. Consider using place_id from frontend.",
+              },
+            );
+          }
+        } catch (geocodeError) {
+          logWithCorrelation(
+            "warn",
+            discoveryCorrelation,
+            "⚠️ All Location Resolution Failed - Using Text Search Fallback",
+            { originalLocation: location },
+            geocodeError as Error,
+          );
+          // Fallback: use text search without location bias
+          lat = 0;
+          lng = 0;
+          bounds = undefined;
+        }
       }
 
       // 🎯 ADAPTIVE STRATEGY: Always use spatial tiling for location-based searches
@@ -1458,7 +1615,7 @@ export const completeSearch: any = action({
         },
       );
 
-      // Determine credit costs for this search execution
+      // Get search results for analytics and completion message
       const totalFound =
         typeof results.totalFound === "number" ? results.totalFound : 0;
       const enrichedCount =
@@ -1466,15 +1623,22 @@ export const completeSearch: any = action({
       const analyzedCount =
         typeof results.analyzedCount === "number" ? results.analyzedCount : 0;
 
+      // Determine credit costs for this search execution using new per-search model
+      // Base cost: 1 credit per search (includes discovery, enrichment, and AI analysis)
+      // Additional cost: +1 credit if using Perplexity deep research (tier 3)
+      const baseCost = CREDIT_COSTS.SEARCH_BASE;
+      const deepResearchCost = search.researchTier === "perplexity"
+        ? CREDIT_COSTS.SEARCH_DEEP_RESEARCH
+        : 0;
+
+      const totalCreditsUsed = baseCost + deepResearchCost;
+
+      // For backward compatibility and analytics, track breakdown
       const creditBreakdown = {
-        discovery: totalFound * CREDIT_COSTS.LEAD_DISCOVERY,
-        enrichment: enrichedCount * CREDIT_COSTS.EMAIL_ENRICHMENT,
-        analysis: analyzedCount * CREDIT_COSTS.AI_ANALYSIS,
+        base: baseCost,
+        deepResearch: deepResearchCost,
+        total: totalCreditsUsed,
       } as const;
-      const totalCreditsUsed =
-        creditBreakdown.discovery +
-        creditBreakdown.enrichment +
-        creditBreakdown.analysis;
 
       const previouslyRecordedCredits = search.creditsUsed || 0;
       const creditsToCharge = Math.max(
@@ -1490,11 +1654,12 @@ export const completeSearch: any = action({
       );
 
       if (creditsToCharge > 0 && !bypassCredits) {
+        const researchTierLabel = search.researchTier === "perplexity" ? " (Tier 3 - Deep Research)" : "";
         await ctx.runMutation(internal.credits.transactions.recordTransaction, {
           userId: search.userId,
           amount: creditsToCharge,
           operation: "usage",
-          description: `Lead generation search "${search.name}" completed`,
+          description: `Search "${search.name}"${researchTierLabel} - ${totalCreditsUsed} credit${totalCreditsUsed > 1 ? 's' : ''}`,
           relatedEntityType: "search",
           relatedEntityId: args.searchId as unknown as string,
         });
@@ -1504,17 +1669,21 @@ export const completeSearch: any = action({
         );
 
         // Log the credit bypass for audit trail
+        const results = await ctx.runQuery(internal.search.internal.getSearchResults, {
+          searchId: args.searchId,
+        });
         await ctx.runMutation(internal.lib.auditLog.logCreditBypass, {
           userId: search.userId,
-          operation: `Lead generation search "${search.name}" completed`,
+          operation: `Search "${search.name}" completed`,
           creditsSkipped: creditsToCharge,
           providers: [], // Will be populated with actual providers in future enhancement
           relatedEntityType: "search",
           relatedEntityId: args.searchId as unknown as string,
           metadata: {
-            totalFound,
-            enrichedCount,
-            analyzedCount,
+            totalFound: results.totalFound,
+            enrichedCount: results.enrichedCount,
+            analyzedCount: results.analyzedCount,
+            researchTier: search.researchTier,
             creditBreakdown,
           },
         });

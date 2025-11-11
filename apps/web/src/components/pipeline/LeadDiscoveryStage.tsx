@@ -136,6 +136,7 @@ export function LeadDiscoveryStage({
 
   // Google Maps form state
   const [location, setLocation] = useState("");
+  const [locationPlaceId, setLocationPlaceId] = useState<string | null>(null);
   const [industry, setIndustry] = useState("");
   const [leadsCount, setLeadsCount] = useState([50]);
   const [radius, setRadius] = useState([DEFAULT_RADIUS_MILES]);
@@ -352,6 +353,7 @@ export function LeadDiscoveryStage({
           name: searchName,
           parameters: {
             location: formattedLocation,
+            locationPlaceId: locationPlaceId || undefined,
             maxResults: leadsCount[0],
             radius: radius[0],
             keywords: [formattedIndustry],
@@ -546,6 +548,10 @@ export function LeadDiscoveryStage({
                   <LocationAutocomplete
                     value={location}
                     onValueChange={setLocation}
+                    onLocationSelect={(details) => {
+                      setLocation(details.description);
+                      setLocationPlaceId(details.placeId);
+                    }}
                     placeholder="e.g., San Francisco, Austin TX, 90210"
                     className="transition-neo"
                   />

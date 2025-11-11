@@ -29,7 +29,9 @@
       "Bash(npx convex deploy:*)",
       "Bash(find:*)",
       "WebFetch(domain:docs.perplexity.ai)",
-      "Bash(npx convex:*)"
+      "Bash(npx convex:*)",
+      "WebFetch(domain:developers.google.com)",
+      "Bash(git show:*)"
     ],
     "deny": [],
     "ask": []
