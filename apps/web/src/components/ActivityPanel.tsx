@@ -102,8 +102,9 @@ export function ActivityPanel({ onNavigateToHistory }: ActivityPanelProps = {}) 
     realtimeActivities.length > 0 ? realtimeActivities : fallbackActivities;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col h-full space-y-6">
+      {/* Sticky Header */}
+      <div className="flex items-center justify-between flex-shrink-0">
         <h3 className="text-lg font-semibold">Recent Activity</h3>
         {latestStatus && (
           <Badge variant="outline" className="text-xs">
@@ -112,7 +113,8 @@ export function ActivityPanel({ onNavigateToHistory }: ActivityPanelProps = {}) 
         )}
       </div>
 
-      <div className="space-y-3">
+      {/* Scrollable Activity List */}
+      <div className="flex-1 overflow-y-auto space-y-3 min-h-0 pr-2 -mr-2">
         {activities.map((activity) => {
           const Icon = activity.icon;
           const priorityDisplay = activity.id.startsWith("fallback")
@@ -168,8 +170,8 @@ export function ActivityPanel({ onNavigateToHistory }: ActivityPanelProps = {}) 
         })}
       </div>
 
-      {/* Real-Time Stats */}
-      <div className="space-y-3 pt-4 border-t border-border">
+      {/* Sticky Stats Section */}
+      <div className="space-y-3 pt-4 border-t border-border flex-shrink-0">
         <h4 className="text-sm font-medium text-muted-foreground">
           Current Stats
         </h4>

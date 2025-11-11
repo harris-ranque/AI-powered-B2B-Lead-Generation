@@ -8,24 +8,22 @@ export type Search = Doc<"searches">;
 export type BusinessProfile = Doc<"businessProfiles">;
 export type EmailSequence = Doc<"emailSequences">;
 
-// Credit costs for different operations - Per-Search Model
+// Credit costs for different operations - Per-Lead Model
 export const CREDIT_COSTS = {
-  // Base search cost - 1 credit per search (includes all discovery, enrichment, and AI analysis)
-  SEARCH_BASE: 1,
+  // Per-lead costs for search operations
+  LEAD_DISCOVERY: 0, // Free - discovery included
+  EMAIL_ENRICHMENT: 0, // Free - enrichment included
+  AI_ANALYSIS_TIER2: 1, // 1 credit per lead (Tavily research)
+  AI_ANALYSIS_TIER3: 2, // 2 credits per lead (Perplexity deep research)
 
-  // Deep research tier 3 - additional 1 credit when using Perplexity deep research
-  SEARCH_DEEP_RESEARCH: 1,
-
-  // Legacy costs for backward compatibility with email generation features
+  // Email generation features
   EMAIL_GENERATION: 5,
   EMAIL_SEQUENCE: 10,
 
-  // Deprecated - kept for backward compatibility (not used in new credit model)
-  LEAD_DISCOVERY: 0, // Included in SEARCH_BASE
-  EMAIL_ENRICHMENT: 0, // Included in SEARCH_BASE
-  AI_ANALYSIS: 0, // Included in SEARCH_BASE
+  // Deprecated - kept for backward compatibility
+  AI_ANALYSIS: 1, // Alias for AI_ANALYSIS_TIER2
   BULK_ANALYSIS: 0, // Deprecated
-  DEEP_RESEARCH: 1, // Alias for SEARCH_DEEP_RESEARCH
+  DEEP_RESEARCH: 2, // Alias for AI_ANALYSIS_TIER3
 } as const;
 
 // Plan limits
@@ -74,35 +72,29 @@ export function canPerformOperation(
 }
 
 /**
- * Calculate search cost based on new per-search pricing model
- * @param researchTier - Research tier used (1=basic, 2=standard, 3=deep research with Perplexity)
- * @returns Total credit cost for the search
+ * Calculate per-lead credit cost based on research tier
+ * @param usedPerplexity - Whether Perplexity deep research was used for this lead
+ * @returns Credit cost per lead
  */
-export function calculateSearchCost(
-  researchTier: 1 | 2 | 3 = 2,
-): number {
-  // Base cost: 1 credit per search (includes discovery, enrichment, and standard AI analysis)
-  let cost = CREDIT_COSTS.SEARCH_BASE;
-
-  // Tier 3: Add 1 additional credit for Perplexity deep research
-  if (researchTier === 3) {
-    cost += CREDIT_COSTS.SEARCH_DEEP_RESEARCH;
-  }
-
-  return cost;
+export function calculateLeadCost(usedPerplexity: boolean = false): number {
+  // Tier 2 (Tavily): 1 credit per lead
+  // Tier 3 (Perplexity): 2 credits per lead
+  return usedPerplexity ? CREDIT_COSTS.AI_ANALYSIS_TIER3 : CREDIT_COSTS.AI_ANALYSIS_TIER2;
 }
 
 /**
- * Legacy function for backward compatibility
- * @deprecated Use calculateSearchCost(researchTier) instead
+ * Calculate total search cost based on lead count and research tiers
+ * @param tier2Leads - Number of leads analyzed with Tavily (tier 2)
+ * @param tier3Leads - Number of leads analyzed with Perplexity (tier 3)
+ * @returns Total credit cost for the search
  */
-export function calculateSearchCostLegacy(
-  maxResults: number,
-  includeEnrichment: boolean = true,
-  includeAI: boolean = true,
+export function calculateSearchCost(
+  tier2Leads: number = 0,
+  tier3Leads: number = 0,
 ): number {
-  // Always return base search cost in new model (per-search, not per-lead)
-  return CREDIT_COSTS.SEARCH_BASE;
+  const tier2Cost = tier2Leads * CREDIT_COSTS.AI_ANALYSIS_TIER2;
+  const tier3Cost = tier3Leads * CREDIT_COSTS.AI_ANALYSIS_TIER3;
+  return tier2Cost + tier3Cost;
 }
 
 export function formatPhoneNumber(phone: string): string {

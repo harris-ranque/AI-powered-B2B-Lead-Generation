@@ -31,7 +31,8 @@
       "WebFetch(domain:docs.perplexity.ai)",
       "Bash(npx convex:*)",
       "WebFetch(domain:developers.google.com)",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "WebFetch(domain:www.perplexity.ai)"
     ],
     "deny": [],
     "ask": []
