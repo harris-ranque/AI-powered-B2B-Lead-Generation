@@ -211,6 +211,7 @@ export const trackApiCallUsage = mutation({
 });
 
 // Check usage limits before operation
+// NOTE: All plan-based limits removed - users can perform unlimited operations (limited only by credits)
 export const checkUsageLimits = mutation({
   args: {
     userId: v.id("users"),
@@ -228,141 +229,24 @@ export const checkUsageLimits = mutation({
       throw new Error("User not found");
     }
 
-    // Get billing info with limits
-    const billing = await ctx.db
-      .query("billing")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .unique();
-
-    if (!billing) {
-      // For users without billing (starter tier), use basic limits
-      const starterLimits = {
-        monthlySearches: 10,
-        monthlyEnrichments: 500,
-        monthlyExports: 10,
-        emailGeneration: false,
-      };
-
-      const usage = await ctx.db
-        .query("usageTracking")
-        .withIndex("by_user", (q) => q.eq("userId", args.userId))
-        .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
-        .unique();
-
-      if (!usage) {
-        return {
-          allowed: true,
-          reason: "No usage tracking found",
-          limits: starterLimits,
-          usage: { searchesUsed: 0, emailsGenerated: 0, exportsCompleted: 0 },
-        };
-      }
-
-      // Check limits based on operation
-      switch (args.operation) {
-        case "search":
-          if (usage.searchesUsed >= starterLimits.monthlySearches) {
-            return {
-              allowed: false,
-              reason: `Monthly search limit of ${starterLimits.monthlySearches} reached`,
-              limits: starterLimits,
-              usage,
-            };
-          }
-          break;
-        case "email_generation":
-          if (!starterLimits.emailGeneration) {
-            return {
-              allowed: false,
-              reason: "Email generation not available on Starter tier",
-              limits: starterLimits,
-              usage,
-            };
-          }
-          break;
-        case "export":
-          if (usage.exportsCompleted >= starterLimits.monthlyExports) {
-            return {
-              allowed: false,
-              reason: `Monthly export limit of ${starterLimits.monthlyExports} reached`,
-              limits: starterLimits,
-              usage,
-            };
-          }
-          break;
-      }
-
-      return {
-        allowed: true,
-        limits: starterLimits,
-        usage,
-      };
-    }
-
-    // For paid tiers, check against billing limits
-    const limits = billing.planLimits;
+    // Get current usage for tracking/analytics purposes only (no enforcement)
     const usage = await ctx.db
       .query("usageTracking")
-      .withIndex("by_user_current", (q) => 
-        q.eq("userId", args.userId).eq("isCurrentPeriod", true)
-      )
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
       .unique();
 
-    if (!usage) {
-      return {
-        allowed: true,
-        reason: "No usage tracking found",
-        limits,
-        usage: { searchesUsed: 0, emailsGenerated: 0, exportsCompleted: 0 },
-      };
-    }
-
-    const requestCount = args.count || 1;
-
-    // Check limits based on operation and plan
-    switch (args.operation) {
-      case "search":
-        if (
-          limits.monthlySearches !== -1 &&
-          usage.searchesUsed + requestCount > limits.monthlySearches
-        ) {
-          return {
-            allowed: false,
-            reason: `Monthly search limit of ${limits.monthlySearches} would be exceeded`,
-            limits,
-            usage,
-          };
-        }
-        break;
-      case "email_generation":
-        if (!limits.emailGeneration) {
-          return {
-            allowed: false,
-            reason: "Email generation not available on your plan",
-            limits,
-            usage,
-          };
-        }
-        break;
-      case "export":
-        if (
-          limits.monthlyExports !== -1 &&
-          usage.exportsCompleted + requestCount > limits.monthlyExports
-        ) {
-          return {
-            allowed: false,
-            reason: `Monthly export limit of ${limits.monthlyExports} would be exceeded`,
-            limits,
-            usage,
-          };
-        }
-        break;
-    }
-
+    // Always allow operations - users are only limited by available credits
+    // Usage tracking continues for analytics purposes
     return {
       allowed: true,
-      limits,
-      usage,
+      limits: {
+        monthlySearches: -1, // unlimited
+        monthlyEnrichments: -1, // unlimited
+        monthlyExports: -1, // unlimited
+        emailGeneration: true,
+      },
+      usage: usage || { searchesUsed: 0, emailsGenerated: 0, exportsCompleted: 0 },
     };
   },
 });

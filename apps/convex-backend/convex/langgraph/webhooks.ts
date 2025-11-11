@@ -1,5 +1,5 @@
 import { internalMutation } from "../_generated/server";
-import { internal } from "../_generated/api";
+import { internal, api } from "../_generated/api";
 import { v } from "convex/values";
 import { createOperationLogger } from "../lib/logger";
 import { Id, Doc } from "../_generated/dataModel";
@@ -553,13 +553,24 @@ export const handleEmailGenerationCompleted = internalMutation({
               eligibleLeads: eligibleLeads.length,
             });
 
-            await ctx.scheduler.runAfter(
-              0,
-              "search/actions:completeSearch" as any,
-              {
-                searchId: searchId as any,
-              },
-            );
+            try {
+              await ctx.scheduler.runAfter(
+                0,
+                "search/actions:completeSearch" as any,
+                {
+                  searchId: searchId,
+                },
+              );
+
+              logger.info("Search completion scheduled successfully", { searchId: searchIdStr });
+            } catch (error) {
+              logger.error("Failed to schedule search completion", {
+                searchId: searchIdStr,
+                error: error instanceof Error ? error.message : String(error),
+              });
+
+              throw error; // Re-throw to trigger webhook retry
+            }
           }
         }
 
@@ -708,13 +719,24 @@ export const handleEmailGenerationCompleted = internalMutation({
               eligibleLeads: eligibleLeads.length,
             });
 
-            await ctx.scheduler.runAfter(
-              0,
-              "search/actions:completeSearch" as any,
-              {
-                searchId: searchId as any,
-              },
-            );
+            try {
+              await ctx.scheduler.runAfter(
+                0,
+                "search/actions:completeSearch" as any,
+                {
+                  searchId: searchId,
+                },
+              );
+
+              logger.info("Search completion scheduled successfully", { searchId: searchIdStr });
+            } catch (error) {
+              logger.error("Failed to schedule search completion", {
+                searchId: searchIdStr,
+                error: error instanceof Error ? error.message : String(error),
+              });
+
+              throw error; // Re-throw to trigger webhook retry
+            }
           }
         }
 
@@ -1443,12 +1465,30 @@ export const handleBatchCompleted = internalMutation({
             completionTriggeredAt: Date.now(),
           });
 
-          // Schedule completion after setting flag
-          await ctx.scheduler.runAfter(
-            0,
-            "search/actions:completeSearch" as any,
-            { searchId: searchIdTyped as any },
-          );
+          // Schedule completion after setting flag with proper error handling
+          try {
+            await ctx.scheduler.runAfter(
+              0,
+              (api as any).search.actions.completeSearch,
+              { searchId: searchIdTyped },
+            );
+
+            logger.info("Search completion scheduled successfully", { searchId, batchId });
+          } catch (error) {
+            logger.error("Failed to schedule search completion", {
+              searchId,
+              batchId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+
+            // Rollback flag if scheduler fails
+            await ctx.db.patch(searchIdTyped, {
+              completionTriggered: false,
+              completionTriggeredAt: undefined,
+            });
+
+            throw error; // Re-throw to trigger webhook retry
+          }
         }
       }
 

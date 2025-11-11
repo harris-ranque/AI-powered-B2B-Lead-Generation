@@ -85,6 +85,7 @@ export class SubscriptionMiddleware {
   }
 
   // Check usage limits and enforce restrictions
+  // NOTE: All plan-based limits removed - users can use credits without monthly restrictions
   async checkUsageLimit(
     operation: "search" | "enrichment" | "export",
     count: number = 1,
@@ -94,76 +95,17 @@ export class SubscriptionMiddleware {
     remaining?: number;
     limit?: number;
   }> {
-    const limits = this.getPlanLimits();
-
-    // Get current usage
-    const usage = await this.db
-      .query("usageTracking")
-      .filter((q) => q.eq(q.field("userId"), this.user._id))
-      .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
-      .unique();
-
-    const currentUsage = {
-      searchesUsed: usage?.searchesUsed || 0,
-      leadsEnriched: usage?.leadsEnriched || 0,
-      exportsCompleted: usage?.exportsCompleted || 0,
+    // Always allow operations - users are only limited by available credits
+    // Credit deduction still happens in the credit transaction system
+    return {
+      allowed: true,
+      remaining: -1, // unlimited
+      limit: -1 // unlimited
     };
-
-    switch (operation) {
-      case "search":
-        if (limits.monthlySearches === -1) {
-          return { allowed: true, remaining: -1, limit: -1 };
-        }
-        const searchesRemaining =
-          limits.monthlySearches - currentUsage.searchesUsed;
-        return {
-          allowed: searchesRemaining >= count,
-          remaining: searchesRemaining,
-          limit: limits.monthlySearches,
-          reason:
-            searchesRemaining < count
-              ? `Monthly search limit exceeded. Used ${currentUsage.searchesUsed}/${limits.monthlySearches}`
-              : undefined,
-        };
-
-      case "enrichment":
-        if (limits.monthlyEnrichments === -1) {
-          return { allowed: true, remaining: -1, limit: -1 };
-        }
-        const enrichmentsRemaining =
-          limits.monthlyEnrichments - currentUsage.leadsEnriched;
-        return {
-          allowed: enrichmentsRemaining >= count,
-          remaining: enrichmentsRemaining,
-          limit: limits.monthlyEnrichments,
-          reason:
-            enrichmentsRemaining < count
-              ? `Monthly enrichment limit exceeded. Used ${currentUsage.leadsEnriched}/${limits.monthlyEnrichments}`
-              : undefined,
-        };
-
-      case "export":
-        if (limits.monthlyExports === -1) {
-          return { allowed: true, remaining: -1, limit: -1 };
-        }
-        const exportsRemaining =
-          limits.monthlyExports - currentUsage.exportsCompleted;
-        return {
-          allowed: exportsRemaining >= count,
-          remaining: exportsRemaining,
-          limit: limits.monthlyExports,
-          reason:
-            exportsRemaining < count
-              ? `Monthly export limit exceeded. Used ${currentUsage.exportsCompleted}/${limits.monthlyExports}`
-              : undefined,
-        };
-
-      default:
-        return { allowed: false, reason: "Unknown operation" };
-    }
   }
 
   // Enforce feature access
+  // NOTE: All feature restrictions removed - all users have access to all features
   async enforceFeatureAccess(
     feature: keyof Omit<
       PlanLimits,
@@ -173,12 +115,8 @@ export class SubscriptionMiddleware {
       | "monthlyExports"
     >,
   ): Promise<void> {
-    if (!this.hasFeature(feature)) {
-      const currentPlan = this.user.plan;
-      throw new Error(
-        `Feature '${feature}' is not available on the ${currentPlan} plan. Please upgrade your subscription.`,
-      );
-    }
+    // Always allow access to all features - users are only limited by available credits
+    return;
   }
 
   // Enforce usage limits
@@ -264,26 +202,14 @@ export class SubscriptionMiddleware {
   }
 
   // Validate search parameters against plan limits
+  // NOTE: All plan-based limits removed - users can request any number of leads
   validateSearchParameters(maxLeads: number): {
     valid: boolean;
     adjustedMaxLeads?: number;
     reason?: string;
   } {
-    const limits = this.getPlanLimits();
-
-    if (limits.maxLeadsPerSearch === -1) {
-      return { valid: true }; // unlimited
-    }
-
-    if (maxLeads <= limits.maxLeadsPerSearch) {
-      return { valid: true };
-    }
-
-    return {
-      valid: false,
-      adjustedMaxLeads: limits.maxLeadsPerSearch,
-      reason: `Maximum leads per search for ${this.user.plan} plan is ${limits.maxLeadsPerSearch}. Requested: ${maxLeads}`,
-    };
+    // Always allow any number of leads - users are only limited by available credits
+    return { valid: true };
   }
 }
 
