@@ -102,6 +102,13 @@ export default defineSchema({
       roles: v.optional(v.array(v.string())),
       minRating: v.optional(v.number()),
       maxResults: v.number(),
+      // Legacy filters field for backwards compatibility with old search records
+      filters: v.optional(
+        v.object({
+          minEmployees: v.optional(v.number()),
+          maxEmployees: v.optional(v.number()),
+        }),
+      ),
       deduplication: v.optional(
         v.object({
           enablePlaceNameDedup: v.optional(v.boolean()),

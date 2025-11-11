@@ -28,7 +28,8 @@
       "WebFetch(domain:legacy.reactjs.org)",
       "Bash(npx convex deploy:*)",
       "Bash(find:*)",
-      "WebFetch(domain:docs.perplexity.ai)"
+      "WebFetch(domain:docs.perplexity.ai)",
+      "Bash(npx convex:*)"
     ],
     "deny": [],
     "ask": []

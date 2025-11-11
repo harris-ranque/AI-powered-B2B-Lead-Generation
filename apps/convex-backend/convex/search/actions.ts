@@ -719,12 +719,18 @@ export const searchGoogleMaps: any = action({
         );
       }
 
-      // 🔍 BUILD QUERY: Add location context for better Google ranking
-      // For Text Search API, including location in query improves local result relevance
+      // 🔍 BUILD QUERY: Strategy-specific query construction
+      // - Text Search API: Needs location in query string (e.g., "Marketing in Jackson, MS")
+      // - Nearby Search API: Uses lat/lng for location, keyword should be pure search term (e.g., "Marketing")
       const keywords = params.keywords.join(" ");
-      const query = location
+
+      // For Text Search fallback (when geocoding fails)
+      const textSearchQuery = location
         ? `${keywords} in ${location}`
         : keywords;
+
+      // For Nearby Search API (spatial tiling) - pure keyword without location
+      const nearbyKeyword = keywords;
 
       logWithCorrelation(
         "info",
@@ -733,7 +739,8 @@ export const searchGoogleMaps: any = action({
         {
           keywords,
           location,
-          queryWithLocation: query,
+          textSearchQuery,
+          nearbyKeyword,
           radiusMiles,
         },
       );
@@ -859,9 +866,9 @@ export const searchGoogleMaps: any = action({
 
         const tilingResult = await searchPlacesWithTiling({
           apiKey: googleMapsApiKey,
-          query,
+          query: nearbyKeyword,
           type: "establishment",
-          keyword: query,
+          keyword: nearbyKeyword,
           bounds: bounds || undefined,
           center: bounds ? undefined : { lat, lng },
           radiusMeters: bounds ? undefined : radius,
@@ -923,7 +930,7 @@ export const searchGoogleMaps: any = action({
           const placesUrl = new URL(
             "https://maps.googleapis.com/maps/api/place/textsearch/json",
           );
-          placesUrl.searchParams.set("query", query);
+          placesUrl.searchParams.set("query", textSearchQuery);
           if (lat !== 0 && lng !== 0 && radius > 0) {
             placesUrl.searchParams.set("location", `${lat},${lng}`);
             placesUrl.searchParams.set("radius", radius.toString());
@@ -1093,9 +1100,9 @@ export const searchGoogleMaps: any = action({
 
             const expansionResult = await searchPlacesWithTiling({
               apiKey: googleMapsApiKey,
-              query,
+              query: nearbyKeyword,
               type: "establishment",
-              keyword: query,
+              keyword: nearbyKeyword,
               bounds: segment,
               radiusMeters: nextRadiusMeters,
               maxResults: segmentFetchCount,
