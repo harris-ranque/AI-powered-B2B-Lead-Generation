@@ -78,14 +78,14 @@ def create_email_generation_workflow(
 
         Hybrid quality strategy:
         - Score ≥0.60: Approve immediately (high quality)
-        - Score 0.35-0.60: Retry up to twice with QA feedback (2 retry attempts)
+        - Score 0.35-0.60: Retry up to 3 times with QA feedback (3 retry attempts)
         - Score <0.35: Reject immediately (poor quality, not worth retrying)
         """
         qa = state.get("quality_assessment", {})
         approval_status = qa.get("approval_status", "Unknown")
         quality_score = qa.get("overall_quality_score", 0)
         retry_count = state.get("retry_count", 0)
-        max_retries = state.get("max_retries", 3)  # 3 total attempts (1 initial + 2 retries)
+        max_retries = state.get("max_retries", 3)  # 4 total attempts (1 initial + 3 retries)
 
         # If approved or error state, go to aggregator
         if approval_status == "Approved" or state.get("current_stage") == "error":
@@ -227,7 +227,7 @@ async def execute_email_generation(
         "final_result": {},
         # Quality retry tracking
         "retry_count": 0,
-        "max_retries": 3,  # Allow 3 total attempts (1 initial + 2 retries) for quality improvement
+        "max_retries": 3,  # Allow 4 total attempts (1 initial + 3 retries) for quality improvement
         "previous_quality_feedback": []
     }
 
@@ -355,7 +355,7 @@ async def execute_with_streaming(
         "final_result": {},
         # Quality retry tracking
         "retry_count": 0,
-        "max_retries": 3,  # Allow 3 total attempts (1 initial + 2 retries) for quality improvement
+        "max_retries": 3,  # Allow 4 total attempts (1 initial + 3 retries) for quality improvement
         "previous_quality_feedback": []
     }
 

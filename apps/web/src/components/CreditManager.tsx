@@ -124,7 +124,7 @@ export function CreditManager({
       features: [
         "1,000 credits/month",
         "Up to 500 leads per search",
-        "Email enrichment included",
+        "Email contact finding included",
         "AI email generation",
         "Priority support",
         "Export to CSV/CRM",

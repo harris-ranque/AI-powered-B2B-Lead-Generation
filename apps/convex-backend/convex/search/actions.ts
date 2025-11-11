@@ -76,6 +76,27 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(value, max));
 }
 
+/**
+ * Smart radius estimation for large searches
+ * Ensures adequate coverage area for requested result count
+ * @param maxResults - Requested number of leads
+ * @param userRadiusMiles - User's specified radius in miles
+ * @returns Recommended radius in miles
+ */
+function estimateOptimalRadius(maxResults: number, userRadiusMiles: number): number {
+  // For small searches, respect user's radius
+  if (maxResults <= 50) return userRadiusMiles;
+
+  // For medium searches, suggest minimum 15 miles
+  if (maxResults <= 150) return Math.max(userRadiusMiles, 15);
+
+  // For large searches, suggest minimum 25 miles
+  if (maxResults <= 300) return Math.max(userRadiusMiles, 25);
+
+  // For very large searches (500+), suggest minimum 35 miles
+  return Math.max(userRadiusMiles, 35);
+}
+
 function normalizeLongitude(lng: number) {
   if (lng > 180) {
     return ((lng + 180) % 360) - 180;
@@ -397,7 +418,6 @@ export const searchGoogleMaps: any = action({
         throw new Error("Google Places API key not configured");
       }
 
-      const requestedResults = search.parameters.maxResults;
       const deduplicationConfig = {
         enablePlaceNameDedup:
           search.parameters.deduplication?.enablePlaceNameDedup ??
@@ -659,9 +679,29 @@ export const searchGoogleMaps: any = action({
 
       // Build search query
       const params: any = search.parameters;
-      const query = params.keywords.join(" ");
       const location = params.location;
-      const radiusMiles = params.radius;
+      const requestedResults = search.parameters.maxResults;
+
+      // 🎯 SMART RADIUS: Estimate optimal radius based on request size
+      const userRadiusMiles = params.radius;
+      const optimalRadiusMiles = estimateOptimalRadius(requestedResults, userRadiusMiles);
+      const radiusMiles = optimalRadiusMiles;
+
+      // Log if we're suggesting a larger radius
+      if (optimalRadiusMiles > userRadiusMiles) {
+        logWithCorrelation(
+          "info",
+          discoveryCorrelation,
+          "📏 Increasing search radius for large request",
+          {
+            requestedResults,
+            userRadiusMiles,
+            optimalRadiusMiles,
+            reason: "Large searches need wider coverage area",
+          },
+        );
+      }
+
       const requestedRadiusMeters = Math.max(radiusMiles, 0) * METERS_PER_MILE;
       const radius = Math.round(
         Math.min(requestedRadiusMeters, MAX_PLACES_RADIUS_METERS),
@@ -679,90 +719,281 @@ export const searchGoogleMaps: any = action({
         );
       }
 
-      // Enhanced geocoding: Get both coordinates AND bounding box for tiling
+      // 🔍 BUILD QUERY: Strategy-specific query construction
+      // - Text Search API: Needs location in query string (e.g., "Marketing in Jackson, MS")
+      // - Nearby Search API: Uses lat/lng for location, keyword should be pure search term (e.g., "Marketing")
+      const keywords = params.keywords.join(" ");
+
+      // For Text Search fallback (when geocoding fails)
+      const textSearchQuery = location
+        ? `${keywords} in ${location}`
+        : keywords;
+
+      // For Nearby Search API (spatial tiling) - pure keyword without location
+      const nearbyKeyword = keywords;
+
+      logWithCorrelation(
+        "info",
+        discoveryCorrelation,
+        "🔍 Search Query Construction",
+        {
+          keywords,
+          location,
+          textSearchQuery,
+          nearbyKeyword,
+          radiusMiles,
+        },
+      );
+
+      // Enhanced location resolution: Use Place Details API with place_id OR geocoding fallback
       let lat: number, lng: number;
       let bounds: Bounds | undefined;
-      try {
-        const geocodeUrl = new URL(
-          "https://maps.googleapis.com/maps/api/geocode/json",
-        );
-        geocodeUrl.searchParams.set("address", location);
-        geocodeUrl.searchParams.set("key", googleMapsApiKey);
+      const locationPlaceId = params.locationPlaceId;
 
-        const geocodeResponse = await fetch(geocodeUrl.toString());
-        const geocodeData = (await geocodeResponse.json()) as {
-          status: string;
-          results?: Array<{
-            geometry: {
-              location: { lat: number; lng: number };
-              viewport?: {
-                northeast: { lat: number; lng: number };
-                southwest: { lat: number; lng: number };
+      // 🎯 STRATEGY 1: Use Place Details API with place_id (most accurate)
+      if (locationPlaceId) {
+        try {
+          const placeDetailsUrl = new URL(
+            "https://maps.googleapis.com/maps/api/place/details/json",
+          );
+          placeDetailsUrl.searchParams.set("place_id", locationPlaceId);
+          // Request only needed fields to minimize billing (per Google's best practices)
+          placeDetailsUrl.searchParams.set(
+            "fields",
+            "geometry,formatted_address,types,address_components",
+          );
+          placeDetailsUrl.searchParams.set("key", googleMapsApiKey);
+
+          const placeDetailsResponse = await fetch(placeDetailsUrl.toString());
+          const placeDetailsData = (await placeDetailsResponse.json()) as {
+            status: string;
+            result?: {
+              geometry: {
+                location: { lat: number; lng: number };
+                viewport: {
+                  northeast: { lat: number; lng: number };
+                  southwest: { lat: number; lng: number };
+                };
               };
-              bounds?: {
-                northeast: { lat: number; lng: number };
-                southwest: { lat: number; lng: number };
-              };
+              formatted_address: string;
+              types: string[];
+              address_components?: Array<{
+                long_name: string;
+                short_name: string;
+                types: string[];
+              }>;
             };
-          }>;
-        };
-
-        if (geocodeData.status !== "OK" || !geocodeData.results?.[0]) {
-          throw new Error(`Geocoding failed: ${geocodeData.status}`);
-        }
-
-        const result = geocodeData.results[0];
-        const coordinates = result.geometry.location;
-        lat = coordinates.lat;
-        lng = coordinates.lng;
-
-        // Extract bounds (prefer bounds, fallback to viewport)
-        const geoBounds = result.geometry.bounds || result.geometry.viewport;
-        if (geoBounds) {
-          bounds = {
-            ne: {
-              lat: geoBounds.northeast.lat,
-              lng: geoBounds.northeast.lng,
-            },
-            sw: {
-              lat: geoBounds.southwest.lat,
-              lng: geoBounds.southwest.lng,
-            },
           };
-        }
 
-        logWithCorrelation(
-          "info",
-          discoveryCorrelation,
-          "📍 Enhanced Geocoding Successful",
-          {
-            originalLocation: location,
-            geocodedCoordinates: { lat, lng },
-            hasBounds: !!bounds,
-            boundsArea: bounds
-              ? {
+          if (
+            placeDetailsData.status === "OK" &&
+            placeDetailsData.result?.geometry
+          ) {
+            const result = placeDetailsData.result;
+            lat = result.geometry.location.lat;
+            lng = result.geometry.location.lng;
+
+            // Place Details API always provides viewport bounds
+            bounds = {
+              ne: {
+                lat: result.geometry.viewport.northeast.lat,
+                lng: result.geometry.viewport.northeast.lng,
+              },
+              sw: {
+                lat: result.geometry.viewport.southwest.lat,
+                lng: result.geometry.viewport.southwest.lng,
+              },
+            };
+
+            // Validate location type to detect city vs county ambiguity
+            const isCity = result.types.includes("locality");
+            const isCounty = result.types.includes("administrative_area_level_2");
+            const locationType = isCity
+              ? "city"
+              : isCounty
+                ? "county"
+                : result.types[0] || "unknown";
+
+            logWithCorrelation(
+              "info",
+              discoveryCorrelation,
+              "✅ Place Details API Resolution Successful (using place_id)",
+              {
+                placeId: locationPlaceId,
+                formattedAddress: result.formatted_address,
+                locationType,
+                types: result.types,
+                coordinates: { lat, lng },
+                hasBounds: !!bounds,
+                isCity,
+                isCounty,
+                boundsArea: {
                   latSpan: bounds.ne.lat - bounds.sw.lat,
                   lngSpan: bounds.ne.lng - bounds.sw.lng,
-                }
-              : undefined,
-          },
-        );
-      } catch (geocodeError) {
-        logWithCorrelation(
-          "warn",
-          discoveryCorrelation,
-          "⚠️ Geocoding Failed - Using Text Search Fallback",
-          { originalLocation: location },
-          geocodeError as Error,
-        );
-        // Fallback: use text search without location bias
-        lat = 0;
-        lng = 0;
-        bounds = undefined;
+                },
+              },
+            );
+
+            // ⚠️ Warning: Detect if we got a county instead of a city
+            if (isCounty && !isCity) {
+              logWithCorrelation(
+                "warn",
+                discoveryCorrelation,
+                "⚠️ Location is a COUNTY, not a city - results may span large area",
+                {
+                  locationType: "county",
+                  formattedAddress: result.formatted_address,
+                  suggestion:
+                    "User may have intended a city. Consider UI hint for location selection.",
+                },
+              );
+            }
+          } else {
+            // Place Details API failed (expired place_id, etc.)
+            throw new Error(
+              `Place Details API failed: ${placeDetailsData.status}`,
+            );
+          }
+        } catch (placeDetailsError) {
+          logWithCorrelation(
+            "warn",
+            discoveryCorrelation,
+            "⚠️ Place Details API Failed - Falling back to Geocoding API",
+            {
+              placeId: locationPlaceId,
+              reason: (placeDetailsError as Error).message,
+            },
+            placeDetailsError as Error,
+          );
+          // Fall through to geocoding fallback below
+        }
       }
 
-      // 🎯 ADAPTIVE STRATEGY: Choose between simple pagination or spatial tiling
-      useTiling = params.maxResults > 60 && (!!bounds || (lat !== 0 && lng !== 0));
+      // 🔄 STRATEGY 2: Geocoding API fallback (when place_id not available or failed)
+      if (!lat || !lng) {
+        try {
+          const geocodeUrl = new URL(
+            "https://maps.googleapis.com/maps/api/geocode/json",
+          );
+          geocodeUrl.searchParams.set("address", location);
+          geocodeUrl.searchParams.set("key", googleMapsApiKey);
+
+          const geocodeResponse = await fetch(geocodeUrl.toString());
+          const geocodeData = (await geocodeResponse.json()) as {
+            status: string;
+            results?: Array<{
+              geometry: {
+                location: { lat: number; lng: number };
+                viewport?: {
+                  northeast: { lat: number; lng: number };
+                  southwest: { lat: number; lng: number };
+                };
+                bounds?: {
+                  northeast: { lat: number; lng: number };
+                  southwest: { lat: number; lng: number };
+                };
+              };
+              formatted_address: string;
+              types: string[];
+            }>;
+          };
+
+          if (geocodeData.status !== "OK" || !geocodeData.results?.[0]) {
+            throw new Error(`Geocoding failed: ${geocodeData.status}`);
+          }
+
+          const result = geocodeData.results[0];
+          const coordinates = result.geometry.location;
+          lat = coordinates.lat;
+          lng = coordinates.lng;
+
+          // Extract bounds (prefer bounds, fallback to viewport)
+          const geoBounds = result.geometry.bounds || result.geometry.viewport;
+          if (geoBounds) {
+            bounds = {
+              ne: {
+                lat: geoBounds.northeast.lat,
+                lng: geoBounds.northeast.lng,
+              },
+              sw: {
+                lat: geoBounds.southwest.lat,
+                lng: geoBounds.southwest.lng,
+              },
+            };
+          }
+
+          // Validate location type for geocoding results too
+          const isCity = result.types.includes("locality");
+          const isCounty = result.types.includes("administrative_area_level_2");
+          const locationType = isCity
+            ? "city"
+            : isCounty
+              ? "county"
+              : result.types[0] || "unknown";
+
+          logWithCorrelation(
+            "info",
+            discoveryCorrelation,
+            "📍 Geocoding API Resolution Successful (string-based)",
+            {
+              originalLocation: location,
+              formattedAddress: result.formatted_address,
+              locationType,
+              types: result.types,
+              geocodedCoordinates: { lat, lng },
+              hasBounds: !!bounds,
+              isCity,
+              isCounty,
+              boundsArea: bounds
+                ? {
+                    latSpan: bounds.ne.lat - bounds.sw.lat,
+                    lngSpan: bounds.ne.lng - bounds.sw.lng,
+                  }
+                : undefined,
+            },
+          );
+
+          // ⚠️ Warning: Detect county ambiguity in geocoding results
+          if (isCounty && !isCity) {
+            logWithCorrelation(
+              "warn",
+              discoveryCorrelation,
+              "⚠️ Geocoding returned COUNTY instead of CITY - may cause geographic mismatch",
+              {
+                searchedFor: location,
+                geocodedTo: result.formatted_address,
+                locationType: "county",
+                types: result.types,
+                suggestion:
+                  "Results may be far from intended location. Consider using place_id from frontend.",
+              },
+            );
+          }
+        } catch (geocodeError) {
+          logWithCorrelation(
+            "warn",
+            discoveryCorrelation,
+            "⚠️ All Location Resolution Failed - Using Text Search Fallback",
+            { originalLocation: location },
+            geocodeError as Error,
+          );
+          // Fallback: use text search without location bias
+          lat = 0;
+          lng = 0;
+          bounds = undefined;
+        }
+      }
+
+      // 🎯 ADAPTIVE STRATEGY: Always use spatial tiling for location-based searches
+      // This ensures STRICT geographic filtering via Nearby Search API
+      // Text Search API only used as fallback when geocoding fails
+      useTiling = (!!bounds || (lat !== 0 && lng !== 0));
+
+      // 📊 SCALE MAX TILES: Increase capacity for large searches
+      // Google Places API returns max 60 results per query (20 per page × 3 pages)
+      // More tiles = more coverage for large result requirements
+      const maxTilesForSearch = requestedResults > 300 ? 400 : requestedResults > 150 ? 300 : 250;
+      const concurrencyForSearch = requestedResults > 300 ? 7 : 5;
 
       let places: Place[] = [];
       totalApiCalls = 0;
@@ -771,15 +1002,18 @@ export const searchGoogleMaps: any = action({
         logWithCorrelation(
           "info",
           discoveryCorrelation,
-          "🗺️ Using SPATIAL TILING strategy (maxResults > 60)",
+          "🗺️ Using SPATIAL TILING strategy with STRICT geographic filtering",
           {
             maxResults: requestedResults,
             hasBounds: !!bounds,
             hasCenter: lat !== 0 && lng !== 0,
-            strategy: "tiled_search",
+            strategy: "tiled_search_nearby_api",
             fetchMultiplier: INITIAL_FETCH_MULTIPLIER,
+            maxTiles: maxTilesForSearch,
+            concurrency: concurrencyForSearch,
             estimatedTiles: Math.ceil(requestedResults / 50),
             estimatedApiCalls: Math.ceil(requestedResults / 50) * 3,
+            apiNote: "Using Nearby Search API for strict radius enforcement",
           },
         );
 
@@ -789,15 +1023,15 @@ export const searchGoogleMaps: any = action({
 
         const tilingResult = await searchPlacesWithTiling({
           apiKey: googleMapsApiKey,
-          query,
+          query: nearbyKeyword,
           type: "establishment",
-          keyword: query,
+          keyword: nearbyKeyword,
           bounds: bounds || undefined,
           center: bounds ? undefined : { lat, lng },
           radiusMeters: bounds ? undefined : radius,
           maxResults: initialFetchCount,
-          maxTiles: 250,
-          concurrency: 5,
+          maxTiles: maxTilesForSearch,
+          concurrency: concurrencyForSearch,
           correlation: discoveryCorrelation,
           shouldCancel: async () => !(await ensureSearchActive()),
         });
@@ -827,17 +1061,20 @@ export const searchGoogleMaps: any = action({
         );
       } else {
         logWithCorrelation(
-          "info",
+          "warn",
           discoveryCorrelation,
-          "📄 Using SIMPLE PAGINATION strategy (maxResults ≤ 60)",
+          "⚠️ FALLBACK: Using Text Search API (geocoding failed)",
           {
             maxResults: params.maxResults,
-            strategy: "simple_pagination",
+            strategy: "text_search_fallback",
             maxPages: 3,
+            reason: "No valid coordinates or bounds from geocoding",
+            note: "Location bias will be WEAK - results may include distant businesses",
           },
         );
 
-        // Use simple pagination for small result sets (≤60 results)
+        // FALLBACK: Use Text Search API when geocoding fails completely
+        // Note: This has WEAK location filtering - results may span large geographic areas
         let nextPageToken: string | undefined = undefined;
         const maxPages = 3;
         let currentPage = 0;
@@ -850,7 +1087,7 @@ export const searchGoogleMaps: any = action({
           const placesUrl = new URL(
             "https://maps.googleapis.com/maps/api/place/textsearch/json",
           );
-          placesUrl.searchParams.set("query", query);
+          placesUrl.searchParams.set("query", textSearchQuery);
           if (lat !== 0 && lng !== 0 && radius > 0) {
             placesUrl.searchParams.set("location", `${lat},${lng}`);
             placesUrl.searchParams.set("radius", radius.toString());
@@ -1014,16 +1251,20 @@ export const searchGoogleMaps: any = action({
               requestedResults,
             );
 
+            // 📊 SCALE EXPANSION RESOURCES: Increase for large searches
+            const expansionMaxTiles = requestedResults > 300 ? 200 : requestedResults > 150 ? 150 : 120;
+            const expansionConcurrency = requestedResults > 300 ? 6 : 4;
+
             const expansionResult = await searchPlacesWithTiling({
               apiKey: googleMapsApiKey,
-              query,
+              query: nearbyKeyword,
               type: "establishment",
-              keyword: query,
+              keyword: nearbyKeyword,
               bounds: segment,
               radiusMeters: nextRadiusMeters,
               maxResults: segmentFetchCount,
-              maxTiles: 120,
-              concurrency: 4,
+              maxTiles: expansionMaxTiles,
+              concurrency: expansionConcurrency,
               correlation: discoveryCorrelation,
               shouldCancel: async () => !(await ensureSearchActive()),
             });
@@ -1374,7 +1615,7 @@ export const completeSearch: any = action({
         },
       );
 
-      // Determine credit costs for this search execution
+      // Get search results for analytics and completion message
       const totalFound =
         typeof results.totalFound === "number" ? results.totalFound : 0;
       const enrichedCount =
@@ -1382,15 +1623,22 @@ export const completeSearch: any = action({
       const analyzedCount =
         typeof results.analyzedCount === "number" ? results.analyzedCount : 0;
 
+      // Determine credit costs for this search execution using new per-search model
+      // Base cost: 1 credit per search (includes discovery, enrichment, and AI analysis)
+      // Additional cost: +1 credit if using Perplexity deep research (tier 3)
+      const baseCost = CREDIT_COSTS.SEARCH_BASE;
+      const deepResearchCost = search.researchTier === "perplexity"
+        ? CREDIT_COSTS.SEARCH_DEEP_RESEARCH
+        : 0;
+
+      const totalCreditsUsed = baseCost + deepResearchCost;
+
+      // For backward compatibility and analytics, track breakdown
       const creditBreakdown = {
-        discovery: totalFound * CREDIT_COSTS.LEAD_DISCOVERY,
-        enrichment: enrichedCount * CREDIT_COSTS.EMAIL_ENRICHMENT,
-        analysis: analyzedCount * CREDIT_COSTS.AI_ANALYSIS,
+        base: baseCost,
+        deepResearch: deepResearchCost,
+        total: totalCreditsUsed,
       } as const;
-      const totalCreditsUsed =
-        creditBreakdown.discovery +
-        creditBreakdown.enrichment +
-        creditBreakdown.analysis;
 
       const previouslyRecordedCredits = search.creditsUsed || 0;
       const creditsToCharge = Math.max(
@@ -1406,11 +1654,12 @@ export const completeSearch: any = action({
       );
 
       if (creditsToCharge > 0 && !bypassCredits) {
+        const researchTierLabel = search.researchTier === "perplexity" ? " (Tier 3 - Deep Research)" : "";
         await ctx.runMutation(internal.credits.transactions.recordTransaction, {
           userId: search.userId,
           amount: creditsToCharge,
           operation: "usage",
-          description: `Lead generation search "${search.name}" completed`,
+          description: `Search "${search.name}"${researchTierLabel} - ${totalCreditsUsed} credit${totalCreditsUsed > 1 ? 's' : ''}`,
           relatedEntityType: "search",
           relatedEntityId: args.searchId as unknown as string,
         });
@@ -1420,17 +1669,21 @@ export const completeSearch: any = action({
         );
 
         // Log the credit bypass for audit trail
+        const results = await ctx.runQuery(internal.search.internal.getSearchResults, {
+          searchId: args.searchId,
+        });
         await ctx.runMutation(internal.lib.auditLog.logCreditBypass, {
           userId: search.userId,
-          operation: `Lead generation search "${search.name}" completed`,
+          operation: `Search "${search.name}" completed`,
           creditsSkipped: creditsToCharge,
           providers: [], // Will be populated with actual providers in future enhancement
           relatedEntityType: "search",
           relatedEntityId: args.searchId as unknown as string,
           metadata: {
-            totalFound,
-            enrichedCount,
-            analyzedCount,
+            totalFound: results.totalFound,
+            enrichedCount: results.enrichedCount,
+            analyzedCount: results.analyzedCount,
+            researchTier: search.researchTier,
             creditBreakdown,
           },
         });

@@ -339,20 +339,11 @@ export const createLeadInternal = internalMutation({
     // NEW: Additional Deduplication Checks Based on User Preferences
     // ============================================================================
 
-    // Get user preferences for deduplication settings
-    const user = await ctx.db.get(args.userId);
-    const enablePlaceNameDedup =
-      args.deduplication?.enablePlaceNameDedup ??
-      user?.preferences?.enablePlaceNameDedup ??
-      false;
-    const enableEmailDedup =
-      args.deduplication?.enableEmailDedup ??
-      user?.preferences?.enableEmailDedup ??
-      true; // Default ON
-    const enableAddressDedup =
-      args.deduplication?.enableAddressDedup ??
-      user?.preferences?.enableAddressDedup ??
-      true; // Default ON
+    // Use deduplication settings from caller (already resolved with fallback chain in search/actions.ts)
+    // This ensures per-search overrides are properly respected
+    const enablePlaceNameDedup = args.deduplication?.enablePlaceNameDedup ?? false;
+    const enableEmailDedup = args.deduplication?.enableEmailDedup ?? true; // Default ON
+    const enableAddressDedup = args.deduplication?.enableAddressDedup ?? true; // Default ON
 
     // THIRD: Check for duplicate place name within THIS search (if enabled)
     if (enablePlaceNameDedup && args.leadData.businessName) {
@@ -602,6 +593,10 @@ export const updateLeadAnalysis = internalMutation({
       leadAnalysis: v.any(),
       processingTime: v.number(),
       confidence: v.optional(v.number()),
+      // Research tier tracking from LangGraph
+      researchTier: v.optional(v.string()),
+      // Structured company data from research extraction
+      companyData: v.optional(v.any()),
       // Legacy fields for backward compatibility
       fitAssessment: v.optional(v.string()),
       recommendedApproach: v.optional(v.string()),

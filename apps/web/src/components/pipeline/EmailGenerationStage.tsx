@@ -115,7 +115,7 @@ export function EmailGenerationStage({
               </h4>
               <p className="text-sm text-muted-foreground">
                 Generate personalized emails for {state.enrichedLeads.length}{" "}
-                enriched leads
+                leads with contacts
               </p>
             </div>
 

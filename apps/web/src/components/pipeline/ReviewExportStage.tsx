@@ -349,7 +349,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
         fill: "hsl(var(--neon-cyan))",
       },
       {
-        label: "Enriched",
+        label: "Contacts",
         metric: enrichedCount,
         fill: "hsl(var(--neon-lime))",
       },
@@ -562,7 +562,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
       toast({
         title: "Nothing to send yet",
         description:
-          "Emails will appear here once enrichment and personalization finish.",
+          "Emails will appear here once contact finding and personalization finish.",
       });
       return;
     }
@@ -686,7 +686,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
                 {formatNumber(enrichedCount)}
               </div>
               <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                Enriched with Emails
+                Contacts Found
               </p>
             </div>
 
@@ -710,7 +710,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
                 {enrichmentRateLabel}
               </div>
               <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                Enrichment Rate
+                Contact Rate
               </p>
             </div>
           </div>
@@ -1181,7 +1181,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
                 })
               ) : (
                 <div className="rounded-lg border border-dashed border-slate-800/60 bg-slate-900/50 p-6 text-center text-sm text-muted-foreground">
-                  Complete enrichment and personalization to unlock lead quality
+                  Complete contact finding and personalization to unlock lead quality
                   insights.
                 </div>
               )}

@@ -26,7 +26,12 @@
       "Bash(git mv:*)",
       "Bash(git restore:*)",
       "WebFetch(domain:legacy.reactjs.org)",
-      "Bash(npx convex deploy:*)"
+      "Bash(npx convex deploy:*)",
+      "Bash(find:*)",
+      "WebFetch(domain:docs.perplexity.ai)",
+      "Bash(npx convex:*)",
+      "WebFetch(domain:developers.google.com)",
+      "Bash(git show:*)"
     ],
     "deny": [],
     "ask": []

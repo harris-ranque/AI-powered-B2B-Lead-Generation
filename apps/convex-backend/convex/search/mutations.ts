@@ -56,6 +56,7 @@ export const createSearch = mutation({
     name: v.string(),
     parameters: v.object({
       location: v.string(),
+      locationPlaceId: v.optional(v.string()),
       radius: v.number(),
       keywords: v.array(v.string()),
       industries: v.optional(v.array(v.string())),
@@ -63,12 +64,6 @@ export const createSearch = mutation({
       roles: v.optional(v.array(v.string())),
       minRating: v.optional(v.number()),
       maxResults: v.number(),
-      filters: v.optional(
-        v.object({
-          minEmployees: v.optional(v.number()),
-          maxEmployees: v.optional(v.number()),
-        }),
-      ),
       deduplication: v.optional(
         v.object({
           enablePlaceNameDedup: v.optional(v.boolean()),
@@ -112,16 +107,7 @@ export const createSearch = mutation({
 
         const user = await requireAuth(ctx);
 
-        // Block free tier users from creating searches
-        if (user.plan === "free") {
-          captureAnalyticsEvent(user._id, "search_creation_blocked", {
-            reason: "free_tier_restriction",
-            plan: user.plan,
-          });
-          throw new Error(
-            "Search creation is not available on the free plan. Please upgrade to Pro or higher to create searches."
-          );
-        }
+        // NOTE: Plan-based restrictions removed - all users can create searches (limited only by credits)
 
         // Validate enterprise users have required API keys
         if (user.plan === "enterprise") {
@@ -231,6 +217,7 @@ export const createSearchCompleted = mutation({
     name: v.string(),
     parameters: v.object({
       location: v.string(),
+      locationPlaceId: v.optional(v.string()),
       radius: v.number(),
       keywords: v.array(v.string()),
       industries: v.optional(v.array(v.string())),
@@ -238,12 +225,6 @@ export const createSearchCompleted = mutation({
       roles: v.optional(v.array(v.string())),
       minRating: v.optional(v.number()),
       maxResults: v.number(),
-      filters: v.optional(
-        v.object({
-          minEmployees: v.optional(v.number()),
-          maxEmployees: v.optional(v.number()),
-        }),
-      ),
       deduplication: v.optional(
         v.object({
           enablePlaceNameDedup: v.optional(v.boolean()),
@@ -287,16 +268,7 @@ export const createSearchCompleted = mutation({
 
         const user = await requireAuth(ctx);
 
-        // Block free tier users from creating searches
-        if (user.plan === "free") {
-          captureAnalyticsEvent(user._id, "search_creation_blocked", {
-            reason: "free_tier_restriction",
-            plan: user.plan,
-          });
-          throw new Error(
-            "Search creation is not available on the free plan. Please upgrade to Pro or higher to create searches."
-          );
-        }
+        // NOTE: Plan-based restrictions removed - all users can create searches (limited only by credits)
 
         // Validate enterprise users have required API keys
         if (user.plan === "enterprise") {

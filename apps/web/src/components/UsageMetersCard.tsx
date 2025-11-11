@@ -123,7 +123,7 @@ export function UsageMetersCard() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Target className="h-4 w-4" />
-              <span className="text-sm font-medium">Lead Enrichments</span>
+              <span className="text-sm font-medium">Lead Contacts Found</span>
             </div>
             <div className="text-right">
               <span className={`text-lg font-semibold ${getUsageColor(enrichmentsPercentage)}`}>

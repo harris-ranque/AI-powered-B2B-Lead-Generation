@@ -288,7 +288,7 @@ function DashboardComponent({ onNavigate }: DashboardProps) {
   const trendChartConfig = useMemo(
     () => ({
       leads: { label: "Leads found", color: "hsl(var(--chart-1))" },
-      enriched: { label: "Enriched leads", color: "hsl(var(--chart-2))" },
+      enriched: { label: "Contacts found", color: "hsl(var(--chart-2))" },
     }),
     [],
   );
@@ -306,12 +306,12 @@ function DashboardComponent({ onNavigate }: DashboardProps) {
           icon: Users,
         },
         {
-          title: "Enriched Leads",
+          title: "Contacts Found",
           value: leadsWithEmails.toLocaleString(),
           change:
             totalLeads > 0
-              ? `${enrichmentRate}% enriched`
-              : "No leads enriched yet",
+              ? `${enrichmentRate}% with contacts`
+              : "No contacts found yet",
           icon: Mail,
         },
         {
@@ -701,12 +701,12 @@ function DashboardComponent({ onNavigate }: DashboardProps) {
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Enriched</p>
+                  <p className="text-muted-foreground">Contacts Found</p>
                   <p className="text-lg font-semibold text-foreground">
                     {trendSummary.totalEnriched.toLocaleString()}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {enrichmentRate}% overall coverage
+                    {enrichmentRate}% contact coverage
                   </p>
                 </div>
                 <div>

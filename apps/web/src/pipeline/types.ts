@@ -37,8 +37,6 @@ export interface SourceParams {
   industry?: string;
   leadsCount?: number;
   radius?: number;
-  minEmployees?: number;
-  maxEmployees?: number;
   includeEmails?: boolean;
   aiAnalysis?: boolean;
   roles?: string[];

@@ -1,5 +1,5 @@
 import { internalMutation } from "../_generated/server";
-import { internal } from "../_generated/api";
+import { internal, api } from "../_generated/api";
 import { v } from "convex/values";
 import { createOperationLogger } from "../lib/logger";
 import { Id, Doc } from "../_generated/dataModel";
@@ -52,6 +52,10 @@ const EmailGenerationResult = v.object({
       additional_credits_used: v.optional(v.number()),
       missing_data_points: v.optional(v.array(v.string())),
       data_completeness_score: v.optional(v.number()),
+      // Research tier tracking from LangGraph
+      research_tier: v.optional(v.string()),
+      // Structured company data from research extraction
+      company_data: v.optional(v.any()),
       follow_up_sequence: v.optional(
         v.union(
           v.null(),
@@ -218,31 +222,30 @@ export const handleEmailGenerationCompleted = internalMutation({
           return { success: false, error: "Missing result payload" };
         }
 
-        // IMPORTANT: Validate approval status and quality score before processing
-        // Only accept emails that are explicitly approved (approved=true) AND meet quality threshold (≥0.60)
+        // IMPORTANT: Validate approval status before processing
+        // Only accept emails that are explicitly approved by QA agent (approved=true)
+        // Quality score is metadata - QA agent handles quality validation through retry loop
         const isApproved = args.payload.approved === true;
         const qualityScore = args.payload.quality_score || 0;
-        const meetsQualityThreshold = qualityScore >= 0.60;
 
-        if (!isApproved || !meetsQualityThreshold) {
-          logger.warning("Email webhook rejected - not approved or below quality threshold", {
+        if (!isApproved) {
+          logger.warn("Email webhook rejected - not approved by QA agent", {
             requestId: args.payload.request_id,
             approved: isApproved,
             qualityScore: qualityScore,
-            meetsThreshold: meetsQualityThreshold,
           });
 
           // Mark lead as failed analysis rather than accepting unapproved email
           await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
             leadId: leadId as any,
-            error: `Email not approved: Quality score ${qualityScore.toFixed(2)} (threshold: 0.60), Approved: ${isApproved}`,
+            error: `Email not approved by QA agent (quality score: ${qualityScore.toFixed(2)})`,
           });
 
           // Acknowledge webhook but don't store unapproved email
           return {
             success: true,
             rejected: true,
-            reason: "Email not approved or below quality threshold",
+            reason: "Email not approved by QA agent",
             qualityScore,
             approved: isApproved,
           };
@@ -367,6 +370,10 @@ export const handleEmailGenerationCompleted = internalMutation({
             leadAnalysis: result.lead_analysis || {},
             processingTime: result.processing_time || 0,
             confidence: result.relevance_score || 0.5,
+            // Research tier tracking from LangGraph ("basic", "pro", or "deep")
+            researchTier: result.research_tier,
+            // Structured company data from research extraction
+            companyData: result.company_data,
           },
           emailContent: result.primary_email && result.primary_email !== null
             ? {
@@ -386,6 +393,7 @@ export const handleEmailGenerationCompleted = internalMutation({
           leadId: leadId as any,
         });
 
+        // Track deep research usage for analytics (not for per-lead charging)
         const deepResearchUsed = Boolean(result.deep_research_used);
         const deepResearchProvider = deepResearchUsed ? "perplexity" : "tavily";
         const deepResearchReason = deepResearchUsed
@@ -400,38 +408,23 @@ export const handleEmailGenerationCompleted = internalMutation({
           deepResearchDataPoints: deepResearchUsed
             ? result.missing_data_points || []
             : [],
-          deepResearchCreditsCharged:
-            deepResearchUsed && result.additional_credits_used
-              ? result.additional_credits_used
-              : 0,
+          deepResearchCreditsCharged: 0, // Deprecated: Credits now charged per-search, not per-lead
         });
 
-        // Process deep research tracking and credit charges
-        if (deepResearchUsed && !isEnterpriseUser) {
-          logger.info("Processing deep research charge", {
+        // Update search research tier if using Perplexity deep research (tier 3)
+        // This enables per-search credit charging instead of per-lead
+        if (deepResearchUsed && search.researchTier !== "perplexity") {
+          logger.info("Upgrading search research tier to Perplexity", {
+            searchId: search._id,
             leadId,
             reason: deepResearchReason,
-            additionalCredits: result.additional_credits_used,
-            missingDataPoints: result.missing_data_points,
           });
 
-          // Charge additional credits for deep research
-          if (result.additional_credits_used && result.additional_credits_used > 0) {
-            await ctx.runMutation(internal.credits.transactions.recordTransaction, {
-              userId: search.userId,
-              amount: result.additional_credits_used,
-              operation: "usage",
-              description: `Deep Research - ${deepResearchReason || "Enhanced business intelligence"}`,
-              relatedEntityType: "lead",
-              relatedEntityId: leadId,
-            });
-
-            logger.info("Deep research credits charged", {
-              userId: search.userId,
-              credits: result.additional_credits_used,
-              leadId,
-            });
-          }
+          await ctx.db.patch(search._id, {
+            researchTier: "perplexity",
+            researchStage: "tier2_perplexity",
+            researchEscalationReason: deepResearchReason,
+          });
         }
 
         // Create email sequence record if we have email content (idempotent by request_id per lead)
@@ -546,13 +539,24 @@ export const handleEmailGenerationCompleted = internalMutation({
               eligibleLeads: eligibleLeads.length,
             });
 
-            await ctx.scheduler.runAfter(
-              0,
-              "search/actions:completeSearch" as any,
-              {
-                searchId: searchId as any,
-              },
-            );
+            try {
+              await ctx.scheduler.runAfter(
+                0,
+                "search/actions:completeSearch" as any,
+                {
+                  searchId: searchId,
+                },
+              );
+
+              logger.info("Search completion scheduled successfully", { searchId: searchIdStr });
+            } catch (error) {
+              logger.error("Failed to schedule search completion", {
+                searchId: searchIdStr,
+                error: error instanceof Error ? error.message : String(error),
+              });
+
+              throw error; // Re-throw to trigger webhook retry
+            }
           }
         }
 
@@ -701,13 +705,24 @@ export const handleEmailGenerationCompleted = internalMutation({
               eligibleLeads: eligibleLeads.length,
             });
 
-            await ctx.scheduler.runAfter(
-              0,
-              "search/actions:completeSearch" as any,
-              {
-                searchId: searchId as any,
-              },
-            );
+            try {
+              await ctx.scheduler.runAfter(
+                0,
+                "search/actions:completeSearch" as any,
+                {
+                  searchId: searchId,
+                },
+              );
+
+              logger.info("Search completion scheduled successfully", { searchId: searchIdStr });
+            } catch (error) {
+              logger.error("Failed to schedule search completion", {
+                searchId: searchIdStr,
+                error: error instanceof Error ? error.message : String(error),
+              });
+
+              throw error; // Re-throw to trigger webhook retry
+            }
           }
         }
 
@@ -1436,12 +1451,30 @@ export const handleBatchCompleted = internalMutation({
             completionTriggeredAt: Date.now(),
           });
 
-          // Schedule completion after setting flag
-          await ctx.scheduler.runAfter(
-            0,
-            "search/actions:completeSearch" as any,
-            { searchId: searchIdTyped as any },
-          );
+          // Schedule completion after setting flag with proper error handling
+          try {
+            await ctx.scheduler.runAfter(
+              0,
+              (api as any).search.actions.completeSearch,
+              { searchId: searchIdTyped },
+            );
+
+            logger.info("Search completion scheduled successfully", { searchId, batchId });
+          } catch (error) {
+            logger.error("Failed to schedule search completion", {
+              searchId,
+              batchId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+
+            // Rollback flag if scheduler fails
+            await ctx.db.patch(searchIdTyped, {
+              completionTriggered: false,
+              completionTriggeredAt: undefined,
+            });
+
+            throw error; // Re-throw to trigger webhook retry
+          }
         }
       }
 

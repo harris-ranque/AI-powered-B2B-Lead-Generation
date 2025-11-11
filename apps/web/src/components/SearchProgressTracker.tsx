@@ -88,7 +88,7 @@ const COMPLETION_HINTS = ["complete", "completed", "ready", "finished", "handoff
 const ERROR_HINTS = ["failed", "error", "cancelled"];
 
 const CREDIT_TOOLTIP =
-  "Discovery and enrichment consume 1 credit per lead. Research tiers may add a dynamic premium when escalated.";
+  "Discovery and contact finding consume 1 credit per lead. Research tiers may add a dynamic premium when escalated.";
 
 /**
  * Search progress tracker focused on a single narrative of the pipeline.

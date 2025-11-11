@@ -1,0 +1,136 @@
+================================================================================
+ENRICHMENT TERMINOLOGY CHANGE SUMMARY
+================================================================================
+
+OVERVIEW:
+- Found 100+ instances of "enriched/enrichment/enrich" terminology
+- 25+ are UI-facing and should be reviewed/changed
+- 75+ are backend field names and MUST be kept as-is
+- Several key components already have good terminology
+
+================================================================================
+HIGH PRIORITY CHANGES (UI-facing text that strongly needs updating)
+================================================================================
+
+1. EmailGenerationStage.tsx:118
+   Current: "Generate personalized emails for X enriched leads"
+   Change: "Generate personalized emails for X contacts with emails"
+
+2. SearchProgressTracker.tsx:91 (Tooltip)
+   Current: "Discovery and enrichment consume 1 credit per lead"
+   Change: "Discovery and contact discovery consume 1 credit per lead"
+
+3. LeadSearchHistory.tsx:274
+   Current: "{enrichmentRate}% enriched"
+   Change: "{enrichmentRate}% contacts found"
+
+4. Dashboard.tsx:291, 313-314, 709
+   Current: Chart label "Enriched leads", text "% enriched", "No leads enriched yet"
+   Change: "Contacts Found", "% contacts found", "No contacts found yet"
+
+5. LeadDiscoveryStage.tsx:243, 909
+   Current: "required for enrichment", "start enriching leads immediately"
+   Change: "required to find contacts", "start finding contacts immediately"
+
+================================================================================
+MEDIUM PRIORITY CHANGES (Secondary UI text)
+================================================================================
+
+6. DashboardOverview.tsx:257
+   Change: "enrich leads" → "find contacts"
+
+7. ReviewExportStage.tsx:565, 1184
+   Change: "enrichment" → "contact discovery"
+
+8. ProviderKeyManager.tsx:33, 39
+   Change: "enrichment" → "contact discovery"
+
+9. AdminDashboard.tsx:247, 251, 259
+   Change: Various "enrichment" descriptions → "contact discovery"
+
+10. PerformanceWorkspace.tsx:340, 475
+    Change: "enrichments", "enrichment" → "contact discoveries"
+
+11. PipelineOrchestrator.tsx:476
+    Change: "discover, enrich, and generate" → "discover, find contacts, and generate"
+
+================================================================================
+ALREADY GOOD (No changes needed)
+================================================================================
+
+✅ EnrichmentStage.tsx - Already uses "Finding Contacts", "Contact Discovery Progress"
+✅ PipelineProgressPanel.tsx - Metric label already says "Contacts" (not "Enriched")
+✅ pipeline/config.ts - Stage title already says "Get Contacts"
+
+================================================================================
+BACKEND FIELD NAMES (MUST NOT CHANGE)
+================================================================================
+
+DO NOT CHANGE THESE:
+- search.progress.enriched (metric key)
+- search.results.enrichedCount (result count)
+- state.enrichedLeads (array variable)
+- enrichmentRate (calculation variable)
+- enrichmentStatus (data field)
+- enrichment (stage ID in backend)
+- enriched (metric key in backend)
+- All TypeScript type definitions using "enriched"
+
+These are internal implementation details that the backend relies on.
+
+================================================================================
+CONTEXT FOR CHANGES
+================================================================================
+
+Background:
+- The "enrichment" stage is about finding contact information (emails, phone, etc.)
+- The new terminology is clearer: "contacts found" is more specific than "enriched"
+- This aligns with the stage title already changed to "Get Contacts"
+
+Architecture:
+- Frontend displays data with labels/descriptions
+- Backend uses metric keys like "enriched" for tracking
+- Label → metric key mapping is in PipelineProgressPanel.tsx (line 60)
+- This separation means we can change labels without changing backend
+
+Impact Analysis:
+- HIGH: User-facing instructions and button text
+- MEDIUM: Dashboard labels and metrics descriptions
+- LOW: Help text and tooltips (less user-visible)
+- NONE: Backend field names and type definitions
+
+================================================================================
+IMPLEMENTATION STRATEGY
+================================================================================
+
+Phase 1 (High Priority):
+1. EmailGenerationStage.tsx - Change "enriched leads" text
+2. Dashboard.tsx - Update metric labels and display text
+3. LeadDiscoveryStage.tsx - Update instructions
+
+Phase 2 (Medium Priority):
+4. SearchProgressTracker.tsx - Update tooltip
+5. ReviewExportStage.tsx - Update messages
+6. Provider descriptions - Update all enrichment mentions
+
+Phase 3 (Low Priority):
+7. Other UI text and help messages
+8. Test file descriptions (if any)
+
+Testing After Changes:
+- Verify all metric displays still show correct numbers
+- Test that stage transitions still work
+- Check tooltips and help text appear correctly
+- Validate search results export still works
+
+================================================================================
+FILE REFERENCE
+================================================================================
+
+Full detailed report: ENRICHMENT_TERMINOLOGY_REPORT.md
+- 479 lines of detailed analysis
+- Line-by-line breakdown for each file
+- Context and reasoning for each change
+- Summary tables for quick reference
+
+================================================================================

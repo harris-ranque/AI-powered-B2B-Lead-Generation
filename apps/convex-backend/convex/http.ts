@@ -966,6 +966,10 @@ http.route({
         "body_follow_up_1",
         "subject_follow_up_2",
         "body_follow_up_2",
+        // Raw Perplexity research data
+        "full_research_report",
+        "perplexity_citations",
+        "research_confidence_score",
         // Removed follow_up_3 - now limited to 2 follow-ups
       ];
 
@@ -1005,6 +1009,18 @@ http.route({
             ? (location as any).postalCode
             : "";
 
+        // Extract raw Perplexity research data from aiAnalysis
+        const aiAnalysis = (lead as any).aiAnalysis;
+        const leadAnalysis = aiAnalysis?.leadAnalysis;
+        const fullResearchReport =
+          leadAnalysis?.research_metadata?.comprehensive_report ||
+          leadAnalysis?.comprehensive_report || "";
+        const perplexityCitations = JSON.stringify(
+          leadAnalysis?.research_metadata?.citations || []
+        );
+        const researchConfidenceScore =
+          leadAnalysis?.research_metadata?.confidence_score || "";
+
         const rowValues: unknown[] = [
           leadKey,
           lead.businessName ?? "",
@@ -1026,6 +1042,10 @@ http.route({
           followUp1.body,
           followUp2.subject,
           followUp2.body,
+          // Raw Perplexity research data
+          fullResearchReport,
+          perplexityCitations,
+          researchConfidenceScore,
           // Removed followUp3 - now limited to 2 follow-ups
         ];
 

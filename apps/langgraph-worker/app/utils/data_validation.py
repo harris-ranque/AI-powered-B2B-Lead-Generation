@@ -105,17 +105,25 @@ class BaseDataValidator:
             DataValidationResult with validation details
         """
         logger.info(f"Validating data completeness for research tier: {result.tier.value}")
-        
-        # Combine all text content for analysis
-        content_text = self._extract_all_text(result)
-        
-        # Check each required data point
+
+        # Check each required data point using structured fields first, then fallback to text analysis
         data_point_scores = {}
-        data_point_scores["annual_revenue"] = self._check_annual_revenue(content_text)
-        data_point_scores["employee_count"] = self._check_employee_count(content_text)
-        data_point_scores["leadership_names"] = self._check_leadership_names(content_text)
-        data_point_scores["recent_news"] = self._check_recent_news(content_text, result)
-        data_point_scores["funding_investments"] = self._check_funding_investments(content_text)
+
+        # Check structured fields first (preferred for Perplexity results)
+        data_point_scores["annual_revenue"] = bool(result.annual_revenue and result.annual_revenue != "")
+        data_point_scores["employee_count"] = bool(result.employee_count and result.employee_count != "")
+        data_point_scores["leadership_names"] = bool(result.leadership_names and len(result.leadership_names) > 0)
+        data_point_scores["recent_news"] = bool(result.recent_news and len(result.recent_news) > 0)
+        data_point_scores["funding_investments"] = bool(result.funding_investments and result.funding_investments != "")
+
+        # Fallback to text-based checking if structured fields are empty (for Tavily results)
+        if not any(data_point_scores.values()):
+            content_text = self._extract_all_text(result)
+            data_point_scores["annual_revenue"] = self._check_annual_revenue(content_text)
+            data_point_scores["employee_count"] = self._check_employee_count(content_text)
+            data_point_scores["leadership_names"] = self._check_leadership_names(content_text)
+            data_point_scores["recent_news"] = self._check_recent_news(content_text, result)
+            data_point_scores["funding_investments"] = self._check_funding_investments(content_text)
         
         # Calculate missing data points
         missing_data_points = [
@@ -220,21 +228,20 @@ class BaseDataValidator:
     
     def should_trigger_deep_research(self,
                                    validation_result: DataValidationResult,
-                                   user_tier: str = "free",
-                                   confidence_score: float = 1.0,
-                                   lead_value: float = 0.0) -> tuple[bool, str]:
+                                   confidence_score: float = 1.0) -> tuple[bool, str]:
         """
-        TIGHTENED: Deep research is now a LAST RESORT.
-        Only triggers when MULTIPLE critical conditions are met simultaneously.
+        Trigger deep research based ONLY on data quality after Sonar Pro.
 
-        With optimized Tavily (advanced search, domain targeting, metadata extraction),
-        deep research should rarely be needed.
+        Deep research escalation triggers when EITHER:
+        - Missing 2+ of 5 required data points after Sonar Pro, OR
+        - Confidence score < 0.6 after Sonar Pro
+
+        With Sonar Pro providing comprehensive research, deep research should only
+        be needed for ~10-15% of leads with incomplete or low-confidence data.
 
         Args:
             validation_result: Result from validate_research_result
-            user_tier: User subscription tier
             confidence_score: Research confidence score (adjusted by validation)
-            lead_value: Estimated lead value
 
         Returns:
             Tuple of (should_trigger, reason)
@@ -245,46 +252,117 @@ class BaseDataValidator:
         if not DEEP_RESEARCH_CONFIG['ENABLED']:
             return False, "Deep research is currently disabled"
 
-        # REMOVED: User tier restrictions - all users can access deep research when needed
-        # Previously checked MINIMUM_TIER config - now open to all tiers
-
-        # DISABLED: High-value lead automatic deep research (functionality preserved for future)
-        # Uncomment below to re-enable automatic deep research for high-value leads
-        # value_threshold = DEEP_RESEARCH_CONFIG['HIGH_VALUE_THRESHOLD']
-        # if lead_value >= value_threshold:
-        #     return True, f"High-value lead (${lead_value:,.0f}) - comprehensive research justified"
-
-        # PRIORITY: Multiple critical failures required (AND logic, not OR)
-        # Deep research only if BOTH data quality AND confidence are critically low
         min_missing = DEEP_RESEARCH_CONFIG['MIN_MISSING_DATA_POINTS']
         data_threshold = DEEP_RESEARCH_CONFIG['DATA_COMPLETENESS_THRESHOLD']
         confidence_threshold = DEEP_RESEARCH_CONFIG['CONFIDENCE_THRESHOLD']
 
-        is_data_critically_incomplete = (
-            len(validation_result.missing_data_points) >= min_missing  # Missing 4+ of 5 data points
-            and validation_result.validation_score < data_threshold     # Data quality <0.4
-        )
-
-        is_confidence_critically_low = confidence_score < confidence_threshold  # Confidence <0.3
-
-        # Trigger only if BOTH conditions are true
-        if is_data_critically_incomplete and is_confidence_critically_low:
+        # Check if missing 2+ data points after Sonar Pro
+        if len(validation_result.missing_data_points) >= min_missing:
             return True, (
-                f"Critical data failure: {len(validation_result.missing_data_points)}/5 missing, "
-                f"quality={validation_result.validation_score:.2f}, confidence={confidence_score:.2f}"
+                f"Missing {len(validation_result.missing_data_points)}/5 data points "
+                f"after Sonar Pro - comprehensive research needed"
             )
 
-        # If only one condition is met, explain why we're NOT escalating
-        if is_data_critically_incomplete:
-            return False, (
-                f"Data incomplete ({validation_result.validation_score:.2f}) but confidence acceptable ({confidence_score:.2f}) - "
-                f"Baseline research should be sufficient"
+        # Check if confidence is low after Sonar Pro
+        if confidence_score < confidence_threshold:
+            return True, (
+                f"Low confidence ({confidence_score:.2f}) after Sonar Pro - "
+                f"additional research depth needed"
             )
 
-        if is_confidence_critically_low:
-            return False, (
-                f"Confidence low ({confidence_score:.2f}) but data quality acceptable ({validation_result.validation_score:.2f}) - "
-                f"Baseline research should be sufficient"
-            )
+        # Sonar Pro research was sufficient
+        return False, "Sonar Pro research sufficient"
 
-        return False, "Tavily research sufficient - deep research not needed"
+    def validate_research_relevance(self,
+                                   result: "ResearchResult",
+                                   company_name: str,
+                                   industry: Optional[str] = None) -> tuple[float, List[str]]:
+        """
+        Validate if research is actually relevant to the target company.
+        Prevents garbage research results from being used in email generation.
+
+        Args:
+            result: ResearchResult to validate
+            company_name: Target company name
+            industry: Target company industry (optional)
+
+        Returns:
+            Tuple of (relevance_score, warning_messages)
+            - relevance_score: 0.0-1.0 (0.7+ is good, <0.5 is poor)
+            - warning_messages: List of relevance issues found
+        """
+        warnings = []
+        relevance_score = 1.0
+
+        # Extract all text content for analysis
+        content_text = self._extract_all_text(result).lower()
+        company_name_lower = company_name.lower()
+
+        # Remove common business suffixes for matching
+        company_core = re.sub(r'\s+(inc|llc|ltd|corp|corporation|company|co)\.?$', '', company_name_lower, flags=re.IGNORECASE)
+
+        # Check 1: Company name appears in research (most important)
+        company_mentions = content_text.count(company_core)
+        if company_mentions == 0:
+            relevance_score -= 0.4
+            warnings.append(f"Company name '{company_name}' not found in research content")
+        elif company_mentions < 3:
+            relevance_score -= 0.2
+            warnings.append(f"Company name only mentioned {company_mentions} times (low relevance)")
+
+        # Check 2: Detect obviously wrong content
+        wrong_content_indicators = [
+            (r'job losses in basic industries', 'Labor/employment article (not company-specific)'),
+            (r'full text of ["\']', 'Generic document dump (not research)'),
+            (r'massive job losses', 'Generic economic article (not relevant)'),
+            (r'part.?time and contractual employment', 'Generic employment article (not company research)'),
+            (r'this page intentionally left blank', 'Empty/placeholder content'),
+            (r'error|not found|404', 'Error page content'),
+            (r'cookie policy|privacy policy|terms of service', 'Website boilerplate (not research)'),
+        ]
+
+        for pattern, description in wrong_content_indicators:
+            if re.search(pattern, content_text, re.IGNORECASE):
+                relevance_score -= 0.3
+                warnings.append(f"Irrelevant content detected: {description}")
+                break  # Only penalize once for wrong content
+
+        # Check 3: Industry relevance (if provided)
+        if industry:
+            industry_lower = industry.lower()
+            # Remove generic words for better matching
+            industry_keywords = [word for word in industry_lower.split()
+                               if word not in ['services', 'company', 'inc', 'llc', 'and', 'the', 'of']]
+
+            industry_matches = sum(1 for keyword in industry_keywords if keyword in content_text)
+            if len(industry_keywords) > 0 and industry_matches == 0:
+                relevance_score -= 0.2
+                warnings.append(f"Industry '{industry}' not reflected in research content")
+
+        # Check 4: Minimum content quality
+        if len(content_text) < 100:
+            relevance_score -= 0.3
+            warnings.append(f"Research content too short ({len(content_text)} chars) - likely incomplete")
+
+        # Check 5: Has actual business information
+        business_indicators = [
+            'revenue', 'employee', 'founded', 'ceo', 'product', 'service',
+            'customer', 'client', 'market', 'industry', 'business', 'company'
+        ]
+        business_indicator_count = sum(1 for indicator in business_indicators if indicator in content_text)
+        if business_indicator_count < 3:
+            relevance_score -= 0.2
+            warnings.append(f"Limited business information ({business_indicator_count}/12 indicators)")
+
+        # Ensure score stays in valid range
+        relevance_score = max(0.0, min(1.0, relevance_score))
+
+        # Log relevance assessment
+        if relevance_score < 0.7:
+            logger.warning(f"Research relevance check for {company_name}: Score={relevance_score:.2f}, Warnings={len(warnings)}")
+            for warning in warnings:
+                logger.warning(f"  - {warning}")
+        else:
+            logger.info(f"Research relevance check for {company_name}: Score={relevance_score:.2f} (GOOD)")
+
+        return relevance_score, warnings

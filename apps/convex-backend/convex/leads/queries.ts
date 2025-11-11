@@ -49,21 +49,78 @@ export const exportLeads = query({
 
     const leads = await query.collect();
 
-    // Format leads for export
-    return leads.map((lead) => ({
-      id: lead._id,
-      name: lead.businessName,
-      address: lead.location.formattedAddress,
-      phone: lead.phone,
-      website: lead.website,
-      rating: lead.rating,
-      reviewCount: lead.reviewCount,
-      placeId: lead.placeId,
-      enrichedEmails: lead.contactInfo?.emails || [],
-      enrichmentStatus: lead.enrichmentStatus,
-      createdAt: new Date(lead.createdAt || lead._creationTime).toISOString(),
-      updatedAt: new Date(lead.updatedAt || lead._creationTime).toISOString(),
-    }));
+    // Format leads for export with enhanced research data
+    return leads.map((lead) => {
+      const companyData = lead.aiAnalysis?.companyData;
+      const researchTier = lead.aiAnalysis?.researchTier || "unknown";
+
+      // Research tier label mapping
+      const tierLabels: Record<string, string> = {
+        "basic": "Basic (Tavily)",
+        "pro": "Pro (Sonar Pro)",
+        "deep": "Deep (Deep Research)",
+        "unknown": "Not Available"
+      };
+
+      return {
+        // Existing basic fields (9 columns)
+        id: lead._id,
+        name: lead.businessName,
+        address: lead.location.formattedAddress,
+        phone: lead.phone || "",
+        website: lead.website || "",
+        email: lead.contactInfo?.emails?.[0]?.email || "",
+        rating: lead.rating || 0,
+        reviewCount: lead.reviewCount || 0,
+        placeId: lead.placeId,
+        enrichmentStatus: lead.enrichmentStatus,
+
+        // New research tier fields (2 columns)
+        researchTier: researchTier,
+        researchTierLabel: tierLabels[researchTier] || "Unknown",
+
+        // Annual revenue fields (3 columns)
+        annualRevenueAmount: companyData?.annual_revenue?.amount || "",
+        annualRevenueYear: companyData?.annual_revenue?.year || "",
+        annualRevenueSource: companyData?.annual_revenue?.source || "",
+
+        // Employee count fields (3 columns)
+        employeeCount: companyData?.employee_count?.count || "",
+        employeeCountAsOf: companyData?.employee_count?.as_of || "",
+        employeeCountSource: companyData?.employee_count?.source || "",
+
+        // Leadership fields (6 columns - top 3 leaders)
+        leadership1Name: companyData?.leadership_names?.[0]?.name || "",
+        leadership1Title: companyData?.leadership_names?.[0]?.title || "",
+        leadership2Name: companyData?.leadership_names?.[1]?.name || "",
+        leadership2Title: companyData?.leadership_names?.[1]?.title || "",
+        leadership3Name: companyData?.leadership_names?.[2]?.name || "",
+        leadership3Title: companyData?.leadership_names?.[2]?.title || "",
+
+        // Recent news fields (6 columns - top 3 news items)
+        recentNews1: companyData?.recent_news?.[0]?.event || "",
+        recentNews1Date: companyData?.recent_news?.[0]?.date || "",
+        recentNews2: companyData?.recent_news?.[1]?.event || "",
+        recentNews2Date: companyData?.recent_news?.[1]?.date || "",
+        recentNews3: companyData?.recent_news?.[2]?.event || "",
+        recentNews3Date: companyData?.recent_news?.[2]?.date || "",
+
+        // Funding details fields (3 columns)
+        fundingTotalRaised: companyData?.funding_details?.total_raised || "",
+        fundingLatestRound: companyData?.funding_details?.latest_round || "",
+        fundingSource: companyData?.funding_details?.source || "",
+
+        // Full research report fields (3 columns)
+        fullResearchReport: lead.aiAnalysis?.leadAnalysis?.research_metadata?.comprehensive_report ||
+                           lead.aiAnalysis?.leadAnalysis?.comprehensive_report || "",
+        perplexityCitations: JSON.stringify(lead.aiAnalysis?.leadAnalysis?.research_metadata?.citations || []),
+        researchConfidenceScore: lead.aiAnalysis?.leadAnalysis?.research_metadata?.confidence_score || "",
+
+        // Timestamps
+        createdAt: new Date(lead.createdAt || lead._creationTime).toISOString(),
+        updatedAt: new Date(lead.updatedAt || lead._creationTime).toISOString(),
+      };
+    });
   },
 });
 
