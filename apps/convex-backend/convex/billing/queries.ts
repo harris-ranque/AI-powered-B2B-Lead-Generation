@@ -180,8 +180,9 @@ export const getPlanCatalog = query({
         planName: p.planName,
         monthlyPrice: p.monthlyPrice,
         yearlyPrice: p.yearlyPrice,
-        stripePriceIdMonthly: p.stripePriceIdMonthly,
-        stripePriceIdYearly: p.stripePriceIdYearly,
+        // FastSpring product paths for checkout
+        fastspringProductPathMonthly: p.fastspringProductPathMonthly,
+        fastspringProductPathYearly: p.fastspringProductPathYearly,
         limits: p.limits,
         features: p.features,
       }));
@@ -284,15 +285,15 @@ export const getSubscriptionStatus = query({
       throw new Error("Authentication required");
     }
 
-    // For now, return basic subscription info based on user plan
-    // This can be extended to integrate with Stripe subscription data
+    // Return subscription info based on user plan
+    // Full subscription details come from FastSpring via the billing table
     const plan = user.plan || "starter";
 
     return {
       plan: plan,
       hasActiveSubscription: plan !== "starter",
-      isTrialing: false, // This would come from Stripe data
-      billing: null, // This would contain Stripe subscription details
+      isTrialing: false, // FastSpring webhook updates this
+      billing: null, // FastSpring subscription details
     };
   },
 });

@@ -3,7 +3,6 @@ import { httpAction } from "./_generated/server";
 import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
-import Stripe from "stripe";
 import { Webhook, WebhookVerificationError } from "svix";
 import {
   base64UrlEncodeString,
@@ -1188,156 +1187,270 @@ http.route({
   }),
 });
 
-// Stripe webhook handler
+/**
+ * FastSpring webhook handler
+ * Verifies HMAC SHA256 signature and routes events to appropriate handlers
+ *
+ * Events handled:
+ * - order.completed (credits and subscription orders)
+ * - subscription.activated (new subscription active)
+ * - subscription.charge.completed (recurring payment success)
+ * - subscription.updated (plan changes, prorations)
+ * - subscription.canceled (cancellation initiated)
+ * - subscription.deactivated (subscription ended)
+ * - subscription.charge.failed (payment failure)
+ */
 http.route({
-  path: "/webhooks/stripe",
+  path: "/webhooks/fastspring",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
-      const signature = request.headers.get("stripe-signature");
+      // Get the signature from FastSpring header
+      const signature = request.headers.get("X-FS-Signature");
       if (!signature) {
-        console.error("Missing Stripe signature header");
+        console.error("Missing FastSpring signature header");
         return new Response("Missing signature", { status: 400 });
       }
 
-      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-      const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-      if (!webhookSecret || !stripeSecretKey) {
-        console.error("Stripe webhook secret or API key not configured");
-        return new Response("Stripe integration not configured", {
+      const webhookSecret = process.env.FASTSPRING_WEBHOOK_SECRET;
+      if (!webhookSecret) {
+        console.error("FastSpring webhook secret not configured");
+        return new Response("FastSpring integration not configured", {
           status: 500,
         });
       }
 
       const rawBody = await request.text();
-      const stripe = new Stripe(stripeSecretKey, {
-        apiVersion: "2023-10-16" as Stripe.LatestApiVersion,
-      });
 
-      let event: Stripe.Event;
-      try {
-        event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
-      } catch (err) {
-        console.error("Stripe signature verification failed", err);
-        return new Response("Invalid signature", { status: 400 });
+      // Verify HMAC SHA256 signature using Web Crypto API
+      // FastSpring sends signature as base64-encoded HMAC-SHA256
+      const encoder = new TextEncoder();
+      const keyData = encoder.encode(webhookSecret);
+      const messageData = encoder.encode(rawBody);
+
+      // Import the key for HMAC
+      const cryptoKey = await crypto.subtle.importKey(
+        "raw",
+        keyData,
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"]
+      );
+
+      // Sign the message
+      const signatureArrayBuffer = await crypto.subtle.sign(
+        "HMAC",
+        cryptoKey,
+        messageData
+      );
+
+      // Convert to base64
+      const expectedSignature = btoa(
+        String.fromCharCode(...new Uint8Array(signatureArrayBuffer))
+      );
+
+      // Use constant-time comparison to prevent timing attacks
+      if (signature.length !== expectedSignature.length) {
+        console.error("FastSpring signature verification failed", {
+          receivedLength: signature.length,
+          expectedLength: expectedSignature.length,
+        });
+        return new Response("Invalid signature", { status: 401 });
       }
 
-      console.log(`Stripe webhook received: ${event.type}`);
+      // Character-by-character comparison (constant time for equal lengths)
+      let mismatch = 0;
+      for (let i = 0; i < signature.length; i++) {
+        mismatch |= signature.charCodeAt(i) ^ expectedSignature.charCodeAt(i);
+      }
+      if (mismatch !== 0) {
+        console.error("FastSpring signature verification failed");
+        return new Response("Invalid signature", { status: 401 });
+      }
 
-      switch (event.type) {
-        case "checkout.session.completed": {
-          const session = event.data.object as Stripe.Checkout.Session;
-          await ctx.runMutation(
-            internal.billing.webhooks.handleCheckoutCompleted,
-            {
-              sessionId: session.id,
-              customerId: String(session.customer || ""),
-              subscriptionId:
-                typeof session.subscription === "string"
-                  ? session.subscription
-                  : session.subscription?.id,
-              mode: session.mode || "",
-              metadata: session.metadata || {},
-            },
-          );
-          break;
-        }
+      // Parse the webhook payload
+      let payload: any;
+      try {
+        payload = JSON.parse(rawBody);
+      } catch (err) {
+        console.error("Failed to parse FastSpring webhook payload", err);
+        return new Response("Invalid JSON body", { status: 400 });
+      }
 
-        case "customer.subscription.created": {
-          const sub = event.data.object as Stripe.Subscription;
-          const item = sub.items?.data?.[0];
-          await ctx.runMutation(internal.billing.webhooks.handleSubscriptionCreated, {
-            subscriptionId: sub.id,
-            customerId: String(sub.customer),
-            status: sub.status,
-            priceId: item?.price?.id,
-            currentPeriodStart:
-              ((sub as any).current_period_start || 0) * 1000,
-            currentPeriodEnd: ((sub as any).current_period_end || 0) * 1000,
-            trialStart: (sub as any).trial_start
-              ? (sub as any).trial_start * 1000
-              : undefined,
-            trialEnd: (sub as any).trial_end
-              ? (sub as any).trial_end * 1000
-              : undefined,
-            metadata: (sub as any).metadata || {},
-            interval: item?.price?.recurring?.interval || undefined,
-          } as any);
-          break;
-        }
+      // FastSpring sends events array in the payload
+      const events = payload.events || [payload];
 
-        case "customer.subscription.updated": {
-          const sub = event.data.object as Stripe.Subscription;
-          const item = sub.items?.data?.[0];
-          await ctx.runMutation(internal.billing.webhooks.handleSubscriptionUpdated, {
-            subscriptionId: sub.id,
-            customerId: String(sub.customer),
-            status: sub.status,
-            priceId: item?.price?.id,
-            currentPeriodStart:
-              ((sub as any).current_period_start || 0) * 1000,
-            currentPeriodEnd: ((sub as any).current_period_end || 0) * 1000,
-            cancelAtPeriodEnd: (sub as any).cancel_at_period_end || false,
-            cancelAt: (sub as any).cancel_at
-              ? (sub as any).cancel_at * 1000
-              : undefined,
-            canceledAt: (sub as any).canceled_at
-              ? (sub as any).canceled_at * 1000
-              : undefined,
-            metadata: (sub as any).metadata || {},
-            interval: item?.price?.recurring?.interval || undefined,
-          } as any);
-          break;
-        }
+      for (const event of events) {
+        const eventType = event.type || event.event;
+        const eventData = event.data || event;
 
-        case "customer.subscription.deleted": {
-          const sub = event.data.object as Stripe.Subscription;
-          await ctx.runMutation(internal.billing.webhooks.handleSubscriptionDeleted, {
-            subscriptionId: sub.id,
-            customerId: String(sub.customer),
-          });
-          break;
-        }
+        console.log(`FastSpring webhook received: ${eventType}`, {
+          id: event.id,
+          live: event.live,
+        });
 
-        case "invoice.payment_succeeded": {
-          const invoice = event.data.object as Stripe.Invoice;
-          await ctx.runMutation(internal.billing.webhooks.handlePaymentSucceeded, {
-            invoiceId: String((invoice as any).id || ""),
-            subscriptionId:
-              typeof (invoice as any).subscription === "string"
-                ? (invoice as any).subscription
-                : (invoice as any).subscription?.id,
-            customerId: String((invoice as any).customer || ""),
-            amount: (invoice as any).amount_paid || 0,
-            currency: (invoice as any).currency || "usd",
-            paidAt: (invoice as any).status_transitions?.paid_at
-              ? (invoice as any).status_transitions.paid_at * 1000
-              : undefined,
-          });
-          break;
-        }
+        switch (eventType) {
+          case "order.completed": {
+            // Extract order details
+            const order = eventData.order || eventData;
+            const account = eventData.account || order.account || {};
+            const items = order.items || [];
 
-        case "invoice.payment_failed": {
-          const invoice = event.data.object as Stripe.Invoice;
-          await ctx.runMutation(internal.billing.webhooks.handlePaymentFailed, {
-            invoiceId: String((invoice as any).id || ""),
-            subscriptionId:
-              typeof (invoice as any).subscription === "string"
-                ? (invoice as any).subscription
-                : (invoice as any).subscription?.id,
-            customerId: String((invoice as any).customer || ""),
-            amount: (invoice as any).amount_due || 0,
-            currency: (invoice as any).currency || "usd",
-            attemptCount: (invoice as any).attempt_count || 0,
-            nextPaymentAttempt: (invoice as any).next_payment_attempt
-              ? (invoice as any).next_payment_attempt * 1000
-              : undefined,
-          });
-          break;
-        }
+            await ctx.runMutation(
+              internal.billing.webhooks.handleOrderCompleted,
+              {
+                orderId: order.id || event.id,
+                orderReference: order.reference || order.id,
+                accountId: account.id || "",
+                accountEmail: account.contact?.email || account.email || "",
+                total: order.total || order.totalInPayoutCurrency || 0,
+                currency: order.currency || "USD",
+                items: items.map((item: any) => ({
+                  product: item.product || item.productPath || "",
+                  quantity: item.quantity || 1,
+                  price: item.price || item.subtotal || 0,
+                  subscription: item.subscription || undefined,
+                })),
+                tags: order.tags || eventData.tags || {},
+              }
+            );
+            break;
+          }
 
-        default: {
-          console.log(`Unhandled Stripe event type: ${event.type}`);
+          case "subscription.activated": {
+            const subscription = eventData.subscription || eventData;
+            const account = eventData.account || subscription.account || {};
+
+            await ctx.runMutation(
+              internal.billing.webhooks.handleSubscriptionActivated,
+              {
+                subscriptionId: subscription.id || subscription.subscription,
+                accountId: account.id || "",
+                accountEmail: account.contact?.email || account.email || "",
+                product: subscription.product || subscription.productPath || "",
+                state: subscription.state || "active",
+                nextChargeDate: subscription.nextChargeDate
+                  ? Math.floor(new Date(subscription.nextChargeDate).getTime() / 1000)
+                  : undefined,
+                price: subscription.price || subscription.priceValue || 0,
+                currency: subscription.currency || "USD",
+                intervalUnit: subscription.intervalUnit,
+                intervalLength: subscription.intervalLength,
+                tags: subscription.tags || eventData.tags || {},
+              }
+            );
+            break;
+          }
+
+          case "subscription.charge.completed": {
+            const subscription = eventData.subscription || eventData;
+            const account = eventData.account || subscription.account || {};
+            const order = eventData.order || {};
+
+            await ctx.runMutation(
+              internal.billing.webhooks.handleSubscriptionChargeCompleted,
+              {
+                subscriptionId: subscription.id || subscription.subscription,
+                accountId: account.id || "",
+                orderId: order.id || event.id || "",
+                orderReference: order.reference || order.id || "",
+                product: subscription.product || subscription.productPath || "",
+                price: subscription.price || order.total || 0,
+                currency: subscription.currency || order.currency || "USD",
+                nextChargeDate: subscription.nextChargeDate
+                  ? Math.floor(new Date(subscription.nextChargeDate).getTime() / 1000)
+                  : undefined,
+                tags: subscription.tags || eventData.tags || {},
+              }
+            );
+            break;
+          }
+
+          case "subscription.updated": {
+            const subscription = eventData.subscription || eventData;
+            const account = eventData.account || subscription.account || {};
+
+            await ctx.runMutation(
+              internal.billing.webhooks.handleSubscriptionUpdated,
+              {
+                subscriptionId: subscription.id || subscription.subscription,
+                accountId: account.id || "",
+                product: subscription.product || subscription.productPath || "",
+                state: subscription.state || "active",
+                price: subscription.price || subscription.priceValue || 0,
+                currency: subscription.currency || "USD",
+                nextChargeDate: subscription.nextChargeDate
+                  ? Math.floor(new Date(subscription.nextChargeDate).getTime() / 1000)
+                  : undefined,
+                intervalUnit: subscription.intervalUnit,
+                intervalLength: subscription.intervalLength,
+                tags: subscription.tags || eventData.tags || {},
+              }
+            );
+            break;
+          }
+
+          case "subscription.canceled": {
+            const subscription = eventData.subscription || eventData;
+            const account = eventData.account || subscription.account || {};
+
+            await ctx.runMutation(
+              internal.billing.webhooks.handleSubscriptionCanceled,
+              {
+                subscriptionId: subscription.id || subscription.subscription,
+                accountId: account.id || "",
+                product: subscription.product || subscription.productPath || "",
+                canceledDate: subscription.canceledDate
+                  ? Math.floor(new Date(subscription.canceledDate).getTime() / 1000)
+                  : undefined,
+                deactivationDate: subscription.deactivationDate
+                  ? Math.floor(new Date(subscription.deactivationDate).getTime() / 1000)
+                  : undefined,
+                tags: subscription.tags || eventData.tags || {},
+              }
+            );
+            break;
+          }
+
+          case "subscription.deactivated": {
+            const subscription = eventData.subscription || eventData;
+            const account = eventData.account || subscription.account || {};
+
+            await ctx.runMutation(
+              internal.billing.webhooks.handleSubscriptionDeactivated,
+              {
+                subscriptionId: subscription.id || subscription.subscription,
+                accountId: account.id || "",
+                product: subscription.product || subscription.productPath || "",
+                tags: subscription.tags || eventData.tags || {},
+              }
+            );
+            break;
+          }
+
+          case "subscription.charge.failed": {
+            const subscription = eventData.subscription || eventData;
+            const account = eventData.account || subscription.account || {};
+
+            await ctx.runMutation(
+              internal.billing.webhooks.handleSubscriptionChargeFailed,
+              {
+                subscriptionId: subscription.id || subscription.subscription,
+                accountId: account.id || "",
+                product: subscription.product || subscription.productPath || "",
+                reason: eventData.reason || subscription.failureReason,
+                retryDate: subscription.nextRetryDate
+                  ? Math.floor(new Date(subscription.nextRetryDate).getTime() / 1000)
+                  : undefined,
+                tags: subscription.tags || eventData.tags || {},
+              }
+            );
+            break;
+          }
+
+          default: {
+            console.log(`Unhandled FastSpring event type: ${eventType}`);
+          }
         }
       }
 
@@ -1345,7 +1458,7 @@ http.route({
         headers: { "Content-Type": "application/json" },
       });
     } catch (error) {
-      console.error("Stripe webhook error:", error);
+      console.error("FastSpring webhook error:", error);
       return new Response(JSON.stringify({ error: "Webhook handler failed" }), {
         status: 500,
         headers: { "Content-Type": "application/json" },

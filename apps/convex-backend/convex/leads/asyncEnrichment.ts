@@ -162,6 +162,102 @@ export const enrichSingleLead = internalAction({
         throw new Error(`Lead ${args.leadId} not found`);
       }
 
+      // CHECK: Skip enrichment if lead already has emails (e.g., from CSV upload)
+      if (
+        lead.contactInfo?.emails &&
+        Array.isArray(lead.contactInfo.emails) &&
+        lead.contactInfo.emails.length > 0 &&
+        lead.enrichmentStatus === "completed" &&
+        lead.dataSource === "csv_upload"
+      ) {
+        logWithCorrelation(
+          "info",
+          correlation,
+          "⏭️  Skipping Enrichment - Lead Already Has Emails",
+          {
+            leadId: args.leadId,
+            businessName: lead.businessName,
+            emailCount: lead.contactInfo.emails.length,
+            source: lead.dataSource || "unknown",
+            reason: "Lead already has contact emails (likely from CSV import)",
+          },
+        );
+
+        // Mark as completed (already enriched from CSV)
+        await ctx.runMutation(
+          internal.leads.internal.updateEnrichmentStatus,
+          {
+            leadId: args.leadId,
+            status: "completed",
+          },
+        );
+
+        // Update enrichment provider separately using internal mutation
+        await ctx.runMutation(
+          internal.leads.internal.updateEnrichmentProvider,
+          { leadId: args.leadId, provider: "csv_import" }
+        );
+
+        // Check for email duplicates even for CSV imports
+        await ctx.runMutation(
+          internal.leads.internal.checkEmailDuplication,
+          {
+            leadId: args.leadId,
+            userId: args.userId,
+            searchId: args.searchId,
+          },
+        );
+
+        const perfData = endPerformanceTracking(performanceTracker);
+
+        logWithCorrelation(
+          "info",
+          correlation,
+          "✅ Lead Marked as Enriched (CSV Import)",
+          {
+            leadId: args.leadId,
+            businessName: lead.businessName,
+            emailsFound: lead.contactInfo.emails.length,
+            durationMs: perfData?.duration || 0,
+            creditsUsed: 0, // No enrichment credits used
+          },
+        );
+
+        // CHECK: Atomically try to trigger AI analysis phase
+        const shouldTriggerAnalysis = await ctx.runMutation(
+          internal.leads.internal.tryTriggerAnalysisPhase,
+          { searchId: args.searchId }
+        );
+
+        if (shouldTriggerAnalysis) {
+          logWithCorrelation(
+            "info",
+            correlation,
+            "🎉 All Enrichment Complete - Triggering AI Analysis Phase (won race)",
+            {
+              searchId: args.searchId,
+              nextPhase: "ai_analysis",
+              triggeredBy: "csv_import_completion",
+              note: "This action won the race to trigger analysis",
+            },
+          );
+
+          // Trigger AI analysis phase (fire-and-forget)
+          await ctx.scheduler.runAfter(
+            0,
+            (internal as any)["leads/actions"].analyzeLeads,
+            { searchId: args.searchId }
+          );
+        }
+
+        return {
+          success: true,
+          provider: "csv_import" as any,
+          emailsFound: lead.contactInfo.emails.length,
+          skipped: true,
+        };
+      }
+
       const domain = extractDomain(lead.website);
 
       if (!domain) {

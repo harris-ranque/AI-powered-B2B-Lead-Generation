@@ -383,7 +383,7 @@ export function SearchProgressTracker({
                 <CardTitle className="text-base font-semibold">
                   {formattedSearchName || "Lead pipeline"}
                 </CardTitle>
-                <Badge variant={statusBadgeVariant}>{search.status.replace(/_/g, " ")}</Badge>
+                <Badge data-testid="search-status" data-status={search.status} variant={statusBadgeVariant}>{search.status.replace(/_/g, " ")}</Badge>
                 {search.researchTier && (
                   <span className="flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
                     {researchTierDisplay.icon && (
@@ -498,6 +498,9 @@ export function SearchProgressTracker({
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <div
+                              data-testid="pipeline-stage"
+                              data-stage-name={stage.id}
+                              data-stage-status={isComplete ? "completed" : isActive ? "in_progress" : "pending"}
                               className={cn(
                                 "flex h-11 w-11 items-center justify-center rounded-full border transition-all",
                                 isComplete
@@ -522,7 +525,15 @@ export function SearchProgressTracker({
                       </TooltipProvider>
                       <div className="text-center text-xs">
                         <div className="font-medium text-foreground">{stage.label}</div>
-                        <div className="text-muted-foreground">
+                        <div
+                          className="text-muted-foreground"
+                          data-testid={
+                            stage.id === "discovery" ? "leads-discovered-count" :
+                            stage.id === "enrichment" ? "leads-enriched-count" :
+                            stage.id === "analysis" ? "leads-analyzed-count" :
+                            undefined
+                          }
+                        >
                           {typeof stage.count === "number" ? `${stage.count} leads` : "–"}
                         </div>
                       </div>
@@ -735,7 +746,7 @@ export function SearchProgressTracker({
                 </div>
                 <div className="space-y-1">
                   <span className="text-xs uppercase tracking-wide text-muted-foreground">Completed</span>
-                  <p className="font-medium text-foreground">
+                  <p className="font-medium text-foreground" data-testid="completed-at">
                     {search.completedAt ? new Date(search.completedAt).toLocaleString() : "In progress"}
                   </p>
                 </div>

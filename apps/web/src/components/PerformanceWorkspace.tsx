@@ -47,7 +47,7 @@ import type {
   LeadStatsSummary,
   UsageSummary,
 } from "@/components/DashboardOverview";
-import type { PlanType } from "@/lib/pricing-config";
+import type { PlanType } from "@/lib/runtime-config";
 
 const performanceLogger = createLogger("PerformanceWorkspace");
 

@@ -4,15 +4,24 @@
  * This file contains test scenarios and validation functions for the complete
  * subscription system implementation.
  *
- * IMPORTANT: All pricing values are now loaded from environment variables.
- * No hardcoded pricing should exist in tests.
+ * IMPORTANT: All pricing values are now loaded from Convex database via runtime config.
+ * No hardcoded pricing should exist in tests. Tests should mock getRuntimeConfigSync()
+ * to provide test fixture data.
  */
 
 import {
-  PRICING_CONFIG,
-  getPlanPrice,
   formatPrice,
-} from "../lib/pricing-config";
+  getRuntimeConfigSync,
+  getPlanPrice,
+  type PlanType,
+} from "../lib/runtime-config";
+
+// Helper to get pricing from runtime config for tests
+const getTestPlanPrice = (planId: PlanType, isYearly: boolean): number => {
+  const config = getRuntimeConfigSync();
+  if (!config) return 0;
+  return getPlanPrice(config.planCatalog, planId, isYearly);
+};
 
 export interface TestScenario {
   name: string;
@@ -72,10 +81,10 @@ export const subscriptionFlowTests: TestScenario[] = [
         action: "User navigates to pricing page",
         expectedResult: "All 4 plans displayed correctly",
         validationChecks: [
-          `Starter plan shows ${formatPrice(getPlanPrice("starter", false))}/month`,
-          `Professional plan shows ${formatPrice(getPlanPrice("professional", false))}/month`,
-          `Business plan shows ${formatPrice(getPlanPrice("business", false))}/month`,
-          `Enterprise plan shows ${formatPrice(getPlanPrice("enterprise", false))}/month`,
+          `Starter plan shows ${formatPrice(getTestPlanPrice("starter", false))}/month`,
+          `Professional plan shows ${formatPrice(getTestPlanPrice("professional", false))}/month`,
+          `Business plan shows ${formatPrice(getTestPlanPrice("business", false))}/month`,
+          `Enterprise plan shows ${formatPrice(getTestPlanPrice("enterprise", false))}/month`,
           "No free trial mentions",
           "BYOK only mentioned for Enterprise",
         ],
@@ -86,7 +95,7 @@ export const subscriptionFlowTests: TestScenario[] = [
         validationChecks: [
           "URL is /subscribe/professional",
           "Plan details loaded correctly",
-          `Price shows ${formatPrice(getPlanPrice("professional", false))}/month`,
+          `Price shows ${formatPrice(getTestPlanPrice("professional", false))}/month`,
           "Features list displays Professional benefits",
         ],
       },

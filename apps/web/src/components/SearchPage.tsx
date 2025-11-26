@@ -51,6 +51,7 @@ export function SearchPage({ onSearch }: SearchPageProps) {
             Business Type or Name
           </Label>
           <Input
+            data-testid="business-type-input"
             value={businessType}
             onChange={(e) => setBusinessType(e.target.value)}
             placeholder="e.g., SaaS companies, Marketing agencies, Dentists"
@@ -64,6 +65,7 @@ export function SearchPage({ onSearch }: SearchPageProps) {
             Location
           </Label>
           <Input
+            data-testid="location-input"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
             placeholder="e.g., San Francisco, Austin TX, 90210"
@@ -77,6 +79,7 @@ export function SearchPage({ onSearch }: SearchPageProps) {
             Number of Results
           </Label>
           <Input
+            data-testid="max-results-input"
             type="number"
             value={resultCount}
             onChange={(e) => setResultCount(Number(e.target.value))}
@@ -87,6 +90,7 @@ export function SearchPage({ onSearch }: SearchPageProps) {
         </div>
 
         <Button
+          data-testid="create-search-button"
           onClick={handleSearch}
           className="w-full gradient-primary glow-primary hover:opacity-90 transition-smooth"
           size="lg"

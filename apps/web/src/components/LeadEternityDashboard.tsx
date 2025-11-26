@@ -33,7 +33,7 @@ import {
 import { PerformanceWorkspace } from "./PerformanceWorkspace";
 // import { Dashboard } from "./Dashboard"; // UNUSED - See warning in Dashboard.tsx
 import { CreditManager } from "./CreditManager";
-import type { PlanType } from "@/lib/pricing-config";
+import type { PlanType } from "@/lib/runtime-config";
 import type {
   Lead,
   BusinessProfileInput,
@@ -55,6 +55,7 @@ import { ClerkUserButton } from "@/components/auth/ClerkAuthWrapper";
 import { withErrorBoundary } from "@/utils/errorHandling";
 import { createLogger } from "@/utils/logger";
 import { applyAppTheme, getStoredAppTheme, type AppThemeKey } from "@/lib/appTheme";
+import { useAnalytics } from "@/hooks/useAnalytics";
 
 const leadDashboardLogger = createLogger("LeadEternityDashboard");
 
@@ -67,6 +68,7 @@ function LeadEternityDashboardContent() {
   const isHandlingHashChangeRef = useRef(false);
   const [componentError, setComponentError] = useState<string | null>(null);
   const { user } = useAuth();
+  const analytics = useAnalytics();
 
   const handleComponentError = useCallback(
     (error: unknown, context: string, extra?: Record<string, unknown>) => {
@@ -106,6 +108,22 @@ function LeadEternityDashboardContent() {
       }
     }
   }, [user]);
+
+  // PostHog user identification - Identify user for analytics tracking
+  useEffect(() => {
+    if (user) {
+      analytics.identifyUser(user._id, {
+        email: user.email,
+        name: user.name,
+        plan: user.plan || 'free',
+        role: user.role || 'user',
+        credits: user.credits || 0,
+        $set_once: {
+          first_seen: new Date().toISOString(),
+        },
+      });
+    }
+  }, [user, analytics]);
 
   // Real backend integration
   const {
@@ -337,6 +355,16 @@ function LeadEternityDashboardContent() {
 
       if (isValidTabName(candidateTab)) {
         leadDashboardLogger.info("Tab changed", { newTab: candidateTab });
+
+        // Track tab change in analytics
+        analytics.trackDashboardTabViewed({
+          tab: candidateTab,
+          from_tab: currentTab,
+          plan: user?.plan || 'free',
+          credits: user?.credits || 0,
+          active_searches: searches?.length || 0,
+        });
+
         setCurrentTab(candidateTab);
         updateHashForTab(candidateTab);
         return;
@@ -350,7 +378,7 @@ function LeadEternityDashboardContent() {
       setCurrentTab("overview");
       updateHashForTab("overview");
     },
-    [handleComponentError, updateHashForTab],
+    [handleComponentError, updateHashForTab, analytics, currentTab, user, searches],
   );
 
   // Clear hash on initial mount to prevent auto-redirects from previous sessions
@@ -466,7 +494,7 @@ function LeadEternityDashboardContent() {
   }, [handleComponentError, handleTabChange, toast, user]);
 
   const handleUpgradePlan = (planId: string) => {
-    // In real app, this would integrate with Stripe
+    // In real app, this would integrate with FastSpring popup checkout
     toast({
       title: "Upgrade Plan",
       description: `Upgrading to ${planId} plan...`,

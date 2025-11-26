@@ -56,18 +56,26 @@ export const REQUIRED_ENV_VARS: RequiredEnvVar[] = [
     required: false,
   },
 
-  // Stripe Payment Processing
+  // FastSpring Payment Processing
   {
-    name: "STRIPE_SECRET_KEY",
-    description: "Stripe secret key for payment processing",
+    name: "FASTSPRING_API_USERNAME",
+    description: "FastSpring API username for secure checkout",
     required: true,
-    validate: (value: string) => value.startsWith("sk_"),
   },
   {
-    name: "STRIPE_WEBHOOK_SECRET",
-    description: "Stripe webhook secret for signature verification",
+    name: "FASTSPRING_API_PASSWORD",
+    description: "FastSpring API password for secure checkout",
     required: true,
-    validate: (value: string) => value.startsWith("whsec_"),
+  },
+  {
+    name: "FASTSPRING_WEBHOOK_SECRET",
+    description: "FastSpring webhook secret for HMAC signature verification",
+    required: true,
+  },
+  {
+    name: "FASTSPRING_PRIVATE_KEY",
+    description: "FastSpring RSA private key for secure payload encryption",
+    required: true,
   },
 
   // LangGraph Worker
@@ -237,7 +245,7 @@ export function isDevelopment(): boolean {
 export function validateWebhookEnvironment(): void {
   const requiredForWebhooks = [
     "CLERK_WEBHOOK_SECRET",
-    "STRIPE_WEBHOOK_SECRET",
+    "FASTSPRING_WEBHOOK_SECRET",
     "LANGGRAPH_API_KEY",
   ];
 

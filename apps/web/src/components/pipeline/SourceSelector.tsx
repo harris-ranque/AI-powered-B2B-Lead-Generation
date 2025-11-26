@@ -57,7 +57,7 @@ export function SourceSelector() {
           const IconComponent = source.type === "google_maps" ? MapPin : Upload;
           const isSelected = state.selectedSource === source.type;
           const isHovered = hoveredSource === source.type;
-          const isDisabled = source.type === "csv_upload"; // temporarily disabled
+          const isDisabled = false; // CSV upload is now enabled!
 
           return (
             <Card
@@ -163,8 +163,8 @@ export function SourceSelector() {
                     <Alert>
                       <Info className="h-4 w-4" />
                       <AlertDescription className="text-xs">
-                        CSV Upload is currently disabled while we complete
-                        security and auth improvements.
+                        Import your existing leads. Provide emails to save credits
+                        (skips enrichment), or provide domains for full enrichment.
                       </AlertDescription>
                     </Alert>
                   )}

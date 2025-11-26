@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,16 +13,14 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, CheckCircle, ArrowLeft, Bot, CreditCard } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { convex } from "@/lib/convex";
 import {
-  PRICING_CONFIG,
+  useRuntimeConfig,
   getPlanPrice,
   getAnnualSavings,
   formatPrice,
-  getStripePriceId,
   type PlanType,
-} from "@/lib/pricing-config";
-import { useRuntimeConfig } from "@/lib/runtime-config";
+} from "@/lib/runtime-config";
+import { useFastSpring } from "@/hooks/useFastSpring";
 
 interface PlanConfig {
   id: PlanType;
@@ -90,10 +87,28 @@ const planConfigs: Record<string, PlanConfig> = {
 export default function Subscribe() {
   const { planId } = useParams<{ planId: string }>();
   const navigate = useNavigate();
-  const { isSignedIn, userId } = useAuth();
+  const { isSignedIn } = useAuth();
   const [isAnnual, setIsAnnual] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const { config: runtimeConfig } = useRuntimeConfig();
+
+  // FastSpring checkout hook
+  const {
+    startSubscriptionCheckout,
+    isLoading,
+    error: checkoutError,
+  } = useFastSpring({
+    autoLoad: true,
+    onOrderComplete: () => {
+      toast({
+        title: "Subscription activated!",
+        description: "Welcome to your new plan. Your account has been upgraded.",
+      });
+      navigate("/dashboard?upgraded=true");
+    },
+    onCheckoutClose: () => {
+      // User closed the popup without completing
+    },
+  });
 
   // Redirect if not signed in
   useEffect(() => {
@@ -118,51 +133,32 @@ export default function Subscribe() {
     }
   }, [plan, navigate]);
 
-  const createCheckoutSession = useMutation({
-    mutationFn: async (variables: {
-      priceId: string;
-      planId: string;
-      billingCycle: "monthly" | "yearly";
-    }) => {
-      const result = await convex.action(
-        "billing/mutations:createCheckoutSession",
-        variables,
-      );
-      return result;
-    },
-    onSuccess: (data) => {
-      // Redirect to Stripe Checkout
-      window.location.href = data.url;
-    },
-    onError: (error) => {
+  // Show error if checkout fails
+  useEffect(() => {
+    if (checkoutError) {
       toast({
         title: "Checkout Error",
-        description: error.message || "Failed to create checkout session",
+        description: checkoutError,
         variant: "destructive",
       });
-      setIsLoading(false);
-    },
-  });
+    }
+  }, [checkoutError]);
 
-  const handleSubscribe = () => {
+  const handleSubscribe = async () => {
     if (!plan) return;
 
-    setIsLoading(true);
-    // Prefer admin-configured Stripe Price IDs when available
-    const catalogEntry = (runtimeConfig?.planCatalog || []).find(
-      (p) => p.planId === plan.id,
-    );
-    const priceIdFromCatalog = isAnnual
-      ? catalogEntry?.stripePriceIdYearly
-      : catalogEntry?.stripePriceIdMonthly;
-    const priceId = priceIdFromCatalog || getStripePriceId(plan.id, isAnnual);
     const billingCycle = isAnnual ? "yearly" : "monthly";
 
-    createCheckoutSession.mutate({
-      priceId,
-      planId: plan.id,
-      billingCycle,
-    });
+    try {
+      await startSubscriptionCheckout(plan.id, billingCycle);
+    } catch (error) {
+      console.error("Subscription checkout failed:", error);
+      toast({
+        title: "Checkout Error",
+        description: "Failed to start checkout. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   if (!isSignedIn || !plan) {
@@ -176,15 +172,9 @@ export default function Subscribe() {
     );
   }
 
-  const catalogEntry = (runtimeConfig?.planCatalog || []).find(
-    (p) => p.planId === plan?.id,
-  );
-  const currentPrice = catalogEntry
-    ? isAnnual
-      ? catalogEntry.yearlyPrice
-      : catalogEntry.monthlyPrice
-    : getPlanPrice(plan.id, isAnnual);
-  const savings = isAnnual ? getAnnualSavings(plan.id) : 0;
+  const planCatalog = runtimeConfig?.planCatalog || [];
+  const currentPrice = getPlanPrice(planCatalog, plan.id, isAnnual);
+  const savings = isAnnual ? getAnnualSavings(planCatalog, plan.id) : 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -259,9 +249,9 @@ export default function Subscribe() {
                 </div>
                 {isAnnual && savings > 0 && (
                   <p className="text-sm text-muted-foreground mt-1">
-                    ${getPlanPrice(plan.id, true) * 12}/year • Save $
-                    {getPlanPrice(plan.id, false) * 12 -
-                      getPlanPrice(plan.id, true) * 12}
+                    ${getPlanPrice(planCatalog, plan.id, true) * 12}/year • Save $
+                    {getPlanPrice(planCatalog, plan.id, false) * 12 -
+                      getPlanPrice(planCatalog, plan.id, true) * 12}
                     /year
                   </p>
                 )}
@@ -321,8 +311,8 @@ export default function Subscribe() {
                     <span>Annual Discount</span>
                     <span>
                       -$
-                      {getPlanPrice(plan.id, false) -
-                        getPlanPrice(plan.id, true)}
+                      {getPlanPrice(planCatalog, plan.id, false) -
+                        getPlanPrice(planCatalog, plan.id, true)}
                       /month
                     </span>
                   </div>
@@ -373,7 +363,7 @@ export default function Subscribe() {
           <div className="inline-flex items-center gap-4 text-sm text-muted-foreground">
             <div className="flex items-center gap-1">
               <CheckCircle className="h-4 w-4 text-green-500" />
-              <span>Secure payment with Stripe</span>
+              <span>Secure checkout</span>
             </div>
             <div className="flex items-center gap-1">
               <CheckCircle className="h-4 w-4 text-green-500" />

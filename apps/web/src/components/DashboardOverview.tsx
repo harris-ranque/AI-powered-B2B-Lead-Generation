@@ -325,7 +325,7 @@ export function DashboardOverview({
           </CardHeader>
           <CardContent className="space-y-4">
             {recentSearches.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground" data-testid="no-results-message">
                 No searches yet. Launch the pipeline to discover your next opportunities.
               </div>
             ) : (
@@ -399,7 +399,7 @@ export function DashboardOverview({
               </div>
               <div className="rounded-lg border border-border/60 p-3">
                 <p className="text-xs text-muted-foreground">Average cost per lead</p>
-                <p className="text-2xl font-semibold">
+                <p className="text-2xl font-semibold" data-testid="estimated-cost">
                   {usageSummary.avgCostPerLead > 0
                     ? `$${usageSummary.avgCostPerLead.toFixed(2)}`
                     : "Optimizing"}

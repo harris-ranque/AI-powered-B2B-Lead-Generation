@@ -51,6 +51,7 @@ import { ToastAction } from "@/components/ui/toast";
 import { PipelineProgressProvider } from "@/contexts/PipelineProgressContext";
 import { PipelineProgressPanel } from "@/components/PipelineProgressPanel";
 import { featureFlags } from "@/lib/featureFlags";
+import { useAnalytics } from "@/hooks/useAnalytics";
 
 interface PipelineOrchestratorProps {
   userCredits: number;
@@ -73,6 +74,7 @@ export function PipelineOrchestrator({
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   const lastCompletedSearchIdRef = useRef<string | null>(null);
   const { toast } = useToast();
+  const analytics = useAnalytics();
 
   // Get search data and real-time updates
   const { search } = useSearch(state.searchId || undefined);
@@ -234,6 +236,15 @@ export function PipelineOrchestrator({
       }
 
       lastCompletedSearchIdRef.current = activeSearchId;
+
+      // Track search completion in analytics
+      analytics.trackSearchCompleted({
+        search_id: activeSearchId,
+        total_leads: totalFound,
+        enriched_count: enrichedCount,
+        research_tier: search?.researchTier,
+      });
+
       // Show completion dialog instead of toast - no auto-forwarding
       setShowCompletionDialog(true);
       return;
@@ -253,6 +264,14 @@ export function PipelineOrchestrator({
 
     try {
       await cancelSearch({ searchId: activeSearchId });
+
+      // Track search cancellation in analytics
+      analytics.trackSearchCancelled({
+        search_id: activeSearchId,
+        total_leads: totalFound,
+        enriched_count: enrichedCount,
+      });
+
       toast({
         title: "Search cancelled",
         description: "The search has been stopped successfully.",
@@ -265,7 +284,7 @@ export function PipelineOrchestrator({
         variant: "destructive",
       });
     }
-  }, [activeSearchId, cancelSearch, toast]);
+  }, [activeSearchId, cancelSearch, toast, analytics, totalFound, enrichedCount]);
 
   const unifiedPanelActions = useMemo(() => {
     if (isSearchCompleted) {

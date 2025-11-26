@@ -984,3 +984,21 @@ export const tryTriggerAnalysisPhase = internalMutation({
     return true; // Caller should now trigger analyzeLeads
   },
 });
+
+// Internal mutation to update enrichment provider
+export const updateEnrichmentProvider = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+    provider: v.union(
+      v.literal("findymail"),
+      v.literal("icypeas"),
+      v.literal("csv_import")
+    ),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.leadId, {
+      enrichmentProvider: args.provider,
+      updatedAt: Date.now(),
+    });
+  },
+});

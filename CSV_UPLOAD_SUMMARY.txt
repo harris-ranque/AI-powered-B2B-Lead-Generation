@@ -1,0 +1,120 @@
+CSV UPLOAD SYSTEM - QUICK REFERENCE SUMMARY
+============================================
+
+STATUS: DISABLED FEATURE (Intentionally)
+Location: apps/web/src/components/pipeline/SourceSelector.tsx:60
+
+WHY DISABLED: "CSV upload is temporarily unavailable while we complete security and auth improvements"
+
+CURRENT IMPLEMENTATION BREAKDOWN:
+
+Frontend Components (✅ IMPLEMENTED):
+  • FileUploadArea.tsx - Drag & drop UI, column mapping, preview
+  • UploadSource.ts - CSV parsing logic
+  • LeadDiscoveryStage.tsx - Integration point
+  • ReviewExportStage.tsx - CSV export (working)
+
+Backend Components (⚠️ PARTIAL):
+  • CSV export endpoint: /api/exports/leads.csv (working)
+  • No CSV import backend
+  • No persistence layer
+  • No validation layer
+
+Database (❌ MISSING):
+  • No csvImports table
+  • No uploadedLeads table
+  • Source tracking incomplete
+
+KEY PROBLEMS (20 Issues Found):
+
+🔴 CRITICAL (4):
+  1. Feature disabled pending security work
+  2. CSV parsing is naive - breaks on quoted fields
+  3. No data persistence (lost on browser refresh)
+  4. Memory-based processing (entire file in RAM)
+
+🟠 HIGH (6):
+  5. No email format validation
+  6. Location data hardcoded as 0,0
+  7. No duplicate detection
+  8. No CSV injection protection
+  9. Email confidence hardcoded to 0.5
+  10. Cost estimation completely wrong
+
+🟡 MEDIUM (5):
+  11. No progress tracking
+  12. Silent row filtering (no feedback)
+  13. No retry mechanism
+  14. No bulk edit capability
+  15. No Excel support
+
+🟢 LOW (5):
+  16-20. Missing docs, audit trail, charset detection, etc.
+
+ESTIMATED EFFORT TO FIX:
+  80-120 hours to production-ready state
+
+BREAKDOWN:
+  Phase 1 (Core Fixes):      24-32 hours
+  Phase 2 (Safety):          16-24 hours
+  Phase 3 (UX):              24-32 hours
+  Phase 4 (Production):      12-20 hours
+
+FILES INVOLVED:
+
+Frontend:
+  /apps/web/src/pipeline/types.ts
+  /apps/web/src/pipeline/sources/UploadSource.ts (184 lines)
+  /apps/web/src/pipeline/sources/SourceRegistry.ts
+  /apps/web/src/components/pipeline/FileUploadArea.tsx (330 lines)
+  /apps/web/src/components/pipeline/LeadDiscoveryStage.tsx (900+ lines)
+  /apps/web/src/components/pipeline/SourceSelector.tsx (214 lines) ← DISABLES FEATURE
+  /apps/web/src/components/pipeline/ReviewExportStage.tsx (1275 lines)
+
+Backend:
+  /apps/convex-backend/convex/http.ts (CSV export: lines 746-1074)
+  /apps/convex-backend/convex/schema.ts (No CSV import tables)
+  /apps/convex-backend/convex/admin/mutations.ts (CSV formatting: lines 162-224)
+
+TEST COVERAGE: 0%
+  - No unit tests for CSV parsing
+  - No integration tests for upload
+  - Only export functionality has E2E tests
+
+SECURITY ISSUES:
+  • No CSV injection protection
+  • No server-side validation
+  • No input sanitization
+  • Browser-only processing
+  • No audit trail
+
+RECOMMENDED NEXT STEPS:
+
+1. Immediate (if enabling):
+   - Replace with RFC 4180 CSV parser (papaparse library)
+   - Add email validation + duplicate detection
+   - Add CSV injection protection
+   - Add database table for persistence
+
+2. High Priority:
+   - Fix location geocoding (currently 0,0)
+   - Correct cost estimation formula
+   - Implement server-side validation
+   - Add Excel file support
+
+3. Medium Priority:
+   - Add streaming/chunked processing
+   - Add progress UI
+   - Create test suite (40+ test cases)
+   - Write user documentation
+
+4. Nice-to-Have:
+   - Bulk edit interface
+   - Advanced deduplication
+   - Audit trail system
+   - Example templates
+
+CONCLUSION:
+Feature is architecturally sound but incomplete. Safe to disable until core issues 
+(parsing, validation, persistence) are resolved. Not recommended for production until 
+80+ hours of development is completed.

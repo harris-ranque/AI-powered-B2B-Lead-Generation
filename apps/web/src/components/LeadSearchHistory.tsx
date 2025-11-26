@@ -169,9 +169,9 @@ export function LeadSearchHistory() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="search-history">
       {items.length === 0 ? (
-        <Card className="p-6 text-sm text-muted-foreground">
+        <Card className="p-6 text-sm text-muted-foreground" data-testid="no-results-message">
           No searches yet. Run a new lead search to see history here.
         </Card>
       ) : (
@@ -202,7 +202,7 @@ export function LeadSearchHistory() {
             (s.duplicatesFilteredPlaceId || 0);
 
           return (
-            <Card key={String(s._id)} className="overflow-hidden">
+            <Card key={String(s._id)} className="overflow-hidden" data-testid="search-history-item">
               {/* Tier 1: Always Visible */}
               <div className="p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -267,7 +267,7 @@ export function LeadSearchHistory() {
                       <div className="flex items-start gap-2 text-muted-foreground">
                         <BarChart3 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
                         <div className="flex flex-col gap-0.5">
-                          <span className="font-medium text-foreground">
+                          <span className="font-medium text-foreground" data-testid="results-count">
                             {s.results?.totalFound ?? 0} leads found
                           </span>
                           <span>
@@ -300,7 +300,7 @@ export function LeadSearchHistory() {
                       )}
 
                       {duration && (
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5" data-testid="total-duration">
                           <Clock className="h-3.5 w-3.5" />
                           <span>{duration}</span>
                         </div>
@@ -332,6 +332,7 @@ export function LeadSearchHistory() {
                   {/* Action Buttons */}
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <Button
+                      data-testid="export-csv-button"
                       size="sm"
                       variant="outline"
                       onClick={() => startCsvDownload(String(s._id))}

@@ -215,7 +215,7 @@ export const addCredits = mutation({
       v.literal("bonus"),
       v.literal("refund"),
     ),
-    stripePaymentId: v.optional(v.string()),
+    fastspringOrderId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
@@ -242,7 +242,7 @@ export const addCredits = mutation({
       type: args.type,
       amount: args.amount,
       description: args.description,
-      ...(args.stripePaymentId && { stripePaymentId: args.stripePaymentId }),
+      ...(args.fastspringOrderId && { fastspringOrderId: args.fastspringOrderId }),
       balanceAfter: newBalance,
       createdAt: Date.now(),
     });
@@ -275,7 +275,7 @@ export const upgradePlan = mutation({
       v.literal("business"),
       v.literal("enterprise"),
     ),
-    stripeSubscriptionId: v.optional(v.string()),
+    fastspringSubscriptionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
@@ -294,11 +294,11 @@ export const upgradePlan = mutation({
       updatedAt: Date.now(),
     });
 
-    // Create billing record if Stripe subscription provided
-    if (args.stripeSubscriptionId) {
+    // Create billing record if FastSpring subscription provided
+    if (args.fastspringSubscriptionId) {
       await ctx.db.insert("billing", {
         userId: user._id,
-        stripeSubscriptionId: args.stripeSubscriptionId,
+        fastspringSubscriptionId: args.fastspringSubscriptionId,
         plan: args.plan,
         billingCycle: "monthly", // Default, will be updated by webhook
         amount: 0, // Will be updated by webhook
@@ -382,10 +382,10 @@ export const deleteAccount = mutation({
   },
 });
 
-// Update Stripe customer ID
-export const updateStripeCustomerId = mutation({
+// Update FastSpring account ID
+export const updateFastspringAccountId = mutation({
   args: {
-    customerId: v.string(),
+    accountId: v.string(),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUser(ctx);
@@ -399,7 +399,7 @@ export const updateStripeCustomerId = mutation({
     }
 
     await ctx.db.patch(user._id, {
-      stripeCustomerId: args.customerId,
+      fastspringAccountId: args.accountId,
       updatedAt: Date.now(),
     });
 

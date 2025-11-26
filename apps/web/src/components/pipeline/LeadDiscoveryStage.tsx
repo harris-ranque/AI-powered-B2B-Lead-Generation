@@ -25,7 +25,7 @@ import { SourceRegistry } from "@/pipeline/sources/SourceRegistry";
 import { FileUploadArea } from "./FileUploadArea";
 import { EstimatedCostCard } from "./EstimatedCostCard";
 import { useSearches, useGoogleMapsSearch } from "@/hooks/useSearches";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@genni/convex-types";
 import {
   Search,
@@ -60,6 +60,7 @@ import { toStandardCase } from "@/utils/string";
 import { EnterpriseApiKeyBlocker } from "./EnterpriseApiKeyBlocker";
 import { createLogger } from "@/utils/logger";
 import { normalizeError } from "@/utils/errorUtils";
+import { useAnalytics } from "@/hooks/useAnalytics";
 
 interface LeadDiscoveryStageProps {
   userCredits: number;
@@ -112,6 +113,8 @@ export function LeadDiscoveryStage({
   const { createSearch } = useSearches();
   const { searchGoogleMaps } = useGoogleMapsSearch();
   const { toast } = useToast();
+  const analytics = useAnalytics();
+  const createSearchFromCSV = useMutation(api.leads.mutations.createSearchFromCSV);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [showApiKeyBlocker, setShowApiKeyBlocker] = useState(false);
   const [stageError, setStageError] = useState<string | null>(null);
@@ -308,8 +311,7 @@ export function LeadDiscoveryStage({
   const isStartDisabled =
     !validation.isValid ||
     state.isProcessing ||
-    (!isEnterprise && estimatedCost > userCredits) ||
-    state.selectedSource === "csv_upload";
+    (!isEnterprise && estimatedCost > userCredits);
 
   const handleStartDiscovery = async () => {
     if (!validation.isValid) return;
@@ -371,6 +373,16 @@ export function LeadDiscoveryStage({
           setSearchId(searchResult.searchId);
           markStageComplete("lead_discovery");
 
+          // Track search creation in analytics
+          analytics.trackSearchCreated({
+            search_id: searchResult.searchId,
+            source: 'google_maps',
+            keywords: formattedIndustry,
+            location: formattedLocation,
+            radius: radius[0],
+            total_leads: leadsCount[0],
+          });
+
           toast({
             title: "Search Started",
             description: `Discovering ${leadsCount[0]} leads in ${formattedLocation}...`,
@@ -382,17 +394,52 @@ export function LeadDiscoveryStage({
           }, 1000);
         }
       } else if (state.selectedSource === "csv_upload" && uploadFile) {
-        // Handle CSV upload
-        const leads = await selectedSource!.fetch({
+        // Handle CSV upload - now returns { leads, stats } directly
+        const fetchResult = await selectedSource!.fetch({
           file: uploadFile,
           columns: columnMapping,
         });
+
+        // Type guard: CSV upload returns CSVFetchResult, not Lead[]
+        if (!('stats' in fetchResult)) {
+          throw new Error("Invalid CSV fetch result");
+        }
+
+        const { leads, stats } = fetchResult;
+
+        // Call backend mutation to create search and insert leads
+        const result = await createSearchFromCSV({
+          fileName: uploadFile.name,
+          fileSize: uploadFile.size,
+          columnMapping,
+          leads: leads.map((lead: any) => ({
+            businessName: lead.businessName,
+            address: lead.address,
+            placeId: lead.placeId,
+            location: lead.location,
+            phone: lead.phone,
+            website: lead.website,
+            category: lead.category,
+            dataSource: lead.dataSource,
+            enrichmentStatus: lead.enrichmentStatus,
+            contactInfo: lead.contactInfo,
+            costEstimate: lead.raw_data?.costEstimate || {
+              cost: 2,
+              reason: "Default cost",
+              skipEnrichment: false,
+            },
+          })),
+          statistics: stats,
+        });
+
+        // Store search ID for pipeline
+        setSearchId(result.searchId);
         setLeads(leads);
         markStageComplete("lead_discovery");
 
         toast({
-          title: "Leads Imported",
-          description: `Successfully imported ${leads.length} leads from CSV.`,
+          title: "Leads Imported Successfully",
+          description: `Imported ${leads.length} leads (${stats.estimatedCost} credits deducted).`,
         });
 
         setTimeout(() => {
@@ -595,6 +642,7 @@ export function LeadDiscoveryStage({
                     {radius[0] === 1 ? "" : "s"}
                   </Label>
                   <Slider
+                    data-testid="radius-input"
                     value={radius}
                     onValueChange={setRadius}
                     max={MAX_RADIUS_MILES}
@@ -849,14 +897,12 @@ export function LeadDiscoveryStage({
               )}
 
               {state.selectedSource === "csv_upload" && (
-                <Alert className="border border-amber-500/40 bg-amber-500/10 text-amber-200">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>
-                    CSV Upload is temporarily disabled while we roll out
-                    improved authentication for file-based imports. Please use
-                    Google Maps discovery for now.
-                  </AlertDescription>
-                </Alert>
+                <FileUploadArea
+                  onFileSelect={setUploadFile}
+                  onColumnMapping={setColumnMapping}
+                  selectedFile={uploadFile}
+                  columnMapping={columnMapping}
+                />
               )}
             </CardContent>
           </Card>

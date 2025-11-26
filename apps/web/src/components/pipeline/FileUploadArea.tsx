@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from "react";
+import Papa from "papaparse";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +20,7 @@ import {
   Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CSVTemplateDownload } from "./CSVTemplateDownload";
 
 interface FileUploadAreaProps {
   onFileSelect: (file: File | null) => void;
@@ -27,15 +29,25 @@ interface FileUploadAreaProps {
   columnMapping: Record<string, string>;
 }
 
+// Essential field mapping (simplified)
 const LEAD_FIELDS = [
-  { value: "company_name", label: "Company Name", required: true },
-  { value: "email", label: "Email Address", required: false },
-  { value: "phone", label: "Phone Number", required: false },
-  { value: "website", label: "Website URL", required: false },
-  { value: "address", label: "Address", required: false },
-  { value: "description", label: "Description", required: false },
-  { value: "industry", label: "Industry", required: false },
-  { value: "ignore", label: "Ignore Column", required: false },
+  // REQUIRED FIELDS
+  { value: "company_name", label: "Company Name", required: true, category: "Required" },
+  { value: "domain", label: "Domain (e.g., example.com)", required: true, category: "Required" },
+
+  // OPTIONAL - Contact (providing email saves 1 credit)
+  { value: "contact_name", label: "Contact Name", required: false, category: "Contact" },
+  { value: "contact_email", label: "Contact Email (saves 1 credit)", required: false, category: "Contact" },
+  { value: "email", label: "Email (alt)", required: false, category: "Contact" },
+  { value: "phone", label: "Phone", required: false, category: "Contact" },
+
+  // OPTIONAL - Business
+  { value: "website", label: "Website URL", required: false, category: "Business" },
+  { value: "industry", label: "Industry", required: false, category: "Business" },
+  { value: "notes", label: "Notes", required: false, category: "Business" },
+
+  // UTILITY
+  { value: "ignore", label: "Ignore Column", required: false, category: "Utility" },
 ];
 
 export function FileUploadArea({
@@ -53,54 +65,110 @@ export function FileUploadArea({
       const reader = new FileReader();
       reader.onload = (e) => {
         const text = e.target?.result as string;
-        const lines = text.split("\n").filter((line) => line.trim());
 
-        if (lines.length > 0) {
-          const headers = lines[0]
-            .split(",")
-            .map((h) => h.trim().replace(/"/g, ""));
-          setCsvHeaders(headers);
+        // Parse with papaparse (RFC 4180 compliant)
+        Papa.parse<Record<string, string>>(text, {
+          header: true,
+          skipEmptyLines: true,
+          preview: 5, // Only parse first 5 rows for preview
+          complete: (results) => {
+            if (results.meta.fields && results.meta.fields.length > 0) {
+              const headers = results.meta.fields;
+              setCsvHeaders(headers);
 
-          // Show preview of first few rows
-          const preview = lines
-            .slice(0, 4)
-            .map((line) =>
-              line.split(",").map((cell) => cell.trim().replace(/"/g, "")),
-            );
-          setPreviewData(preview);
+              // Convert parsed data to preview format
+              const preview: string[][] = [
+                headers, // Header row
+                ...results.data.map((row) =>
+                  headers.map((header) => row[header] || ""),
+                ),
+              ];
+              setPreviewData(preview);
 
-          // Auto-map common column names
-          const autoMapping: Record<string, string> = {};
-          headers.forEach((header) => {
-            const lowerHeader = header.toLowerCase();
-            if (
-              lowerHeader.includes("company") ||
-              lowerHeader.includes("business")
-            ) {
-              autoMapping[header] = "company_name";
-            } else if (lowerHeader.includes("email")) {
-              autoMapping[header] = "email";
-            } else if (lowerHeader.includes("phone")) {
-              autoMapping[header] = "phone";
-            } else if (
-              lowerHeader.includes("website") ||
-              lowerHeader.includes("url")
-            ) {
-              autoMapping[header] = "website";
-            } else if (lowerHeader.includes("address")) {
-              autoMapping[header] = "address";
-            } else if (
-              lowerHeader.includes("industry") ||
-              lowerHeader.includes("sector")
-            ) {
-              autoMapping[header] = "industry";
-            } else {
-              autoMapping[header] = "ignore";
+              // Auto-map common column names with enhanced detection
+              const autoMapping: Record<string, string> = {};
+              headers.forEach((header) => {
+                const lowerHeader = header.toLowerCase().trim();
+
+                // REQUIRED: Company name
+                if (
+                  lowerHeader.includes("company") ||
+                  lowerHeader.includes("business") ||
+                  lowerHeader === "name"
+                ) {
+                  autoMapping[header] = "company_name";
+                }
+                // REQUIRED: Domain
+                else if (
+                  lowerHeader.includes("domain") ||
+                  lowerHeader === "site"
+                ) {
+                  autoMapping[header] = "domain";
+                }
+                // Contact person name
+                else if (
+                  lowerHeader.includes("contact") &&
+                  (lowerHeader.includes("name") || lowerHeader.includes("person"))
+                ) {
+                  autoMapping[header] = "contact_name";
+                }
+                // Email
+                else if (
+                  lowerHeader.includes("email") ||
+                  lowerHeader.includes("e-mail")
+                ) {
+                  if (lowerHeader.includes("contact")) {
+                    autoMapping[header] = "contact_email";
+                  } else {
+                    autoMapping[header] = "email";
+                  }
+                }
+                // Phone
+                else if (
+                  lowerHeader.includes("phone") ||
+                  lowerHeader.includes("tel") ||
+                  lowerHeader.includes("mobile")
+                ) {
+                  autoMapping[header] = "phone";
+                }
+                // Website
+                else if (
+                  lowerHeader.includes("website") ||
+                  lowerHeader.includes("url") ||
+                  lowerHeader.includes("web")
+                ) {
+                  autoMapping[header] = "website";
+                }
+                // Industry
+                else if (
+                  lowerHeader.includes("industry") ||
+                  lowerHeader.includes("sector") ||
+                  lowerHeader.includes("category")
+                ) {
+                  autoMapping[header] = "industry";
+                }
+                // Notes (also catch description/about/comments)
+                else if (
+                  lowerHeader.includes("notes") ||
+                  lowerHeader.includes("comment") ||
+                  lowerHeader.includes("description") ||
+                  lowerHeader.includes("about")
+                ) {
+                  autoMapping[header] = "notes";
+                }
+                // Default: ignore (includes location, social, job title fields)
+                else {
+                  autoMapping[header] = "ignore";
+                }
+              });
+
+              onColumnMapping(autoMapping);
             }
-          });
-
-          onColumnMapping(autoMapping);
-        }
+          },
+          error: (error) => {
+            console.error("CSV parsing error:", error);
+          },
+        });
       };
       reader.readAsText(file);
     },
@@ -148,6 +216,9 @@ export function FileUploadArea({
 
   return (
     <div className="space-y-6">
+      {/* CSV Template & Instructions */}
+      <CSVTemplateDownload />
+
       {/* File Upload Area */}
       {!selectedFile ? (
         <Card
@@ -256,7 +327,7 @@ export function FileUploadArea({
                   )}
                 </div>
 
-                <div className="w-48">
+                <div className="w-64">
                   <Select
                     value={columnMapping[header] || "ignore"}
                     onValueChange={(value) =>
@@ -266,19 +337,31 @@ export function FileUploadArea({
                     <SelectTrigger className="transition-neo">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
-                      {LEAD_FIELDS.map((field) => (
-                        <SelectItem key={field.value} value={field.value}>
-                          <div className="flex items-center gap-2">
-                            {field.required && (
-                              <Badge variant="destructive" className="text-xs">
-                                Required
-                              </Badge>
+                    <SelectContent className="max-h-[400px]">
+                      {/* Group fields by category */}
+                      {Array.from(new Set(LEAD_FIELDS.map((f) => f.category))).map(
+                        (category) => (
+                          <React.Fragment key={category}>
+                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-b">
+                              {category}
+                            </div>
+                            {LEAD_FIELDS.filter((f) => f.category === category).map(
+                              (field) => (
+                                <SelectItem key={field.value} value={field.value}>
+                                  <div className="flex items-center gap-2">
+                                    {field.required && (
+                                      <Badge variant="destructive" className="text-xs px-1">
+                                        REQ
+                                      </Badge>
+                                    )}
+                                    <span className="text-sm">{field.label}</span>
+                                  </div>
+                                </SelectItem>
+                              ),
                             )}
-                            {field.label}
-                          </div>
-                        </SelectItem>
-                      ))}
+                          </React.Fragment>
+                        ),
+                      )}
                     </SelectContent>
                   </Select>
                 </div>

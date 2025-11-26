@@ -3,7 +3,7 @@ import { logger } from "@/utils/logger";
 
 interface EnvVars {
   VITE_CONVEX_URL?: string;
-  VITE_STRIPE_PUBLISHABLE_KEY?: string;
+  VITE_FASTSPRING_STORE_ID?: string;
   VITE_POSTHOG_KEY?: string;
   VITE_POSTHOG_HOST?: string;
   VITE_CREWAI_URL?: string;
@@ -23,7 +23,7 @@ interface ValidationResult {
 
 const REQUIRED_VARS = ["VITE_CONVEX_URL", "VITE_CLERK_PUBLISHABLE_KEY"] as const;
 const OPTIONAL_VARS = [
-  "VITE_STRIPE_PUBLISHABLE_KEY",
+  "VITE_FASTSPRING_STORE_ID",
   "VITE_POSTHOG_KEY",
   "VITE_POSTHOG_HOST",
   "VITE_CREWAI_URL",
@@ -116,9 +116,9 @@ export function getEnvironmentInfo() {
         env.VITE_CONVEX_URL !== "https://placeholder.convex.cloud",
     ),
     clerkConfigured: clerkValidation.isValid,
-    hasStripe: Boolean(
-      env.VITE_STRIPE_PUBLISHABLE_KEY &&
-        !env.VITE_STRIPE_PUBLISHABLE_KEY.includes("..."),
+    hasFastSpring: Boolean(
+      env.VITE_FASTSPRING_STORE_ID &&
+        !env.VITE_FASTSPRING_STORE_ID.includes("..."),
     ),
     hasAnalytics: Boolean(
       env.VITE_POSTHOG_KEY && !env.VITE_POSTHOG_KEY.includes("..."),
@@ -135,7 +135,7 @@ export function logEnvironmentStatus() {
     console.log("Mode:", info.mode);
     console.log("Convex Configured:", info.convexConfigured);
     console.log("Clerk Configured:", info.clerkConfigured);
-    console.log("Stripe Configured:", info.hasStripe);
+    console.log("FastSpring Configured:", info.hasFastSpring);
     console.log("Analytics Configured:", info.hasAnalytics);
 
     if (!info.clerkConfigured && info.clerkValidation.error) {

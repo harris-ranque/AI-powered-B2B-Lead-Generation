@@ -32,7 +32,10 @@
       "Bash(npx convex:*)",
       "WebFetch(domain:developers.google.com)",
       "Bash(git show:*)",
-      "WebFetch(domain:www.perplexity.ai)"
+      "WebFetch(domain:www.perplexity.ai)",
+      "Bash(railway variables:*)",
+      "Bash(pnpm test:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []

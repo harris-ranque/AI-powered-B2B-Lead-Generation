@@ -30,9 +30,9 @@ export default defineSchema({
     pauseReason: v.optional(v.string()),
     pausedAt: v.optional(v.number()),
     pausedBy: v.optional(v.id("users")),
-    // Stripe integration fields
-    stripeCustomerId: v.optional(v.string()),
-    stripeSubscriptionId: v.optional(v.string()),
+    // FastSpring integration fields
+    fastspringAccountId: v.optional(v.string()),
+    fastspringSubscriptionId: v.optional(v.string()),
     preferences: v.optional(
       v.object({
         emailNotifications: v.boolean(),
@@ -258,6 +258,61 @@ export default defineSchema({
     .index("by_user_place", ["userId", "placeId"])
     .index("by_user_email", ["userId", "email"]),
 
+  // CSV Imports - Track uploaded CSV files and import results
+  csvImports: defineTable({
+    userId: v.id("users"),
+    searchId: v.id("searches"),
+
+    // File metadata
+    fileName: v.string(),
+    fileSize: v.number(), // in bytes
+
+    // Import statistics
+    totalRows: v.number(),
+    validRows: v.number(),
+    invalidRows: v.number(),
+    skippedRows: v.number(), // Rows with missing required data
+
+    // Cost breakdown
+    estimatedCost: v.number(),
+    actualCost: v.optional(v.number()), // After processing
+    leadsWithEmail: v.number(), // 1 credit each (skip enrichment)
+    leadsNeedingEnrichment: v.number(), // 2 credits each
+
+    // Processing status
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("partial_success"),
+    ),
+
+    // Error tracking
+    errorReport: v.optional(
+      v.array(
+        v.object({
+          rowNumber: v.number(),
+          companyName: v.optional(v.string()),
+          errors: v.array(v.string()),
+          warnings: v.optional(v.array(v.string())),
+          rawData: v.optional(v.any()),
+        }),
+      ),
+    ),
+
+    // Column mapping used (csvColumn -> leadField)
+    columnMapping: v.optional(v.record(v.string(), v.string())),
+
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_search", ["searchId"])
+    .index("by_status", ["status"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_created", ["createdAt"]),
+
   // Leads - Individual business leads with enrichment data
   leads: defineTable({
     searchId: v.id("searches"),
@@ -272,6 +327,15 @@ export default defineSchema({
     reviewCount: v.optional(v.number()),
     category: v.optional(v.string()),
     placeId: v.string(),
+
+    // Data source tracking
+    dataSource: v.optional(
+      v.union(
+        v.literal("google_maps"),
+        v.literal("csv_upload"),
+        v.literal("manual")
+      )
+    ),
 
     // Location data
     location: v.object({
@@ -294,7 +358,13 @@ export default defineSchema({
     ),
 
     // Enrichment provider used
-    enrichmentProvider: v.optional(v.union(v.literal("findymail"), v.literal("icypeas"))),
+    enrichmentProvider: v.optional(
+      v.union(
+        v.literal("findymail"),
+        v.literal("icypeas"),
+        v.literal("csv_import") // CSV imports with existing emails
+      )
+    ),
 
     // Contact information from enrichment provider
     contactInfo: v.optional(
@@ -534,9 +604,11 @@ export default defineSchema({
   // Billing - Enhanced subscription and payment tracking
   billing: defineTable({
     userId: v.id("users"),
-    stripeCustomerId: v.optional(v.string()),
-    stripeSubscriptionId: v.optional(v.string()),
-    stripePriceId: v.optional(v.string()),
+    // FastSpring integration fields
+    fastspringAccountId: v.optional(v.string()),
+    fastspringSubscriptionId: v.optional(v.string()),
+    fastspringProductPath: v.optional(v.string()),
+    fastspringOrderId: v.optional(v.string()),
 
     // Enhanced plan details
     plan: v.union(
@@ -596,15 +668,15 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
-    .index("by_stripe_customer", ["stripeCustomerId"])
-    .index("by_stripe_subscription", ["stripeSubscriptionId"])
-    .index("by_stripe_price", ["stripePriceId"])
+    .index("by_fastspring_account", ["fastspringAccountId"])
+    .index("by_fastspring_subscription", ["fastspringSubscriptionId"])
+    .index("by_fastspring_product", ["fastspringProductPath"])
     .index("by_plan", ["plan"])
     .index("by_status", ["status"])
     .index("by_trial", ["isTrialing"])
     .index("by_period_end", ["currentPeriodEnd"])
     // Compound indexes for billing webhooks optimization
-    .index("by_stripe_customer_status", ["stripeCustomerId", "status"]),
+    .index("by_fastspring_account_status", ["fastspringAccountId", "status"]),
 
   // Credit Transactions - Credit purchases and usage
   creditTransactions: defineTable({
@@ -624,7 +696,9 @@ export default defineSchema({
         id: v.string(),
       }),
     ),
-    stripePaymentId: v.optional(v.string()),
+    // FastSpring order reference for purchases
+    fastspringOrderId: v.optional(v.string()),
+    fastspringOrderReference: v.optional(v.string()),
     parentTransactionId: v.optional(v.id("creditTransactions")),
     balanceAfter: v.number(),
     createdAt: v.number(),
@@ -799,7 +873,7 @@ export default defineSchema({
           priceCents: v.number(),
           bonus: v.optional(v.number()),
           active: v.boolean(),
-          stripePriceId: v.optional(v.string()),
+          fastspringProductPath: v.optional(v.string()),
         }),
       ),
     ),
@@ -1376,8 +1450,10 @@ export default defineSchema({
   // Subscription Events - Track important subscription lifecycle events
   subscriptionEvents: defineTable({
     userId: v.id("users"),
-    stripeSubscriptionId: v.optional(v.string()),
-    stripeCustomerId: v.optional(v.string()),
+    // FastSpring integration fields
+    fastspringSubscriptionId: v.optional(v.string()),
+    fastspringAccountId: v.optional(v.string()),
+    fastspringOrderId: v.optional(v.string()),
 
     eventType: v.union(
       v.literal("subscription_created"),
@@ -1401,12 +1477,12 @@ export default defineSchema({
 
     // Additional metadata
     metadata: v.optional(v.any()),
-    stripeEventId: v.optional(v.string()),
+    fastspringEventId: v.optional(v.string()),
 
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])
-    .index("by_subscription", ["stripeSubscriptionId"])
+    .index("by_subscription", ["fastspringSubscriptionId"])
     .index("by_event_type", ["eventType"])
     .index("by_created", ["createdAt"]),
 
@@ -1418,8 +1494,9 @@ export default defineSchema({
     // Pricing
     monthlyPrice: v.number(),
     yearlyPrice: v.number(),
-    stripePriceIdMonthly: v.optional(v.string()),
-    stripePriceIdYearly: v.optional(v.string()),
+    // FastSpring product paths
+    fastspringProductPathMonthly: v.optional(v.string()),
+    fastspringProductPathYearly: v.optional(v.string()),
 
     // Limits
     limits: v.object({

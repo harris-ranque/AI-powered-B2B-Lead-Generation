@@ -53,6 +53,7 @@ import {
 } from "recharts";
 import { createLogger } from "@/utils/logger";
 import { normalizeError } from "@/utils/errorUtils";
+import { useAnalytics } from "@/hooks/useAnalytics";
 
 const EXPORT_FORMATS = [
   {
@@ -179,6 +180,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
   const { user } = useUser();
   const { getToken: getClerkToken } = useClerkAuth();
   const { toast } = useToast();
+  const analytics = useAnalytics();
   const { search } = useSearch(state.searchId || undefined);
   const { leads: searchLeads, updateLeadStatus } = useLeads(
     state.searchId || undefined,
@@ -438,6 +440,17 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
       setActionError(null);
       setIsExporting(true);
 
+      // Track export initiation
+      const leadsWithEmails = leads.filter(
+        (lead) => lead.enrichment?.email || lead.email,
+      ).length;
+
+      analytics.trackExportInitiated({
+        format: 'csv',
+        lead_count: leads.length,
+        has_emails: leadsWithEmails,
+      });
+
       try {
         if (format !== "csv") {
           throw new Error("Only CSV export is supported at this time");
@@ -515,6 +528,14 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
 
         setExportedFormats((prev) => [...prev, format]);
 
+        // Track export success
+        analytics.trackExportCompleted({
+          format: 'csv',
+          lead_count: leads.length,
+          has_emails: leadsWithEmails,
+          file_size_kb: Math.round(blob.size / 1024),
+        });
+
         toast({
           title: "Export Complete",
           description: `Successfully exported your leads as ${format.toUpperCase()}.`,
@@ -526,6 +547,14 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
         );
         const errorInstance =
           error instanceof Error ? error : new Error(String(error));
+
+        // Track export failure
+        analytics.trackExportFailed({
+          format: 'csv',
+          lead_count: leads.length,
+          has_emails: leadsWithEmails,
+        });
+
         reviewLogger.error(
           "Export failed",
           {
@@ -670,7 +699,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-cyan-500/40 bg-cyan-500/10">
                 <BarChart3 className="h-6 w-6 text-cyan-300" />
               </div>
-              <div className="mt-3 text-2xl font-semibold text-slate-100">
+              <div className="mt-3 text-2xl font-semibold text-slate-100" data-testid="total-leads">
                 {formatNumber(discoveredCount)}
               </div>
               <p className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -972,7 +1001,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
                   <p className="text-xs uppercase tracking-wider text-muted-foreground">
                     Avg Relevance
                   </p>
-                  <p className="mt-2 text-2xl font-semibold text-slate-100">
+                  <p className="mt-2 text-2xl font-semibold text-slate-100" data-testid="avg-relevance-score">
                     {avgRelevanceLabel}
                   </p>
                 </div>

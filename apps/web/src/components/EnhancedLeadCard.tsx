@@ -103,12 +103,13 @@ export function EnhancedLeadCard({
 
   return (
     <Card
+      data-testid="lead-card"
       className={cn("hover:shadow-md transition-all duration-200", className)}
     >
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="space-y-1 flex-1">
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <CardTitle className="text-lg font-semibold flex items-center gap-2" data-testid="lead-business-name">
               <Building className="h-5 w-5 text-muted-foreground" />
               {lead.company_name}
               {businessContext && (
@@ -141,7 +142,7 @@ export function EnhancedLeadCard({
           </div>
 
           {businessContext?.confidence_score && (
-            <div className="text-right">
+            <div className="text-right" data-testid="lead-relevance-score">
               <div className="flex items-center gap-2 mb-1">
                 <Sparkles className="h-4 w-4 text-amber-500" />
                 <span className="text-sm font-medium">
@@ -158,7 +159,7 @@ export function EnhancedLeadCard({
 
       <CardContent className="space-y-4">
         {/* Contact Information */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3" data-testid="lead-contact-info">
           {lead.website && (
             <div className="flex items-center gap-2 text-sm">
               <Globe className="h-4 w-4 text-muted-foreground" />
@@ -182,7 +183,7 @@ export function EnhancedLeadCard({
           )}
 
           {lead.contact_info?.email && (
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex items-center gap-2 text-sm" data-testid="lead-email">
               <Mail className="h-4 w-4 text-muted-foreground" />
               <span className="truncate">{lead.contact_info.email}</span>
             </div>

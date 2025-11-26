@@ -505,7 +505,7 @@ export const resolveUserProviderKeys = internalAction({
     }
 
     // Log deprecation warning if legacy google_maps key is being used
-    if (hasLegacyGoogleMaps && !keys.some(k => k.provider === "google_places" && k.isActive && k.validated)) {
+    if (hasLegacyGoogleMaps && !keys.some((k: { provider: string; isActive: boolean; validated?: boolean }) => k.provider === "google_places" && k.isActive && k.validated)) {
       console.warn(
         `⚠️ DEPRECATION: User ${args.userId} is using legacy google_maps key. ` +
         `Please migrate to google_places by re-saving your Google Places API key.`

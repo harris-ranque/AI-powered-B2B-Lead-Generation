@@ -14,6 +14,7 @@ import type * as admin_queries from "../admin/queries.js";
 import type * as admin_systemControl from "../admin/systemControl.js";
 import type * as apiKeys from "../apiKeys.js";
 import type * as auth from "../auth.js";
+import type * as billing_fastspring from "../billing/fastspring.js";
 import type * as billing_mutations from "../billing/mutations.js";
 import type * as billing_queries from "../billing/queries.js";
 import type * as billing_webhooks from "../billing/webhooks.js";
@@ -116,6 +117,7 @@ declare const fullApi: ApiFromModules<{
   "admin/systemControl": typeof admin_systemControl;
   apiKeys: typeof apiKeys;
   auth: typeof auth;
+  "billing/fastspring": typeof billing_fastspring;
   "billing/mutations": typeof billing_mutations;
   "billing/queries": typeof billing_queries;
   "billing/webhooks": typeof billing_webhooks;

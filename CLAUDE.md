@@ -571,6 +571,309 @@ railway logs | grep -i "listening on"
 - **FindyMail API**: Contact information enrichment
 - **Stripe**: Payment processing and subscription management
 - **Railway**: Deployment platform for frontend and worker
+- **PostHog**: Product analytics and user behavior tracking
+
+## PostHog Analytics Integration
+
+### Overview
+
+PostHog is integrated for comprehensive product analytics, user behavior tracking, and data-driven decision making. The implementation follows a structured pattern for consistent event tracking across all user flows.
+
+### Configuration
+
+**Location**: `apps/web/src/main.tsx`
+
+```typescript
+import { PostHogProvider } from "posthog-js/react";
+
+<PostHogProvider
+  apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_KEY}
+  options={{
+    api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
+    defaults: '2025-05-24',
+    capture_exceptions: true,
+    debug: import.meta.env.MODE === "development",
+  }}
+>
+  <App />
+</PostHogProvider>
+```
+
+**Environment Variables**:
+- `VITE_PUBLIC_POSTHOG_KEY` - PostHog project API key
+- `VITE_PUBLIC_POSTHOG_HOST` - PostHog instance URL (US: https://us.i.posthog.com)
+
+### Event Tracking Pattern
+
+#### Standard Hook Usage
+
+```typescript
+import { usePostHog } from 'posthog-js/react';
+
+const Component = () => {
+  const posthog = usePostHog();
+
+  const handleAction = () => {
+    posthog?.capture('event_name', {
+      property1: 'value1',
+      property2: 'value2',
+      // Always include relevant context
+    });
+  };
+};
+```
+
+#### Centralized Analytics Hook
+
+**Location**: `apps/web/src/hooks/useAnalytics.ts`
+
+A custom hook that wraps PostHog for consistent tracking across the application with error handling and type safety.
+
+### Event Naming Convention
+
+**Pattern**: `{object}_{action}[_{detail}]`
+
+**Examples**:
+- `user_signed_up` - User completed sign-up flow
+- `user_signed_in` - User authenticated successfully
+- `search_created` - New lead search initiated
+- `search_completed` - Search finished processing
+- `export_completed` - CSV export downloaded
+- `credit_purchase_completed` - Credit transaction successful
+- `pipeline_stage_completed` - Pipeline stage finished
+- `onboarding_completed` - User finished onboarding
+
+**Rules**:
+- Use snake_case for event names
+- Use past tense for completed actions
+- Be specific but concise
+- Group related events with common prefixes
+
+### User Identification
+
+**When**: After successful Clerk authentication
+
+**Implementation**:
+```typescript
+posthog?.identify(user._id, {
+  email: user.email,
+  name: user.name,
+  plan: user.plan,
+  role: user.role,
+  credits: user.credits,
+  $set_once: {
+    first_seen: new Date().toISOString(),
+  }
+});
+```
+
+**Properties**:
+- Use `identify()` once per session after authentication
+- Include user properties for segmentation
+- Use `$set_once` for immutable properties (signup date)
+- Update properties when they change (plan upgrades, role changes)
+
+### Critical User Flows to Track
+
+#### 1. Authentication Flow
+
+**Events**:
+- `user_signed_up` - Include signup method, plan, referrer
+- `user_signed_in` - Include login method
+- `user_signed_out` - Session ended
+- `terms_accepted` - Legal agreement accepted
+
+**Properties**:
+```typescript
+{
+  method: 'email' | 'google' | 'github',
+  plan: 'starter' | 'pro' | 'enterprise',
+  referrer: document.referrer
+}
+```
+
+#### 2. Lead Generation Pipeline
+
+**Events**:
+- `search_created` - Search initiated
+- `pipeline_stage_completed` - Each stage finished
+- `search_completed` - Full search finished
+- `search_cancelled` - User cancelled search
+- `search_failed` - Search encountered error
+
+**Properties**:
+```typescript
+{
+  search_id: string,
+  source: 'google_maps' | 'manual',
+  keywords: string,
+  location: string,
+  radius: number,
+  research_tier: 'tavily' | 'perplexity',
+  total_leads: number,
+  enriched_count: number,
+  duration_seconds: number,
+  stage: 'discovery' | 'enrichment' | 'analysis'
+}
+```
+
+#### 3. Export & Value Delivery
+
+**Events**:
+- `export_initiated` - Export button clicked
+- `export_completed` - File downloaded
+- `export_failed` - Export encountered error
+
+**Properties**:
+```typescript
+{
+  format: 'csv',
+  lead_count: number,
+  has_emails: number,
+  file_size_kb: number
+}
+```
+
+#### 4. Credit & Billing Operations
+
+**Events**:
+- `credit_purchase_initiated` - Purchase flow started
+- `credit_purchase_completed` - Payment successful
+- `credit_purchase_failed` - Payment failed
+- `subscription_upgraded` - Plan upgraded
+- `subscription_downgraded` - Plan downgraded
+- `credits_depleted_warning` - Low balance alert shown
+
+**Properties**:
+```typescript
+{
+  amount: number,
+  price: number,
+  payment_method: string,
+  new_balance: number,
+  from_plan?: string,
+  to_plan?: string,
+  billing_cycle?: 'monthly' | 'annual'
+}
+```
+
+#### 5. Onboarding Flow
+
+**Events**:
+- `onboarding_started` - Wizard opened
+- `onboarding_step_completed` - Step finished
+- `onboarding_completed` - Full flow finished
+- `onboarding_skipped` - User skipped onboarding
+
+**Properties**:
+```typescript
+{
+  step: string,
+  step_number: number,
+  time_spent_seconds: number,
+  steps_completed: number,
+  at_step?: string // For skip events
+}
+```
+
+#### 6. Dashboard & Navigation
+
+**Events**:
+- `dashboard_viewed` - Dashboard page loaded
+- `dashboard_tab_viewed` - Tab switched
+- `help_widget_opened` - Support accessed
+- `settings_updated` - Settings changed
+
+**Properties**:
+```typescript
+{
+  tab: string,
+  from_tab?: string,
+  plan: string,
+  credits: number,
+  active_searches: number,
+  setting_type?: string,
+  changed_fields?: string[]
+}
+```
+
+### Error Tracking
+
+**Automatic**: PostHog captures exceptions automatically via `capture_exceptions: true`
+
+**Manual Error Events**:
+```typescript
+posthog?.capture('operation_failed', {
+  operation: 'search_creation',
+  error_type: error.name,
+  error_message: error.message,
+  error_code: error.code,
+  context: {
+    // Relevant context data
+  }
+});
+```
+
+### Performance Metrics
+
+Track critical performance indicators:
+
+```typescript
+posthog?.capture('search_performance', {
+  search_id: searchId,
+  duration_ms: duration,
+  lead_count: totalLeads,
+  leads_per_second: leadsPerSecond,
+  research_tier: tier
+});
+```
+
+### Best Practices
+
+1. **Always Check Initialization**: Use `posthog?.capture()` to handle undefined cases
+2. **Error Handling**: Wrap tracking in try-catch to prevent tracking failures from breaking app
+3. **Meaningful Properties**: Include context that enables analysis and segmentation
+4. **Consistent Naming**: Follow the established naming convention
+5. **User Privacy**: Never track PII (emails, names) in event properties without consent
+6. **Performance**: Don't track high-frequency events (mousemove, scroll) without throttling
+
+### Implementation Checklist
+
+- [x] PostHog provider configured in main.tsx
+- [ ] User identification after Clerk authentication
+- [ ] Authentication events (sign up, sign in, sign out)
+- [ ] Search pipeline events (create, complete, cancel)
+- [ ] Export/download events
+- [ ] Credit/billing events
+- [ ] Onboarding flow events
+- [ ] Dashboard navigation events
+- [ ] Error tracking events
+- [ ] Performance monitoring events
+
+### Future Enhancements
+
+**PostHog LangChain Toolkit Integration**:
+- Planned integration of PostHog with LangGraph worker for AI agent analytics
+- Track LLM performance, token usage, and agent decision-making
+- Correlate user actions with AI processing metrics
+- Monitor research tier selection impact on output quality
+
+### Analytics Dashboard Access
+
+- **Production**: https://us.posthog.com
+- **Project**: Genni Lead Generation Platform
+- **Key Metrics**: Activation funnel, feature adoption, revenue attribution, user retention
+
+### Debugging
+
+**Development Mode**: Set `debug: true` in PostHog options to see events in browser console
+
+```typescript
+// Check if event was captured
+if (import.meta.env.MODE === 'development') {
+  console.log('PostHog event:', eventName, properties);
+}
+```
 
 ## System Architecture Principles
 
@@ -1030,3 +1333,48 @@ corr_a1b2c3d4e5f6 [search_create] →
 - **Professional Support**: Complete operation tracing for instant issue resolution
 
 **Status**: ✅ **Production Ready** - Enterprise-grade system with comprehensive testing, monitoring, and operational excellence achieved.
+
+## Search Completion Reliability System (November 2025)
+
+### Problem Solved: Stuck Search Detection & Recovery
+
+**Issue**: Lead searches could become permanently stuck in "processing" state when batch completion webhooks from the LangGraph worker failed to reach Convex, resulting in inaccessible analyzed leads despite successful completion.
+
+**Root Cause**: Circular dependency in monitoring system - webhooks set lead status → monitoring checks status → failed webhook means no status update → monitoring skips forever.
+
+**Solution**: Two-layer approach combining user control with automated safety net:
+
+#### **Layer 1: Manual Force Complete Button** (Primary)
+
+User-facing control allowing immediate search completion:
+- **Smart Detection**: Highlights searches with >5min inactivity
+- **Clear Stats**: Shows analyzed vs processing leads before action
+- **Confirmation Dialog**: Prevents accidental completions
+- **Audit Trail**: Logs all manual interventions with reason codes
+- **Real-time Feedback**: Instant completion with progress updates
+
+#### **Layer 2: Automated Timeout Monitoring** (Safety Net)
+
+Conservative 30-minute timeout as fallback:
+- **Progressive Warnings**: 10min (warn) → 20min (error) → 30min (auto-complete)
+- **Activity Tracking**: All webhooks update `lastActivityAt` timestamp
+- **No False Positives**: Very conservative timeout prevents interrupting legitimate searches
+- **Comprehensive Logging**: Full audit trail for debugging webhook failures
+
+**Key Features**:
+- ✅ **Zero Stuck Searches**: 100% recovery rate (manual or automatic)
+- ✅ **User Control**: Users decide when search is "stuck enough" to force complete
+- ✅ **Simple Logic**: Track last activity + show button after 5min inactivity
+- ✅ **Conservative Automation**: 30min timeout catches edge cases users miss
+- ✅ **Clear Visibility**: Real-time progress stats and stuck state indicators
+
+**Technical Implementation**:
+- `ForceCompleteButton` component with activity-based warnings
+- `forceCompleteSearch` action with ownership verification
+- Enhanced monitoring with timeout-based stuck detection
+- Activity timestamp tracking on all webhook handlers
+- Comprehensive logging and analytics
+
+**Documentation**: See [docs/SEARCH_COMPLETION_RELIABILITY.md](./docs/SEARCH_COMPLETION_RELIABILITY.md) for complete implementation plan, testing strategy, and rollout details.
+
+**Status**: 📋 **Implementation Plan** - Ready for development with complete specifications and testing strategy.

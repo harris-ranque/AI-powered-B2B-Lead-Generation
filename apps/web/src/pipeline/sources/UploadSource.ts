@@ -1,5 +1,231 @@
-import type { LeadSource, SourceParams, ValidationResult } from "../types";
-import type { Lead } from "@/lib/api-client";
+import Papa from "papaparse";
+import type { LeadSource, SourceParams, ValidationResult, CSVFetchResult, CSVImportStats } from "../types";
+import type { Lead } from "@/lib/types";
+
+// ============================================================================
+// VALIDATION FUNCTIONS
+// ============================================================================
+
+/**
+ * Validates email format (RFC 5322 basic check)
+ */
+export function validateEmail(email: string): boolean {
+  if (!email || typeof email !== "string") return false;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email.trim());
+}
+
+/**
+ * Validates domain format
+ */
+export function validateDomain(domain: string): boolean {
+  if (!domain || typeof domain !== "string") return false;
+  const domainRegex = /^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$/i;
+  return domainRegex.test(domain.trim());
+}
+
+/**
+ * Extracts domain from website URL
+ * Examples:
+ *   "https://www.example.com/path" -> "example.com"
+ *   "www.example.com" -> "example.com"
+ *   "example.com" -> "example.com"
+ */
+export function extractDomain(url?: string): string {
+  if (!url) return "";
+
+  try {
+    // Add protocol if missing
+    const urlWithProtocol = url.startsWith("http") ? url : `https://${url}`;
+    const parsedUrl = new URL(urlWithProtocol);
+    // Remove "www." prefix
+    return parsedUrl.hostname.replace(/^www\./, "");
+  } catch {
+    // Fallback: simple string manipulation
+    return url
+      .replace(/^(https?:\/\/)?(www\.)?/, "")
+      .split("/")[0]
+      .toLowerCase() || "";
+  }
+}
+
+/**
+ * Sanitizes cell value to prevent CSV injection attacks
+ * Escapes formula characters: =, +, -, @, \t, \r, \n, |
+ * Also escapes quotes to prevent breaking CSV structure
+ */
+export function sanitizeCSVValue(value: string): string {
+  if (!value || typeof value !== "string") return value;
+
+  const trimmed = value.trim();
+  const dangerousChars = ["=", "+", "-", "@", "\t", "\r", "\n", "|"];
+
+  // Check if starts with dangerous character
+  if (dangerousChars.some((char) => trimmed.startsWith(char))) {
+    // Prepend single quote to prevent formula execution in Excel
+    return `'${trimmed}`;
+  }
+
+  // Escape existing quotes by doubling them (CSV standard)
+  if (trimmed.includes('"')) {
+    return trimmed.replace(/"/g, '""');
+  }
+
+  return trimmed;
+}
+
+/**
+ * Validates phone number format (international)
+ */
+export function validatePhone(phone: string): boolean {
+  if (!phone || typeof phone !== "string") return false;
+  const phoneRegex = /^[+]?[(]?[0-9]{1,4}[)]?[-\s.]?[(]?[0-9]{1,4}[)]?[-\s.]?[0-9]{1,9}$/;
+  return phoneRegex.test(phone.replace(/\s/g, ""));
+}
+
+/**
+ * Validates URL format
+ */
+export function validateUrl(url: string): boolean {
+  if (!url || typeof url !== "string") return false;
+  try {
+    new URL(url.startsWith("http") ? url : `https://${url}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ============================================================================
+// CREDIT CALCULATION
+// ============================================================================
+
+export interface RowCostEstimate {
+  cost: number;
+  reason: string;
+  skipEnrichment: boolean;
+}
+
+/**
+ * Calculate credit cost for a single CSV row
+ *
+ * Logic:
+ * - Has valid contact_email → 1 credit (skip enrichment, research only)
+ * - Has domain but no email → 2 credits (enrichment + research)
+ * - No domain AND no email → 0 credits (invalid, will be skipped)
+ */
+export function calculateRowCost(row: Record<string, string>): RowCostEstimate {
+  const contactEmail = row.contact_email || row.email;
+  const domain = row.domain || extractDomain(row.website);
+
+  // Priority 1: Has valid email → Skip enrichment → 1 credit (research only)
+  if (contactEmail && validateEmail(contactEmail)) {
+    return {
+      cost: 1,
+      reason: "Has email (skip enrichment)",
+      skipEnrichment: true,
+    };
+  }
+
+  // Priority 2: Has domain → Need enrichment → 2 credits
+  if (domain && validateDomain(domain)) {
+    return {
+      cost: 2,
+      reason: "Needs enrichment + research",
+      skipEnrichment: false,
+    };
+  }
+
+  // Priority 3: No domain AND no email → Invalid → 0 credits (skip)
+  return {
+    cost: 0,
+    reason: "Missing domain and email",
+    skipEnrichment: false,
+  };
+}
+
+// ============================================================================
+// ROW VALIDATION
+// ============================================================================
+
+export interface RowValidationResult {
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+  rowData: Record<string, string>;
+  costEstimate: RowCostEstimate;
+}
+
+/**
+ * Validates a single CSV row
+ */
+export function validateRow(
+  row: Record<string, string>,
+  rowNumber: number,
+): RowValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Sanitize all values to prevent CSV injection
+  const sanitizedRow: Record<string, string> = {};
+  for (const [key, value] of Object.entries(row)) {
+    sanitizedRow[key] = sanitizeCSVValue(value);
+  }
+
+  // REQUIRED: Company name
+  const companyName = sanitizedRow.company_name || sanitizedRow.businessName;
+  if (!companyName || companyName.trim().length === 0) {
+    errors.push("Company name is required");
+  }
+
+  // CRITICAL: Must have either domain OR email
+  const contactEmail = sanitizedRow.contact_email || sanitizedRow.email;
+  const domain = sanitizedRow.domain || extractDomain(sanitizedRow.website);
+
+  if (!domain && !contactEmail) {
+    errors.push("Must provide either domain OR email address");
+  }
+
+  // Validate email format if provided
+  if (contactEmail && !validateEmail(contactEmail)) {
+    errors.push(`Invalid email format: ${contactEmail}`);
+  }
+
+  // Validate domain format if provided
+  if (domain && !validateDomain(domain)) {
+    warnings.push(`Invalid domain format: ${domain}`);
+  }
+
+  // Validate phone if provided
+  if (sanitizedRow.phone && !validatePhone(sanitizedRow.phone)) {
+    warnings.push(`Invalid phone format: ${sanitizedRow.phone}`);
+  }
+
+  // Validate website URL if provided
+  if (sanitizedRow.website && !validateUrl(sanitizedRow.website)) {
+    warnings.push(`Invalid website URL: ${sanitizedRow.website}`);
+  }
+
+  // Calculate cost estimate
+  const costEstimate = calculateRowCost(sanitizedRow);
+
+  // Add cost validation
+  if (costEstimate.cost === 0) {
+    errors.push("Cannot process: missing required data for enrichment");
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    warnings,
+    rowData: sanitizedRow,
+    costEstimate,
+  };
+}
+
+// ============================================================================
+// MAIN UPLOAD SOURCE
+// ============================================================================
 
 export const UploadSource: LeadSource = {
   type: "csv_upload",
@@ -45,25 +271,42 @@ export const UploadSource: LeadSource = {
           errors.push(`Required field '${field}' must be mapped`);
         }
       }
+
+      // Check if at least domain OR email is mapped
+      const hasDomain = mappedFields.includes("domain") || mappedFields.includes("website");
+      const hasEmail = mappedFields.includes("contact_email") || mappedFields.includes("email");
+
+      if (!hasDomain && !hasEmail) {
+        errors.push("Must map either 'domain' OR 'email' field");
+      }
     }
 
-    // Estimate processing cost
-    const estimatedRows = Math.ceil(params.file.size / 100); // Rough estimate
-    const estimatedCost = Math.min(estimatedRows * 2, 1000); // Cap at 1000 credits
+    // File size-based estimates
+    const estimatedRows = Math.ceil(params.file.size / 100);
 
-    if (estimatedRows > 1000) {
+    if (estimatedRows > 5000) {
+      errors.push("File exceeds maximum 5,000 rows");
+    } else if (estimatedRows > 1000) {
       warnings.push("Large files may take longer to process");
     }
+
+    // For validation, use worst-case estimate (will be refined when user clicks Start)
+    // Actual cost calculation happens during parsing with calculateRowCost()
+    const estimatedCost = Math.min(estimatedRows * 2, 5000);
 
     return {
       isValid: errors.length === 0,
       errors,
       warnings,
       estimatedCost,
+      metadata: {
+        estimatedRows,
+        note: "Actual cost calculated after parsing (1 credit with email, 2 credits without)"
+      }
     };
   },
 
-  fetch: async (params: SourceParams): Promise<Lead[]> => {
+  fetch: async (params: SourceParams): Promise<CSVFetchResult> => {
     if (!params.file || !params.columns) {
       throw new Error("File and column mapping required");
     }
@@ -74,10 +317,10 @@ export const UploadSource: LeadSource = {
       reader.onload = (event) => {
         try {
           const csvText = event.target?.result as string;
-          const leads = parseCSVToLeads(csvText, params.columns!);
-          resolve(leads);
+          const result = parseCSVToLeads(csvText, params.columns!);
+          resolve(result);
         } catch (error) {
-          reject(new Error("Failed to parse CSV file"));
+          reject(new Error(`Failed to parse CSV file: ${error instanceof Error ? error.message : 'Unknown error'}`));
         }
       };
 
@@ -90,95 +333,174 @@ export const UploadSource: LeadSource = {
   },
 };
 
+// ============================================================================
+// CSV PARSING
+// ============================================================================
+
 function parseCSVToLeads(
   csvText: string,
   columnMapping: Record<string, string>,
-): Lead[] {
-  const lines = csvText.split("\n").filter((line) => line.trim());
-  if (lines.length === 0) return [];
+): CSVFetchResult {
+  // Parse CSV with papaparse (RFC 4180 compliant)
+  const parseResult = Papa.parse<Record<string, string>>(csvText, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: (header) => header.trim(),
+    transform: (value) => value.trim(),
+  });
 
-  const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""));
-  const dataLines = lines.slice(1);
+  if (parseResult.errors.length > 0) {
+    console.error("CSV parsing errors:", parseResult.errors);
+  }
 
   const now = Date.now();
+  const validLeads: Lead[] = [];
+  const invalidRows: RowValidationResult[] = [];
 
-  return dataLines
-    .map((line, index) => {
-      const values = line.split(",").map((v) => v.trim().replace(/"/g, ""));
-      const leadData: Record<string, string> = {};
-
-      headers.forEach((header, headerIndex) => {
-        const mappedField = columnMapping[header];
-        if (mappedField && values[headerIndex]) {
-          leadData[mappedField] = values[headerIndex];
-        }
-      });
-
-      const leadId = `upload_${index}`;
-      const companyName = leadData.company_name?.trim();
-      if (!companyName) {
-        return null;
+  // Process each row
+  parseResult.data.forEach((rawRow, index) => {
+    // Map CSV columns to lead fields
+    const leadData: Record<string, string> = {};
+    for (const [csvColumn, leadField] of Object.entries(columnMapping)) {
+      if (leadField !== "ignore" && rawRow[csvColumn]) {
+        leadData[leadField] = rawRow[csvColumn];
       }
+    }
 
-      const normalizedEmail = leadData.email?.trim();
-      const contactEmails = normalizedEmail
-        ? [
-            {
-              email: normalizedEmail,
-              type: "work",
-              confidence: 0.5,
-            },
-          ]
-        : [];
+    // Validate row
+    const validation = validateRow(leadData, index + 1);
 
-      const address = leadData.address?.trim();
-      const industry = leadData.industry?.trim();
+    if (!validation.isValid) {
+      invalidRows.push(validation);
+      return; // Skip invalid rows
+    }
 
-      const lead: Lead = {
-        _id: leadId,
-        id: leadId,
-        businessName: companyName,
-        company_name: companyName,
-        industry: industry || null,
-        category: industry || null,
-        website: leadData.website?.trim() || null,
-        phone: leadData.phone?.trim() || null,
-        address: address || null,
-        location: address
+    // Extract domain from website if not explicitly provided
+    const domain = leadData.domain || extractDomain(leadData.website);
+    const contactEmail = leadData.contact_email || leadData.email;
+
+    // Build lead object
+    const leadId = `csv_${now}_${index}`;
+    const companyName = validation.rowData.company_name?.trim();
+
+    if (!companyName) return; // Should not happen after validation
+
+    // Generate synthetic placeId for CSV imports (required by schema)
+    const safeDomain = (domain || companyName.replace(/[^a-z0-9]/gi, '_')).toLowerCase();
+    const syntheticPlaceId = `csv_upload_${safeDomain}_${now}_${index}`;
+
+    // Prepare contact info if email exists
+    const contactEmails = contactEmail && validateEmail(contactEmail)
+      ? [
+          {
+            email: contactEmail,
+            type: "work" as const,
+            confidence: 0.9, // High confidence for user-provided emails
+          },
+        ]
+      : [];
+
+    // Prepare contact person if name exists
+    const contacts = leadData.contact_name
+      ? [
+          {
+            name: leadData.contact_name,
+            email: contactEmail || undefined,
+            confidence: 0.9,
+          },
+        ]
+      : [];
+
+    const industry = validation.rowData.industry?.trim();
+
+    const lead: Lead = {
+      _id: leadId,
+      id: leadId,
+      businessName: companyName,
+      company_name: companyName,
+      industry: industry || null,
+      category: industry || null,
+      website: leadData.website?.trim() || (domain ? `https://${domain}` : null),
+      phone: leadData.phone?.trim() || null,
+      placeId: syntheticPlaceId,
+      address: "CSV Import",
+      location: {
+        lat: 0,
+        lng: 0,
+        formattedAddress: "CSV Import",
+      },
+      contactInfo:
+        contactEmails.length > 0 || contacts.length > 0
           ? {
-              lat: 0,
-              lng: 0,
-              formattedAddress: address,
+              emails: contactEmails,
+              contacts: contacts,
             }
           : undefined,
-        contactInfo:
-          contactEmails.length > 0
-            ? {
-                emails: contactEmails,
-                contacts: [],
-              }
-            : undefined,
-        contact_info:
-          normalizedEmail || leadData.phone
-            ? {
-                email: normalizedEmail || undefined,
-                phone: leadData.phone?.trim() || undefined,
-              }
-            : undefined,
-        notes: leadData.description?.trim() || "",
-        description: leadData.description?.trim() || null,
-        enrichmentStatus: "pending",
-        status: "new",
-        tags: [],
-        dataSource: "csv_upload",
-        createdAt: now,
-        updatedAt: now,
-        raw_data: {
-          source: "csv_upload",
-        },
-      } as Lead;
+      contact_info:
+        contactEmail || leadData.phone
+          ? {
+              email: contactEmail || undefined,
+              phone: leadData.phone?.trim() || undefined,
+            }
+          : undefined,
+      notes: leadData.notes?.trim() || "",
+      description: null,
+      enrichmentStatus: validation.costEstimate.skipEnrichment
+        ? ("completed" as const) // Already has email, skip enrichment
+        : ("pending" as const), // Needs enrichment
+      status: "new" as const,
+      tags: [],
+      dataSource: "csv_upload",
+      createdAt: now,
+      updatedAt: now,
+      raw_data: {
+        source: "csv_upload",
+        domain: domain || undefined,
+        costEstimate: validation.costEstimate,
+        skipEnrichment: validation.costEstimate.skipEnrichment,
+      },
+    } as Lead;
 
-      return lead;
-    })
-    .filter((lead): lead is Lead => Boolean(lead));
+    validLeads.push(lead);
+  });
+
+  // Calculate statistics
+  const leadsWithEmail = validLeads.filter(l => l.raw_data?.skipEnrichment).length;
+  const leadsNeedingEnrichment = validLeads.length - leadsWithEmail;
+  const actualCost = (leadsWithEmail * 1) + (leadsNeedingEnrichment * 2);
+
+  // Log import summary
+  console.log(`CSV Import Summary:
+  - Total rows: ${parseResult.data.length}
+  - Valid leads: ${validLeads.length}
+  - Invalid rows: ${invalidRows.length}
+  - With emails (1 credit): ${leadsWithEmail}
+  - Need enrichment (2 credits): ${leadsNeedingEnrichment}
+  - Total cost: ${actualCost} credits
+  `);
+
+  if (invalidRows.length > 0) {
+    console.warn("Invalid rows:", invalidRows);
+  }
+
+  // Build stats object
+  const stats: CSVImportStats = {
+    totalRows: parseResult.data.length,
+    validRows: validLeads.length,
+    invalidRows: invalidRows.length,
+    skippedRows: 0,
+    leadsWithEmail,
+    leadsNeedingEnrichment,
+    estimatedCost: actualCost,
+    actualCost,
+    errorReport: invalidRows.length > 0 ? invalidRows.map((inv, index) => ({
+      rowNumber: index + 2, // +2 because row 1 is headers, and index is 0-based
+      companyName: inv.rowData.company_name,
+      errors: inv.errors,
+      warnings: inv.warnings,
+      rawData: inv.rowData,
+    })) : undefined,
+  };
+
+  return { leads: validLeads, stats };
 }
