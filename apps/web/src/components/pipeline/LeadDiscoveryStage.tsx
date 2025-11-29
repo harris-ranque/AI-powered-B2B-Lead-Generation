@@ -412,7 +412,7 @@ export function LeadDiscoveryStage({
           fileName: uploadFile.name,
           fileSize: uploadFile.size,
           columnMapping,
-          leads: leads.map((lead: any) => ({
+          leads: leads.map((lead) => ({
             businessName: lead.businessName,
             address: lead.address,
             placeId: lead.placeId,
@@ -888,7 +888,16 @@ export function LeadDiscoveryStage({
 
                     <p className="text-xs text-muted-foreground mt-2">
                       These settings will apply to this search. You can set defaults in your{" "}
-                      <a href="/settings" className="text-primary hover:underline">account settings</a>.
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onNavigateToSettings?.();
+                        }}
+                        className="text-primary hover:underline cursor-pointer bg-transparent border-none p-0 inline"
+                      >
+                        account settings
+                      </button>.
                     </p>
                   </CollapsibleContent>
                 </Collapsible>

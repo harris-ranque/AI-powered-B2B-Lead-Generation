@@ -7,6 +7,31 @@
  * @see https://fastspring.com/docs/storefronts/popup-storefront/
  */
 
+// FastSpring callback data types
+interface FastSpringCallbackData {
+  id?: string;
+  reference?: string;
+  total?: number;
+  currency?: string;
+  items?: Array<{
+    product?: string;
+    path?: string;
+    quantity?: number;
+    price?: number;
+    total?: number;
+    subscription?: string;
+  }>;
+  popup?: boolean;
+  [key: string]: unknown; // Allow additional properties
+}
+
+interface FastSpringRecognizeData {
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  [key: string]: unknown; // Allow additional properties
+}
+
 // Declare FastSpring global types
 declare global {
   interface Window {
@@ -18,15 +43,16 @@ declare global {
         secure: (payload: string, key: string) => void;
         viewCart: () => void;
         closePopup: () => void;
-        push: (data: any) => void;
-        recognize: (data: any) => void;
+        push: (data: Record<string, unknown>) => void;
+        recognize: (data: FastSpringRecognizeData) => void;
       };
     };
     fastspringCallback?: {
-      data?: any;
+      data?: FastSpringCallbackData;
       popup?: boolean;
       close?: () => void;
     };
+    fscDataCallback?: (data: FastSpringCallbackData) => void;
   }
 }
 
@@ -82,7 +108,7 @@ export async function loadFastSpringScript(): Promise<void> {
 
   loadPromise = new Promise((resolve, reject) => {
     // Create the data callback before loading script
-    (window as any).fscDataCallback = (data: any) => {
+    window.fscDataCallback = (data: FastSpringCallbackData) => {
       handleFastSpringCallback(data);
     };
 
@@ -117,7 +143,7 @@ export async function loadFastSpringScript(): Promise<void> {
  * Handle FastSpring data callbacks
  * Called by SBL when checkout events occur
  */
-function handleFastSpringCallback(data: any) {
+function handleFastSpringCallback(data: FastSpringCallbackData) {
   console.log("[FastSpring] Callback received:", data);
 
   // Check if this is an order completion
@@ -127,8 +153,8 @@ function handleFastSpringCallback(data: any) {
       reference: data.reference,
       total: data.total || 0,
       currency: data.currency || "USD",
-      items: (data.items || []).map((item: any) => ({
-        product: item.product || item.path,
+      items: (data.items || []).map((item) => ({
+        product: item.product || item.path || '',
         quantity: item.quantity || 1,
         price: item.price || item.total || 0,
         subscription: item.subscription,

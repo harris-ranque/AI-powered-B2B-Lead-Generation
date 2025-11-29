@@ -174,9 +174,12 @@ export function SourceSelector() {
                     <Button
                       className="w-full mt-4"
                       variant={isHovered && !isDisabled ? "default" : "outline"}
-                      onClick={() =>
-                        !isDisabled && handleSourceSelect(source.type)
-                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!isDisabled) {
+                          handleSourceSelect(source.type);
+                        }
+                      }}
                       disabled={isDisabled}
                     >
                       {isDisabled ? "Disabled" : `Select ${source.name}`}
@@ -188,7 +191,10 @@ export function SourceSelector() {
                     <Button
                       className="w-full mt-4"
                       variant="default"
-                      onClick={progressToNextStage}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        progressToNextStage();
+                      }}
                     >
                       <CheckCircle className="h-4 w-4 mr-2" />
                       Continue to Lead Discovery

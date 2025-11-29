@@ -28,11 +28,11 @@ import { Badge } from "@/components/ui/badge";
  */
 export function CSVTemplateDownload() {
   const generateSampleCSV = () => {
-    // CSV Header with essential fields only
+    // CSV Header with essential fields only - show required fields clearly
     const headers = [
       // REQUIRED
-      "company_name",
-      "domain",
+      "company_name (required)",
+      "domain (required)",
       // OPTIONAL - Contact
       "contact_name",
       "contact_email",

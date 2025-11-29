@@ -35,7 +35,8 @@
       "WebFetch(domain:www.perplexity.ai)",
       "Bash(railway variables:*)",
       "Bash(pnpm test:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(git remote set-url:*)"
     ],
     "deny": [],
     "ask": []
