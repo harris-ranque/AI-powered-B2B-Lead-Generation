@@ -415,9 +415,11 @@ export const createSearchFromCSV = mutation({
       totalRows: v.number(),
       validRows: v.number(),
       invalidRows: v.number(),
+      skippedRows: v.number(),
       leadsWithEmail: v.number(),
       leadsNeedingEnrichment: v.number(),
       estimatedCost: v.number(),
+      actualCost: v.number(),
       errorReport: v.optional(v.any()),
     }),
   },
@@ -529,9 +531,9 @@ export const createSearchFromCSV = mutation({
       totalRows: args.statistics.totalRows,
       validRows: args.statistics.validRows,
       invalidRows: args.statistics.invalidRows,
-      skippedRows: 0,
+      skippedRows: args.statistics.skippedRows,
       estimatedCost: args.statistics.estimatedCost,
-      actualCost: args.statistics.estimatedCost,
+      actualCost: args.statistics.actualCost,
       leadsWithEmail: args.statistics.leadsWithEmail,
       leadsNeedingEnrichment: args.statistics.leadsNeedingEnrichment,
       status: args.statistics.invalidRows === 0 ? "completed" : "partial_success",
@@ -543,6 +545,19 @@ export const createSearchFromCSV = mutation({
 
     console.log(
       `CSV Import complete: ${searchId} (${args.leads.length} leads, ${args.statistics.estimatedCost} credits)`
+    );
+
+    // Schedule the enrichment/analysis pipeline to process the imported leads
+    // This follows the same flow as Google Maps searches:
+    // enrichLeads -> (if needed) enrich pending leads -> analyzeLeads -> completeSearch
+    await ctx.scheduler.runAfter(
+      500, // Small delay to ensure all leads are committed
+      "leads/actions:enrichLeads" as any,
+      { searchId }
+    );
+
+    console.log(
+      `Pipeline scheduled for CSV import: ${searchId} (enrichLeads -> analyzeLeads)`
     );
 
     return {
