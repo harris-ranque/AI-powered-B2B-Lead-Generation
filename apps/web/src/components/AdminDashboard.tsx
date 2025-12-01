@@ -328,10 +328,10 @@ const EXTERNAL_SERVICE_GROUPS: ExternalServiceGroup[] = [
       {
         name: "PostHog",
         description: "Product analytics and feature flagging for user behavior insights.",
-        href: "https://app.posthog.com/",
+        href: "https://us.posthog.com/project/233412",
         icon: BarChart3,
         requiresKey: true,
-        envVars: ["VITE_POSTHOG_KEY", "VITE_POSTHOG_HOST"],
+        envVars: ["VITE_PUBLIC_POSTHOG_KEY", "VITE_PUBLIC_POSTHOG_HOST"],
       },
     ],
   },

@@ -1,0 +1,6 @@
+company_name,domain,contact_name,contact_email,phone,website,industry,notes
+"Acme Corp","acme.com","John Smith","john.smith@acme.com","(555) 123-4567","https://acme.com","Software","Complete lead with all fields - 1 credit"
+"TechStart Inc","techstart.io","","","","https://techstart.io","Technology","Domain only, needs enrichment - 2 credits"
+"Local Bakery","localbakery.com","Jane Doe","jane@localbakery.com","","","Food & Beverage","Has email, missing phone/website - 1 credit"
+"Global Solutions","globalsolutions.net","","","","","","Minimal data, domain only - 2 credits"
+"Consulting Pro","","Mike Johnson","mike@consultingpro.com","(555) 999-8888","https://consultingpro.com","Consulting","Email but no domain, website will extract domain - 1 credit"

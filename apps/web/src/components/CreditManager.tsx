@@ -21,6 +21,7 @@ import { useBilling } from "@/hooks/useBilling";
 import { useFastSpring } from "@/hooks/useFastSpring";
 import { useRuntimeConfig, type PlanType } from "@/lib/runtime-config";
 import { useUser, useUserCredits } from "@/hooks/useUser";
+import { useAnalytics } from "@/hooks/useAnalytics";
 
 interface PricingPlan {
   id: PlanType;
@@ -64,6 +65,7 @@ export function CreditManager({
   const [isProcessing, setIsProcessing] = useState(false);
 
   const { toast } = useToast();
+  const analytics = useAnalytics();
 
   // Real Convex hooks
   const { user } = useUser();
@@ -78,7 +80,15 @@ export function CreditManager({
     isLoading: checkoutLoading,
   } = useFastSpring({
     autoLoad: true,
-    onOrderComplete: () => {
+    onOrderComplete: (order) => {
+      // Track successful purchase
+      analytics.trackCreditPurchaseCompleted({
+        amount: order.items?.[0]?.quantity || 0,
+        price: order.total || 0,
+        payment_method: "fastspring",
+        new_balance: (currentCredits || 0) + (order.items?.[0]?.quantity || 0),
+      });
+
       toast({
         title: "Payment successful!",
         description: "Your purchase has been processed.",
@@ -256,6 +266,13 @@ export function CreditManager({
       const pack = visiblePacks.find((p) => p.amount + p.bonus === amount);
       if (!pack) throw new Error("Invalid credit pack");
 
+      // Track purchase initiated
+      analytics.trackCreditPurchaseInitiated({
+        amount: pack.amount + pack.bonus,
+        price: pack.price,
+        payment_method: "fastspring",
+      });
+
       // Open FastSpring popup checkout for credit purchase
       // Pass the base credit amount (FastSpring product is configured by base amount)
       await startCreditsCheckout(pack.amount);
@@ -266,6 +283,13 @@ export function CreditManager({
       }
     } catch (error) {
       console.error("Credit purchase failed:", error);
+
+      // Track purchase failed
+      analytics.trackCreditPurchaseFailed({
+        amount,
+        error_message: error instanceof Error ? error.message : "Unknown error",
+      });
+
       toast({
         title: "Purchase Failed",
         description: "Failed to start purchase process. Please try again.",

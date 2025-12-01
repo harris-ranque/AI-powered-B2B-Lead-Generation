@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ConvexProvider } from "@/components/providers/ConvexProvider";
+import { AuthAnalyticsProvider } from "@/components/providers/AuthAnalyticsProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { GlobalErrorBoundary } from "@/components/GlobalErrorBoundary";
 import { AppThemeEffect } from "@/components/AppThemeEffect";
@@ -38,9 +39,10 @@ const App = () => (
   <GlobalErrorBoundary>
     <ErrorBoundary>
       <ConvexProvider>
-        <AppThemeEffect />
-        <QueryClientProvider client={queryClient}>
-          <TooltipProvider>
+        <AuthAnalyticsProvider>
+          <AppThemeEffect />
+          <QueryClientProvider client={queryClient}>
+            <TooltipProvider>
             <Toaster />
             <Sonner />
             <BrowserRouter>
@@ -114,8 +116,9 @@ const App = () => (
                 </Routes>
               </ErrorBoundary>
             </BrowserRouter>
-          </TooltipProvider>
-        </QueryClientProvider>
+            </TooltipProvider>
+          </QueryClientProvider>
+        </AuthAnalyticsProvider>
       </ConvexProvider>
     </ErrorBoundary>
   </GlobalErrorBoundary>

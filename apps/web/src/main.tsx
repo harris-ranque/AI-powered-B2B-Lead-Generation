@@ -38,15 +38,53 @@ logger.info("Application starting up", {
 
 initializeStoredAppTheme();
 
-// Trigger redeploy
+// PostHog configuration
+const posthogKey = import.meta.env.VITE_PUBLIC_POSTHOG_KEY;
+const posthogHost = import.meta.env.VITE_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com';
+
+// Log PostHog configuration status
+if (posthogKey) {
+  logger.info("PostHog analytics initialized", {
+    projectId: "233412",
+    host: posthogHost,
+    debug: import.meta.env.MODE === "development",
+  });
+} else {
+  logger.warn("PostHog API key not configured - analytics disabled");
+}
+
 createRoot(document.getElementById("root")!).render(
   <PostHogProvider
-    apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_KEY}
+    apiKey={posthogKey}
     options={{
-      api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
-      defaults: '2025-05-24',
-      capture_exceptions: true,
+      api_host: posthogHost,
+      // Capture unhandled exceptions automatically
+      autocapture: true,
+      // Capture page views automatically
+      capture_pageview: true,
+      // Capture page leaves for session duration
+      capture_pageleave: true,
+      // Persist user identification across sessions
+      persistence: 'localStorage+cookie',
+      // Enable session recording (if you have it enabled in PostHog)
+      disable_session_recording: false,
+      // Debug mode in development
       debug: import.meta.env.MODE === "development",
+      // Bootstrap with feature flags disabled initially
+      bootstrap: {
+        featureFlags: {},
+      },
+      // Respect Do Not Track browser setting
+      respect_dnt: true,
+      // Load feature flags on init
+      loaded: (posthog) => {
+        if (import.meta.env.MODE === "development") {
+          console.log("[PostHog] Loaded successfully", {
+            distinctId: posthog.get_distinct_id(),
+            sessionId: posthog.get_session_id(),
+          });
+        }
+      },
     }}
   >
     <App />

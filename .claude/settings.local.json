@@ -36,7 +36,8 @@
       "Bash(railway variables:*)",
       "Bash(pnpm test:*)",
       "Bash(tree:*)",
-      "Bash(git remote set-url:*)"
+      "Bash(git remote set-url:*)",
+      "Read(//Users/mountain/Downloads/**)"
     ],
     "deny": [],
     "ask": []
