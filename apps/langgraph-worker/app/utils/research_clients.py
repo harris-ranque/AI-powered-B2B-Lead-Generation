@@ -23,6 +23,16 @@ from ..utils.logger import setup_logger
 from ..utils.tavily_tool import TavilySearchTool, TavilySearchResult
 from ..utils.data_validation import BaseDataValidator, DataValidationResult
 from ..utils.analytics import capture_event, capture_error
+from ..utils.perplexity_rate_limiter import create_perplexity_rate_limiter, PerplexityRateLimiter
+from ..utils.perplexity_retry import (
+    perplexity_request_with_retry,
+    handle_perplexity_response,
+    RateLimitError,
+    RateLimitExhaustedError,
+    PerplexityAPIError,
+    RetryConfig,
+)
+from ..config import PERPLEXITY_RATE_LIMIT_CONFIG
 
 logger = setup_logger(__name__)
 settings = get_settings()
@@ -390,13 +400,35 @@ class PerplexityClient:
     """
     Tier 3 research client using Perplexity for comprehensive business reports.
     Target: 10-15 seconds response time, comprehensive analysis with citations.
+
+    Includes built-in rate limiting and retry logic:
+    - Sliding window rate limiting per model (Tier 5 defaults: sonar-pro: 2000 RPM, sonar-deep-research: 100 RPM)
+    - Exponential backoff with jitter for transient errors (handles lower-tier users who hit 429s)
+    - Graceful degradation when rate limits exhausted after retries
     """
-    
+
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or getattr(settings, 'perplexity_api_key', None)
         self.base_url = "https://api.perplexity.ai"
         self.timeout = 20.0  # Longer timeout for comprehensive analysis
-        
+
+        # Initialize rate limiter with configurable limits
+        # BYOK clients may override via environment variables
+        self.rate_limiter = create_perplexity_rate_limiter(
+            sonar_pro_rpm=PERPLEXITY_RATE_LIMIT_CONFIG['SONAR_PRO_RPM'],
+            deep_research_rpm=PERPLEXITY_RATE_LIMIT_CONFIG['DEEP_RESEARCH_RPM'],
+        )
+
+        # Initialize retry configuration
+        self.retry_config = RetryConfig(
+            max_retries=PERPLEXITY_RATE_LIMIT_CONFIG['MAX_RETRIES'],
+            base_delay_ms=PERPLEXITY_RATE_LIMIT_CONFIG['BASE_DELAY_MS'],
+            max_delay_ms=PERPLEXITY_RATE_LIMIT_CONFIG['MAX_DELAY_MS'],
+            jitter_min=PERPLEXITY_RATE_LIMIT_CONFIG['JITTER_MIN'],
+            jitter_max=PERPLEXITY_RATE_LIMIT_CONFIG['JITTER_MAX'],
+            timeout_retry_once=PERPLEXITY_RATE_LIMIT_CONFIG['TIMEOUT_RETRY_ONCE'],
+        )
+
         if not self.api_key:
             logger.warning("Perplexity API key not configured")
     
@@ -406,7 +438,7 @@ class PerplexityClient:
                                    location: str = "",
                                    previous_context: str = "") -> ResearchResult:
         """
-        Generate comprehensive business research report using Perplexity.
+        Generate comprehensive business research report using Perplexity Sonar Pro.
 
         Args:
             company_name: Name of the company to research
@@ -416,9 +448,18 @@ class PerplexityClient:
 
         Returns:
             ResearchResult with comprehensive business intelligence
+
+        Rate Limiting:
+            - Acquires rate limit slot for sonar-pro model (50 RPM default)
+            - Waits if rate limit reached before making API call
+
+        Retry Logic:
+            - Retries on 429, 5xx errors with exponential backoff
+            - Parses Retry-After header when available
+            - Max 4 retries with jitter to prevent thundering herd
         """
         start_time = time.time()
-        
+
         if not self.api_key:
             return ResearchResult(
                 query=company_name,
@@ -426,55 +467,86 @@ class PerplexityClient:
                 confidence_score=0.0,
                 error="Perplexity API key not configured"
             )
-        
-        try:
-            # Construct comprehensive research query
-            query = self._build_comprehensive_query(company_name, domain, location, previous_context)
-            
+
+        # Construct comprehensive research query
+        query = self._build_comprehensive_query(company_name, domain, location, previous_context)
+
+        # Prepare request payload
+        payload = {
+            # Use sonar-pro for comprehensive research
+            "model": "sonar-pro",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a business intelligence analyst. Provide comprehensive, factual research about companies including business model, market position, competitive landscape, recent developments, and growth opportunities. Include specific data points and cite your sources."
+                },
+                {
+                    "role": "user",
+                    "content": query
+                }
+            ],
+            "max_tokens": 4000,
+            "temperature": 0.3,
+            "stream": False,
+            "return_citations": True,
+            "return_images": False
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+        async def make_request() -> dict:
+            """Inner function for retry wrapper."""
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
-                payload = {
-                    # Use sonar-pro for comprehensive research (replaces deprecated llama-3.1-sonar-large-128k-online)
-                    # Reference: https://docs.perplexity.ai/docs/model-cards
-                    "model": "sonar-pro",
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": "You are a business intelligence analyst. Provide comprehensive, factual research about companies including business model, market position, competitive landscape, recent developments, and growth opportunities. Include specific data points and cite your sources."
-                        },
-                        {
-                            "role": "user", 
-                            "content": query
-                        }
-                    ],
-                    "max_tokens": 4000,
-                    "temperature": 0.3,
-                    "stream": False,
-                    "return_citations": True,
-                    "return_images": False
-                }
-                
-                headers = {
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json"
-                }
-                
                 async with session.post(
                     f"{self.base_url}/chat/completions",
                     json=payload,
                     headers=headers
                 ) as response:
-                    
-                    if response.status != 200:
-                        error_text = await response.text()
-                        raise Exception(f"Perplexity API error {response.status}: {error_text}")
-                    
-                    data = await response.json()
-                    response_time = time.time() - start_time
-                    
-                    return self._process_perplexity_response(
-                        company_name, data, response_time
+                    # Use standardized response handler (raises RateLimitError on 429)
+                    return await handle_perplexity_response(
+                        response,
+                        operation_name=f"sonar_pro_research:{company_name}"
                     )
-                    
+
+        try:
+            # Acquire rate limit slot for sonar-pro (waits if at capacity)
+            async with self.rate_limiter.acquire("sonar-pro") as ctx:
+                if ctx.wait_time > 0:
+                    logger.info(
+                        f"[RateLimit] Waited {ctx.wait_time:.2f}s for sonar-pro slot before researching {company_name}"
+                    )
+
+                # Execute request with retry logic
+                data = await perplexity_request_with_retry(
+                    make_request,
+                    config=self.retry_config,
+                    operation_name=f"sonar_pro_research:{company_name}"
+                )
+
+            response_time = time.time() - start_time
+            return self._process_perplexity_response(company_name, data, response_time)
+
+        except RateLimitExhaustedError as e:
+            logger.error(f"Rate limit exhausted for sonar-pro research on {company_name}: {e}")
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.PERPLEXITY,
+                confidence_score=0.2,
+                response_time=time.time() - start_time,
+                error=f"Rate limit exhausted after {e.total_attempts} attempts ({e.total_wait_time:.1f}s wait)"
+            )
+        except PerplexityAPIError as e:
+            logger.error(f"Perplexity API error for {company_name}: {e.status_code} - {e.message}")
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.PERPLEXITY,
+                confidence_score=0.2,
+                response_time=time.time() - start_time,
+                error=f"Perplexity API error {e.status_code}: {e.message[:200]}"
+            )
         except asyncio.TimeoutError:
             return ResearchResult(
                 query=company_name,
@@ -585,6 +657,17 @@ class PerplexityClient:
 
         Returns:
             ResearchResult with exhaustive business intelligence
+
+        Rate Limiting (CRITICAL - Deep Research has strict limits):
+            - Acquires rate limit slot for sonar-deep-research model (4 RPM default)
+            - Perplexity Tier 0 limit is 5 RPM, we use 4 RPM for safety margin
+            - Waits if rate limit reached - may wait 15+ seconds between requests
+
+        Retry Logic:
+            - Retries on 429, 5xx errors with exponential backoff
+            - Parses Retry-After header when available
+            - Max 4 retries with jitter to prevent thundering herd
+            - Returns error result with flag for graceful degradation
         """
         start_time = time.time()
 
@@ -596,65 +679,108 @@ class PerplexityClient:
                 error="Perplexity API key not configured"
             )
 
-        try:
-            # Construct deep research query using same query builder
-            query = self._build_comprehensive_query(company_name, domain, location, previous_context)
+        # Construct deep research query using same query builder
+        query = self._build_comprehensive_query(company_name, domain, location, previous_context)
 
-            # Longer timeout for deep research (60 seconds vs 20 seconds)
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60.0)) as session:
-                payload = {
-                    # Use sonar-deep-research model for exhaustive analysis
-                    "model": "sonar-deep-research",
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": "You are an expert business intelligence analyst conducting exhaustive research. Analyze hundreds of sources and provide comprehensive insights with detailed citations for all 5 required data points: annual revenue, employee count, leadership names, recent news (≤6 months), and funding details."
-                        },
-                        {
-                            "role": "user",
-                            "content": query
-                        }
-                    ],
-                    "max_tokens": 8000,  # Higher for detailed reports
-                    "temperature": 0.2,  # Lower for more focused research
-                    "stream": False,
-                    "return_citations": True,
-                    "return_images": False,
-                    # Deep research specific parameters
-                    "reasoning_effort": "high",  # Use high reasoning effort for exhaustive analysis
+        # Prepare request payload
+        payload = {
+            # Use sonar-deep-research model for exhaustive analysis
+            "model": "sonar-deep-research",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are an expert business intelligence analyst conducting exhaustive research. Analyze hundreds of sources and provide comprehensive insights with detailed citations for all 5 required data points: annual revenue, employee count, leadership names, recent news (≤6 months), and funding details."
+                },
+                {
+                    "role": "user",
+                    "content": query
                 }
+            ],
+            "max_tokens": 8000,  # Higher for detailed reports
+            "temperature": 0.2,  # Lower for more focused research
+            "stream": False,
+            "return_citations": True,
+            "return_images": False,
+            # Deep research specific parameters
+            "reasoning_effort": "high",  # Use high reasoning effort for exhaustive analysis
+        }
 
-                headers = {
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json"
-                }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
 
+        # Longer timeout for deep research (60 seconds vs 20 seconds)
+        deep_research_timeout = 60.0
+
+        async def make_request() -> dict:
+            """Inner function for retry wrapper."""
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=deep_research_timeout)) as session:
                 async with session.post(
                     f"{self.base_url}/chat/completions",
                     json=payload,
                     headers=headers
                 ) as response:
-
-                    if response.status != 200:
-                        error_text = await response.text()
-                        raise Exception(f"Perplexity Deep Research API error {response.status}: {error_text}")
-
-                    data = await response.json()
-                    response_time = time.time() - start_time
-
-                    result = self._process_perplexity_response(
-                        company_name, data, response_time
+                    # Use standardized response handler (raises RateLimitError on 429)
+                    return await handle_perplexity_response(
+                        response,
+                        operation_name=f"deep_research:{company_name}"
                     )
-                    result.final_tier_used = "deep"
-                    return result
 
+        try:
+            # Acquire rate limit slot for sonar-deep-research (CRITICAL - only 4 RPM!)
+            # This may wait 15+ seconds if at capacity
+            async with self.rate_limiter.acquire("sonar-deep-research") as ctx:
+                if ctx.wait_time > 0:
+                    logger.info(
+                        f"[RateLimit] Waited {ctx.wait_time:.2f}s for deep-research slot before researching {company_name}"
+                    )
+
+                # Execute request with retry logic
+                data = await perplexity_request_with_retry(
+                    make_request,
+                    config=self.retry_config,
+                    operation_name=f"deep_research:{company_name}"
+                )
+
+            response_time = time.time() - start_time
+            result = self._process_perplexity_response(company_name, data, response_time)
+            result.final_tier_used = "deep"
+            return result
+
+        except RateLimitExhaustedError as e:
+            # GRACEFUL DEGRADATION: Return error result with flag
+            # ResearchOrchestrator will fall back to Sonar Pro results
+            logger.error(
+                f"Deep research rate limit exhausted for {company_name} after {e.total_attempts} attempts, "
+                f"total wait: {e.total_wait_time:.1f}s - graceful degradation will use Sonar Pro results"
+            )
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.PERPLEXITY,
+                confidence_score=0.3,  # Low confidence for failed deep research
+                response_time=time.time() - start_time,
+                error=f"Deep research rate limited after {e.total_attempts} retries",
+                final_tier_used="deep_failed"  # Flag for graceful degradation
+            )
+        except PerplexityAPIError as e:
+            logger.error(f"Deep research API error for {company_name}: {e.status_code} - {e.message}")
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.PERPLEXITY,
+                confidence_score=0.2,
+                response_time=time.time() - start_time,
+                error=f"Deep research API error {e.status_code}: {e.message[:200]}",
+                final_tier_used="deep_failed"
+            )
         except asyncio.TimeoutError:
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
-                error="Deep research timeout (60s)"
+                error="Deep research timeout (60s)",
+                final_tier_used="deep_failed"
             )
         except Exception as e:
             logger.error(f"Deep research error for {company_name}: {str(e)}")
@@ -663,7 +789,8 @@ class PerplexityClient:
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
-                error=f"Deep research error: {str(e)}"
+                error=f"Deep research error: {str(e)}",
+                final_tier_used="deep_failed"
             )
 
     def _process_perplexity_response(self, company_name: str, data: Dict[str, Any], response_time: float) -> ResearchResult:
@@ -1298,6 +1425,38 @@ class ResearchOrchestrator:
             distinct_id=analytics_id,
         )
 
+        # GRACEFUL DEGRADATION: If deep research failed (rate limited, timeout, etc.),
+        # fall back to Sonar Pro results instead of failing the lead
+        if deep_research_result.error and deep_research_result.final_tier_used == "deep_failed":
+            logger.warning(
+                f"Deep research failed for {company_name}, using Sonar Pro results as fallback. "
+                f"Reason: {deep_research_result.error}"
+            )
+            capture_event(
+                "deep_research_graceful_degradation",
+                {
+                    "company_name": company_name,
+                    "deep_research_error": deep_research_result.error,
+                    "fallback_tier": "sonar_pro",
+                    "sonar_pro_confidence": tier2_result.confidence_score,
+                    "sonar_pro_data_points": tier2_result.data_points,
+                },
+                distinct_id=analytics_id,
+            )
+
+            # Use Sonar Pro results as final result
+            final_result = tier2_result.copy()
+            final_result.escalation_reason = f"Deep research failed ({deep_research_result.error}), using Sonar Pro results"
+            final_result.final_tier_used = "pro_fallback"  # Indicate graceful degradation occurred
+
+            _emit_summary(
+                final_result,
+                validation_score=sonar_validation_result.validation_score,
+                missing_data_points=sonar_validation_result.missing_data_points,
+            )
+            return final_result
+
+        # Normal path: merge Sonar Pro and Deep Research results
         final_result = self._merge_research_results(tier2_result, deep_research_result)
         final_result.escalation_reason = escalation_reason
         final_result.final_tier_used = "deep"  # Final tier is deep
