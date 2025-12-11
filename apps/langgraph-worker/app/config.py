@@ -98,6 +98,30 @@ AI_CONFIG = {
     },
 }
 
+# Perplexity API Rate Limiting Configuration
+# Defaults to Tier 5 limits (most generous) - BYOK clients likely have high tiers
+# Lower-tier users will hit 429s but retry logic handles this gracefully
+# Clients can override via environment variables if needed
+PERPLEXITY_RATE_LIMIT_CONFIG = {
+    # Rate limits by model (requests per minute) - Tier 5 defaults
+    # Tier 5 ($5000+ credits): sonar-pro=2000 RPM, deep-research=100 RPM
+    # Retry logic with exponential backoff handles lower-tier users who hit 429s
+    'SONAR_PRO_RPM': get_env_int('PERPLEXITY_SONAR_PRO_RPM', 2000),
+    'DEEP_RESEARCH_RPM': get_env_int('PERPLEXITY_DEEP_RESEARCH_RPM', 100),
+
+    # Retry configuration for rate limit errors
+    'MAX_RETRIES': get_env_int('PERPLEXITY_MAX_RETRIES', 4),
+    'BASE_DELAY_MS': get_env_int('PERPLEXITY_BASE_DELAY_MS', 2000),
+    'MAX_DELAY_MS': get_env_int('PERPLEXITY_MAX_DELAY_MS', 30000),
+
+    # Jitter range for backoff (prevents thundering herd)
+    'JITTER_MIN': get_env_float('PERPLEXITY_JITTER_MIN', 0.8),
+    'JITTER_MAX': get_env_float('PERPLEXITY_JITTER_MAX', 1.2),
+
+    # Timeout configuration
+    'TIMEOUT_RETRY_ONCE': get_env_bool('PERPLEXITY_TIMEOUT_RETRY_ONCE', True),
+}
+
 # Environment detection
 ENVIRONMENT = {
     'IS_PRODUCTION': get_env_str('NODE_ENV', 'development') == 'production',
@@ -110,4 +134,5 @@ if ENVIRONMENT['IS_DEVELOPMENT']:
     print(f"🔧 LangGraph Worker Configuration loaded:")
     print(f"   Credit Costs: {CREDIT_COSTS}")
     print(f"   Deep Research: {DEEP_RESEARCH_CONFIG}")
+    print(f"   Perplexity Rate Limits: sonar-pro={PERPLEXITY_RATE_LIMIT_CONFIG['SONAR_PRO_RPM']} RPM, deep-research={PERPLEXITY_RATE_LIMIT_CONFIG['DEEP_RESEARCH_RPM']} RPM")
     print(f"   Environment: {'production' if ENVIRONMENT['IS_PRODUCTION'] else 'development'}")
