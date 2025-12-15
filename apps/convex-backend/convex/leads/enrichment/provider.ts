@@ -5,8 +5,10 @@ import {
   EnrichmentProviderInterface,
   EnrichmentResult,
   EnrichmentBatchResult,
+  EnrichmentBatchResultWithError,
   EnrichmentOptions,
 } from "./types";
+import { type ApiError, shouldBlockPipeline } from "../../lib/apiErrors";
 
 export type EnrichmentProviderType = "findymail" | "icypeas";
 
@@ -116,11 +118,12 @@ export class EnrichmentService {
 
   /**
    * Enrich multiple domains
+   * @returns Wrapper object with results and optional apiError for pipeline-blocking errors
    */
   async enrichBatch(
     domains: string[],
     options?: EnrichmentOptions,
-  ): Promise<EnrichmentBatchResult> {
+  ): Promise<EnrichmentBatchResultWithError> {
     try {
       console.log(
         `Enriching ${domains.length} domains using ${this.providerType}`
@@ -134,12 +137,34 @@ export class EnrichmentService {
         `Enrichment complete: ${successCount}/${domains.length} successful`
       );
 
-      return result;
-    } catch (error) {
+      // Check for pipeline-blocking errors attached by the provider
+      const providerApiError = (result as any).__apiError as ApiError | undefined;
+      if (providerApiError && shouldBlockPipeline(providerApiError)) {
+        console.error(
+          `[EnrichmentService] Pipeline-blocking error from ${this.providerType}:`,
+          {
+            errorCode: providerApiError.errorCode,
+            category: providerApiError.category,
+            userMessage: providerApiError.userMessage,
+          }
+        );
+        // Return results with the error
+        return { results: result, apiError: providerApiError };
+      }
+
+      return { results: result };
+    } catch (error: any) {
       console.error(
         `Enrichment failed with ${this.providerType}:`,
         error
       );
+
+      // Check if the error has an attached apiError (from enrichSingle classification)
+      const apiError = error?.apiError as ApiError | undefined;
+      if (apiError && shouldBlockPipeline(apiError)) {
+        // Re-throw with the apiError for upstream handling
+        throw error;
+      }
 
       // Could implement fallback to alternative provider here
       throw error;

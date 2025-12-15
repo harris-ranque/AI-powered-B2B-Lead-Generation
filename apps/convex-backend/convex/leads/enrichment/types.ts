@@ -45,6 +45,15 @@ export interface EnrichmentBatchResult {
   [domain: string]: EnrichmentResult | null;
 }
 
+/**
+ * Wrapper type for batch results that may include an API error.
+ * Uses a wrapper object instead of extending the interface to avoid index signature conflicts.
+ */
+export interface EnrichmentBatchResultWithError {
+  results: EnrichmentBatchResult;
+  apiError?: import("../../lib/apiErrors").ApiError;
+}
+
 export interface EnrichmentError {
   code: string;
   message: string;

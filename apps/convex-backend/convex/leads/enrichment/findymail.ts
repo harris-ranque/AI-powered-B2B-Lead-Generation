@@ -7,6 +7,11 @@ import {
 } from "./types";
 import { mapWithConcurrency } from "../../utils/async";
 import { parseRetryAfter, sleep, withJitter } from "../../utils/http";
+import {
+  classifyFindyMailError,
+  shouldBlockPipeline,
+  type ApiError,
+} from "../../lib/apiErrors";
 
 const FINDYMAIL_BASE_URL = "https://app.findymail.com/api";
 
@@ -93,6 +98,19 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
             const enrichmentResult = await this.enrichSingle(domain, options);
             return { domain, result: enrichmentResult };
           } catch (error: any) {
+            // Check if this is a classified API error that should block the pipeline
+            const apiError = error?.apiError as ApiError | undefined;
+            if (apiError && shouldBlockPipeline(apiError)) {
+              // This is a user-actionable error (auth failed, credits exhausted)
+              // Don't retry - propagate the error for pipeline handling
+              console.error(`[FindyMail] Pipeline-blocking error for ${domain}:`, {
+                errorCode: apiError.errorCode,
+                category: apiError.category,
+                userMessage: apiError.userMessage,
+              });
+              return { domain, result: null, apiError };
+            }
+
             // Only retry on transient errors (rate limits, gateway timeouts, network errors)
             const isRateLimitError = error?.message?.includes("429") || error?.message?.includes("Too Many Requests");
             const isGatewayError = error?.message?.includes("504") || error?.message?.includes("Gateway");
@@ -129,9 +147,35 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
 
       const batchResults = await Promise.all(batchPromises);
 
-      // Collect results
-      for (const { domain, result: enrichmentResult } of batchResults) {
+      // Collect results and check for pipeline-blocking errors
+      let pipelineBlockingError: ApiError | undefined;
+      for (const batchResult of batchResults) {
+        const { domain, result: enrichmentResult, apiError } = batchResult as {
+          domain: string;
+          result: EnrichmentResult | null;
+          apiError?: ApiError;
+        };
         result[domain] = enrichmentResult;
+
+        // Capture first pipeline-blocking error
+        if (apiError && !pipelineBlockingError && shouldBlockPipeline(apiError)) {
+          pipelineBlockingError = apiError;
+        }
+      }
+
+      // If we encountered a pipeline-blocking error, stop processing and return
+      if (pipelineBlockingError) {
+        console.error(`[FindyMail] Pipeline-blocking error detected, stopping batch processing:`, {
+          errorCode: pipelineBlockingError.errorCode,
+          category: pipelineBlockingError.category,
+          userMessage: pipelineBlockingError.userMessage,
+          processedBatches: batchIndex + 1,
+          totalBatches: batches.length,
+        });
+
+        // Add apiError to the result object for upstream handling
+        (result as any).__apiError = pipelineBlockingError;
+        return result;
       }
 
       // Add delay between batches to avoid rate limiting (except for last batch)
@@ -171,15 +215,31 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
 
     if (!response.ok) {
       const errorText = await response.text();
+      let errorBody: any;
+      try {
+        errorBody = JSON.parse(errorText);
+      } catch {
+        errorBody = errorText;
+      }
+
+      // Classify the error for proper handling
+      const apiError = classifyFindyMailError(response.status, errorBody);
+
       console.error(`[FindyMail] API error for ${domain}:`, {
         status: response.status,
         statusText: response.statusText,
-        error: errorText,
+        errorCode: apiError.errorCode,
+        category: apiError.category,
+        userMessage: apiError.userMessage,
+        retryable: apiError.retryable,
       });
-      // Throw error to allow retry logic to handle it
-      throw new Error(
+
+      // For user-actionable errors (auth failed, credits exhausted), attach the ApiError
+      const error = new Error(
         `FindyMail API error: ${response.status} ${response.statusText}`
-      );
+      ) as Error & { apiError?: ApiError };
+      error.apiError = apiError;
+      throw error;
     }
 
     try {
@@ -598,10 +658,15 @@ interface DomainRequestOptions {
   baseDelayMs: number;
 }
 
+interface FetchDomainResult {
+  contacts: DomainContact[];
+  apiError?: ApiError;
+}
+
 async function fetchDomainContacts(
   domain: string,
   { apiKey, roles, maxRetries, baseDelayMs }: DomainRequestOptions,
-): Promise<DomainContact[]> {
+): Promise<FetchDomainResult> {
   const maxDelayMs = 15_000;
   const startedAt = Date.now();
   let attempt = 0;
@@ -629,6 +694,19 @@ async function fetchDomainContacts(
       );
 
       if (response.status === 429 || response.status === 504) {
+        // Classify the error to check if it's a persistent rate limit (credits exhausted)
+        const errorBody = await response.text().catch(() => "");
+        const apiError = classifyFindyMailError(response.status, errorBody);
+
+        // If this is a pipeline-blocking error (credits exhausted), don't retry
+        if (shouldBlockPipeline(apiError)) {
+          console.error(
+            `[FindyMail] domain=${domain} pipeline-blocking error:`,
+            { errorCode: apiError.errorCode, category: apiError.category }
+          );
+          return { contacts: [], apiError };
+        }
+
         if (attempt >= maxRetries) {
           console.warn(
             `[FindyMail] domain=${domain} exhausted retries after ${attempt} attempts (status ${response.status})`,
@@ -645,15 +723,25 @@ async function fetchDomainContacts(
       }
 
       if (!response.ok) {
+        const body = await response.text();
+        const apiError = classifyFindyMailError(response.status, body);
+
+        // Check if this is a user-actionable error that should block the pipeline
+        if (shouldBlockPipeline(apiError)) {
+          console.error(
+            `[FindyMail] domain=${domain} pipeline-blocking error ${response.status}:`,
+            { errorCode: apiError.errorCode, category: apiError.category, userMessage: apiError.userMessage }
+          );
+          return { contacts: [], apiError };
+        }
+
         if (response.status >= 400 && response.status < 500) {
-          const body = await response.text();
           console.warn(
             `[FindyMail] domain=${domain} non-retriable error ${response.status}: ${body.slice(0, 200)}`,
           );
           break;
         }
         if (attempt >= maxRetries) {
-          const body = await response.text();
           console.error(
             `[FindyMail] domain=${domain} failed after ${attempt} attempts: ${body.slice(0, 200)}`,
           );
@@ -674,7 +762,7 @@ async function fetchDomainContacts(
       console.info(
         `[FindyMail] domain=${domain} resolved ${contacts.length} verified contacts in ${totalElapsed}ms`,
       );
-      return contacts;
+      return { contacts };
     } catch (error) {
       if (attempt >= maxRetries) {
         console.error(`[FindyMail] domain=${domain} network error:`, error);
@@ -688,14 +776,19 @@ async function fetchDomainContacts(
     }
   }
 
-  return [];
+  return { contacts: [] };
+}
+
+export interface ResolveDomainsResult {
+  results: Map<string, { name?: string; email: string }[]>;
+  apiError?: ApiError;
 }
 
 export async function resolveDomainsWithFindyMail(
   domains: string[],
   roles: string[],
   options: DomainResolveOptions = {},
-): Promise<Map<string, { name?: string; email: string }[]>> {
+): Promise<ResolveDomainsResult> {
   const apiKey = options.apiKey ?? process.env.FINDYMAIL_API_KEY;
   if (!apiKey) {
     throw new Error("FINDYMAIL_API_KEY environment variable is not configured");
@@ -707,7 +800,7 @@ export async function resolveDomainsWithFindyMail(
 
   const results = new Map<string, { name?: string; email: string }[]>();
   if (uniqueDomains.length === 0) {
-    return results;
+    return { results };
   }
 
   const concurrency = Math.min(options.concurrency ?? 5, 5);
@@ -715,22 +808,51 @@ export async function resolveDomainsWithFindyMail(
   const baseDelayMs = options.baseDelayMs ?? 800;
   const sanitizedRoles = sanitizeRoles(roles);
 
-  await mapWithConcurrency(uniqueDomains, concurrency, async (domain) => {
-    const contacts = await fetchDomainContacts(domain, {
-      apiKey,
-      roles: sanitizedRoles,
-      maxRetries,
-      baseDelayMs,
-    });
-    if (contacts.length > 0) {
-      results.set(
-        domain,
-        contacts.map(({ email, name }) => ({ email, name })),
-      );
-    } else {
-      results.set(domain, []);
-    }
-  });
+  let pipelineBlockingError: ApiError | undefined;
 
-  return results;
+  // Process domains with early exit on pipeline-blocking errors
+  for (let i = 0; i < uniqueDomains.length; i += concurrency) {
+    // Check if we already have a pipeline-blocking error
+    if (pipelineBlockingError) {
+      break;
+    }
+
+    const batch = uniqueDomains.slice(i, i + concurrency);
+    const batchResults = await Promise.all(
+      batch.map(async (domain) => {
+        const { contacts, apiError } = await fetchDomainContacts(domain, {
+          apiKey,
+          roles: sanitizedRoles,
+          maxRetries,
+          baseDelayMs,
+        });
+        return { domain, contacts, apiError };
+      })
+    );
+
+    for (const { domain, contacts, apiError } of batchResults) {
+      if (contacts.length > 0) {
+        results.set(
+          domain,
+          contacts.map(({ email, name }) => ({ email, name })),
+        );
+      } else {
+        results.set(domain, []);
+      }
+
+      // Capture first pipeline-blocking error
+      if (apiError && !pipelineBlockingError && shouldBlockPipeline(apiError)) {
+        pipelineBlockingError = apiError;
+        console.error(`[FindyMail] Pipeline-blocking error detected in resolveDomainsWithFindyMail:`, {
+          errorCode: apiError.errorCode,
+          category: apiError.category,
+          userMessage: apiError.userMessage,
+          processedDomains: results.size,
+          totalDomains: uniqueDomains.length,
+        });
+      }
+    }
+  }
+
+  return { results, apiError: pipelineBlockingError };
 }
