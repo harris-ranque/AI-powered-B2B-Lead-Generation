@@ -2,6 +2,11 @@ import { internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { shouldBypassCredits } from "../lib/creditHelpers";
+import {
+  calculateNewBalance,
+  isReservationExpired,
+  canCommitReservation,
+} from "../lib/creditLogic";
 
 // Record credit transaction
 export const recordTransaction = internalMutation({
@@ -56,26 +61,18 @@ export const recordTransaction = internalMutation({
         }
       }
 
-      // Calculate new balance first
-      let newBalance = user.credits || 0;
-      if (
-        args.operation === "purchase" ||
-        args.operation === "refund" ||
-        args.operation === "bonus"
-      ) {
-        newBalance += args.amount;
-      } else if (args.operation === "usage") {
-        newBalance -= args.amount;
-      } else if (args.operation === "rollback") {
-        newBalance += args.amount; // Rollback adds credits back
-      }
+      // Calculate new balance using extracted pure function
+      const balanceResult = calculateNewBalance(
+        user.credits || 0,
+        args.operation,
+        args.amount
+      );
+      const newBalance = balanceResult.newBalance;
 
-      // Ensure balance doesn't go negative
-      if (newBalance < 0) {
+      if (balanceResult.wasAdjusted) {
         console.warn(
-          `Credit balance would go negative for user ${args.userId}: ${newBalance}`,
+          `Credit balance would go negative for user ${args.userId}: ${balanceResult.originalCalculation}`,
         );
-        newBalance = 0;
       }
 
       // Create the transaction record
@@ -241,16 +238,22 @@ export const commitReservation = internalMutation({
         };
       }
 
-      if (reservation.status !== "pending") {
-        throw new Error(`Reservation already ${reservation.status}`);
-      }
+      // Check if reservation can be committed using extracted pure function
+      const commitCheck = canCommitReservation({
+        amount: reservation.amount,
+        status: reservation.status as "pending" | "committed" | "rolled_back",
+        expiresAt: reservation.expiresAt,
+        createdAt: reservation.createdAt || Date.now(),
+      });
 
-      if (Date.now() > reservation.expiresAt) {
-        // Mark as rolled back (closest to expired)
-        await ctx.db.patch(args.reservationId, {
-          status: "rolled_back",
-        });
-        throw new Error("Reservation has expired");
+      if (!commitCheck.canCommit) {
+        if (isReservationExpired(reservation.expiresAt)) {
+          // Mark as rolled back (closest to expired)
+          await ctx.db.patch(args.reservationId, {
+            status: "rolled_back",
+          });
+        }
+        throw new Error(commitCheck.reason || "Cannot commit reservation");
       }
 
       // Record the usage transaction (direct handler call for same-file function)
@@ -276,11 +279,13 @@ export const commitReservation = internalMutation({
           throw new Error("User not found during commit");
         }
 
-        // Calculate new balance
-        let newBalance = (user.credits || 0) - reservation.amount;
-        if (newBalance < 0) {
-          newBalance = 0;
-        }
+        // Calculate new balance using extracted pure function
+        const balanceResult = calculateNewBalance(
+          user.credits || 0,
+          "usage",
+          reservation.amount
+        );
+        const newBalance = balanceResult.newBalance;
 
         // Create the transaction record
         const transactionId = await ctx.db.insert("creditTransactions", {
