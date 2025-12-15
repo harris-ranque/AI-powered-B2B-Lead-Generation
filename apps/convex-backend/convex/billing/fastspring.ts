@@ -14,6 +14,105 @@ import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 import { api } from "../_generated/api";
+import {
+  classifyFastSpringError,
+  createApiConvexError,
+  type ApiError,
+} from "../lib/apiErrors";
+
+// FastSpring API request configuration
+const FASTSPRING_API_TIMEOUT_MS = 30000; // 30 second timeout
+const FASTSPRING_MAX_RETRIES = 3;
+const FASTSPRING_BASE_DELAY_MS = 1000;
+
+/**
+ * Fetch wrapper with retry logic and timeout for FastSpring API calls
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  operationName: string
+): Promise<{ response: Response; apiError?: ApiError }> {
+  let lastError: Error | undefined;
+  let lastApiError: ApiError | undefined;
+
+  for (let attempt = 0; attempt < FASTSPRING_MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FASTSPRING_API_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      // If successful, return immediately
+      if (response.ok) {
+        return { response };
+      }
+
+      // Classify the error
+      const errorText = await response.text();
+      const apiError = classifyFastSpringError(response.status, errorText);
+      lastApiError = apiError;
+
+      // Don't retry on client errors (4xx) except 408 (timeout) and 429 (rate limit)
+      if (response.status >= 400 && response.status < 500 &&
+          response.status !== 408 && response.status !== 429) {
+        console.error(`[FastSpring] ${operationName} client error:`, {
+          status: response.status,
+          errorCode: apiError.errorCode,
+          category: apiError.category,
+        });
+        return { response, apiError };
+      }
+
+      // Retry on server errors and rate limits
+      if (apiError.retryable && attempt < FASTSPRING_MAX_RETRIES - 1) {
+        const delay = Math.min(
+          FASTSPRING_BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 1000,
+          15000
+        );
+        console.warn(`[FastSpring] ${operationName} retrying in ${delay}ms (attempt ${attempt + 1}/${FASTSPRING_MAX_RETRIES}):`, {
+          status: response.status,
+          errorCode: apiError.errorCode,
+        });
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      // Max retries reached or non-retryable
+      return { response, apiError };
+
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      lastError = error;
+
+      // Check for timeout
+      if (error.name === 'AbortError') {
+        console.error(`[FastSpring] ${operationName} timeout after ${FASTSPRING_API_TIMEOUT_MS}ms`);
+        if (attempt < FASTSPRING_MAX_RETRIES - 1) {
+          const delay = FASTSPRING_BASE_DELAY_MS * Math.pow(2, attempt);
+          console.warn(`[FastSpring] ${operationName} retrying after timeout (attempt ${attempt + 1}/${FASTSPRING_MAX_RETRIES})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+      }
+
+      // Network errors - retry
+      if (attempt < FASTSPRING_MAX_RETRIES - 1) {
+        const delay = FASTSPRING_BASE_DELAY_MS * Math.pow(2, attempt);
+        console.warn(`[FastSpring] ${operationName} network error, retrying in ${delay}ms:`, error.message);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+    }
+  }
+
+  // All retries exhausted
+  throw lastError || new Error(`FastSpring ${operationName} failed after ${FASTSPRING_MAX_RETRIES} attempts`);
+}
 
 // Type definitions for FastSpring
 interface FastSpringSecurePayload {
@@ -312,62 +411,62 @@ export const manageSubscription = action({
       "base64"
     );
 
-    try {
-      let response: Response;
+    const baseHeaders = {
+      Authorization: `Basic ${authHeader}`,
+      "Content-Type": "application/json",
+    };
 
-      switch (args.action) {
-        case "cancel":
-          // Cancel at period end (deactivate at next billing date)
-          response = await fetch(
-            `https://api.fastspring.com/subscriptions/${user.fastspringSubscriptionId}`,
+    let url: string;
+    let method: string;
+    let body: string | undefined;
+    const operationName = `manage_subscription_${args.action}`;
+
+    switch (args.action) {
+      case "cancel":
+        // Cancel at period end (deactivate at next billing date)
+        url = `https://api.fastspring.com/subscriptions/${user.fastspringSubscriptionId}`;
+        method = "DELETE";
+        break;
+
+      case "cancel_immediately":
+        // Cancel immediately with billingPeriod=0
+        url = `https://api.fastspring.com/subscriptions/${user.fastspringSubscriptionId}?billingPeriod=0`;
+        method = "DELETE";
+        break;
+
+      case "reactivate":
+        // Reactivate a cancelled subscription
+        url = `https://api.fastspring.com/subscriptions`;
+        method = "POST";
+        body = JSON.stringify({
+          subscriptions: [
             {
-              method: "DELETE",
-              headers: {
-                Authorization: `Basic ${authHeader}`,
-                "Content-Type": "application/json",
-              },
-            }
-          );
-          break;
-
-        case "cancel_immediately":
-          // Cancel immediately with billingPeriod=0
-          response = await fetch(
-            `https://api.fastspring.com/subscriptions/${user.fastspringSubscriptionId}?billingPeriod=0`,
-            {
-              method: "DELETE",
-              headers: {
-                Authorization: `Basic ${authHeader}`,
-                "Content-Type": "application/json",
-              },
-            }
-          );
-          break;
-
-        case "reactivate":
-          // Reactivate a cancelled subscription
-          response = await fetch(`https://api.fastspring.com/subscriptions`, {
-            method: "POST",
-            headers: {
-              Authorization: `Basic ${authHeader}`,
-              "Content-Type": "application/json",
+              subscription: user.fastspringSubscriptionId,
+              deactivate: false,
             },
-            body: JSON.stringify({
-              subscriptions: [
-                {
-                  subscription: user.fastspringSubscriptionId,
-                  deactivate: false,
-                },
-              ],
-            }),
-          });
-          break;
-      }
+          ],
+        });
+        break;
+    }
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("FastSpring API error:", errorText);
-        throw new Error(`Failed to ${args.action} subscription`);
+    try {
+      const { response, apiError } = await fetchWithRetry(
+        url,
+        {
+          method,
+          headers: baseHeaders,
+          ...(body && { body }),
+        },
+        operationName
+      );
+
+      if (apiError) {
+        console.error(`[FastSpring] ${operationName} failed:`, {
+          errorCode: apiError.errorCode,
+          category: apiError.category,
+          userMessage: apiError.userMessage,
+        });
+        throw createApiConvexError(apiError);
       }
 
       const result = await response.json();
@@ -387,7 +486,11 @@ export const manageSubscription = action({
         success: true,
         action: args.action,
       };
-    } catch (error) {
+    } catch (error: any) {
+      // Re-throw classified API errors
+      if (error?.data?.type === "api_error") {
+        throw error;
+      }
       console.error("Error managing FastSpring subscription:", error);
       throw new Error(`Failed to ${args.action} subscription`);
     }
@@ -419,8 +522,10 @@ export const getManagementUrl = action({
       "base64"
     );
 
+    const operationName = "get_management_url";
+
     try {
-      const response = await fetch(
+      const { response, apiError } = await fetchWithRetry(
         `https://api.fastspring.com/accounts/${user.fastspringAccountId}/authenticate`,
         {
           method: "POST",
@@ -428,13 +533,17 @@ export const getManagementUrl = action({
             Authorization: `Basic ${authHeader}`,
             "Content-Type": "application/json",
           },
-        }
+        },
+        operationName
       );
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("FastSpring API error:", errorText);
-        throw new Error("Failed to generate account management URL");
+      if (apiError) {
+        console.error(`[FastSpring] ${operationName} failed:`, {
+          errorCode: apiError.errorCode,
+          category: apiError.category,
+          userMessage: apiError.userMessage,
+        });
+        throw createApiConvexError(apiError);
       }
 
       const data = await response.json();
@@ -445,7 +554,11 @@ export const getManagementUrl = action({
         url: data.accounts?.[0]?.url || data.url,
         expiresIn: 24 * 60 * 60, // 24 hours in seconds
       };
-    } catch (error) {
+    } catch (error: any) {
+      // Re-throw classified API errors
+      if (error?.data?.type === "api_error") {
+        throw error;
+      }
       console.error("Error getting FastSpring management URL:", error);
       throw new Error("Failed to get account management URL");
     }
@@ -476,8 +589,10 @@ export const validateOrder = action({
       "base64"
     );
 
+    const operationName = "validate_order";
+
     try {
-      const response = await fetch(
+      const { response, apiError } = await fetchWithRetry(
         `https://api.fastspring.com/orders/${args.orderId}`,
         {
           method: "GET",
@@ -485,12 +600,21 @@ export const validateOrder = action({
             Authorization: `Basic ${authHeader}`,
             "Content-Type": "application/json",
           },
-        }
+        },
+        operationName
       );
 
-      if (!response.ok) {
-        console.error("FastSpring order validation failed");
-        return { valid: false, reason: "Order not found" };
+      if (apiError) {
+        // For validation, return structured failure rather than throwing
+        console.error(`[FastSpring] ${operationName} failed:`, {
+          errorCode: apiError.errorCode,
+          category: apiError.category,
+        });
+        return {
+          valid: false,
+          reason: apiError.category === "not_found" ? "Order not found" : apiError.userMessage,
+          apiError,
+        };
       }
 
       const order = await response.json();
@@ -546,8 +670,10 @@ export const getSubscriptionDetails = action({
       "base64"
     );
 
+    const operationName = "get_subscription_details";
+
     try {
-      const response = await fetch(
+      const { response, apiError } = await fetchWithRetry(
         `https://api.fastspring.com/subscriptions/${user.fastspringSubscriptionId}`,
         {
           method: "GET",
@@ -555,11 +681,20 @@ export const getSubscriptionDetails = action({
             Authorization: `Basic ${authHeader}`,
             "Content-Type": "application/json",
           },
-        }
+        },
+        operationName
       );
 
-      if (!response.ok) {
-        console.error("Failed to fetch subscription details");
+      if (apiError) {
+        console.error(`[FastSpring] ${operationName} failed:`, {
+          errorCode: apiError.errorCode,
+          category: apiError.category,
+        });
+        // Return null for graceful degradation on non-critical errors
+        // Throw for auth errors which need user attention
+        if (apiError.category === "authentication") {
+          throw createApiConvexError(apiError);
+        }
         return null;
       }
 
@@ -578,7 +713,11 @@ export const getSubscriptionDetails = action({
         canceledDate: subscription.canceledDate,
         deactivationDate: subscription.deactivationDate,
       };
-    } catch (error) {
+    } catch (error: any) {
+      // Re-throw classified API errors
+      if (error?.data?.type === "api_error") {
+        throw error;
+      }
       console.error("Error fetching FastSpring subscription:", error);
       return null;
     }
