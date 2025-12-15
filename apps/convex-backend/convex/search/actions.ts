@@ -18,6 +18,11 @@ import {
   Place,
 } from "./googlePlaces";
 import { getSingleProviderError } from "../lib/errorMessages";
+import {
+  createApiConvexError,
+  shouldBlockPipeline,
+  type ApiError,
+} from "../lib/apiErrors";
 // Note: This action can be scheduled by the orchestrator (no user auth).
 
 const METERS_PER_MILE = 1609.34;
@@ -1086,6 +1091,74 @@ export const searchGoogleMaps: any = action({
         totalApiCalls = tilingResult.totalApiCalls;
         rawPlacesDiscovered += places.length;
         duplicatesFromTiles += tilingResult.duplicatesFiltered;
+
+        // Check if tiling encountered a user-actionable API error (e.g., quota exhausted)
+        if (tilingResult.apiError && shouldBlockPipeline(tilingResult.apiError)) {
+          logWithCorrelation(
+            "error",
+            discoveryCorrelation,
+            "🚨 Google Places API error - blocking pipeline",
+            {
+              errorCode: tilingResult.apiError.errorCode,
+              category: tilingResult.apiError.category,
+              userMessage: tilingResult.apiError.userMessage,
+              placesFoundBeforeError: places.length,
+              suggestedAction: tilingResult.apiError.suggestedAction,
+            },
+          );
+
+          // Log the error for user visibility
+          await ctx.runMutation(internal.search.internal.logApiError, {
+            userId: search.userId,
+            searchId: args.searchId,
+            errorCode: tilingResult.apiError.errorCode,
+            provider: tilingResult.apiError.provider,
+            category: tilingResult.apiError.category,
+            severity: tilingResult.apiError.severity,
+            userMessage: tilingResult.apiError.userMessage,
+            originalStatus: tilingResult.apiError.originalStatus,
+            operationType: "lead_discovery",
+          });
+
+          // Update search status with the error
+          await ctx.runMutation(
+            internal.search.internal.updateSearchStatusInternal,
+            {
+              searchId: args.searchId,
+              status: "failed",
+              error: tilingResult.apiError.userMessage,
+            },
+          );
+
+          // Broadcast the error to the user
+          await ctx.runMutation(
+            internal.realtime.broadcaster.broadcastPipelineUpdate,
+            {
+              userId: search.userId,
+              searchId: args.searchId,
+              stage: "error",
+              progress: 0,
+              priority: "urgent",
+              message: tilingResult.apiError.userMessage,
+              data: {
+                apiError: {
+                  code: tilingResult.apiError.errorCode,
+                  provider: tilingResult.apiError.provider,
+                  category: tilingResult.apiError.category,
+                  userMessage: tilingResult.apiError.userMessage,
+                  suggestedAction: tilingResult.apiError.suggestedAction,
+                  actionUrl: tilingResult.apiError.actionUrl,
+                  actionLabel: tilingResult.apiError.actionLabel,
+                },
+                partialResults: places.length > 0,
+                placesFound: places.length,
+              },
+            },
+          );
+
+          // Throw a structured error so the frontend can display it properly
+          throw createApiConvexError(tilingResult.apiError);
+        }
 
         logWithCorrelation(
           "info",

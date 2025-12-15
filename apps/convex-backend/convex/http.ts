@@ -969,6 +969,8 @@ http.route({
         "full_research_report",
         "perplexity_citations",
         "research_confidence_score",
+        // Lead tier classification
+        "lead_tier",
         // Removed follow_up_3 - now limited to 2 follow-ups
       ];
 
@@ -1045,6 +1047,8 @@ http.route({
           fullResearchReport,
           perplexityCitations,
           researchConfidenceScore,
+          // Lead tier classification
+          (lead as any).leadTier ?? "",
           // Removed followUp3 - now limited to 2 follow-ups
         ];
 

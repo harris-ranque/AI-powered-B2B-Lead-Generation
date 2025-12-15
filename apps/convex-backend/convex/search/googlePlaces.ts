@@ -15,6 +15,12 @@ import {
   logWithCorrelation,
   OPERATION_TYPES,
 } from "../lib/correlation";
+import {
+  classifyGoogleError,
+  createApiConvexError,
+  shouldBlockPipeline,
+  type ApiError,
+} from "../lib/apiErrors";
 
 // ============================================================================
 // Types
@@ -67,6 +73,7 @@ type TileSearchResult = {
   places: Place[];
   pagesFetched: number;
   apiCalls: number;
+  apiError?: ApiError; // Present if a user-actionable error occurred
 };
 
 // ============================================================================
@@ -384,8 +391,43 @@ async function fetchTileAllPages(
           break;
         }
 
-        // Rate limiting
+        // Rate limiting - classify and determine if this is persistent quota exhaustion
         if (["OVER_QUERY_LIMIT", "RESOURCE_EXHAUSTED"].includes(data.status)) {
+          // Classify the error to determine if it's transient rate limiting or quota exhaustion
+          const apiError = classifyGoogleError(
+            data.status,
+            data.error_message,
+          );
+
+          // After multiple attempts, treat as persistent quota exhaustion
+          if (attempt >= 3) {
+            logWithCorrelation(
+              "error",
+              tileCorrelation,
+              `🚨 Persistent quota exhaustion detected - blocking pipeline`,
+              {
+                status: data.status,
+                attempt,
+                errorCode: apiError.errorCode,
+                category: apiError.category,
+                userMessage: apiError.userMessage,
+              },
+            );
+
+            // Check if this should block the pipeline (quota exhausted = yes)
+            if (shouldBlockPipeline(apiError)) {
+              // Return partial results with the error so the pipeline can handle it
+              return {
+                center: args.center,
+                radius: args.radiusMeters,
+                places: results,
+                pagesFetched,
+                apiCalls,
+                apiError, // Include the classified error for upstream handling
+              };
+            }
+          }
+
           const wait = Math.min(
             60_000,
             (args.backoffBaseMs ?? 1000) * 2 ** attempt,
@@ -398,6 +440,8 @@ async function fetchTileAllPages(
               status: data.status,
               attempt,
               waitMs: wait,
+              errorCode: apiError.errorCode,
+              category: apiError.category,
             },
           );
           await sleep(wait);
@@ -405,7 +449,31 @@ async function fetchTileAllPages(
           continue;
         }
 
-        // Other errors
+        // Other API errors - classify and throw
+        const apiError = classifyGoogleError(
+          data.status,
+          data.error_message,
+        );
+
+        logWithCorrelation(
+          "error",
+          tileCorrelation,
+          `❌ Google Places API error: ${apiError.errorCode}`,
+          {
+            status: data.status,
+            errorCode: apiError.errorCode,
+            category: apiError.category,
+            userMessage: apiError.userMessage,
+            retryable: apiError.retryable,
+          },
+        );
+
+        // For user-actionable errors (auth, quota), throw a ConvexError with the ApiError
+        if (shouldBlockPipeline(apiError)) {
+          throw createApiConvexError(apiError);
+        }
+
+        // For other errors, throw a standard error
         throw new Error(
           `Places API status=${data.status} ${data.error_message ?? ""}`,
         );
@@ -503,6 +571,7 @@ export async function searchPlacesWithTiling(
   totalApiCalls: number;
   duplicatesFiltered: number;
   timeMs: number;
+  apiError?: ApiError; // Present if a user-actionable error occurred (e.g., quota exhausted)
 }> {
   const startTime = Date.now();
 
@@ -572,6 +641,7 @@ export async function searchPlacesWithTiling(
     localDuplicates: number;
     tilesProcessed: number;
     earlyTermination: boolean;
+    apiError?: ApiError; // Present if a user-actionable error occurred
   };
 
   // 🎯 PROGRESSIVE TERMINATION: Stop when we have enough results
@@ -658,6 +728,31 @@ export async function searchPlacesWithTiling(
       localApiCalls += tileResult.apiCalls;
       tilesProcessed++;
 
+      // Check if tile search returned a user-actionable error (e.g., quota exhausted)
+      if (tileResult.apiError) {
+        logWithCorrelation(
+          "error",
+          params.correlation,
+          `🚨 Tile ${idx + 1} returned API error - stopping worker`,
+          {
+            tileIndex: idx + 1,
+            errorCode: tileResult.apiError.errorCode,
+            category: tileResult.apiError.category,
+            userMessage: tileResult.apiError.userMessage,
+            placesBeforeError: localPlaces.length,
+          },
+        );
+        // Return early with the error and whatever places we collected
+        return {
+          places: localPlaces,
+          apiCalls: localApiCalls,
+          localDuplicates,
+          tilesProcessed,
+          earlyTermination: true,
+          apiError: tileResult.apiError,
+        };
+      }
+
       // Worker-local de-duplication
       let newPlaces = 0;
       for (const place of tileResult.places) {
@@ -714,12 +809,18 @@ export async function searchPlacesWithTiling(
   let duplicatesFiltered = 0;
   let totalTilesProcessed = 0;
   let workersEarlyTerminated = 0;
+  let encounteredApiError: ApiError | undefined;
 
   for (const result of workerResults) {
     totalApiCalls += result.apiCalls;
     duplicatesFiltered += result.localDuplicates;
     totalTilesProcessed += result.tilesProcessed;
     if (result.earlyTermination) workersEarlyTerminated++;
+
+    // Capture any API error encountered (first one wins)
+    if (result.apiError && !encounteredApiError) {
+      encounteredApiError = result.apiError;
+    }
 
     for (const place of result.places) {
       if (!globalSeen.has(place.place_id)) {
@@ -737,10 +838,14 @@ export async function searchPlacesWithTiling(
   const tilesSkipped = tiles.length - totalTilesProcessed;
   const apiCallsSaved = tilesSkipped * 3; // Each tile = ~3 API calls
 
+  // Log completion with error info if applicable
+  const logLevel = encounteredApiError ? "warn" : "info";
+  const logEmoji = encounteredApiError ? "⚠️" : "🎉";
+
   logWithCorrelation(
-    "info",
+    logLevel,
     params.correlation,
-    "🎉 Optimized tiled search complete with progressive termination",
+    `${logEmoji} Tiled search complete${encounteredApiError ? " (with API error)" : " with progressive termination"}`,
     {
       placesFound: allPlaces.length,
       targetPlaces: params.maxResults,
@@ -756,6 +861,14 @@ export async function searchPlacesWithTiling(
       timeMs,
       timeSec: (timeMs / 1000).toFixed(1),
       optimization: "50% overlap + progressive termination",
+      // Include API error details if present
+      ...(encounteredApiError && {
+        apiError: {
+          code: encounteredApiError.errorCode,
+          category: encounteredApiError.category,
+          userMessage: encounteredApiError.userMessage,
+        },
+      }),
     },
   );
 
@@ -765,5 +878,6 @@ export async function searchPlacesWithTiling(
     totalApiCalls,
     duplicatesFiltered,
     timeMs,
+    apiError: encounteredApiError, // Include API error for upstream handling
   };
 }

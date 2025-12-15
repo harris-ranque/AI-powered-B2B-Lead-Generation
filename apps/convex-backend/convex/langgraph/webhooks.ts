@@ -56,6 +56,9 @@ const EmailGenerationResult = v.object({
       research_tier: v.optional(v.string()),
       // Structured company data from research extraction
       company_data: v.optional(v.any()),
+      // Lead tier classification (A=rich research, B=minimal research)
+      lead_tier: v.optional(v.union(v.literal("A"), v.literal("B"))),
+      lead_tier_reason: v.optional(v.string()),
       follow_up_sequence: v.optional(
         v.union(
           v.null(),
@@ -409,6 +412,9 @@ export const handleEmailGenerationCompleted = internalMutation({
             ? result.missing_data_points || []
             : [],
           deepResearchCreditsCharged: 0, // Credits charged at search completion, not per-lead
+          // Lead tier classification from LangGraph
+          leadTier: result.lead_tier,
+          leadTierReason: result.lead_tier_reason,
         });
 
         // Create email sequence record if we have email content (idempotent by request_id per lead)
@@ -1264,7 +1270,7 @@ export const handleBatchCompleted = internalMutation({
               });
             }
 
-            // Update deep research metadata
+            // Update deep research metadata and lead tier
             await ctx.db.patch(lead._id, {
               deepResearchUsed,
               deepResearchProvider: deepResearchUsed ? "perplexity" : "tavily",
@@ -1279,6 +1285,9 @@ export const handleBatchCompleted = internalMutation({
                 deepResearchUsed && result.additional_credits_used
                   ? result.additional_credits_used
                   : 0,
+              // Lead tier classification from LangGraph
+              leadTier: result.lead_tier,
+              leadTierReason: result.lead_tier_reason,
             });
 
             // Create email sequence if we have email content
