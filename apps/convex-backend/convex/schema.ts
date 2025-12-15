@@ -538,6 +538,10 @@ export default defineSchema({
       ),
     ),
 
+    // Lead quality tier classification (based on research data availability)
+    leadTier: v.optional(v.union(v.literal("A"), v.literal("B"))),
+    leadTierReason: v.optional(v.string()),
+
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -545,6 +549,7 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_status", ["status"])
     .index("by_place_id", ["placeId"])
+    .index("by_lead_tier", ["leadTier"])
     .index("by_user_place", ["userId", "placeId"]) // User-level deduplication (across all searches)
     .index("by_search_place", ["searchId", "placeId"]) // Per-search deduplication (for spatial tiling)
     .index("by_user_address", ["userId", "address"]) // User-level address deduplication
@@ -1327,6 +1332,8 @@ export default defineSchema({
       v.literal("findymail"),
       v.literal("icypeas"),
       v.literal("apify"),
+      // Email sending platform
+      v.literal("instantly"),
     ),
     keyName: v.string(), // User-friendly name for the key
     encryptedKey: v.string(), // Encrypted API key
@@ -1560,4 +1567,85 @@ export default defineSchema({
     .index("by_timestamp", ["timestamp"])
     .index("by_user_and_event", ["userId", "eventType"])
     .index("by_user_and_timestamp", ["userId", "timestamp"]),
+
+  // Instantly Integration - User settings for auto-push to Instantly.ai
+  instantlySettings: defineTable({
+    userId: v.id("users"),
+    autoPushEnabled: v.boolean(),
+    defaultSenderEmail: v.optional(v.string()),
+    defaultSenderAccountId: v.optional(v.string()),
+    cachedAccounts: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          email: v.string(),
+          displayName: v.optional(v.string()),
+          status: v.optional(v.string()),
+        })
+      )
+    ),
+    cachedAccountsAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
+
+  // Instantly Campaigns - Track campaigns pushed to Instantly.ai
+  instantlyCampaigns: defineTable({
+    userId: v.id("users"),
+    searchId: v.id("searches"),
+    instantlyCampaignId: v.string(),
+    instantlyCampaignName: v.string(),
+    senderEmail: v.string(),
+    leadsCount: v.number(),
+    pushedAt: v.number(),
+    autoPushed: v.boolean(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_search", ["searchId"])
+    .index("by_user_search", ["userId", "searchId"]),
+
+  // API Error Logs - Track external API errors for debugging and analytics
+  // Retention: 7 days (cleaned up by cron job)
+  apiErrorLogs: defineTable({
+    userId: v.id("users"),
+    searchId: v.optional(v.id("searches")),
+    leadId: v.optional(v.id("leads")),
+
+    // Error identification
+    errorCode: v.string(), // e.g., "FINDYMAIL_CREDITS_EXHAUSTED"
+    provider: v.string(), // e.g., "findymail", "google_places", "perplexity"
+    category: v.string(), // e.g., "quota_exhausted", "authentication", "rate_limited"
+    severity: v.string(), // "info", "warning", "error", "critical"
+
+    // User-facing message
+    userMessage: v.string(),
+    technicalMessage: v.optional(v.string()),
+
+    // Original error data
+    originalStatus: v.optional(v.number()), // HTTP status code
+    operationType: v.optional(v.string()), // What operation failed
+
+    // Resolution tracking
+    resolved: v.boolean(),
+    resolvedAt: v.optional(v.number()),
+    resolvedBy: v.optional(
+      v.union(v.literal("retry"), v.literal("user"), v.literal("system"))
+    ),
+
+    // Tracing
+    correlationId: v.optional(v.string()),
+
+    createdAt: v.number(),
+    expiresAt: v.number(), // For 7-day retention cleanup
+  })
+    .index("by_user", ["userId"])
+    .index("by_provider", ["provider"])
+    .index("by_category", ["category"])
+    .index("by_error_code", ["errorCode"])
+    .index("by_search", ["searchId"])
+    .index("by_created", ["createdAt"])
+    .index("by_unresolved", ["resolved", "createdAt"])
+    .index("by_expires", ["expiresAt"])
+    .index("by_user_provider", ["userId", "provider"])
+    .index("by_user_category", ["userId", "category"]),
 });

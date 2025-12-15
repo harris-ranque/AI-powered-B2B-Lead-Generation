@@ -13,6 +13,8 @@ export const SUPPORTED_PROVIDERS = [
   "findymail",
   "icypeas",
   "apify",
+  // Email sending platform
+  "instantly",
 ] as const;
 
 export const providerValidator = v.union(
