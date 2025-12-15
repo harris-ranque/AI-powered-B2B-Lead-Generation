@@ -10,6 +10,10 @@ import {
   validateUrl,
   normalizeUrl,
 } from "../lib/helpers";
+import {
+  isProfileComplete as checkProfileComplete,
+  mergeProfileData,
+} from "../lib/profileLogic";
 
 // Create or update business profile
 export const createOrUpdateProfile = mutation({
@@ -114,19 +118,8 @@ export const createOrUpdateProfile = mutation({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
 
-    // Determine if profile is complete
-    // If contactInfo.email is empty, use the user's Clerk email as backup
-    const userEmail = sanitizedData.contactInfo.email || user.email || "";
-    const isComplete = !!(
-      sanitizedData.companyName &&
-      sanitizedData.industry &&
-      sanitizedData.valueProposition && // Value prop required for completion
-      sanitizedData.valueProposition.length >= 50 && // Must meet minimum length
-      sanitizedData.services.length > 0 &&
-      sanitizedData.targetMarkets.length > 0 &&
-      sanitizedData.keyDifferentiators.length > 0 &&
-      userEmail // User has email from Clerk or manually entered
-    );
+    // Determine if profile is complete using extracted pure function
+    const isComplete = checkProfileComplete(sanitizedData, user.email);
 
     const profileData = {
       userId: user._id,
@@ -493,48 +486,20 @@ export const importProfile = mutation({
     const now = Date.now();
 
     if (existingProfile) {
-      // Merge with existing profile
-      const mergedData = {
-        companyName: profileData.companyName || existingProfile.companyName,
-        industry: profileData.industry || existingProfile.industry,
-        valueProposition:
-          profileData.valueProposition || existingProfile.valueProposition,
-        services: Array.from(
-          new Set([
-            ...(existingProfile.services || []),
-            ...(profileData.services || []),
-          ]),
-        ),
-        targetMarkets: Array.from(
-          new Set([
-            ...(existingProfile.targetMarkets || []),
-            ...(profileData.targetMarkets || []),
-          ]),
-        ),
-        keyDifferentiators: Array.from(
-          new Set([
-            ...(existingProfile.keyDifferentiators || []),
-            ...(profileData.keyDifferentiators || []),
-          ]),
-        ),
-        contactInfo: {
-          email:
-            profileData.contactInfo?.email ||
-            existingProfile.contactInfo?.email ||
-            "",
-          phone:
-            profileData.contactInfo?.phone ||
-            existingProfile.contactInfo?.phone ||
-            "",
-          website:
-            profileData.contactInfo?.website ||
-            existingProfile.contactInfo?.website ||
-            "",
-          linkedin:
-            profileData.contactInfo?.linkedin ||
-            existingProfile.contactInfo?.linkedin ||
-            "",
-        },
+      // Merge with existing profile using extracted pure function
+      const merged = mergeProfileData(existingProfile, profileData);
+
+      // Convert null values to undefined for Convex compatibility
+      // Also cast caseStudies to match schema's `any` type for metrics
+      const mergedData: Partial<typeof existingProfile> = {
+        companyName: merged.companyName ?? undefined,
+        industry: merged.industry ?? undefined,
+        valueProposition: merged.valueProposition ?? undefined,
+        services: merged.services ?? undefined,
+        targetMarkets: merged.targetMarkets ?? undefined,
+        keyDifferentiators: merged.keyDifferentiators ?? undefined,
+        contactInfo: merged.contactInfo ?? undefined,
+        caseStudies: merged.caseStudies as typeof existingProfile.caseStudies,
         updatedAt: now,
       };
 
