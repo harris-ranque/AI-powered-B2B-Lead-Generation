@@ -32,6 +32,13 @@ from ..utils.perplexity_retry import (
     PerplexityAPIError,
     RetryConfig,
 )
+from ..utils.api_errors import (
+    classify_perplexity_error,
+    StandardizedApiError,
+    should_block_pipeline,
+    API_ERROR_CODES,
+    ApiErrorCategory,
+)
 from ..config import PERPLEXITY_RATE_LIMIT_CONFIG
 
 logger = setup_logger(__name__)
@@ -66,6 +73,7 @@ class ResearchResult(BaseModel):
     # Metadata
     raw_data: Dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
+    api_error: Optional[Dict[str, Any]] = None  # Standardized API error for frontend handling
     escalation_reason: Optional[str] = None
     final_tier_used: str = "basic"  # Tracks final research tier: "basic" (Tavily), "pro" (Sonar Pro), "deep" (Deep Research)
 
@@ -531,38 +539,50 @@ class PerplexityClient:
 
         except RateLimitExhaustedError as e:
             logger.error(f"Rate limit exhausted for sonar-pro research on {company_name}: {e}")
+            # Classify as persistent rate limit exceeded (not transient)
+            api_error = classify_perplexity_error(429, f"Rate limit exhausted after {e.total_attempts} attempts")
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
-                error=f"Rate limit exhausted after {e.total_attempts} attempts ({e.total_wait_time:.1f}s wait)"
+                error=f"Rate limit exhausted after {e.total_attempts} attempts ({e.total_wait_time:.1f}s wait)",
+                api_error=api_error.to_dict()
             )
         except PerplexityAPIError as e:
             logger.error(f"Perplexity API error for {company_name}: {e.status_code} - {e.message}")
+            # Classify the error for proper frontend handling
+            api_error = classify_perplexity_error(e.status_code, e.message)
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
-                error=f"Perplexity API error {e.status_code}: {e.message[:200]}"
+                error=f"Perplexity API error {e.status_code}: {e.message[:200]}",
+                api_error=api_error.to_dict()
             )
         except asyncio.TimeoutError:
+            # Classify timeout error
+            api_error = classify_perplexity_error(408, "Request timed out")
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
-                error="Perplexity research timeout"
+                error="Perplexity research timeout",
+                api_error=api_error.to_dict()
             )
         except Exception as e:
             logger.error(f"Perplexity research error for {company_name}: {str(e)}")
+            # Classify as unknown error
+            api_error = classify_perplexity_error(500, str(e))
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
-                error=f"Perplexity error: {str(e)}"
+                error=f"Perplexity error: {str(e)}",
+                api_error=api_error.to_dict()
             )
     
     def _build_comprehensive_query(self, company_name: str, domain: str, location: str, context: str) -> str:
@@ -755,41 +775,53 @@ class PerplexityClient:
                 f"Deep research rate limit exhausted for {company_name} after {e.total_attempts} attempts, "
                 f"total wait: {e.total_wait_time:.1f}s - graceful degradation will use Sonar Pro results"
             )
+            # Classify as persistent rate limit exceeded
+            api_error = classify_perplexity_error(429, f"Deep research rate limit exhausted after {e.total_attempts} attempts")
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.3,  # Low confidence for failed deep research
                 response_time=time.time() - start_time,
                 error=f"Deep research rate limited after {e.total_attempts} retries",
+                api_error=api_error.to_dict(),
                 final_tier_used="deep_failed"  # Flag for graceful degradation
             )
         except PerplexityAPIError as e:
             logger.error(f"Deep research API error for {company_name}: {e.status_code} - {e.message}")
+            # Classify the error for proper frontend handling
+            api_error = classify_perplexity_error(e.status_code, e.message)
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
                 error=f"Deep research API error {e.status_code}: {e.message[:200]}",
+                api_error=api_error.to_dict(),
                 final_tier_used="deep_failed"
             )
         except asyncio.TimeoutError:
+            # Classify timeout error
+            api_error = classify_perplexity_error(408, "Deep research timeout (60s)")
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
                 error="Deep research timeout (60s)",
+                api_error=api_error.to_dict(),
                 final_tier_used="deep_failed"
             )
         except Exception as e:
             logger.error(f"Deep research error for {company_name}: {str(e)}")
+            # Classify as unknown error
+            api_error = classify_perplexity_error(500, str(e))
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
                 error=f"Deep research error: {str(e)}",
+                api_error=api_error.to_dict(),
                 final_tier_used="deep_failed"
             )
 
@@ -841,7 +873,22 @@ class PerplexityClient:
                 "comprehensive_report": content,
                 "citations": citations,
                 "word_count": len(content.split()) if content else 0,
-                "extracted_data": structured_data
+                # Flatten extracted data to match Tavily's structure for downstream compatibility
+                "recent_news": structured_data.get("recent_news", []),
+                "competitor_mentions": [],  # Perplexity doesn't extract these directly
+                "quantifiable_metrics": [],  # Perplexity doesn't extract these directly
+                "pain_points": [],  # Perplexity doesn't extract these directly
+                "industry_benchmarks": [],  # Perplexity doesn't extract these directly
+                "technology_stack": [],  # Perplexity doesn't extract these directly
+                "extracted_data": structured_data,  # Keep original for backward compatibility
+                "data_completeness": {
+                    "has_recent_news": len(structured_data.get("recent_news", [])) > 0,
+                    "has_competitors": False,
+                    "has_metrics": False,
+                    "has_pain_points": False,
+                    "has_benchmarks": False,
+                    "completeness_score": 0.2 if len(structured_data.get("recent_news", [])) > 0 else 0.0
+                }
             }
         )
 

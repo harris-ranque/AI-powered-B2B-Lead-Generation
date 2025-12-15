@@ -4,7 +4,7 @@ Validates base data collection requirements before triggering deep research.
 """
 
 import re
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from pydantic import BaseModel, Field
 from typing import TYPE_CHECKING
 
@@ -256,6 +256,15 @@ class BaseDataValidator:
         data_threshold = DEEP_RESEARCH_CONFIG['DATA_COMPLETENESS_THRESHOLD']
         confidence_threshold = DEEP_RESEARCH_CONFIG['CONFIDENCE_THRESHOLD']
 
+        # PRIORITY: If we have all 5 data points, DON'T escalate
+        # The structured data is what matters for email personalization, not confidence score
+        if validation_result.has_all_required_data:
+            logger.info(
+                f"Skipping Deep Research - all 5/5 data points present "
+                f"(confidence {confidence_score:.2f} is secondary when data is complete)"
+            )
+            return False, "All 5 data points present - Deep Research not needed"
+
         # Check if missing 2+ data points after Sonar Pro
         if len(validation_result.missing_data_points) >= min_missing:
             return True, (
@@ -263,11 +272,12 @@ class BaseDataValidator:
                 f"after Sonar Pro - comprehensive research needed"
             )
 
-        # Check if confidence is low after Sonar Pro
+        # Only check confidence if we're missing 1 data point
+        # (missing 0 is caught above, missing 2+ is caught above)
         if confidence_score < confidence_threshold:
             return True, (
-                f"Low confidence ({confidence_score:.2f}) after Sonar Pro - "
-                f"additional research depth needed"
+                f"Low confidence ({confidence_score:.2f}) with {len(validation_result.missing_data_points)} "
+                f"missing data point(s) - additional research depth needed"
             )
 
         # Sonar Pro research was sufficient
@@ -366,3 +376,47 @@ class BaseDataValidator:
             logger.info(f"Research relevance check for {company_name}: Score={relevance_score:.2f} (GOOD)")
 
         return relevance_score, warnings
+
+
+def determine_lead_tier(
+    validation_score: float,
+    confidence_score: float,
+    missing_data_points: int,
+) -> Tuple[str, str]:
+    """
+    Determine lead tier based on research quality metrics.
+
+    Lead Tier Classification:
+    - A-Tier: Rich research data - validation_score >= 0.6 AND confidence >= 0.6 AND missing <= 1
+    - B-Tier: Minimal research data - everything else (still usable, not penalized)
+
+    B-tier leads will still get email generation but with adjusted QA thresholds
+    and without penalization for missing research-specific personalization.
+
+    Args:
+        validation_score: Data completeness score (0-1) from validate_research_result
+        confidence_score: Research confidence score (0-1) from ResearchResult
+        missing_data_points: Number of missing data points out of 5
+
+    Returns:
+        Tuple of (tier: "A"/"B", reason: str explaining the classification)
+    """
+    # A-Tier: Rich research data available
+    if (validation_score >= 0.6 and
+        confidence_score >= 0.6 and
+        missing_data_points <= 1):
+        return "A", "Rich research data available"
+
+    # B-Tier: Minimal research - build reason string
+    reasons = []
+    if validation_score < 0.6:
+        reasons.append(f"validation={validation_score:.2f}")
+    if confidence_score < 0.6:
+        reasons.append(f"confidence={confidence_score:.2f}")
+    if missing_data_points >= 2:
+        reasons.append(f"missing {missing_data_points}/5 data points")
+
+    reason_str = ", ".join(reasons) if reasons else "below A-tier thresholds"
+
+    logger.info(f"Lead classified as B-tier: {reason_str}")
+    return "B", f"Minimal research: {reason_str}"

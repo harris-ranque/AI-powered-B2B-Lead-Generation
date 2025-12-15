@@ -179,13 +179,23 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
     using_user_keys = provider_keys is not None
     registry = ClientRegistry.get_instance()
 
-    logger.info(f"Starting email generation for {lead.company_name}")
+    # Get lead tier for B-tier handling
+    lead_tier = state.get("lead_tier", "A")
+    lead_tier_reason = state.get("lead_tier_reason", "")
+    is_b_tier = lead_tier == "B"
+
+    logger.info(f"Starting email generation for {lead.company_name} (Tier: {lead_tier})")
+    if is_b_tier:
+        logger.info(f"B-tier lead detected: {lead_tier_reason} - using generic template approach")
+
     analytics_context = {
         "request_id": state.get("request_id"),
         "lead_id": getattr(lead, "id", None),
         "company_name": lead.company_name,
         "user_id": state.get("user_id"),
         "user_tier": state.get("user_tier", "free"),
+        "lead_tier": lead_tier,
+        "lead_tier_reason": lead_tier_reason,
         "using_user_keys": using_user_keys,
         "provider_keys_supplied": sorted(provider_key_map.keys()) if using_user_keys else [],
         "follow_up_sequence": requirements.follow_up_sequence,
@@ -492,6 +502,23 @@ REMEMBER: QA agent will penalize fabricated data with -0.3 score deduction per v
 - Fabricated data (metrics, funding, competitors): -0.3 penalty
 - Placeholder numbers in P.S.: -0.1 penalty
 - Total penalties can cause automatic "Needs_Improvement" or "Rejected" status
+
+B-TIER LEAD SPECIAL HANDLING (lead_tier: {lead_tier}):
+When lead_tier is "B" (minimal research data available):
+1. DO NOT fail or reject - B-tier leads are still valuable and should get emails
+2. Use Pattern #7 (Limited Data Approach) for subject lines
+3. Focus on verified facts only: company name, location, industry, role
+4. Use industry-level insights instead of company-specific claims
+5. Lead with curiosity about THEIR situation, not claims about data you found
+6. Do NOT fabricate any research-backed claims
+7. Keep email structure professional and focused
+8. QA will use lower approval threshold (0.50) for B-tier leads
+9. Missing research elements are EXPECTED and will NOT be penalized
+
+B-tier email priorities:
+- Professional tone and structure over deep personalization
+- Generic industry value propositions over specific competitor insights
+- Clear CTA and signature over research-heavy content
 
 CALL TO ACTION:
 - One simple sentence
@@ -1139,6 +1166,9 @@ Target score: ≥0.65 for approval.
             company_size=getattr(lead, 'company_size', '') or "your organization",
             qualification_level=qualification_level,
             relevance_score=relevance_score,
+
+            # Lead tier for B-tier handling
+            lead_tier=lead_tier,
 
             # Business intelligence
             company_overview=company_overview[:500],  # Limit length for prompt

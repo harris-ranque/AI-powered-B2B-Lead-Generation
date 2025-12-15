@@ -84,6 +84,10 @@ class EmailGenerationState(TypedDict):
     missing_data_points: Optional[List[str]]  # Missing data points that triggered deep research
     research_credit_cost: Optional[int]  # Total credit cost including deep research
     base_data_validation_score: Optional[float]  # Score for base data completeness (0-1)
+
+    # Lead tier classification (for B-tier handling)
+    lead_tier: Optional[str]  # "A" (rich research) or "B" (minimal research, still usable)
+    lead_tier_reason: Optional[str]  # Explanation for tier classification
     
     # Enhanced context fields
     competitors_found: Optional[List[Dict[str, Any]]]  # Discovered competitors from research

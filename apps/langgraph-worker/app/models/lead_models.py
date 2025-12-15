@@ -198,6 +198,10 @@ class EmailGenerationResult(BaseModel):
     missing_data_points: List[str] = Field(default_factory=list, description="Missing data points that triggered deep research")
     data_completeness_score: float = Field(default=1.0, description="Base data completeness score (0-1)")
 
+    # Lead tier classification
+    lead_tier: str = Field(default="A", description="Lead quality tier (A=rich research, B=minimal research)")
+    lead_tier_reason: Optional[str] = Field(None, description="Explanation for tier classification")
+
 class EmailGenerationResponse(BaseModel):
     """API response for email generation"""
     request_id: str = Field(..., description="Request identifier")
