@@ -61,6 +61,8 @@ import { EnterpriseApiKeyBlocker } from "./EnterpriseApiKeyBlocker";
 import { createLogger } from "@/utils/logger";
 import { normalizeError } from "@/utils/errorUtils";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { useApiError, type ApiError } from "@/hooks/useApiError";
+import { ApiErrorAlert } from "@/components/errors/ApiErrorAlert";
 
 interface LeadDiscoveryStageProps {
   userCredits: number;
@@ -114,10 +116,12 @@ export function LeadDiscoveryStage({
   const { searchGoogleMaps } = useGoogleMapsSearch();
   const { toast } = useToast();
   const analytics = useAnalytics();
+  const { handleApiError, clearError, isUserActionable, navigateToAction } = useApiError();
   const createSearchFromCSV = useMutation(api.leads.mutations.createSearchFromCSV);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [showApiKeyBlocker, setShowApiKeyBlocker] = useState(false);
   const [stageError, setStageError] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<ApiError | null>(null);
 
   // Fetch user preferences for de-duplication settings
   const userPreferences = useQuery(api.users.queries.getUserPreferences);
@@ -317,6 +321,7 @@ export function LeadDiscoveryStage({
     if (!validation.isValid) return;
 
     setStageError(null);
+    setApiError(null);
     setProcessing(true);
 
     try {
@@ -463,18 +468,42 @@ export function LeadDiscoveryStage({
         },
         errorInstance,
       );
-      setStageError(normalizedError.message);
-      toast({
-        title: "Discovery Failed",
-        description: normalizedError.message,
-        variant: "destructive",
-      });
 
-      if (
-        isEnterprise &&
-        normalizedError.message.toLowerCase().includes("api key")
-      ) {
-        setShowApiKeyBlocker(true);
+      // Check if we have a structured API error
+      if (normalizedError.apiError) {
+        setApiError(normalizedError.apiError);
+        setStageError(null);
+
+        // Track structured error in analytics
+        analytics.trackSearchFailed({
+          search_id: state.searchId,
+          source: state.selectedSource as 'google_maps' | 'manual',
+        });
+
+        // Show API key blocker for authentication errors on enterprise
+        if (
+          isEnterprise &&
+          (normalizedError.apiError.category === "authentication" ||
+            normalizedError.apiError.category === "authorization")
+        ) {
+          setShowApiKeyBlocker(true);
+        }
+      } else {
+        // Fall back to generic error handling
+        setStageError(normalizedError.message);
+        setApiError(null);
+        toast({
+          title: "Discovery Failed",
+          description: normalizedError.message,
+          variant: "destructive",
+        });
+
+        if (
+          isEnterprise &&
+          normalizedError.message.toLowerCase().includes("api key")
+        ) {
+          setShowApiKeyBlocker(true);
+        }
       }
     } finally {
       setProcessing(false);
@@ -525,7 +554,25 @@ export function LeadDiscoveryStage({
         <p className="text-muted-foreground">{selectedSource.description}</p>
       </div>
 
-      {stageError && (
+      {/* Structured API Error Display */}
+      {apiError && (
+        <ApiErrorAlert
+          error={apiError}
+          onDismiss={() => setApiError(null)}
+          onRetry={() => {
+            setApiError(null);
+            handleStartDiscovery();
+          }}
+          onAction={(action) => {
+            if (action === "check_api_key") {
+              onNavigateToSettings?.();
+            }
+          }}
+        />
+      )}
+
+      {/* Generic Error Display (fallback) */}
+      {stageError && !apiError && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
