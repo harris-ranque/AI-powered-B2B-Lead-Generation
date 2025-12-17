@@ -633,7 +633,11 @@ describe('Search Actions Tests - search/actions.ts', () => {
 
       it('should use defaults when no settings provided', () => {
         const searchParams = {};
-        const userPreferences = undefined;
+        const userPreferences = undefined as ({
+          enablePlaceNameDedup?: boolean;
+          enableEmailDedup?: boolean;
+          enableAddressDedup?: boolean;
+        } | undefined);
 
         const deduplicationConfig = {
           enablePlaceNameDedup:
@@ -665,7 +669,10 @@ describe('Search Actions Tests - search/actions.ts', () => {
         Math.max(min, Math.min(value, max));
 
       it('should use default expansion settings when not specified', () => {
-        const userPreferences = undefined;
+        const userPreferences = undefined as ({
+          maxSearchExpansionIterations?: number;
+          searchExpansionMultiplier?: number;
+        } | undefined);
 
         const maxExpansionIterations = Math.max(
           0,

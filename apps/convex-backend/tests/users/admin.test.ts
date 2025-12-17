@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   createMockContext,
+  createMockQuery,
   mockId,
   createMockDocument,
   resetAllMocks,
@@ -86,11 +87,9 @@ describe('Admin Functions Tests - users/admin.ts', () => {
       );
       mockCtx.db.get.mockResolvedValueOnce(adminUser);
 
-      const mockQuery = {
-        withIndex: vi.fn().mockReturnThis(),
-        filter: vi.fn().mockReturnThis(),
+      const mockQuery = createMockQuery({
         collect: vi.fn().mockResolvedValue(users),
-      };
+      });
       mockCtx.db.query.mockReturnValue(mockQuery);
 
       const getAllUsers = async (
@@ -178,10 +177,9 @@ describe('Admin Functions Tests - users/admin.ts', () => {
       );
       mockCtx.db.get.mockResolvedValueOnce(adminUser);
 
-      const mockQuery = {
-        withIndex: vi.fn().mockReturnThis(),
+      const mockQuery = createMockQuery({
         collect: vi.fn().mockResolvedValue(proUsers),
-      };
+      });
       mockCtx.db.query.mockReturnValue(mockQuery);
 
       const getAllUsers = async (ctx: any, args: { plan?: string }) => {
@@ -216,9 +214,9 @@ describe('Admin Functions Tests - users/admin.ts', () => {
       );
       mockCtx.db.get.mockResolvedValueOnce(adminUser);
 
-      const mockQuery = {
+      const mockQuery = createMockQuery({
         collect: vi.fn().mockResolvedValue(allUsers),
-      };
+      });
       mockCtx.db.query.mockReturnValue(mockQuery);
 
       const getAllUsers = async (ctx: any, args: { isActive?: boolean }) => {
@@ -252,9 +250,9 @@ describe('Admin Functions Tests - users/admin.ts', () => {
       );
       mockCtx.db.get.mockResolvedValueOnce(adminUser);
 
-      const mockQuery = {
+      const mockQuery = createMockQuery({
         collect: vi.fn().mockResolvedValue(manyUsers),
-      };
+      });
       mockCtx.db.query.mockReturnValue(mockQuery);
 
       const getAllUsers = async (ctx: any, args: { limit?: number; offset?: number }) => {
@@ -305,11 +303,9 @@ describe('Admin Functions Tests - users/admin.ts', () => {
       );
       mockCtx.db.get.mockResolvedValueOnce(adminUser);
 
-      const mockQuery = {
-        withIndex: vi.fn().mockReturnThis(),
-        order: vi.fn().mockReturnThis(),
+      const mockQuery = createMockQuery({
         take: vi.fn().mockResolvedValue(users),
-      };
+      });
       mockCtx.db.query.mockReturnValue(mockQuery);
 
       const getUserStatistics = async (ctx: any) => {
@@ -456,10 +452,9 @@ describe('Admin Functions Tests - users/admin.ts', () => {
         .mockResolvedValueOnce(adminUser)
         .mockResolvedValueOnce(adminUser); // Target is also the admin
 
-      const mockQuery = {
-        withIndex: vi.fn().mockReturnThis(),
+      const mockQuery = createMockQuery({
         collect: vi.fn().mockResolvedValue(admins),
-      };
+      });
       mockCtx.db.query.mockReturnValue(mockQuery);
 
       const updateUserRole = async (
@@ -813,11 +808,9 @@ describe('Admin Functions Tests - users/admin.ts', () => {
       );
       mockCtx.db.get.mockResolvedValueOnce(adminUser);
 
-      const mockQuery = {
-        withIndex: vi.fn().mockReturnThis(),
-        order: vi.fn().mockReturnThis(),
+      const mockQuery = createMockQuery({
         take: vi.fn().mockResolvedValue(users),
-      };
+      });
       mockCtx.db.query.mockReturnValue(mockQuery);
 
       const searchUsers = async (
@@ -866,11 +859,9 @@ describe('Admin Functions Tests - users/admin.ts', () => {
       );
       mockCtx.db.get.mockResolvedValueOnce(adminUser);
 
-      const mockQuery = {
-        withIndex: vi.fn().mockReturnThis(),
-        order: vi.fn().mockReturnThis(),
+      const mockQuery = createMockQuery({
         take: vi.fn().mockResolvedValue(users),
-      };
+      });
       mockCtx.db.query.mockReturnValue(mockQuery);
 
       const searchUsers = async (ctx: any, args: { query: string }) => {
@@ -907,11 +898,9 @@ describe('Admin Functions Tests - users/admin.ts', () => {
       );
       mockCtx.db.get.mockResolvedValueOnce(adminUser);
 
-      const mockQuery = {
-        withIndex: vi.fn().mockReturnThis(),
-        order: vi.fn().mockReturnThis(),
+      const mockQuery = createMockQuery({
         take: vi.fn().mockResolvedValue(users),
-      };
+      });
       mockCtx.db.query.mockReturnValue(mockQuery);
 
       const searchUsers = async (ctx: any, args: { query: string }) => {
@@ -953,9 +942,9 @@ describe('Admin Functions Tests - users/admin.ts', () => {
       );
       mockCtx.db.get.mockResolvedValueOnce(adminUser);
 
-      const mockQuery = {
+      const mockQuery = createMockQuery({
         unique: vi.fn().mockResolvedValue(mockConfig),
-      };
+      });
       mockCtx.db.query.mockReturnValue(mockQuery);
 
       const getSystemConfiguration = async (ctx: any) => {
@@ -995,9 +984,9 @@ describe('Admin Functions Tests - users/admin.ts', () => {
       );
       mockCtx.db.get.mockResolvedValueOnce(adminUser);
 
-      const mockQuery = {
+      const mockQuery = createMockQuery({
         unique: vi.fn().mockResolvedValue(null),
-      };
+      });
       mockCtx.db.query.mockReturnValue(mockQuery);
 
       const getSystemConfiguration = async (ctx: any) => {
@@ -1045,11 +1034,9 @@ describe('Admin Functions Tests - users/admin.ts', () => {
         .mockResolvedValueOnce(adminUser)
         .mockResolvedValueOnce(targetUser);
 
-      const mockQuery = {
-        withIndex: vi.fn().mockReturnThis(),
-        filter: vi.fn().mockReturnThis(),
+      const mockQuery = createMockQuery({
         collect: vi.fn().mockResolvedValue(activeSearches),
-      };
+      });
       mockCtx.db.query.mockReturnValue(mockQuery);
       mockCtx.db.patch.mockResolvedValue(undefined);
       mockCtx.db.insert.mockResolvedValue(mockId('systemLogs'));
@@ -1190,9 +1177,9 @@ describe('Admin Functions Tests - users/admin.ts', () => {
       );
       mockCtx.db.get.mockResolvedValueOnce(adminUser);
 
-      const mockQuery = {
+      const mockQuery = createMockQuery({
         unique: vi.fn().mockResolvedValue(existingConfig),
-      };
+      });
       mockCtx.db.query.mockReturnValue(mockQuery);
       mockCtx.db.patch.mockResolvedValue(undefined);
       mockCtx.db.insert.mockResolvedValue(mockId('systemLogs'));

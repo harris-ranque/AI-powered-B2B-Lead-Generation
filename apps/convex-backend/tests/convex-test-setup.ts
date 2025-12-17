@@ -12,12 +12,19 @@ import schema from "../convex/schema";
 import { api, internal } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 
+// Type declaration for Vite's import.meta.glob
+declare global {
+  interface ImportMeta {
+    glob: <T = unknown>(pattern: string | string[], options?: { eager?: boolean }) => Record<string, T>;
+  }
+}
+
 // Import all Convex function modules explicitly for convex-test
 // Includes _generated but excludes convex.config.ts (requires runtime)
-const modules = import.meta.glob([
+const modules = import.meta.glob<() => Promise<any>>([
   "../convex/**/*.*s",
   "!../convex/convex.config.ts",
-], { eager: true });
+], { eager: true }) as Record<string, () => Promise<any>>;
 
 // Debug: uncomment to log loaded module paths
 // console.log("Loaded modules:", Object.keys(modules).length);

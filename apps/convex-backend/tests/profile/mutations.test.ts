@@ -163,7 +163,7 @@ describe('profile/mutations - createOrUpdateProfile', () => {
       const user = await getCurrentUser(ctx as any);
 
       expect(user).not.toBeNull();
-      expect(user._id).toBe(mockUser._id);
+      expect(user!._id).toBe(mockUser._id);
     });
   });
 
@@ -621,7 +621,7 @@ describe('profile/mutations - updateProfileSection', () => {
         };
 
         expect(updateData.caseStudies.length).toBe(1);
-        expect(updateData.caseStudies[0].title).toBe('New Case Study');
+        expect(updateData.caseStudies[0]!.title).toBe('New Case Study');
       });
 
       it('should filter out incomplete case studies', () => {
@@ -643,7 +643,7 @@ describe('profile/mutations - updateProfileSection', () => {
         };
 
         expect(updateData.caseStudies.length).toBe(1);
-        expect(updateData.caseStudies[0].title).toBe('Complete');
+        expect(updateData.caseStudies[0]!.title).toBe('Complete');
       });
 
       it('should respect MAX_CASE_STUDIES limit', () => {

@@ -739,9 +739,9 @@ describe('Leads Actions Tests - leads/actions.ts', () => {
         const batches = chunkArray(leads, 100);
 
         expect(batches.length).toBe(3);
-        expect(batches[0].length).toBe(100);
-        expect(batches[1].length).toBe(100);
-        expect(batches[2].length).toBe(50);
+        expect(batches[0]!.length).toBe(100);
+        expect(batches[1]!.length).toBe(100);
+        expect(batches[2]!.length).toBe(50);
       });
 
       it('should schedule batches with 10-second stagger', async () => {

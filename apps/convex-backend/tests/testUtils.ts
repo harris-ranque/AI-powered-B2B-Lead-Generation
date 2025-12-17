@@ -6,30 +6,43 @@ import { vi } from 'vitest';
 import type { GenericId } from 'convex/values';
 
 /**
+ * Create a mock query builder with all required methods
+ * This can be customized by passing overrides
+ */
+export const createMockQuery = (overrides: Record<string, any> = {}) => {
+  const mockQuery: Record<string, any> = {
+    filter: vi.fn().mockReturnThis(),
+    order: vi.fn().mockReturnThis(),
+    first: vi.fn(),
+    take: vi.fn(),
+    collect: vi.fn(),
+    unique: vi.fn(),
+    withIndex: vi.fn().mockReturnThis(),
+    ...overrides,
+  };
+  // Make all chainable methods return the mock itself
+  Object.keys(mockQuery).forEach(key => {
+    if (['filter', 'order', 'withIndex'].includes(key) && !overrides[key]) {
+      mockQuery[key] = vi.fn().mockReturnValue(mockQuery);
+    }
+  });
+  return mockQuery;
+};
+
+/**
  * Mock Convex context for testing mutations and queries
  */
 export const createMockContext = () => {
   const mockDb = {
     get: vi.fn(),
-    query: vi.fn(() => ({
-      filter: vi.fn().mockReturnThis(),
-      order: vi.fn().mockReturnThis(),
-      first: vi.fn(),
-      take: vi.fn(),
-      collect: vi.fn(),
-      unique: vi.fn(),
-    })),
+    query: vi.fn(() => createMockQuery()),
     insert: vi.fn(),
     patch: vi.fn(),
     replace: vi.fn(),
     delete: vi.fn(),
     system: {
       get: vi.fn(),
-      query: vi.fn(() => ({
-        filter: vi.fn().mockReturnThis(),
-        first: vi.fn(),
-        collect: vi.fn(),
-      })),
+      query: vi.fn(() => createMockQuery()),
     },
   };
 

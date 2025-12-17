@@ -345,10 +345,10 @@ describe('Google Places Helper Tests - search/googlePlaces.ts', () => {
       // With 50% overlap, adjacent tile centers should be 1.5 * radius apart
       // This is approximate due to lat/lng conversions
       if (tiles.length > 1) {
-        expect(tiles[0].radius).toBe(2000);
+        expect(tiles[0]!.radius).toBe(2000);
         // All tiles should have same radius
         tiles.forEach((tile) => {
-          expect(tile.radius).toBe(tiles[0].radius);
+          expect(tile.radius).toBe(tiles[0]!.radius);
         });
       }
     });
