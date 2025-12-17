@@ -190,7 +190,8 @@ export const upsertApiKey = action({
     action: "updated" | "created";
   }> => {
     const user = await requireAuth(ctx);
-    ensureUserCanManageKeys(user.plan);
+    // Pass provider for universal access check (e.g., Instantly is allowed for all plans)
+    ensureUserCanManageKeys(user.plan, args.provider);
 
     // Crypto operations in action (allowed with "use node" in crypto.ts)
     const encryptedKey = encryptApiKey(args.apiKey);
@@ -229,8 +230,6 @@ export const validateApiKey = action({
   handler: async (ctx, args): Promise<any> => {
     const user = await requireAuth(ctx);
 
-    ensureUserCanManageKeys(user.plan);
-
     // Get the API key with full details using internal query
     const apiKey = await ctx.runQuery(
       internal.userApiKeys.internal.getApiKeyById,
@@ -246,6 +245,9 @@ export const validateApiKey = action({
     if (apiKey.userId !== user._id) {
       throw new Error("Not authorized to validate this API key");
     }
+
+    // Pass provider for universal access check (e.g., Instantly is allowed for all plans)
+    ensureUserCanManageKeys(user.plan, apiKey.provider);
 
     let validationSuccess = false;
     let validationError: string | undefined;
@@ -329,7 +331,9 @@ export const validateAllApiKeys = action({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
 
-    ensureUserCanManageKeys(user.plan);
+    // No plan check here - validateApiKey will check each key's provider individually
+    // This allows users to validate their universal provider keys (e.g., Instantly)
+    // while validateApiKey enforces per-provider access control
 
     // Get all API keys using internal query with full details
     const apiKeys = await ctx.runQuery(
