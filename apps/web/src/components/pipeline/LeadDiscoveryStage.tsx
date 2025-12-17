@@ -422,9 +422,9 @@ export function LeadDiscoveryStage({
             address: lead.address,
             placeId: lead.placeId,
             location: lead.location,
-            phone: lead.phone,
-            website: lead.website,
-            category: lead.category,
+            phone: lead.phone ?? undefined, // Convert null to undefined for Convex
+            website: lead.website ?? undefined, // Convert null to undefined for Convex
+            category: lead.category ?? undefined, // Convert null to undefined for Convex
             dataSource: lead.dataSource,
             enrichmentStatus: lead.enrichmentStatus,
             contactInfo: lead.contactInfo,

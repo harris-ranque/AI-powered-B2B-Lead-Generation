@@ -9,6 +9,10 @@ import { Mail, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { createLogger } from "@/utils/logger";
+import { useApiError } from "@/hooks/useApiError";
+
+const logger = createLogger("BusinessProfile");
 
 export function BusinessProfile() {
   const userData = useQuery(api.users.queries.getCurrentUserData);
@@ -108,8 +112,9 @@ export function BusinessProfile() {
 
       toast.success("Email configuration updated successfully");
     } catch (error) {
+      const errorObj = error instanceof Error ? error : new Error(String(error));
+      logger.error("Failed to update email configuration", { section: "contact_info" }, errorObj);
       toast.error("Failed to update email configuration");
-      console.error(error);
     } finally {
       setIsUpdatingEmail(false);
     }

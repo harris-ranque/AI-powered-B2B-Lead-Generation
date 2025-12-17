@@ -54,6 +54,7 @@ import {
 import { createLogger } from "@/utils/logger";
 import { normalizeError } from "@/utils/errorUtils";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { PushToInstantlyButton } from "@/components/instantly/PushToInstantlyButton";
 
 const EXPORT_FORMATS = [
   {
@@ -1258,6 +1259,18 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
             </>
           )}
         </Button>
+
+        {/* Push to Instantly - Only shown if user has Instantly configured */}
+        {state.searchId && (
+          <PushToInstantlyButton
+            searchId={state.searchId}
+            searchName={search?.name}
+            status={search?.status || "completed"}
+            totalLeads={discoveredCount}
+            analyzedCount={personalizedCount}
+            enrichedCount={enrichedCount}
+          />
+        )}
 
         <Button
           onClick={handleViewResults}

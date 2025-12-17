@@ -80,6 +80,8 @@ export function useSearchesBase() {
       const result = await timeOperation("createSearch", () => createSearchMutation(...args));
       return result;
     } catch (error) {
+      const errorObj = error instanceof Error ? error : new Error(String(error));
+      logger.error("Failed to create search", { parameters: args[0] }, errorObj);
       updateOptimisticSearches((prev) => prev.filter((s) => s._id !== tempId));
       throw error;
     }
@@ -150,6 +152,8 @@ export function useSearchesBase() {
     try {
       return await timeOperation("cancelSearch", () => cancelSearchMutation(...args));
     } catch (error) {
+      const errorObj = error instanceof Error ? error : new Error(String(error));
+      logger.error("Failed to cancel search", { searchId }, errorObj);
       updateOptimisticSearches((prev) =>
         prev.map((search) =>
           search._id === searchId
@@ -173,6 +177,8 @@ export function useSearchesBase() {
     try {
       return await timeOperation("deleteSearch", () => deleteSearchMutation(...args));
     } catch (error) {
+      const errorObj = error instanceof Error ? error : new Error(String(error));
+      logger.error("Failed to delete search", { searchId }, errorObj);
       updateOptimisticSearches(originalSearches);
       throw error;
     }
@@ -204,6 +210,8 @@ export function useSearchesBase() {
         );
         return result;
       } catch (error) {
+        const errorObj = error instanceof Error ? error : new Error(String(error));
+        logger.error("Failed to duplicate search", { searchId }, errorObj);
         updateOptimisticSearches((prev) => prev.filter((s) => s._id !== tempId));
         throw error;
       }

@@ -109,19 +109,27 @@ function LeadEternityDashboardContent() {
     }
   }, [user]);
 
-  // PostHog user identification - Identify user for analytics tracking
+  // PostHog user identification - Update user properties from Convex data
+  // Note: AuthAnalyticsProvider handles initial identification on sign-in.
+  // This updates additional properties (plan, credits, role) from Convex that
+  // aren't available in Clerk. PostHog deduplicates multiple identify calls.
   useEffect(() => {
     if (user) {
-      analytics.identifyUser(user._id, {
-        email: user.email,
-        name: user.name,
-        plan: user.plan || 'free',
-        role: user.role || 'user',
-        credits: user.credits || 0,
-        $set_once: {
-          first_seen: new Date().toISOString(),
+      analytics.identifyUser(
+        user._id,
+        // $set properties - updated on every identify call
+        {
+          email: user.email,
+          name: user.name,
+          plan: user.plan || 'free',
+          role: user.role || 'user',
+          credits: user.credits || 0,
         },
-      });
+        // $set_once properties - only set if not already present
+        {
+          first_seen: new Date().toISOString(),
+        }
+      );
     }
   }, [user, analytics]);
 

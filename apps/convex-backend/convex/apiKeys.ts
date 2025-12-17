@@ -70,7 +70,7 @@ export const validateKey = action({
     const user = await requireAuth(ctx);
     console.log("validateKey: User authenticated", { userId: user._id, plan: user.plan });
 
-    ensureUserCanManageKeys(user.plan);
+    ensureUserCanManageKeys(user.plan, args.provider);
     console.log("validateKey: User can manage keys");
 
     const langgraphUrl = process.env.LANGGRAPH_URL;
