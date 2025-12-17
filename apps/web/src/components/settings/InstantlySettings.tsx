@@ -20,8 +20,67 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Alert,
+  AlertDescription,
+} from "@/components/ui/alert";
 import { toast } from "sonner";
-import { Send, RefreshCw, Key, Loader2 } from "lucide-react";
+import { Send, RefreshCw, Key, Loader2, AlertCircle, ExternalLink, CheckCircle2 } from "lucide-react";
+
+/**
+ * Parse error messages and provide user-friendly guidance
+ */
+function parseInstantlyError(errorMessage: string): {
+  message: string;
+  action?: {
+    label: string;
+    href: string;
+  };
+} {
+  const messageLower = errorMessage.toLowerCase();
+
+  if (messageLower.includes("invalid") && messageLower.includes("api key")) {
+    return {
+      message: "Your API key appears to be invalid. Make sure you're using an API V2 key from Instantly.",
+      action: {
+        label: "Get API V2 Key",
+        href: "https://app.instantly.ai/app/settings/integrations",
+      },
+    };
+  }
+
+  if (messageLower.includes("permission") || messageLower.includes("scope")) {
+    return {
+      message: "Your API key doesn't have the required permissions. Create a new key with 'accounts:read' scope.",
+      action: {
+        label: "Manage API Keys",
+        href: "https://app.instantly.ai/app/settings/integrations",
+      },
+    };
+  }
+
+  if (messageLower.includes("rate limit")) {
+    return {
+      message: "Rate limit exceeded. Please wait a few minutes and try again.",
+    };
+  }
+
+  if (messageLower.includes("timeout") || messageLower.includes("network")) {
+    return {
+      message: "Connection issue. Please check your internet and try again.",
+    };
+  }
+
+  if (messageLower.includes("no valid")) {
+    return {
+      message: "No Instantly API key found. Please add your API V2 key below.",
+    };
+  }
+
+  return {
+    message: errorMessage,
+  };
+}
 
 interface InstantlyAccount {
   id: string;
@@ -77,7 +136,17 @@ export function InstantlySettings() {
   const handleValidateKey = async () => {
     const value = apiKeyInput.trim();
     if (!value) {
-      toast.error("Please enter an API key");
+      toast.error("Please enter an API key", {
+        description: "Get your API V2 key from Instantly Settings → Integrations.",
+      });
+      return;
+    }
+
+    // Basic format validation
+    if (value.length < 20) {
+      toast.error("API key seems too short", {
+        description: "Instantly API V2 keys are typically longer. Make sure you copied the full key.",
+      });
       return;
     }
 
@@ -90,16 +159,37 @@ export function InstantlySettings() {
       });
 
       if (result.valid) {
-        toast.success("Instantly API key validated and saved!");
+        toast.success("Instantly API key validated and saved!", {
+          description: "Fetching your sender accounts...",
+        });
         setApiKeyInput("");
         // Auto-fetch accounts after successful validation
         handleFetchAccounts();
       } else {
-        toast.error(result.error || "Invalid API key. Please check and try again.");
+        const errorMessage = result.error || "Invalid API key";
+        const parsed = parseInstantlyError(errorMessage);
+
+        toast.error("API key validation failed", {
+          description: parsed.message,
+          duration: 8000,
+          action: parsed.action ? {
+            label: parsed.action.label,
+            onClick: () => window.open(parsed.action!.href, "_blank"),
+          } : undefined,
+        });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to validate API key";
-      toast.error(message);
+      const errorMessage = error instanceof Error ? error.message : "Failed to validate API key";
+      const parsed = parseInstantlyError(errorMessage);
+
+      toast.error("Validation failed", {
+        description: parsed.message,
+        duration: 8000,
+        action: parsed.action ? {
+          label: parsed.action.label,
+          onClick: () => window.open(parsed.action!.href, "_blank"),
+        } : undefined,
+      });
     } finally {
       setIsValidating(false);
     }
@@ -107,7 +197,9 @@ export function InstantlySettings() {
 
   const handleFetchAccounts = async () => {
     if (!hasValidKey) {
-      toast.error("Please add a valid Instantly API key first");
+      toast.error("Please add a valid Instantly API key first", {
+        description: "Enter your API V2 key above and click 'Validate & Save'.",
+      });
       return;
     }
 
@@ -115,13 +207,30 @@ export function InstantlySettings() {
     try {
       const accounts = await fetchSenderAccounts({});
       if (accounts.length === 0) {
-        toast.info("No sender accounts found in your Instantly workspace");
+        toast.info("No sender accounts found", {
+          description: "Add email accounts in your Instantly workspace, then refresh.",
+          action: {
+            label: "Open Instantly",
+            onClick: () => window.open("https://app.instantly.ai/app/accounts", "_blank"),
+          },
+        });
       } else {
-        toast.success(`Found ${accounts.length} sender account(s)`);
+        toast.success(`Found ${accounts.length} sender account${accounts.length === 1 ? "" : "s"}`, {
+          description: "You can now push leads to Instantly campaigns.",
+        });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to fetch accounts";
-      toast.error(message);
+      const errorMessage = error instanceof Error ? error.message : "Failed to fetch accounts";
+      const parsed = parseInstantlyError(errorMessage);
+
+      toast.error("Failed to fetch accounts", {
+        description: parsed.message,
+        duration: 8000,
+        action: parsed.action ? {
+          label: parsed.action.label,
+          onClick: () => window.open(parsed.action!.href, "_blank"),
+        } : undefined,
+      });
     } finally {
       setIsFetchingAccounts(false);
     }
@@ -176,6 +285,7 @@ export function InstantlySettings() {
             <h4 className="text-sm font-semibold">API Key</h4>
             {hasValidKey ? (
               <Badge className="bg-emerald-500 text-emerald-950 hover:bg-emerald-500/90">
+                <CheckCircle2 className="mr-1 h-3 w-3" />
                 Connected
               </Badge>
             ) : (
@@ -183,25 +293,36 @@ export function InstantlySettings() {
             )}
           </div>
 
-          <p className="text-sm text-muted-foreground">
-            Get your API key from{" "}
-            <a
-              href="https://app.instantly.ai/app/settings/integrations"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline"
-            >
-              Instantly Settings → Integrations
-            </a>
-          </p>
+          <div className="text-sm text-muted-foreground space-y-1">
+            <p>
+              Get your <strong>API V2</strong> key from{" "}
+              <a
+                href="https://app.instantly.ai/app/settings/integrations"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline inline-flex items-center gap-1"
+              >
+                Instantly Settings → Integrations
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </p>
+            <p className="text-xs">
+              <strong>Required scopes:</strong> campaigns:create, leads:create, accounts:read (or all:all)
+            </p>
+          </div>
 
           <div className="flex flex-col gap-2 md:flex-row md:items-center">
             <Input
               type="password"
-              placeholder={hasValidKey ? "Key saved. Enter a new key to update." : "Enter your Instantly API key"}
+              placeholder={hasValidKey ? "Key saved. Enter a new key to update." : "Enter your Instantly API V2 key"}
               value={apiKeyInput}
               onChange={(e) => setApiKeyInput(e.target.value)}
               className="md:max-w-md"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && apiKeyInput.trim()) {
+                  handleValidateKey();
+                }
+              }}
             />
             <Button
               onClick={handleValidateKey}
@@ -217,6 +338,18 @@ export function InstantlySettings() {
               )}
             </Button>
           </div>
+
+          {/* V1 to V2 Migration Notice */}
+          {!hasValidKey && (
+            <Alert className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/50">
+              <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <AlertDescription className="text-amber-800 dark:text-amber-200">
+                <strong>Important:</strong> Instantly is deprecating API V1 in 2025.
+                Make sure you're using an <strong>API V2</strong> key.
+                V1 keys will not work with this integration.
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
 
         <Separator />
