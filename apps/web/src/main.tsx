@@ -58,7 +58,16 @@ createRoot(document.getElementById("root")!).render(
     apiKey={posthogKey}
     options={{
       api_host: posthogHost,
-      // Capture unhandled exceptions automatically
+      // Snapshot defaults for configuration consistency
+      // See: https://posthog.com/docs/libraries/js/config
+      defaults: '2025-11-30',
+      // Create person profiles for identified users (when identify() is called)
+      // Use 'always' if you want profiles for anonymous users too (4x more expensive)
+      // See: https://posthog.com/docs/data/anonymous-vs-identified-events
+      person_profiles: 'identified_only',
+      // Autocapture clicks, form submissions, etc.
+      // Exception autocapture is controlled via project settings in PostHog dashboard
+      // See: https://posthog.com/docs/error-tracking/installation/web
       autocapture: true,
       // Capture page views automatically
       capture_pageview: true,

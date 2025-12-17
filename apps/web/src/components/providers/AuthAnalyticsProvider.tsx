@@ -49,17 +49,22 @@ export function AuthAnalyticsProvider({ children }: AuthAnalyticsProviderProps) 
         const firstName = clerkUser.firstName;
         const lastName = clerkUser.lastName;
 
-        posthog.identify(currentUserId, {
-          email,
-          name: [firstName, lastName].filter(Boolean).join(" ") || undefined,
-          firstName,
-          lastName,
-          createdAt: clerkUser.createdAt?.toISOString(),
-          $set_once: {
+        posthog.identify(
+          currentUserId,
+          // $set properties (updated on every identify call)
+          {
+            email,
+            name: [firstName, lastName].filter(Boolean).join(" ") || undefined,
+            firstName,
+            lastName,
+            createdAt: clerkUser.createdAt?.toISOString(),
+          },
+          // $set_once properties (only set on first identify)
+          {
             first_seen: new Date().toISOString(),
             signup_method: clerkUser.externalAccounts?.[0]?.provider || "email",
-          },
-        });
+          }
+        );
 
         hasIdentified.current = true;
         logger.debug("PostHog user identified", { userId: currentUserId, email });

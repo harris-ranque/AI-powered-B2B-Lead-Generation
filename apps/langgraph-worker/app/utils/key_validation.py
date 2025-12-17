@@ -22,6 +22,7 @@ FINDYMAIL_CREDITS_URL = "https://app.findymail.com/api/credits"
 GOOGLE_MAPS_FINDPLACE_URL = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
 ICYPEAS_CREDITS_URL = "https://app.icypeas.com/api/credits"
 APIFY_USER_URL = "https://api.apify.com/v2/users/me"
+INSTANTLY_ACCOUNTS_URL = "https://api.instantly.ai/api/v2/accounts"
 
 
 async def validate_openai_key(api_key: str) -> ValidationResult:
@@ -233,6 +234,34 @@ async def validate_apify_key(api_key: str) -> ValidationResult:
         return {"valid": False, "error": str(error)}
 
 
+async def validate_instantly_key(api_key: str) -> ValidationResult:
+    """Validate Instantly API key by checking accounts endpoint."""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+            async with session.get(INSTANTLY_ACCOUNTS_URL, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    # Return account count if available
+                    account_count = len(data) if isinstance(data, list) else None
+                    return {
+                        "valid": True,
+                        "quotaRemaining": account_count  # Number of sender accounts
+                    }
+                body = await response.text()
+                logger.warning("Instantly validation failed", extra={"status": response.status, "body": body[:200]})
+                return {"valid": False, "error": body or "Authentication failed"}
+    except asyncio.TimeoutError:
+        return {"valid": False, "error": "Validation timeout"}
+    except Exception as error:  # pylint: disable=broad-except
+        logger.error("Instantly key validation error", exc_info=error)
+        return {"valid": False, "error": str(error)}
+
+
 PROVIDER_VALIDATORS = {
     "openai": validate_openai_key,
     "tavily": validate_tavily_key,
@@ -242,6 +271,7 @@ PROVIDER_VALIDATORS = {
     "findymail": validate_findymail_key,
     "icypeas": validate_icypeas_key,
     "apify": validate_apify_key,
+    "instantly": validate_instantly_key,  # Email campaign automation
 }
 
 

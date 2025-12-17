@@ -26,7 +26,10 @@ class EmailGenerationState(TypedDict):
     requirements: EmailRequirements
     provider_keys: Optional[ProviderKeys]
     user_id: Optional[str]
-    
+
+    # Analytics callback (PostHog LLM analytics)
+    llm_callback: Optional[Any]  # PostHog LangChain callback handler for LLM metrics
+
     # Workflow control (simplified for 3-agent flow)
     current_stage: Literal[
         "start",

@@ -179,6 +179,10 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
     using_user_keys = provider_keys is not None
     registry = ClientRegistry.get_instance()
 
+    # Extract PostHog LLM callback for analytics
+    llm_callback = state.get("llm_callback")
+    callbacks = [llm_callback] if llm_callback else []
+
     # Get lead tier for B-tier handling
     lead_tier = state.get("lead_tier", "A")
     lead_tier_reason = state.get("lead_tier_reason", "")
@@ -1152,8 +1156,8 @@ Target score: ≥0.65 for approval.
 """
             logger.info(f"Retry {retry_count}: Using QA feedback to improve email generation")
 
-        # Execute email generation with optional QA feedback
-        email_sequence: EmailSequence = await llm.ainvoke(prompt.format_messages(
+        # Execute email generation with optional QA feedback and PostHog LLM analytics
+        messages = prompt.format_messages(
             # Quality improvement context (for retries)
             qa_improvement_context=qa_improvement_context,
 
@@ -1215,7 +1219,11 @@ Target score: ≥0.65 for approval.
                 "Phone": sender_phone or "",
                 "Website/LinkedIn": sender_website or sender_linkedin or ""
             }
-        ))
+        )
+        email_sequence: EmailSequence = await llm.ainvoke(
+            messages,
+            config={"callbacks": callbacks}  # PostHog captures tokens, cost, latency
+        )
         
         execution_time = time.time() - start_time
         

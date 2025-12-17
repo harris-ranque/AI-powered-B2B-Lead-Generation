@@ -89,6 +89,10 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
     using_user_keys = provider_keys is not None
     registry = ClientRegistry.get_instance()
 
+    # Extract PostHog LLM callback for analytics
+    llm_callback = state.get("llm_callback")
+    callbacks = [llm_callback] if llm_callback else []
+
     # Get lead tier for tier-aware approval thresholds
     lead_tier = state.get("lead_tier", "A")  # Default to A if not set
     lead_tier_reason = state.get("lead_tier_reason", "")
@@ -426,9 +430,9 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
             """)
         ])
         
-        # Execute quality assessment
+        # Execute quality assessment with PostHog LLM analytics
         try:
-            quality_assessment: QualityAssessment = await llm.ainvoke(prompt.format_messages(
+            messages = prompt.format_messages(
                 # Prospect context
                 company_name=lead.company_name,
                 contact_name=lead.contact_name or "Unknown",
@@ -448,7 +452,11 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
                 email_subject=email_subject,
                 email_body=email_body,
                 declared_personalization="; ".join(email_personalization) if email_personalization else "No personalization declared"
-            ))
+            )
+            quality_assessment: QualityAssessment = await llm.ainvoke(
+                messages,
+                config={"callbacks": callbacks}  # PostHog captures tokens, cost, latency
+            )
 
             # Debug logging for QA assessment results
             logger.info(f"QA Assessment scores for {lead.company_name}: "

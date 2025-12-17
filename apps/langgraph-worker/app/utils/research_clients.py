@@ -22,7 +22,13 @@ from ..utils.config import get_settings
 from ..utils.logger import setup_logger
 from ..utils.tavily_tool import TavilySearchTool, TavilySearchResult
 from ..utils.data_validation import BaseDataValidator, DataValidationResult
-from ..utils.analytics import capture_event, capture_error
+from ..utils.analytics import (
+    capture_event,
+    capture_error,
+    track_tavily_call,
+    track_perplexity_sonar_call,
+    track_perplexity_deep_research_call,
+)
 from ..utils.perplexity_rate_limiter import create_perplexity_rate_limiter, PerplexityRateLimiter
 from ..utils.perplexity_retry import (
     perplexity_request_with_retry,
@@ -163,12 +169,27 @@ class TavilyClient:
         try:
             # CRITICAL: Use advanced search depth for query-relevant content chunks
             # Advanced search provides content closely aligned with query vs generic summaries
-            tavily_result: TavilySearchResult = await self.tavily_tool.search_async(
-                query=query,
-                search_depth="advanced",  # Changed from "basic" for 2x better quality
-                include_domains=business_domains,  # Focus on business sources
-            )
-            
+            async with track_tavily_call(
+                company_name=company_name,
+                request_id=None,  # Will be set by caller if available
+                domain=domain,
+                max_results=max_results,
+                search_depth="advanced",
+            ) as tracker:
+                tavily_result: TavilySearchResult = await self.tavily_tool.search_async(
+                    query=query,
+                    search_depth="advanced",  # Changed from "basic" for 2x better quality
+                    include_domains=business_domains,  # Focus on business sources
+                )
+
+                # Set result metrics for PostHog tracking
+                tracker.set_result(
+                    success=tavily_result.error is None,
+                    total_results=tavily_result.total_results,
+                    has_answer=bool(tavily_result.answer),
+                    response_time_ms=tavily_result.response_time * 1000,
+                )
+
             # Convert TavilySearchResult to ResearchResult format
             return self._convert_tavily_to_research_result(
                 company_name, tavily_result
@@ -527,12 +548,31 @@ class PerplexityClient:
                         f"[RateLimit] Waited {ctx.wait_time:.2f}s for sonar-pro slot before researching {company_name}"
                     )
 
-                # Execute request with retry logic
-                data = await perplexity_request_with_retry(
-                    make_request,
-                    config=self.retry_config,
-                    operation_name=f"sonar_pro_research:{company_name}"
-                )
+                # Track API call with PostHog (non-blocking)
+                async with track_perplexity_sonar_call(
+                    company_name=company_name,
+                    request_id=None,  # Will be set by caller if available
+                    domain=domain,
+                    location=location,
+                    rate_limit_wait_time=ctx.wait_time,
+                ) as tracker:
+                    # Execute request with retry logic
+                    data = await perplexity_request_with_retry(
+                        make_request,
+                        config=self.retry_config,
+                        operation_name=f"sonar_pro_research:{company_name}"
+                    )
+
+                    # Set result metrics for PostHog tracking
+                    choices = data.get("choices", [])
+                    content = choices[0].get("message", {}).get("content", "") if choices else ""
+                    citations = data.get("citations", [])
+                    tracker.set_result(
+                        success=True,
+                        word_count=len(content.split()) if content else 0,
+                        citation_count=len(citations),
+                        has_content=bool(content),
+                    )
 
             response_time = time.time() - start_time
             return self._process_perplexity_response(company_name, data, response_time)
@@ -756,12 +796,31 @@ class PerplexityClient:
                         f"[RateLimit] Waited {ctx.wait_time:.2f}s for deep-research slot before researching {company_name}"
                     )
 
-                # Execute request with retry logic
-                data = await perplexity_request_with_retry(
-                    make_request,
-                    config=self.retry_config,
-                    operation_name=f"deep_research:{company_name}"
-                )
+                # Track API call with PostHog (non-blocking)
+                async with track_perplexity_deep_research_call(
+                    company_name=company_name,
+                    request_id=None,  # Will be set by caller if available
+                    domain=domain,
+                    location=location,
+                    rate_limit_wait_time=ctx.wait_time,
+                ) as tracker:
+                    # Execute request with retry logic
+                    data = await perplexity_request_with_retry(
+                        make_request,
+                        config=self.retry_config,
+                        operation_name=f"deep_research:{company_name}"
+                    )
+
+                    # Set result metrics for PostHog tracking
+                    choices = data.get("choices", [])
+                    content = choices[0].get("message", {}).get("content", "") if choices else ""
+                    citations = data.get("citations", [])
+                    tracker.set_result(
+                        success=True,
+                        word_count=len(content.split()) if content else 0,
+                        citation_count=len(citations),
+                        has_content=bool(content),
+                    )
 
             response_time = time.time() - start_time
             result = self._process_perplexity_response(company_name, data, response_time)

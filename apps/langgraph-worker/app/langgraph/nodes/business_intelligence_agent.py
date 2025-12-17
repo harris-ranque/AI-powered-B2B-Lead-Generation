@@ -219,6 +219,10 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
     provider_key_map = provider_keys or {}
     using_user_keys = provider_keys is not None
     registry = ClientRegistry.get_instance()
+
+    # Extract PostHog LLM callback for analytics
+    llm_callback = state.get("llm_callback")
+    callbacks = [llm_callback] if llm_callback else []
     analytics_context = {
         "request_id": request_id,
         "lead_id": getattr(lead, "id", None),
@@ -491,8 +495,8 @@ CRITICAL REQUIREMENTS:
                 for comp in research_result.competitors[:3]
             ]
         
-        # Execute comprehensive analysis
-        intelligence: BusinessIntelligence = await llm.ainvoke(prompt.format_messages(
+        # Execute comprehensive analysis with PostHog LLM analytics
+        messages = prompt.format_messages(
             # Lead information
             company_name=lead.company_name,
             contact_name=lead.contact_name or "Unknown",
@@ -504,7 +508,7 @@ CRITICAL REQUIREMENTS:
             description=getattr(lead, 'description', '') or "Not provided",
             technologies=", ".join(getattr(lead, 'technologies', [])) or "Not specified",
             revenue=getattr(lead, 'revenue', '') or "Not specified",
-            
+
             # Research results
             research_tier=research_result.tier.value,
             confidence_score=research_result.confidence_score,
@@ -515,7 +519,7 @@ CRITICAL REQUIREMENTS:
             recent_news="; ".join(research_result.raw_data.get('recent_news', [])) or "No recent news",
             research_time=research_result.response_time,
             sources_analyzed=research_result.sources_analyzed,
-            
+
             # Our business profile
             our_company=business_profile.company_name,
             our_industry=business_profile.industry,
@@ -523,7 +527,11 @@ CRITICAL REQUIREMENTS:
             our_services=", ".join(business_profile.services),
             our_targets=", ".join(business_profile.target_markets),
             our_differentiators=", ".join(business_profile.key_differentiators)
-        ))
+        )
+        intelligence: BusinessIntelligence = await llm.ainvoke(
+            messages,
+            config={"callbacks": callbacks}  # PostHog captures tokens, cost, latency
+        )
         
         analysis_time = time.time() - analysis_start
         total_time = time.time() - start_time

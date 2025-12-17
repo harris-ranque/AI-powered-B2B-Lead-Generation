@@ -118,15 +118,30 @@ export const useAnalytics = () => {
 
   /**
    * Identify user with properties
+   *
+   * @param userId - Unique user identifier
+   * @param setProperties - Properties to set/update on every identify call (e.g., email, plan)
+   * @param setOnceProperties - Properties to set only once, never overwritten (e.g., first_seen, signup_method)
+   *
+   * Per PostHog docs: https://posthog.com/docs/product-analytics/identify
+   * - $set properties are updated on every identify call
+   * - $set_once properties are only set if they don't already exist
    */
   const identifyUser = useCallback(
-    (userId: string, properties: Record<string, unknown>) => {
+    (
+      userId: string,
+      setProperties: Record<string, unknown>,
+      setOnceProperties?: Record<string, unknown>
+    ) => {
       try {
         if (posthog) {
-          posthog.identify(userId, properties);
+          posthog.identify(userId, setProperties, setOnceProperties);
 
           if (import.meta.env.MODE === 'development') {
-            console.log('👤 PostHog Identify:', userId, properties);
+            console.log('👤 PostHog Identify:', userId, {
+              $set: setProperties,
+              $set_once: setOnceProperties,
+            });
           }
         }
       } catch (error) {

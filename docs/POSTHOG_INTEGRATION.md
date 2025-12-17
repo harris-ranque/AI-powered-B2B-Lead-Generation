@@ -1,7 +1,7 @@
 # PostHog Analytics Integration - Implementation Guide
 
-**Status**: 🟡 **Partially Complete** - Core infrastructure implemented, remaining event tracking pending
-**Last Updated**: January 2025
+**Status**: 🟢 **Core Complete** - Infrastructure, user identification, and LLM analytics implemented
+**Last Updated**: December 2025
 **Priority**: High - Required for data-driven product decisions
 
 ---
@@ -41,19 +41,29 @@ PostHog is integrated for comprehensive product analytics, user behavior trackin
 <PostHogProvider
   apiKey={import.meta.env.VITE_PUBLIC_POSTHOG_KEY}
   options={{
-    api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
-    defaults: '2025-05-24',
-    capture_exceptions: true,
+    api_host: posthogHost,
+    // Snapshot defaults for configuration consistency
+    defaults: '2025-11-30',
+    // Create person profiles for identified users only (4x cheaper than 'always')
+    person_profiles: 'identified_only',
+    // Autocapture clicks, form submissions, etc.
+    // Exception autocapture is controlled via project settings in PostHog dashboard
+    autocapture: true,
+    capture_pageview: true,
+    capture_pageleave: true,
+    persistence: 'localStorage+cookie',
+    disable_session_recording: false,
     debug: import.meta.env.MODE === "development",
+    respect_dnt: true,
   }}
 >
   <App />
 </PostHogProvider>
 ```
 
-**Environment Variables**:
-- `VITE_PUBLIC_POSTHOG_KEY`: `phc_eKWiUWeoianMD5qUotdAKgXBUdPtI7F7P2vLAg8Ay67`
-- `VITE_PUBLIC_POSTHOG_HOST`: `https://us.i.posthog.com`
+**Environment Variables** (set in Railway/local .env):
+- `VITE_PUBLIC_POSTHOG_KEY`: Your PostHog project API key
+- `VITE_PUBLIC_POSTHOG_HOST`: `https://us.i.posthog.com` (US cloud)
 
 #### 2. **Centralized Analytics Hook**
 **Location**: `apps/web/src/hooks/useAnalytics.ts`
@@ -94,24 +104,51 @@ const MyComponent = () => {
 
 ### ✅ User Identification (100%)
 
-**Location**: `apps/web/src/components/LeadEternityDashboard.tsx:112-126`
+User identification happens in two places for complete coverage:
 
-**Implementation**:
+#### 1. **AuthAnalyticsProvider** (on sign-in/sign-out)
+**Location**: `apps/web/src/components/providers/AuthAnalyticsProvider.tsx`
+
+Handles initial identification when users sign in via Clerk:
 ```typescript
-useEffect(() => {
-  if (user) {
-    analytics.identifyUser(user._id, {
-      email: user.email,
-      name: user.name,
-      plan: user.plan || 'free',
-      role: user.role || 'user',
-      credits: user.credits || 0,
-      $set_once: {
-        first_seen: new Date().toISOString(),
-      },
-    });
+posthog.identify(
+  currentUserId,
+  // $set properties (updated on every identify)
+  {
+    email,
+    name: [firstName, lastName].filter(Boolean).join(" "),
+    firstName,
+    lastName,
+    createdAt: clerkUser.createdAt?.toISOString(),
+  },
+  // $set_once properties (only set if not already present)
+  {
+    first_seen: new Date().toISOString(),
+    signup_method: clerkUser.externalAccounts?.[0]?.provider || "email",
   }
-}, [user, analytics]);
+);
+```
+
+#### 2. **LeadEternityDashboard** (with Convex data)
+**Location**: `apps/web/src/components/LeadEternityDashboard.tsx`
+
+Updates user properties with Convex-specific data not available in Clerk:
+```typescript
+analytics.identifyUser(
+  user._id,
+  // $set properties - updated on every identify call
+  {
+    email: user.email,
+    name: user.name,
+    plan: user.plan || 'free',
+    role: user.role || 'user',
+    credits: user.credits || 0,
+  },
+  // $set_once properties - only set if not already present
+  {
+    first_seen: new Date().toISOString(),
+  }
+);
 ```
 
 **Properties Tracked**:
@@ -120,6 +157,7 @@ useEffect(() => {
 - User role (user/admin)
 - Current credit balance
 - First seen timestamp (immutable)
+- Signup method (immutable)
 
 ### ✅ Dashboard Navigation (100%)
 
@@ -488,88 +526,94 @@ Verify all events include:
 
 ---
 
+## ✅ LangGraph Worker Integration (Implemented)
+
+### PostHog LLM Analytics
+
+**Location**: `apps/langgraph-worker/app/utils/analytics.py`
+
+The LangGraph worker now has full PostHog integration for tracking LLM calls and API usage.
+
+#### LangChain Callback Handler
+
+```python
+from posthog.ai.langchain import CallbackHandler
+
+def create_llm_callback_handler(
+    distinct_id: Optional[str] = None,
+    trace_id: Optional[str] = None,
+    properties: Optional[Dict[str, Any]] = None,
+) -> Optional[Any]:
+    """
+    Create PostHog LangChain callback handler for LLM analytics.
+    Automatically captures: tokens, cost, latency, inputs/outputs, trace hierarchies.
+    """
+    return CallbackHandler(
+        api_key=client.api_key,
+        host=client.host,
+        distinct_id=distinct_id or "langgraph-worker",
+        trace_id=trace_id,
+        properties=full_properties,
+        privacy_mode=False,  # Full visibility for debugging
+    )
+```
+
+#### API Call Tracking
+
+All external API calls are tracked with the `APICallTracker` context manager:
+
+```python
+async with track_perplexity_sonar_call(
+    company_name=company_name,
+    request_id=request_id,
+    domain=domain,
+) as tracker:
+    result = await perplexity_client.research(...)
+    tracker.set_result(
+        success=True,
+        word_count=len(content.split()),
+        citation_count=len(citations),
+    )
+```
+
+**Tracked APIs**:
+- `track_tavily_call()` - Tavily search API
+- `track_perplexity_sonar_call()` - Perplexity Sonar Pro
+- `track_perplexity_deep_research_call()` - Perplexity Deep Research
+- `track_google_maps_call()` - Google Maps API
+- `track_openai_call()` - Direct OpenAI calls
+
+**Events Generated**:
+- `api_{name}_started` - When call begins
+- `api_{name}_completed` - Success with duration_ms, metrics
+- `api_{name}_error` - Failure with error details
+
+#### Agent LLM Tracking
+
+Each agent (BI, Email Gen, QA) passes the callback to LLM invocations:
+
+```python
+llm_callback = state.get("llm_callback")
+callbacks = [llm_callback] if llm_callback else []
+
+result = await llm.ainvoke(
+    messages,
+    config={"callbacks": callbacks}  # PostHog captures tokens, cost, latency
+)
+```
+
+**Automatic Metrics Captured**:
+- Input/output tokens
+- Cost calculation based on model pricing
+- Response latency
+- Full prompt and response (for debugging)
+- Trace hierarchy (groups related LLM calls)
+
+---
+
 ## Future Enhancements
 
-### PostHog LangChain Toolkit Integration
-
-**Objective**: Track AI agent performance, token usage, and decision-making quality.
-
-**Implementation Plan**:
-
-#### 1. LangGraph Worker Integration
-
-**Location**: `apps/langgraph-worker/`
-
-**Install Dependency**:
-```bash
-pip install posthog-langchain
-```
-
-**Initialize in Worker**:
-```python
-from posthog_langchain import PostHogTracer
-
-tracer = PostHogTracer(
-    project_api_key="phc_...",
-    host="https://us.i.posthog.com"
-)
-
-# Add to LangGraph configuration
-graph = StateGraph(
-    ...,
-    callbacks=[tracer]
-)
-```
-
-#### 2. Metrics to Track
-
-**Agent Performance**:
-- LLM call duration
-- Token usage per request
-- Agent decision quality scores
-- Research tier effectiveness (Tavily vs Perplexity)
-
-**Event Examples**:
-```python
-# Automatic tracking via PostHogTracer
-{
-  "event": "llm_call_completed",
-  "properties": {
-    "agent": "business_intelligence",
-    "model": "gpt-4",
-    "tokens": 1250,
-    "duration_ms": 2100,
-    "success": true
-  }
-}
-
-{
-  "event": "research_tier_comparison",
-  "properties": {
-    "tier": "perplexity",
-    "quality_score": 0.85,
-    "cost": 0.12,
-    "duration_ms": 8500
-  }
-}
-```
-
-#### 3. Correlation with Frontend
-
-**Link AI Performance to User Outcomes**:
-```typescript
-// Frontend tracks search with correlation ID
-analytics.trackSearchCreated({
-  search_id: searchId,
-  correlation_id: correlationId,
-  // ... other properties
-});
-
-// Backend links AI events with same correlation_id
-// Enables analysis: AI performance → User satisfaction
-```
-
-#### 4. A/B Testing Research Tiers
+### A/B Testing Research Tiers
 
 **Experiment Setup**:
 - Control group: Tavily (fast, lower cost)
@@ -658,12 +702,12 @@ if (import.meta.env.MODE === 'development') {
 
 ### Phase 1: Foundation ✅
 - [x] PostHog provider configured
-- [x] useAnalytics hook created
+- [x] useAnalytics hook created with correct `$set`/`$set_once` support
 - [x] Documentation in CLAUDE.md
-- [x] User identification implemented
+- [x] User identification implemented (AuthAnalyticsProvider + Dashboard)
 - [x] Dashboard navigation tracking
 
-### Phase 2: Core Product 🟡
+### Phase 2: Core Product ✅
 - [x] Search creation tracking
 - [x] Search completion tracking
 - [x] Search cancellation tracking
@@ -672,8 +716,8 @@ if (import.meta.env.MODE === 'development') {
 - [x] Export failed tracking
 - [ ] Pipeline stage completion tracking
 
-### Phase 3: Conversion Funnel 🔴
-- [ ] Authentication events (sign up, sign in, sign out)
+### Phase 3: Conversion Funnel 🟡
+- [x] Authentication events (sign up, sign in, sign out) - via AuthAnalyticsProvider
 - [ ] Onboarding flow tracking
 - [ ] Credit purchase events
 - [ ] Subscription upgrade/downgrade events
@@ -685,9 +729,10 @@ if (import.meta.env.MODE === 'development') {
 - [ ] Error event tracking
 - [ ] Performance metrics
 
-### Phase 5: Advanced Analytics 🔵
-- [ ] LangGraph worker integration
-- [ ] AI agent performance tracking
+### Phase 5: Advanced Analytics ✅
+- [x] LangGraph worker integration
+- [x] AI agent performance tracking (LangChain callback handler)
+- [x] API call tracking (Tavily, Perplexity Sonar, Deep Research)
 - [ ] Research tier A/B testing
 - [ ] Correlation with user outcomes
 
@@ -750,6 +795,6 @@ For questions or issues:
 3. Check browser console for debug output
 4. Review PostHog dashboard for event flow
 
-**PostHog Integration Status**: 🟡 **In Progress** - Core infrastructure complete, event tracking 60% complete
+**PostHog Integration Status**: 🟢 **Core Complete** - Frontend infrastructure, user identification, and LLM analytics implemented
 
-**Next Milestone**: Complete authentication and billing event tracking for full conversion funnel visibility.
+**Next Milestone**: Complete onboarding flow tracking and credit/billing events for full conversion funnel visibility.
