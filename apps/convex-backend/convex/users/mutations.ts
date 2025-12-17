@@ -158,9 +158,12 @@ export const deductCredits = mutation({
       };
     }
 
-    // Direct credit deduction implementation
-    const currentBalance = user.credits || 0;
-    if (currentBalance < args.amount) {
+    // Credit consumption priority: subscription credits first, then purchased credits
+    const subscriptionCredits = user.subscriptionCredits || 0;
+    const purchasedCredits = user.credits || 0;
+    const totalAvailable = subscriptionCredits + purchasedCredits;
+
+    if (totalAvailable < args.amount) {
       throw createError(
         "Insufficient credits",
         ERROR_CODES.PAYMENT_REQUIRED,
@@ -168,40 +171,73 @@ export const deductCredits = mutation({
       );
     }
 
-    const newBalance = currentBalance - args.amount;
+    // Calculate how much to deduct from each credit pool
+    const fromSubscription = Math.min(subscriptionCredits, args.amount);
+    const fromPurchased = args.amount - fromSubscription;
 
-    // Record the transaction
+    // New balances after deduction
+    const newSubscriptionBalance = subscriptionCredits - fromSubscription;
+    const newPurchasedBalance = purchasedCredits - fromPurchased;
+    const newTotalBalance = newSubscriptionBalance + newPurchasedBalance;
+
+    // Record the transaction with breakdown info
     await ctx.db.insert("creditTransactions", {
       userId: user._id,
       type: "usage",
       amount: args.amount,
       description: args.description,
-      balanceAfter: newBalance,
+      balanceAfter: newTotalBalance,
       relatedEntity: args.relatedEntity,
       createdAt: Date.now(),
     });
 
-    // Update user's credit balance
+    // Update user's credit balances (both subscription and purchased)
     await ctx.db.patch(user._id, {
-      credits: newBalance,
+      credits: newPurchasedBalance,
+      subscriptionCredits: newSubscriptionBalance,
       updatedAt: Date.now(),
     });
 
+    // Update subscription credit allocation usage tracking if subscription credits were used
+    if (fromSubscription > 0) {
+      const activeAllocation = await ctx.db
+        .query("subscriptionCreditAllocations")
+        .withIndex("by_user_status", (q) =>
+          q.eq("userId", user._id).eq("status", "active")
+        )
+        .first();
+
+      if (activeAllocation) {
+        await ctx.db.patch(activeAllocation._id, {
+          creditsUsed: activeAllocation.creditsUsed + fromSubscription,
+        });
+      }
+    }
+
     // Check if credits are low and send notification
-    if (newBalance <= 10 && newBalance > 0) {
+    if (newTotalBalance <= 10 && newTotalBalance > 0) {
       await ctx.db.insert("notifications", {
         userId: user._id,
         type: "credits_low",
         title: "Credits Running Low",
-        message: `You have ${newBalance} credits remaining. Consider purchasing more to continue using Genni.`,
-        data: { creditsRemaining: newBalance },
+        message: `You have ${newTotalBalance} credits remaining. Consider purchasing more to continue using Genni.`,
+        data: { creditsRemaining: newTotalBalance },
         read: false,
         sent: false,
         createdAt: Date.now(),
       });
     }
 
-    return { success: true, newBalance };
+    return {
+      success: true,
+      newBalance: newTotalBalance,
+      breakdown: {
+        fromSubscription,
+        fromPurchased,
+        subscriptionRemaining: newSubscriptionBalance,
+        purchasedRemaining: newPurchasedBalance,
+      },
+    };
   },
 });
 

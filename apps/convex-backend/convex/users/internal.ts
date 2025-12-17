@@ -193,30 +193,155 @@ export const deductCreditsInternal = internalMutation({
       };
     }
 
-    const currentBalance = user.credits || 0;
-    if (currentBalance < args.amount) {
+    // Credit consumption priority: subscription credits first, then purchased credits
+    const subscriptionCredits = user.subscriptionCredits || 0;
+    const purchasedCredits = user.credits || 0;
+    const totalAvailable = subscriptionCredits + purchasedCredits;
+
+    if (totalAvailable < args.amount) {
       throw new Error("Insufficient credits");
     }
 
-    const newBalance = currentBalance - args.amount;
+    // Calculate how much to deduct from each credit pool
+    const fromSubscription = Math.min(subscriptionCredits, args.amount);
+    const fromPurchased = args.amount - fromSubscription;
+
+    // New balances after deduction
+    const newSubscriptionBalance = subscriptionCredits - fromSubscription;
+    const newPurchasedBalance = purchasedCredits - fromPurchased;
+    const newTotalBalance = newSubscriptionBalance + newPurchasedBalance;
 
     await ctx.db.insert("creditTransactions", {
       userId: args.userId,
       type: "usage",
       amount: args.amount,
       description: args.description,
-      balanceAfter: newBalance,
+      balanceAfter: newTotalBalance,
       relatedEntity: args.relatedEntity,
       createdAt: Date.now(),
     });
 
     await ctx.db.patch(args.userId, {
-      credits: newBalance,
+      credits: newPurchasedBalance,
+      subscriptionCredits: newSubscriptionBalance,
       updatedAt: Date.now(),
     });
 
-    // Optional: low-balance notification could be added here if needed
+    // Update subscription credit allocation usage tracking if subscription credits were used
+    if (fromSubscription > 0) {
+      const activeAllocation = await ctx.db
+        .query("subscriptionCreditAllocations")
+        .withIndex("by_user_status", (q) =>
+          q.eq("userId", args.userId).eq("status", "active")
+        )
+        .first();
 
-    return { success: true, balance: newBalance };
+      if (activeAllocation) {
+        await ctx.db.patch(activeAllocation._id, {
+          creditsUsed: activeAllocation.creditsUsed + fromSubscription,
+        });
+      }
+    }
+
+    return {
+      success: true,
+      balance: newTotalBalance,
+      breakdown: {
+        fromSubscription,
+        fromPurchased,
+        subscriptionRemaining: newSubscriptionBalance,
+        purchasedRemaining: newPurchasedBalance,
+      },
+    };
+  },
+});
+
+// Internal query to get user by email without auth check
+export const getUserByEmailInternal = internalQuery({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .unique();
+  },
+});
+
+// Alias for subscriptions module compatibility
+export const getUserByEmail = getUserByEmailInternal;
+export const getUserByClerkId = getUserByClerkIdInternal;
+
+// Internal mutation to create user for custom subscription (no Clerk ID initially)
+export const createUserForSubscription = internalMutation({
+  args: {
+    email: v.string(),
+    name: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Check if user already exists
+    const existingUser = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .unique();
+
+    if (existingUser) {
+      console.log(`User already exists with email: ${args.email}`);
+      return existingUser._id;
+    }
+
+    // Create new user without Clerk ID (will be linked when they sign up)
+    const userId = await ctx.db.insert("users", {
+      email: args.email,
+      name: args.name,
+      role: "user",
+      plan: "free", // Will be updated to "custom" when subscription activates
+      credits: 0,
+      isActive: true,
+      preferences: {
+        emailNotifications: true,
+        language: "en",
+        timezone: "UTC",
+        theme: "neon-pulse",
+      },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    // Create initial incomplete business profile
+    await ctx.db.insert("businessProfiles", {
+      userId,
+      companyName: "",
+      industry: "",
+      valueProposition: "",
+      services: [],
+      targetMarkets: [],
+      keyDifferentiators: [],
+      contactInfo: {
+        name: args.name,
+        email: args.email,
+      },
+      isComplete: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    console.log(`User created for subscription: ${userId} (${args.email})`);
+    return userId;
+  },
+});
+
+// Internal mutation to update Stripe customer ID on user
+export const updateStripeCustomerId = internalMutation({
+  args: {
+    userId: v.id("users"),
+    stripeCustomerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.userId, {
+      stripeCustomerId: args.stripeCustomerId,
+      updatedAt: Date.now(),
+    });
+    console.log(`Stripe customer ID updated for user: ${args.userId}`);
+    return { success: true };
   },
 });

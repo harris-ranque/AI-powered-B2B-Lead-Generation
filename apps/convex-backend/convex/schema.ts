@@ -10,7 +10,7 @@ export default defineSchema({
   // Users table - Authentication and basic user info
   users: defineTable({
     // Clerk integration fields
-    clerkId: v.string(), // Clerk user ID for syncing
+    clerkId: v.optional(v.string()), // Clerk user ID for syncing (optional for admin-created subscription users)
     email: v.string(),
     name: v.optional(v.string()),
     avatar: v.optional(v.string()),
@@ -21,8 +21,11 @@ export default defineSchema({
       v.literal("professional"),
       v.literal("business"),
       v.literal("enterprise"),
+      v.literal("custom"), // Custom subscription created by admin
     ),
     credits: v.number(),
+    // Subscription credits (separate from purchased credits, use-it-or-lose-it monthly)
+    subscriptionCredits: v.optional(v.number()),
     role: v.union(v.literal("user"), v.literal("admin")),
     isActive: v.boolean(),
     // Per-user processing pause (admin-controlled)
@@ -30,9 +33,11 @@ export default defineSchema({
     pauseReason: v.optional(v.string()),
     pausedAt: v.optional(v.number()),
     pausedBy: v.optional(v.id("users")),
-    // FastSpring integration fields
+    // FastSpring integration fields (legacy)
     fastspringAccountId: v.optional(v.string()),
     fastspringSubscriptionId: v.optional(v.string()),
+    // Stripe integration fields
+    stripeCustomerId: v.optional(v.string()),
     preferences: v.optional(
       v.object({
         emailNotifications: v.boolean(),
@@ -54,7 +59,8 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_plan", ["plan"])
     .index("by_role", ["role"])
-    .index("by_created", ["createdAt"]),
+    .index("by_created", ["createdAt"])
+    .index("by_stripe_customer", ["stripeCustomerId"]),
 
   // Business Profiles - Company information for AI personalization
   businessProfiles: defineTable({
@@ -1648,4 +1654,158 @@ export default defineSchema({
     .index("by_expires", ["expiresAt"])
     .index("by_user_provider", ["userId", "provider"])
     .index("by_user_category", ["userId", "category"]),
+
+  // ============================================================================
+  // STRIPE CUSTOM SUBSCRIPTIONS
+  // ============================================================================
+
+  // Stripe Customers - Maps users to Stripe customer objects
+  stripeCustomers: defineTable({
+    userId: v.id("users"),
+    stripeCustomerId: v.string(),
+    email: v.string(),
+    defaultPaymentMethodId: v.optional(v.string()),
+    defaultPaymentMethodType: v.optional(
+      v.union(v.literal("card"), v.literal("us_bank_account"))
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_stripe_customer", ["stripeCustomerId"]),
+
+  // Custom Subscriptions - Admin-created custom subscriptions per customer
+  customSubscriptions: defineTable({
+    // Customer link
+    userId: v.id("users"),
+    stripeCustomerId: v.string(),
+
+    // Stripe subscription details
+    stripeSubscriptionId: v.optional(v.string()), // Set after customer completes checkout
+    stripePriceIdAch: v.string(), // ACH price (no convenience fee)
+    stripePriceIdCard: v.string(), // Card price (includes 3% convenience fee)
+    stripeProductId: v.string(), // Genni Custom Subscription product
+
+    // Custom subscription configuration (set by admin)
+    monthlyPriceCents: v.number(), // Base price in cents (e.g., 100000 = $1000)
+    monthlyCredits: v.number(), // Credits included per month
+    allowExtraCredits: v.boolean(), // Can customer buy additional credits?
+    extraCreditPriceCents: v.optional(v.number()), // Price per extra credit pack
+    extraCreditPackSize: v.optional(v.number()), // Credits per extra pack
+
+    // Payment method tracking
+    paymentMethodType: v.optional(
+      v.union(v.literal("card"), v.literal("us_bank_account"))
+    ),
+    convenienceFeeCents: v.optional(v.number()), // Card convenience fee if applicable
+
+    // Status
+    status: v.union(
+      v.literal("pending_checkout"), // Admin created, awaiting customer payment
+      v.literal("active"),
+      v.literal("past_due"),
+      v.literal("cancelled"),
+      v.literal("paused")
+    ),
+    checkoutUrl: v.optional(v.string()), // Stripe Checkout URL for customer
+    checkoutSessionId: v.optional(v.string()), // Stripe Checkout session ID
+    checkoutExpiresAt: v.optional(v.number()),
+
+    // Billing period
+    currentPeriodStart: v.optional(v.number()),
+    currentPeriodEnd: v.optional(v.number()),
+    creditsAllocatedAt: v.optional(v.number()), // Last credit allocation
+
+    // Admin notes
+    adminNotes: v.optional(v.string()),
+    createdBy: v.id("users"), // Admin who created
+
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_stripe_subscription", ["stripeSubscriptionId"])
+    .index("by_stripe_customer", ["stripeCustomerId"])
+    .index("by_checkout_session", ["checkoutSessionId"])
+    .index("by_status", ["status"])
+    .index("by_created_by", ["createdBy"]),
+
+  // Subscription Credit Allocations - Monthly credit allocations (use-it-or-lose-it)
+  subscriptionCreditAllocations: defineTable({
+    userId: v.id("users"),
+    subscriptionId: v.id("customSubscriptions"),
+
+    // Period info
+    periodStart: v.number(),
+    periodEnd: v.number(),
+
+    // Credits
+    creditsAllocated: v.number(),
+    creditsUsed: v.number(),
+    creditsExpired: v.number(), // Set when period ends
+
+    // Status
+    status: v.union(
+      v.literal("active"),
+      v.literal("expired")
+    ),
+
+    expiredAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_subscription", ["subscriptionId"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_period_end", ["periodEnd"]),
+
+  // Extra Credit Purchases - Self-service credit purchases by customers
+  extraCreditPurchases: defineTable({
+    userId: v.id("users"),
+    subscriptionId: v.id("customSubscriptions"),
+
+    // Stripe payment
+    stripePaymentIntentId: v.optional(v.string()),
+    stripeCheckoutSessionId: v.optional(v.string()),
+
+    // Purchase details
+    creditsPurchased: v.number(),
+    basePriceCents: v.number(),
+    convenienceFeeCents: v.number(), // 3% for cards, 0 for ACH
+    totalPriceCents: v.number(),
+    paymentMethodType: v.union(v.literal("card"), v.literal("us_bank_account")),
+
+    // Status
+    status: v.union(
+      v.literal("pending"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("refunded")
+    ),
+
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_subscription", ["subscriptionId"])
+    .index("by_payment_intent", ["stripePaymentIntentId"])
+    .index("by_checkout_session", ["stripeCheckoutSessionId"])
+    .index("by_status", ["status"]),
+
+  // Processed Webhooks - Idempotency tracking to prevent duplicate event processing
+  processedWebhooks: defineTable({
+    eventId: v.string(), // Stripe event ID (e.g., evt_...)
+    eventType: v.string(), // Event type (e.g., checkout.session.completed)
+    processedAt: v.number(),
+    // "processing" = claimed but not yet completed (prevents race conditions)
+    result: v.union(
+      v.literal("processing"),
+      v.literal("success"),
+      v.literal("skipped"),
+      v.literal("failed")
+    ),
+    error: v.optional(v.string()),
+  })
+    .index("by_event_id", ["eventId"])
+    .index("by_event_type", ["eventType"])
+    .index("by_processed_at", ["processedAt"]),
 });

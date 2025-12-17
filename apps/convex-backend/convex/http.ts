@@ -2119,4 +2119,297 @@ http.route({
   }),
 });
 
+// ============================================================================
+// STRIPE WEBHOOKS
+// ============================================================================
+
+/**
+ * Stripe webhook endpoint for custom subscription events.
+ *
+ * Handles:
+ * - checkout.session.completed: Subscription activation
+ * - invoice.paid: Monthly renewal
+ * - invoice.payment_failed: Payment failure handling
+ * - customer.subscription.updated: Status changes
+ * - customer.subscription.deleted: Cancellation
+ * - payment_intent.succeeded: Extra credit purchases
+ */
+http.route({
+  path: "/webhooks/stripe",
+  method: "POST",
+  handler: httpAction(async (ctx, request: Request) => {
+    const signature = request.headers.get("stripe-signature");
+
+    if (!signature) {
+      console.error("[Stripe Webhook] Missing stripe-signature header");
+      return new Response(
+        JSON.stringify({ error: "Missing stripe-signature header" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get raw body for signature verification
+    let rawBody: string;
+    try {
+      rawBody = await request.text();
+    } catch (error) {
+      console.error("[Stripe Webhook] Failed to read request body:", error);
+      return new Response(
+        JSON.stringify({ error: "Failed to read request body" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // CRITICAL: Verify Stripe webhook signature before processing
+    // This prevents attackers from forging webhook events
+    const verificationResult = await ctx.runAction(
+      internal.billing.stripe.webhooks.verifyAndParseWebhook,
+      {
+        payload: rawBody,
+        signature: signature,
+      }
+    );
+
+    if (!verificationResult.success || !verificationResult.event) {
+      console.error("[Stripe Webhook] Signature verification failed:", verificationResult.error);
+      return new Response(
+        JSON.stringify({ error: "Invalid signature", details: verificationResult.error }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const event = verificationResult.event as unknown as {
+      id: string;
+      type: string;
+      data: { object: Record<string, unknown> };
+    };
+
+    console.log(`[Stripe Webhook] Verified event: ${event.type}`, {
+      eventId: event.id,
+    });
+
+    // ATOMIC IDEMPOTENCY: Try to claim the event for processing
+    // This uses a mutation (not query) to atomically check-and-claim,
+    // preventing race conditions where two concurrent requests both process the same event.
+    const claimResult = await ctx.runMutation(
+      internal.billing.stripe.webhooks.tryClaimEvent,
+      { eventId: event.id, eventType: event.type }
+    );
+
+    if (!claimResult.claimed) {
+      console.log(`[Stripe Webhook] Event already claimed/processed, skipping: ${event.id}`, {
+        eventType: event.type,
+        previousResult: claimResult.result,
+      });
+      return new Response(
+        JSON.stringify({
+          received: true,
+          type: event.type,
+          status: "already_processed",
+          previousResult: claimResult.result,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    try {
+      // Route to appropriate handler based on event type
+      switch (event.type) {
+        case "checkout.session.completed": {
+          const session = event.data.object;
+          // Extract subscription period dates if the subscription object is expanded
+          // Otherwise the handler will use a 30-day fallback (corrected by invoice.paid)
+          const subscriptionData = session.subscription as
+            | string
+            | { id: string; current_period_start: number; current_period_end: number }
+            | null;
+          const subscriptionId =
+            typeof subscriptionData === "string"
+              ? subscriptionData
+              : subscriptionData?.id || "";
+          const currentPeriodStart =
+            typeof subscriptionData === "object" && subscriptionData
+              ? subscriptionData.current_period_start
+              : undefined;
+          const currentPeriodEnd =
+            typeof subscriptionData === "object" && subscriptionData
+              ? subscriptionData.current_period_end
+              : undefined;
+
+          await ctx.runMutation(
+            internal.billing.stripe.webhooks.handleCheckoutCompleted,
+            {
+              sessionId: session.id as string,
+              subscriptionId,
+              customerId: session.customer as string,
+              paymentMethodType: (session.payment_method_types as string[])?.[0],
+              metadata: session.metadata,
+              currentPeriodStart,
+              currentPeriodEnd,
+            }
+          );
+          break;
+        }
+
+        case "invoice.paid": {
+          const invoice = event.data.object;
+          // Skip if no subscription (one-time payment)
+          if (!invoice.subscription) break;
+
+          await ctx.runMutation(
+            internal.billing.stripe.webhooks.handleInvoicePaid,
+            {
+              invoiceId: invoice.id as string,
+              subscriptionId: invoice.subscription as string,
+              customerId: invoice.customer as string,
+              amountPaid: invoice.amount_paid as number,
+              periodStart: invoice.period_start as number,
+              periodEnd: invoice.period_end as number,
+            }
+          );
+          break;
+        }
+
+        case "invoice.payment_failed": {
+          const invoice = event.data.object;
+          if (!invoice.subscription) break;
+
+          await ctx.runMutation(
+            internal.billing.stripe.webhooks.handleInvoicePaymentFailed,
+            {
+              invoiceId: invoice.id as string,
+              subscriptionId: invoice.subscription as string,
+              customerId: invoice.customer as string,
+              attemptCount: invoice.attempt_count as number,
+              nextAttemptAt: invoice.next_payment_attempt as number | undefined,
+            }
+          );
+          break;
+        }
+
+        case "customer.subscription.updated": {
+          const subscription = event.data.object;
+          await ctx.runMutation(
+            internal.billing.stripe.webhooks.handleSubscriptionUpdated,
+            {
+              subscriptionId: subscription.id as string,
+              status: subscription.status as string,
+              cancelAtPeriodEnd: subscription.cancel_at_period_end as boolean,
+              currentPeriodEnd: subscription.current_period_end as number,
+              defaultPaymentMethod: subscription.default_payment_method as string | undefined,
+            }
+          );
+          break;
+        }
+
+        case "customer.subscription.deleted": {
+          const subscription = event.data.object;
+          await ctx.runMutation(
+            internal.billing.stripe.webhooks.handleSubscriptionDeleted,
+            {
+              subscriptionId: subscription.id as string,
+              customerId: subscription.customer as string,
+            }
+          );
+          break;
+        }
+
+        case "payment_intent.succeeded": {
+          const paymentIntent = event.data.object;
+          // Only handle if it's an extra credit purchase (check metadata)
+          const metadata = paymentIntent.metadata as Record<string, string> | undefined;
+          if (metadata?.type === "extra_credits") {
+            await ctx.runMutation(
+              internal.billing.stripe.webhooks.handleExtraCreditPayment,
+              {
+                paymentIntentId: paymentIntent.id as string,
+                metadata: paymentIntent.metadata,
+              }
+            );
+          }
+          break;
+        }
+
+        default:
+          // Log unhandled events for monitoring
+          console.log(`[Stripe Webhook] Unhandled event type: ${event.type}`);
+          // Mark as skipped (still processed to prevent re-processing)
+          await ctx.runMutation(
+            internal.billing.stripe.webhooks.markEventProcessed,
+            {
+              eventId: event.id,
+              eventType: event.type,
+              result: "skipped",
+            }
+          );
+      }
+
+      // IDEMPOTENCY: Mark event as successfully processed
+      // This must happen AFTER the handler succeeds to ensure atomicity
+      if (event.type !== "checkout.session.completed" &&
+          event.type !== "invoice.paid" &&
+          event.type !== "invoice.payment_failed" &&
+          event.type !== "customer.subscription.updated" &&
+          event.type !== "customer.subscription.deleted" &&
+          event.type !== "payment_intent.succeeded") {
+        // Already marked as skipped in default case above
+      } else {
+        await ctx.runMutation(
+          internal.billing.stripe.webhooks.markEventProcessed,
+          {
+            eventId: event.id,
+            eventType: event.type,
+            result: "success",
+          }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ received: true, type: event.type }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    } catch (error) {
+      console.error(`[Stripe Webhook] Handler error for ${event.type}:`, error);
+
+      // Return 200 for most errors to prevent Stripe from retrying
+      // Only return 500 for transient errors that should be retried
+      const isRetryable =
+        error instanceof Error &&
+        (error.message.includes("timeout") ||
+          error.message.includes("connection") ||
+          error.message.includes("unavailable"));
+
+      if (isRetryable) {
+        // DON'T mark as processed for retryable errors - let Stripe retry
+        return new Response(
+          JSON.stringify({
+            error: "Temporary error - please retry",
+            message: error instanceof Error ? error.message : "Unknown error",
+          }),
+          { status: 500, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      // Mark as failed for non-retryable errors to prevent infinite loops
+      await ctx.runMutation(
+        internal.billing.stripe.webhooks.markEventProcessed,
+        {
+          eventId: event.id,
+          eventType: event.type,
+          result: "failed",
+          error: error instanceof Error ? error.message : "Unknown error",
+        }
+      );
+
+      return new Response(
+        JSON.stringify({
+          received: true,
+          warning: error instanceof Error ? error.message : "Handler error",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  }),
+});
+
 export default http;
