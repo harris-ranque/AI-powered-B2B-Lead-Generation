@@ -14,6 +14,7 @@ import {
   sanitizeRoles,
   validateEnterpriseKeys,
 } from "../lib/searchLogic";
+import { createConvexError, ERROR_CODES } from "../lib/errorHandling";
 
 // Create a new search
 export const createSearch = mutation({
@@ -42,7 +43,11 @@ export const createSearch = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
-      throw new Error("Authentication required");
+      throw createConvexError("authentication", "Authentication required", {
+        code: ERROR_CODES.UNAUTHORIZED,
+        severity: "high",
+        retryable: false,
+      });
     }
 
     return await withSubscriptionCheck(
@@ -56,7 +61,12 @@ export const createSearch = mutation({
           args.parameters.maxResults,
         );
         if (!validation.valid) {
-          throw new Error(validation.reason || "Invalid search parameters");
+          throw createConvexError("validation", validation.reason || "Invalid search parameters", {
+            code: ERROR_CODES.VALIDATION_FAILED,
+            severity: "medium",
+            details: { maxResults: args.parameters.maxResults },
+            retryable: false,
+          });
         }
 
         // Use adjusted max leads if necessary (using extracted pure function)
@@ -183,7 +193,11 @@ export const createSearchCompleted = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
-      throw new Error("Authentication required");
+      throw createConvexError("authentication", "Authentication required", {
+        code: ERROR_CODES.UNAUTHORIZED,
+        severity: "high",
+        retryable: false,
+      });
     }
 
     const searchId = await withSubscriptionCheck(
@@ -197,7 +211,12 @@ export const createSearchCompleted = mutation({
           args.parameters.maxResults,
         );
         if (!validation.valid) {
-          throw new Error(validation.reason || "Invalid search parameters");
+          throw createConvexError("validation", validation.reason || "Invalid search parameters", {
+            code: ERROR_CODES.VALIDATION_FAILED,
+            severity: "medium",
+            details: { maxResults: args.parameters.maxResults },
+            retryable: false,
+          });
         }
 
         // Use adjusted max leads if necessary (using extracted pure function)
@@ -307,7 +326,12 @@ export const createSearchCompleted = mutation({
           const { updatedAt: _unused, ...patchWithoutTimestamp } = failurePatch as typeof failurePatch & { updatedAt?: number };
           await ctx.db.patch(searchId, patchWithoutTimestamp);
         }
-        throw new Error("Lead generation is currently paused by administrator");
+        throw createConvexError("system", "Lead generation is currently paused by administrator", {
+          code: ERROR_CODES.SERVICE_UNAVAILABLE,
+          severity: "high",
+          details: { searchId },
+          retryable: true,
+        });
       }
 
       // Schedule the Google Maps search action
@@ -341,7 +365,12 @@ export const updateSearchStatus = mutation({
     // Verify user owns the search
     const search = await ctx.db.get(args.searchId);
     if (!search || search.userId !== user._id) {
-      throw new Error("Search not found or access denied");
+      throw createConvexError("authorization", "Search not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { searchId: args.searchId },
+        retryable: false,
+      });
     }
 
     const now = Date.now();
@@ -396,7 +425,12 @@ export const updateSearchProgress = mutation({
     // Verify user owns the search
     const search = await ctx.db.get(args.searchId);
     if (!search || search.userId !== user._id) {
-      throw new Error("Search not found or access denied");
+      throw createConvexError("authorization", "Search not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { searchId: args.searchId },
+        retryable: false,
+      });
     }
 
     const now = Date.now();
@@ -436,12 +470,22 @@ export const cancelSearch = mutation({
     // Verify user owns the search
     const search = await ctx.db.get(args.searchId);
     if (!search || search.userId !== user._id) {
-      throw new Error("Search not found or access denied");
+      throw createConvexError("authorization", "Search not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { searchId: args.searchId },
+        retryable: false,
+      });
     }
 
     // Only allow cancelling if not completed
     if (search.status === "completed") {
-      throw new Error("Cannot cancel completed search");
+      throw createConvexError("business_logic", "Cannot cancel completed search", {
+        code: ERROR_CODES.INVALID_STATE,
+        severity: "low",
+        details: { searchId: args.searchId, status: search.status },
+        retryable: false,
+      });
     }
 
     const now = Date.now();
@@ -499,7 +543,12 @@ export const deleteSearch = mutation({
     // Verify user owns the search
     const search = await ctx.db.get(args.searchId);
     if (!search || search.userId !== user._id) {
-      throw new Error("Search not found or access denied");
+      throw createConvexError("authorization", "Search not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { searchId: args.searchId },
+        retryable: false,
+      });
     }
 
     // Get all leads associated with this search

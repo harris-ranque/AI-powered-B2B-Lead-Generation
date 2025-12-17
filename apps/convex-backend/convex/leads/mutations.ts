@@ -1,6 +1,7 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
+import { createConvexError, ERROR_CODES } from "../lib/errorHandling";
 
 // Create a new lead
 export const createLead = mutation({
@@ -29,13 +30,22 @@ export const createLead = mutation({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      throw createConvexError("authentication", "Authentication required", {
+        code: ERROR_CODES.UNAUTHORIZED,
+        severity: "high",
+        retryable: false,
+      });
     }
 
     // Verify search belongs to user
     const search = await ctx.db.get(args.searchId);
     if (!search || search.userId !== user._id) {
-      throw new Error("Search not found or access denied");
+      throw createConvexError("authorization", "Search not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { searchId: args.searchId },
+        retryable: false,
+      });
     }
 
     // FIRST: Check for duplicate within THIS search (for spatial tiling deduplication)
@@ -58,9 +68,16 @@ export const createLead = mutation({
         preventedAt: Date.now(),
       });
 
-      throw new Error(
-        `This location is already in this search. Cannot create duplicate tile.`
-      );
+      throw createConvexError("business_logic", "This location is already in this search. Cannot create duplicate tile.", {
+        code: ERROR_CODES.DUPLICATE_RECORD,
+        severity: "low",
+        details: {
+          searchId: args.searchId,
+          placeId: args.leadData.placeId,
+          businessName: args.leadData.businessName,
+        },
+        retryable: false,
+      });
     }
 
     // SECOND: Check for duplicate at USER level (across all searches)
@@ -83,9 +100,17 @@ export const createLead = mutation({
         preventedAt: Date.now(),
       });
 
-      throw new Error(
-        `Lead with this location already exists in another search (${duplicateAcrossSearches.searchId}). Cannot create duplicate.`
-      );
+      throw createConvexError("business_logic", "Lead with this location already exists in another search. Cannot create duplicate.", {
+        code: ERROR_CODES.DUPLICATE_RECORD,
+        severity: "low",
+        details: {
+          searchId: args.searchId,
+          placeId: args.leadData.placeId,
+          businessName: args.leadData.businessName,
+          existingSearchId: duplicateAcrossSearches.searchId,
+        },
+        retryable: false,
+      });
     }
 
     // Atomic insert with race condition protection
@@ -137,9 +162,17 @@ export const createLead = mutation({
           preventedAt: Date.now(),
         });
 
-        throw new Error(
-          `Lead with this location already exists. Duplicate prevented by race condition protection.`
-        );
+        throw createConvexError("business_logic", "Lead with this location already exists. Duplicate prevented by race condition protection.", {
+          code: ERROR_CODES.DUPLICATE_RECORD,
+          severity: "low",
+          details: {
+            searchId: args.searchId,
+            placeId: args.leadData.placeId,
+            businessName: args.leadData.businessName,
+            detectedBy: "race_condition_protection",
+          },
+          retryable: false,
+        });
       }
 
       // If not a duplicate issue, re-throw the error
@@ -173,7 +206,12 @@ export const updateLead = mutation({
     // Verify user owns the lead
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.userId !== user._id) {
-      throw new Error("Lead not found or access denied");
+      throw createConvexError("authorization", "Lead not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { leadId: args.leadId },
+        retryable: false,
+      });
     }
 
     await ctx.db.patch(args.leadId, {
@@ -204,7 +242,12 @@ export const updateLeadStatus = mutation({
     // Verify user owns the lead
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.userId !== user._id) {
-      throw new Error("Lead not found or access denied");
+      throw createConvexError("authorization", "Lead not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { leadId: args.leadId },
+        retryable: false,
+      });
     }
 
     await ctx.db.patch(args.leadId, {
@@ -228,7 +271,12 @@ export const addLeadNotes = mutation({
     // Verify user owns the lead
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.userId !== user._id) {
-      throw new Error("Lead not found or access denied");
+      throw createConvexError("authorization", "Lead not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { leadId: args.leadId },
+        retryable: false,
+      });
     }
 
     const currentNotes = lead.notes || "";
@@ -258,7 +306,12 @@ export const deleteLead = mutation({
     // Verify user owns the lead
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.userId !== user._id) {
-      throw new Error("Lead not found or access denied");
+      throw createConvexError("authorization", "Lead not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { leadId: args.leadId },
+        retryable: false,
+      });
     }
 
     await ctx.db.delete(args.leadId);
@@ -301,13 +354,22 @@ export const trackCSVImport = mutation({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      throw createConvexError("authentication", "Authentication required", {
+        code: ERROR_CODES.UNAUTHORIZED,
+        severity: "high",
+        retryable: false,
+      });
     }
 
     // Verify search belongs to user
     const search = await ctx.db.get(args.searchId);
     if (!search || search.userId !== user._id) {
-      throw new Error("Search not found or access denied");
+      throw createConvexError("authorization", "Search not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { searchId: args.searchId },
+        retryable: false,
+      });
     }
 
     // Create CSV import record
@@ -426,7 +488,11 @@ export const createSearchFromCSV = mutation({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      throw createConvexError("authentication", "Authentication required", {
+        code: ERROR_CODES.UNAUTHORIZED,
+        severity: "high",
+        retryable: false,
+      });
     }
 
     const now = Date.now();
@@ -437,9 +503,16 @@ export const createSearchFromCSV = mutation({
 
     // Skip credit check for enterprise users (handled by deductCredits)
     if (currentBalance < creditCost && user.plan !== "enterprise") {
-      throw new Error(
-        `Insufficient credits. Need ${creditCost} credits, have ${currentBalance}.`
-      );
+      throw createConvexError("business_logic", `Insufficient credits. Need ${creditCost} credits, have ${currentBalance}.`, {
+        code: ERROR_CODES.INSUFFICIENT_CREDITS,
+        severity: "medium",
+        details: {
+          required: creditCost,
+          available: currentBalance,
+          plan: user.plan,
+        },
+        retryable: false,
+      });
     }
 
     // Create search record
