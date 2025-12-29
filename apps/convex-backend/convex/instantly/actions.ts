@@ -415,10 +415,12 @@ function buildCampaignPayload(
   };
 }
 
-// Helper: Build leads payload for Instantly
+// Helper: Build leads payload for Instantly API V2
+// Endpoint: POST /api/v2/leads/add
 function buildLeadsPayload(campaignId: string, leads: Doc<"leads">[]) {
   return {
     campaign_id: campaignId,
+    skip_if_in_campaign: true, // Don't add duplicates
     leads: leads
       .map((lead) => {
         const primaryEmail = lead.contactInfo?.emails?.[0]?.email;
@@ -427,15 +429,8 @@ function buildLeadsPayload(campaignId: string, leads: Doc<"leads">[]) {
         const primaryContact = lead.contactInfo?.contacts?.[0];
         const { firstName, lastName } = parseName(primaryContact?.name);
 
-        // Build lead with custom variables for personalized emails
-        const leadData: Record<string, string | undefined> = {
-          email: primaryEmail,
-          first_name: firstName,
-          last_name: lastName,
-          company_name: lead.businessName,
-          website: lead.website || undefined,
-          phone: lead.phone || undefined,
-          // Primary email content as lead custom variables
+        // Build custom variables for personalized emails
+        const custom_variables: Record<string, string> = {
           lt_email_subject: lead.emailContent?.subject || "",
           lt_email_body: lead.emailContent?.body || "",
         };
@@ -443,12 +438,21 @@ function buildLeadsPayload(campaignId: string, leads: Doc<"leads">[]) {
         // Add follow-up emails as custom variables
         if (lead.followUpEmails) {
           lead.followUpEmails.forEach((followUp, i) => {
-            leadData[`lt_followup_${i + 1}_subject`] = followUp.subject || "";
-            leadData[`lt_followup_${i + 1}_body`] = followUp.body || "";
+            custom_variables[`lt_followup_${i + 1}_subject`] = followUp.subject || "";
+            custom_variables[`lt_followup_${i + 1}_body`] = followUp.body || "";
           });
         }
 
-        return leadData;
+        // Instantly API V2 lead structure
+        return {
+          email: primaryEmail,
+          first_name: firstName || null,
+          last_name: lastName || null,
+          company_name: lead.businessName || null,
+          website: lead.website || null,
+          phone: lead.phone || null,
+          custom_variables,
+        };
       })
       .filter(Boolean),
   };
@@ -765,7 +769,7 @@ export const pushToInstantly = action({
 
         // Use fetchWithRetry but with fewer retries for batch operations
         const leadsResponse = await fetchWithRetry(
-          `${INSTANTLY_BASE_URL}/leads`,
+          `${INSTANTLY_BASE_URL}/leads/add`,
           {
             method: "POST",
             headers: {
@@ -1085,7 +1089,7 @@ export const autoPushToInstantly = internalAction({
           const leadsPayload = buildLeadsPayload(campaignId, batch);
 
           const leadsResponse = await fetchWithRetry(
-            `${INSTANTLY_BASE_URL}/leads`,
+            `${INSTANTLY_BASE_URL}/leads/add`,
             {
               method: "POST",
               headers: {
