@@ -206,20 +206,6 @@ export function PushToInstantlyButton({
     return null;
   }
 
-  const handleOpenDialog = () => {
-    // Clear any previous errors
-    setLastError(null);
-
-    // Pre-select default email if available
-    if (defaultSenderEmail && cachedAccounts.some(a => a.email === defaultSenderEmail)) {
-      setSelectedEmail(defaultSenderEmail);
-    } else if (cachedAccounts.length === 1) {
-      // Non-null assertion is safe here because we just checked length === 1
-      setSelectedEmail(cachedAccounts[0]!.email);
-    }
-    setIsOpen(true);
-  };
-
   const handlePush = async () => {
     if (!selectedEmail) {
       toast.error("Please select a sender email");
@@ -264,7 +250,7 @@ export function PushToInstantlyButton({
           console.warn("Instantly push completed with some batch errors:", result.errors);
         }
 
-        setIsOpen(false);
+        handleDialogOpenChange(false);
       } else {
         // Partial failure - campaign was created but something went wrong
         const errorMessage = "Campaign was created but no leads were pushed successfully. Please check your Instantly dashboard.";
@@ -290,9 +276,20 @@ export function PushToInstantlyButton({
     }
   };
 
-  const handleCloseDialog = () => {
-    setIsOpen(false);
-    setLastError(null);
+  const handleDialogOpenChange = (open: boolean) => {
+    if (open) {
+      // Opening dialog - clear errors and pre-select email
+      setLastError(null);
+      if (defaultSenderEmail && cachedAccounts.some(a => a.email === defaultSenderEmail)) {
+        setSelectedEmail(defaultSenderEmail);
+      } else if (cachedAccounts.length === 1) {
+        setSelectedEmail(cachedAccounts[0]!.email);
+      }
+    } else {
+      // Closing dialog - clear error state
+      setLastError(null);
+    }
+    setIsOpen(open);
   };
 
   // Already pushed - show badge
@@ -335,12 +332,11 @@ export function PushToInstantlyButton({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleCloseDialog}>
+    <Dialog open={isOpen} onOpenChange={handleDialogOpenChange}>
       <DialogTrigger asChild>
         <Button
           size="sm"
           variant="outline"
-          onClick={handleOpenDialog}
           className="gap-2"
         >
           <Send className="h-4 w-4" />
@@ -448,7 +444,7 @@ export function PushToInstantlyButton({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleCloseDialog} disabled={isPushing}>
+          <Button variant="outline" onClick={() => handleDialogOpenChange(false)} disabled={isPushing}>
             Cancel
           </Button>
           <Button
