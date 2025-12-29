@@ -144,11 +144,12 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
       `}
       >
         {/* Logo */}
-        <div className="flex items-center gap-3 mb-10 px-2">
-          <div className="w-9 h-9 gradient-primary rounded-lg flex items-center justify-center text-primary-foreground font-bold text-lg glow-accent">
-            ⚡
-          </div>
-          <span className="text-xl font-bold">Genni</span>
+        <div className="flex items-center justify-center mb-10 px-2">
+          <img
+            src="/genni-logo.webp"
+            alt="Genni Logo"
+            className="w-32 h-32 object-contain"
+          />
         </div>
 
         {/* Main Navigation */}
@@ -203,6 +204,24 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
                   className="w-full text-left block rounded-lg px-3 py-2 text-sm hover:bg-muted/10"
                 >
                   Users
+                </button>
+                <button
+                  onClick={() => {
+                    navigate("/admin?tab=subscriptions");
+                    setIsOpen(false);
+                  }}
+                  className="w-full text-left block rounded-lg px-3 py-2 text-sm hover:bg-muted/10"
+                >
+                  Subscriptions
+                </button>
+                <button
+                  onClick={() => {
+                    navigate("/admin?tab=billing");
+                    setIsOpen(false);
+                  }}
+                  className="w-full text-left block rounded-lg px-3 py-2 text-sm hover:bg-muted/10"
+                >
+                  Billing
                 </button>
                 <button
                   onClick={() => {

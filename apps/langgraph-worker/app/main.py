@@ -70,6 +70,7 @@ from .utils.concurrent_handler import concurrent_handler
 from .utils.logger import setup_logger, log_request_details, log_response_details, log_error_details
 from .utils.key_validation import validate_user_key
 from .utils.analytics import capture_event, capture_error
+from .utils.rate_limiting import get_rate_limit_manager, shutdown_rate_limiting
 
 # Configure logging
 logger = setup_logger(__name__)
@@ -155,6 +156,11 @@ async def startup_event():
     asyncio.create_task(single_replica_optimizer.background_processor())
     logger.info("Background processor started successfully")
     logger.info("LangGraph workflow system initialized")
+
+    # Initialize adaptive rate limiting system
+    logger.info("🔒 Initializing adaptive rate limiting system...")
+    rate_limit_manager = await get_rate_limit_manager()
+    logger.info(f"✅ Rate limiting initialized: {rate_limit_manager.get_stats()}")
     
     # Send startup event to Sentry
     if settings.sentry_dsn:
@@ -1194,6 +1200,43 @@ async def get_performance_metrics(authenticated: bool = Depends(verify_api_key))
     
     logger.debug(f"Performance: Memory={metrics['memory']['percent']:.1f}%, Queue={metrics['queue_size']}, Active={metrics['active_tasks']}")
     return metrics
+
+@app.get("/health/rate-limits")
+async def get_rate_limit_status(authenticated: bool = Depends(verify_api_key)):
+    """
+    Get current rate limiting status and statistics.
+
+    Provides visibility into:
+    - Current effective RPM per provider
+    - Learned API tier from 429 responses
+    - Queue depths and wait times
+    - Circuit breaker status
+    """
+    logger.debug("Rate limit status requested")
+    manager = await get_rate_limit_manager()
+    stats = manager.get_stats()
+
+    return {
+        "status": "active",
+        "timestamp": datetime.utcnow().isoformat(),
+        "rate_limiting": stats,
+        "config": {
+            "enabled": True,
+            "adaptive_enabled": True,
+            "queue_enabled": True,
+        }
+    }
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Graceful shutdown of background services"""
+    logger.info("Shutting down LangGraph worker...")
+
+    # Shutdown rate limiting system
+    await shutdown_rate_limiting()
+    logger.info("Rate limiting system shutdown complete")
+
 
 @app.get("/workflow-engine")
 async def get_workflow_engine(authenticated: bool = Depends(verify_api_key)):

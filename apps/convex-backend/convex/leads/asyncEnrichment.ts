@@ -296,6 +296,46 @@ export const enrichSingleLead = internalAction({
         },
       );
 
+      // CHECK RATE LIMIT: Ensure user hasn't exceeded their quota
+      const rateLimitResult: { ok: boolean; retryAfter?: number; reason?: string } = await ctx.runMutation(
+        internal.leads.enrichment.rateLimitMutations.checkFindyMailRateLimit,
+        {
+          userId: args.userId,
+          apiKey: args.userApiKey,
+          count: 1,
+        },
+      );
+
+      if (!rateLimitResult.ok) {
+        logWithCorrelation(
+          "warn",
+          correlation,
+          "⚠️ Rate Limit Exceeded",
+          {
+            leadId: args.leadId,
+            reason: rateLimitResult.reason,
+            retryAfter: rateLimitResult.retryAfter,
+          },
+        );
+
+        // Mark as failed with rate limit error
+        await ctx.runMutation(
+          internal.leads.internal.updateEnrichmentStatus,
+          {
+            leadId: args.leadId,
+            status: "failed",
+            error: `Rate limit exceeded: ${rateLimitResult.reason}. Retry after ${Math.ceil((rateLimitResult.retryAfter || 60000) / 1000)} seconds.`,
+          },
+        );
+
+        return {
+          success: false,
+          provider: "none",
+          reason: "rate_limit_exceeded",
+          retryAfter: rateLimitResult.retryAfter,
+        };
+      }
+
       // PRIMARY PROVIDER: FindyMail (3 retries)
       let result = await tryProvider("findymail", domain, {
         retries: 3,

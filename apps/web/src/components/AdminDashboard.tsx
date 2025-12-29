@@ -28,6 +28,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Activity,
@@ -68,6 +80,8 @@ import {
 } from "@/hooks/useAdmin";
 import type { Id, Doc } from "@genni/convex-types/dataModel";
 import { CreditManagement } from "./admin/CreditManagement";
+import { CustomSubscriptionList } from "./admin/CustomSubscriptionList";
+import { AdminBillingDashboard } from "./AdminBillingDashboard";
 import { AdminDocsPanel } from "./admin/AdminDocsPanel";
 import { withErrorBoundary } from "@/utils/errorHandling";
 import { createLogger } from "@/utils/logger";
@@ -359,6 +373,8 @@ const getExternalServices = (): ExternalService[] => {
 const TAB_KEYS = [
   "overview",
   "users",
+  "subscriptions",
+  "billing",
   "credits",
   "configuration",
   "system",
@@ -716,6 +732,48 @@ function AdminDashboardComponent({ isAdmin = true }: AdminDashboardProps = {}) {
   const [healthCheckPending, setHealthCheckPending] = useState(false);
   const [componentError, setComponentError] = useState<string | null>(null);
 
+  // Dialog state for confirmation dialogs (replacing window.prompt/confirm)
+  type ConfirmDialogState = {
+    isOpen: boolean;
+    title: string;
+    description: string;
+    reasonLabel?: string;
+    reasonPlaceholder?: string;
+    confirmLabel: string;
+    onConfirm: (reason?: string) => Promise<void>;
+  };
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>({
+    isOpen: false,
+    title: "",
+    description: "",
+    confirmLabel: "Confirm",
+    onConfirm: async () => {},
+  });
+  const [dialogReason, setDialogReason] = useState("");
+  const [dialogLoading, setDialogLoading] = useState(false);
+
+  const openConfirmDialog = useCallback((config: Omit<ConfirmDialogState, "isOpen">) => {
+    setDialogReason(config.reasonPlaceholder || "");
+    setConfirmDialog({ ...config, isOpen: true });
+  }, []);
+
+  const closeConfirmDialog = useCallback(() => {
+    setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+    setDialogReason("");
+    setDialogLoading(false);
+  }, []);
+
+  const handleDialogConfirm = useCallback(async () => {
+    setDialogLoading(true);
+    try {
+      await confirmDialog.onConfirm(dialogReason || undefined);
+      closeConfirmDialog();
+    } catch (error) {
+      // Error handling is done in the onConfirm callback
+      setDialogLoading(false);
+    }
+  }, [confirmDialog, dialogReason, closeConfirmDialog]);
+
   const handleComponentError = useCallback(
     (error: unknown, context: string, extra?: Record<string, unknown>) => {
       const errorInstance =
@@ -983,22 +1041,31 @@ function AdminDashboardComponent({ isAdmin = true }: AdminDashboardProps = {}) {
     }
   };
 
-  const handlePauseProcessing = async (user: AdminUser) => {
-    setProcessingUserId(user._id);
-    try {
-      const reason = window.prompt("Reason for pausing processing?", user.pauseReason || "");
-      await pauseUserProcessing({ userId: user._id, reason: reason || undefined });
-      toast({
-        title: "Processing paused",
-        description: `${user.email} will no longer run new searches until resumed.`,
-      });
-    } catch (error) {
-      handleComponentError(error, "pause-processing", { userId: user._id });
-      const message = error instanceof Error ? error.message : "Unable to pause processing";
-      toast({ title: "Action failed", description: message, variant: "destructive" });
-    } finally {
-      setProcessingUserId(null);
-    }
+  const handlePauseProcessing = (user: AdminUser) => {
+    openConfirmDialog({
+      title: "Pause User Processing",
+      description: `Are you sure you want to pause processing for ${user.email}? They won't be able to run new searches until resumed.`,
+      reasonLabel: "Reason for pausing",
+      reasonPlaceholder: user.pauseReason || "",
+      confirmLabel: "Pause Processing",
+      onConfirm: async (reason) => {
+        setProcessingUserId(user._id);
+        try {
+          await pauseUserProcessing({ userId: user._id, reason: reason || undefined });
+          toast({
+            title: "Processing paused",
+            description: `${user.email} will no longer run new searches until resumed.`,
+          });
+        } catch (error) {
+          handleComponentError(error, "pause-processing", { userId: user._id });
+          const message = error instanceof Error ? error.message : "Unable to pause processing";
+          toast({ title: "Action failed", description: message, variant: "destructive" });
+          throw error;
+        } finally {
+          setProcessingUserId(null);
+        }
+      },
+    });
   };
 
   const handleResumeProcessing = async (user: AdminUser) => {
@@ -1056,28 +1123,34 @@ function AdminDashboardComponent({ isAdmin = true }: AdminDashboardProps = {}) {
     }
   };
 
-  const handlePauseLeadGeneration = async () => {
-    if (!window.confirm("Pause all lead generation and cancel active searches?")) {
-      return;
-    }
-    const reason = window.prompt("Reason for pausing the system?", "Emergency stop");
-    setSystemActionPending(true);
-    try {
-      const result = await pauseAllLeadGeneration({ reason: reason || undefined });
-      toast({
-        title: "Lead generation paused",
-        description:
-          result && typeof result.cancelledSearches === "number"
-            ? `Cancelled ${result.cancelledSearches} searches`
-            : "System is now paused.",
-      });
-    } catch (error) {
-      handleComponentError(error, "pause-lead-generation", { reason });
-      const message = error instanceof Error ? error.message : "Unable to pause system";
-      toast({ title: "Action failed", description: message, variant: "destructive" });
-    } finally {
-      setSystemActionPending(false);
-    }
+  const handlePauseLeadGeneration = () => {
+    openConfirmDialog({
+      title: "Pause All Lead Generation",
+      description: "This will pause all lead generation and cancel active searches. Are you sure you want to proceed?",
+      reasonLabel: "Reason for pausing",
+      reasonPlaceholder: "Emergency stop",
+      confirmLabel: "Pause System",
+      onConfirm: async (reason) => {
+        setSystemActionPending(true);
+        try {
+          const result = await pauseAllLeadGeneration({ reason: reason || undefined });
+          toast({
+            title: "Lead generation paused",
+            description:
+              result && typeof result.cancelledSearches === "number"
+                ? `Cancelled ${result.cancelledSearches} searches`
+                : "System is now paused.",
+          });
+        } catch (error) {
+          handleComponentError(error, "pause-lead-generation", { reason });
+          const message = error instanceof Error ? error.message : "Unable to pause system";
+          toast({ title: "Action failed", description: message, variant: "destructive" });
+          throw error;
+        } finally {
+          setSystemActionPending(false);
+        }
+      },
+    });
   };
 
   const handleResumeLeadGeneration = async () => {
@@ -1097,28 +1170,34 @@ function AdminDashboardComponent({ isAdmin = true }: AdminDashboardProps = {}) {
     }
   };
 
-  const handleClearActiveSearches = async () => {
-    if (!window.confirm("Clear all active searches and refund credits?")) {
-      return;
-    }
-    const reason = window.prompt("Reason for clearing active searches?", "Administrative cleanup");
-    setSystemActionPending(true);
-    try {
-      const result = await clearAllActiveSearches({ reason: reason || undefined });
-      toast({
-        title: "Active searches cleared",
-        description:
-          result && typeof result.clearedCount === "number"
-            ? `Cleared ${result.clearedCount} searches`
-            : "Cleanup completed.",
-      });
-    } catch (error) {
-      handleComponentError(error, "clear-active-searches", { reason });
-      const message = error instanceof Error ? error.message : "Unable to clear searches";
-      toast({ title: "Action failed", description: message, variant: "destructive" });
-    } finally {
-      setSystemActionPending(false);
-    }
+  const handleClearActiveSearches = () => {
+    openConfirmDialog({
+      title: "Clear All Active Searches",
+      description: "This will clear all active searches and refund credits. Are you sure you want to proceed?",
+      reasonLabel: "Reason for clearing",
+      reasonPlaceholder: "Administrative cleanup",
+      confirmLabel: "Clear Searches",
+      onConfirm: async (reason) => {
+        setSystemActionPending(true);
+        try {
+          const result = await clearAllActiveSearches({ reason: reason || undefined });
+          toast({
+            title: "Active searches cleared",
+            description:
+              result && typeof result.clearedCount === "number"
+                ? `Cleared ${result.clearedCount} searches`
+                : "Cleanup completed.",
+          });
+        } catch (error) {
+          handleComponentError(error, "clear-active-searches", { reason });
+          const message = error instanceof Error ? error.message : "Unable to clear searches";
+          toast({ title: "Action failed", description: message, variant: "destructive" });
+          throw error;
+        } finally {
+          setSystemActionPending(false);
+        }
+      },
+    });
   };
 
   const handleTriggerHealthCheck = async () => {
@@ -1187,9 +1266,11 @@ function AdminDashboardComponent({ isAdmin = true }: AdminDashboardProps = {}) {
       </div>
 
       <Tabs value={currentTab} onValueChange={(value) => setCurrentTab(value as (typeof TAB_KEYS)[number])}>
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-7">
+        <TabsList className="grid w-full grid-cols-3 md:grid-cols-9">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
+          <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="credits">Credits</TabsTrigger>
           <TabsTrigger value="configuration">Configuration</TabsTrigger>
           <TabsTrigger value="system">System</TabsTrigger>
@@ -1482,6 +1563,14 @@ function AdminDashboardComponent({ isAdmin = true }: AdminDashboardProps = {}) {
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="subscriptions" className="space-y-4">
+          <CustomSubscriptionList />
+        </TabsContent>
+
+        <TabsContent value="billing" className="space-y-4">
+          <AdminBillingDashboard />
         </TabsContent>
 
         <TabsContent value="credits" className="space-y-4">
@@ -2004,6 +2093,37 @@ function AdminDashboardComponent({ isAdmin = true }: AdminDashboardProps = {}) {
           <AlertDescription>Saving configuration changes…</AlertDescription>
         </Alert>
       ) : null}
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={confirmDialog.isOpen} onOpenChange={(open) => !open && closeConfirmDialog()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmDialog.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmDialog.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          {confirmDialog.reasonLabel && (
+            <div className="space-y-2 py-4">
+              <Label htmlFor="dialog-reason">{confirmDialog.reasonLabel}</Label>
+              <Textarea
+                id="dialog-reason"
+                placeholder="Enter reason (optional)"
+                value={dialogReason}
+                onChange={(e) => setDialogReason(e.target.value)}
+                rows={2}
+              />
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={dialogLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDialogConfirm}
+              disabled={dialogLoading}
+            >
+              {dialogLoading ? "Processing..." : confirmDialog.confirmLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

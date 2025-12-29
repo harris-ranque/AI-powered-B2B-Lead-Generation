@@ -42,6 +42,7 @@ import type * as leads_asyncEnrichment from "../leads/asyncEnrichment.js";
 import type * as leads_enrichment_findymail from "../leads/enrichment/findymail.js";
 import type * as leads_enrichment_icypeas from "../leads/enrichment/icypeas.js";
 import type * as leads_enrichment_provider from "../leads/enrichment/provider.js";
+import type * as leads_enrichment_rateLimitMutations from "../leads/enrichment/rateLimitMutations.js";
 import type * as leads_enrichment_test from "../leads/enrichment/test.js";
 import type * as leads_enrichment_testAction from "../leads/enrichment/testAction.js";
 import type * as leads_enrichment_testCredits from "../leads/enrichment/testCredits.js";
@@ -68,6 +69,7 @@ import type * as lib_helpers from "../lib/helpers.js";
 import type * as lib_logger from "../lib/logger.js";
 import type * as lib_logging from "../lib/logging.js";
 import type * as lib_profileLogic from "../lib/profileLogic.js";
+import type * as lib_rateLimiter from "../lib/rateLimiter.js";
 import type * as lib_sanitization from "../lib/sanitization.js";
 import type * as lib_searchLogic from "../lib/searchLogic.js";
 import type * as lib_validators from "../lib/validators.js";
@@ -158,6 +160,7 @@ declare const fullApi: ApiFromModules<{
   "leads/enrichment/findymail": typeof leads_enrichment_findymail;
   "leads/enrichment/icypeas": typeof leads_enrichment_icypeas;
   "leads/enrichment/provider": typeof leads_enrichment_provider;
+  "leads/enrichment/rateLimitMutations": typeof leads_enrichment_rateLimitMutations;
   "leads/enrichment/test": typeof leads_enrichment_test;
   "leads/enrichment/testAction": typeof leads_enrichment_testAction;
   "leads/enrichment/testCredits": typeof leads_enrichment_testCredits;
@@ -184,6 +187,7 @@ declare const fullApi: ApiFromModules<{
   "lib/logger": typeof lib_logger;
   "lib/logging": typeof lib_logging;
   "lib/profileLogic": typeof lib_profileLogic;
+  "lib/rateLimiter": typeof lib_rateLimiter;
   "lib/sanitization": typeof lib_sanitization;
   "lib/searchLogic": typeof lib_searchLogic;
   "lib/validators": typeof lib_validators;
@@ -322,6 +326,140 @@ export declare const components: {
           | { state: "finished" }
         >
       >;
+    };
+  };
+  rateLimiter: {
+    lib: {
+      checkRateLimit: FunctionReference<
+        "query",
+        "internal",
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          count?: number;
+          key?: string;
+          name: string;
+          reserve?: boolean;
+          throws?: boolean;
+        },
+        { ok: true; retryAfter?: number } | { ok: false; retryAfter: number }
+      >;
+      clearAll: FunctionReference<
+        "mutation",
+        "internal",
+        { before?: number },
+        null
+      >;
+      getServerTime: FunctionReference<"mutation", "internal", {}, number>;
+      getValue: FunctionReference<
+        "query",
+        "internal",
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          key?: string;
+          name: string;
+          sampleShards?: number;
+        },
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          shard: number;
+          ts: number;
+          value: number;
+        }
+      >;
+      rateLimit: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          count?: number;
+          key?: string;
+          name: string;
+          reserve?: boolean;
+          throws?: boolean;
+        },
+        { ok: true; retryAfter?: number } | { ok: false; retryAfter: number }
+      >;
+      resetRateLimit: FunctionReference<
+        "mutation",
+        "internal",
+        { key?: string; name: string },
+        null
+      >;
+    };
+    time: {
+      getServerTime: FunctionReference<"mutation", "internal", {}, number>;
     };
   };
 };

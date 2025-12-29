@@ -38,6 +38,12 @@ from ..utils.perplexity_retry import (
     PerplexityAPIError,
     RetryConfig,
 )
+# New adaptive rate limiting system
+from ..utils.rate_limiting import (
+    rate_limited_request,
+    Provider,
+    CircuitBreakerOpenError,
+)
 from ..utils.api_errors import (
     classify_perplexity_error,
     StandardizedApiError,
@@ -478,9 +484,11 @@ class PerplexityClient:
         Returns:
             ResearchResult with comprehensive business intelligence
 
-        Rate Limiting:
-            - Acquires rate limit slot for sonar-pro model (50 RPM default)
-            - Waits if rate limit reached before making API call
+        Rate Limiting (NEW ADAPTIVE SYSTEM):
+            - Uses adaptive rate limiter that learns actual API tier from 429s
+            - Request queue prevents thundering herd
+            - Per-API-key bucket isolation for BYOK support
+            - Circuit breaker protection against cascading failures
 
         Retry Logic:
             - Retries on 429, 5xx errors with exponential backoff
@@ -526,8 +534,8 @@ class PerplexityClient:
             "Content-Type": "application/json"
         }
 
-        async def make_request() -> dict:
-            """Inner function for retry wrapper."""
+        async def make_api_call() -> dict:
+            """Execute the actual API call."""
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
                 async with session.post(
                     f"{self.base_url}/chat/completions",
@@ -541,42 +549,50 @@ class PerplexityClient:
                     )
 
         try:
-            # Acquire rate limit slot for sonar-pro (waits if at capacity)
-            async with self.rate_limiter.acquire("sonar-pro") as ctx:
-                if ctx.wait_time > 0:
-                    logger.info(
-                        f"[RateLimit] Waited {ctx.wait_time:.2f}s for sonar-pro slot before researching {company_name}"
-                    )
+            # Use NEW adaptive rate limiting system with request queue
+            # This replaces the old sliding window rate limiter
+            async with track_perplexity_sonar_call(
+                company_name=company_name,
+                request_id=None,  # Will be set by caller if available
+                domain=domain,
+                location=location,
+                rate_limit_wait_time=0,  # Will be tracked by new system
+            ) as tracker:
+                # Execute with adaptive rate limiting + request queue
+                data = await rate_limited_request(
+                    Provider.PERPLEXITY,
+                    make_api_call,
+                    model="sonar-pro",
+                    api_key=self.api_key,
+                    correlation_id=f"sonar_pro:{company_name}",
+                    timeout=self.timeout + 30,  # Allow extra time for queue wait
+                )
 
-                # Track API call with PostHog (non-blocking)
-                async with track_perplexity_sonar_call(
-                    company_name=company_name,
-                    request_id=None,  # Will be set by caller if available
-                    domain=domain,
-                    location=location,
-                    rate_limit_wait_time=ctx.wait_time,
-                ) as tracker:
-                    # Execute request with retry logic
-                    data = await perplexity_request_with_retry(
-                        make_request,
-                        config=self.retry_config,
-                        operation_name=f"sonar_pro_research:{company_name}"
-                    )
-
-                    # Set result metrics for PostHog tracking
-                    choices = data.get("choices", [])
-                    content = choices[0].get("message", {}).get("content", "") if choices else ""
-                    citations = data.get("citations", [])
-                    tracker.set_result(
-                        success=True,
-                        word_count=len(content.split()) if content else 0,
-                        citation_count=len(citations),
-                        has_content=bool(content),
-                    )
+                # Set result metrics for PostHog tracking
+                choices = data.get("choices", [])
+                content = choices[0].get("message", {}).get("content", "") if choices else ""
+                citations = data.get("citations", [])
+                tracker.set_result(
+                    success=True,
+                    word_count=len(content.split()) if content else 0,
+                    citation_count=len(citations),
+                    has_content=bool(content),
+                )
 
             response_time = time.time() - start_time
             return self._process_perplexity_response(company_name, data, response_time)
 
+        except CircuitBreakerOpenError as e:
+            logger.error(f"Circuit breaker open for Perplexity (sonar-pro) researching {company_name}: {e}")
+            api_error = classify_perplexity_error(429, f"Circuit breaker open: {str(e)}")
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.PERPLEXITY,
+                confidence_score=0.2,
+                response_time=time.time() - start_time,
+                error=f"Rate limit circuit breaker open - too many consecutive 429s",
+                api_error=api_error.to_dict()
+            )
         except RateLimitExhaustedError as e:
             logger.error(f"Rate limit exhausted for sonar-pro research on {company_name}: {e}")
             # Classify as persistent rate limit exceeded (not transient)
@@ -718,10 +734,11 @@ class PerplexityClient:
         Returns:
             ResearchResult with exhaustive business intelligence
 
-        Rate Limiting (CRITICAL - Deep Research has strict limits):
-            - Acquires rate limit slot for sonar-deep-research model (4 RPM default)
-            - Perplexity Tier 0 limit is 5 RPM, we use 4 RPM for safety margin
-            - Waits if rate limit reached - may wait 15+ seconds between requests
+        Rate Limiting (NEW ADAPTIVE SYSTEM - Deep Research has strict limits):
+            - Uses adaptive rate limiter that learns actual API tier from 429s
+            - Starts at 5 RPM (Tier 0 limit) with conservative approach
+            - Request queue serializes requests to prevent thundering herd
+            - Circuit breaker protects against cascading failures
 
         Retry Logic:
             - Retries on 429, 5xx errors with exponential backoff
@@ -773,8 +790,8 @@ class PerplexityClient:
         # Longer timeout for deep research (60 seconds vs 20 seconds)
         deep_research_timeout = 60.0
 
-        async def make_request() -> dict:
-            """Inner function for retry wrapper."""
+        async def make_api_call() -> dict:
+            """Execute the actual API call."""
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=deep_research_timeout)) as session:
                 async with session.post(
                     f"{self.base_url}/chat/completions",
@@ -788,45 +805,55 @@ class PerplexityClient:
                     )
 
         try:
-            # Acquire rate limit slot for sonar-deep-research (CRITICAL - only 4 RPM!)
-            # This may wait 15+ seconds if at capacity
-            async with self.rate_limiter.acquire("sonar-deep-research") as ctx:
-                if ctx.wait_time > 0:
-                    logger.info(
-                        f"[RateLimit] Waited {ctx.wait_time:.2f}s for deep-research slot before researching {company_name}"
-                    )
+            # Use NEW adaptive rate limiting system with request queue
+            # This replaces the old sliding window rate limiter
+            async with track_perplexity_deep_research_call(
+                company_name=company_name,
+                request_id=None,  # Will be set by caller if available
+                domain=domain,
+                location=location,
+                rate_limit_wait_time=0,  # Will be tracked by new system
+            ) as tracker:
+                # Execute with adaptive rate limiting + request queue
+                # Deep research has very strict limits (5 RPM at Tier 0)
+                data = await rate_limited_request(
+                    Provider.PERPLEXITY,
+                    make_api_call,
+                    model="sonar-deep-research",
+                    api_key=self.api_key,
+                    correlation_id=f"deep_research:{company_name}",
+                    timeout=deep_research_timeout + 60,  # Allow extra time for queue wait
+                    priority=0,  # Lower priority than sonar-pro
+                )
 
-                # Track API call with PostHog (non-blocking)
-                async with track_perplexity_deep_research_call(
-                    company_name=company_name,
-                    request_id=None,  # Will be set by caller if available
-                    domain=domain,
-                    location=location,
-                    rate_limit_wait_time=ctx.wait_time,
-                ) as tracker:
-                    # Execute request with retry logic
-                    data = await perplexity_request_with_retry(
-                        make_request,
-                        config=self.retry_config,
-                        operation_name=f"deep_research:{company_name}"
-                    )
-
-                    # Set result metrics for PostHog tracking
-                    choices = data.get("choices", [])
-                    content = choices[0].get("message", {}).get("content", "") if choices else ""
-                    citations = data.get("citations", [])
-                    tracker.set_result(
-                        success=True,
-                        word_count=len(content.split()) if content else 0,
-                        citation_count=len(citations),
-                        has_content=bool(content),
-                    )
+                # Set result metrics for PostHog tracking
+                choices = data.get("choices", [])
+                content = choices[0].get("message", {}).get("content", "") if choices else ""
+                citations = data.get("citations", [])
+                tracker.set_result(
+                    success=True,
+                    word_count=len(content.split()) if content else 0,
+                    citation_count=len(citations),
+                    has_content=bool(content),
+                )
 
             response_time = time.time() - start_time
             result = self._process_perplexity_response(company_name, data, response_time)
             result.final_tier_used = "deep"
             return result
 
+        except CircuitBreakerOpenError as e:
+            logger.error(f"Circuit breaker open for Perplexity (deep-research) researching {company_name}: {e}")
+            api_error = classify_perplexity_error(429, f"Circuit breaker open: {str(e)}")
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.PERPLEXITY,
+                confidence_score=0.2,
+                response_time=time.time() - start_time,
+                error=f"Rate limit circuit breaker open - too many consecutive 429s",
+                api_error=api_error.to_dict(),
+                final_tier_used="deep_failed"
+            )
         except RateLimitExhaustedError as e:
             # GRACEFUL DEGRADATION: Return error result with flag
             # ResearchOrchestrator will fall back to Sonar Pro results

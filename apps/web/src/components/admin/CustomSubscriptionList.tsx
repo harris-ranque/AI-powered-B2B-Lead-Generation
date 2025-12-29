@@ -50,7 +50,7 @@ import {
   Ban,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery, useAction } from "convex/react";
+import { useQuery, useAction, useConvex } from "convex/react";
 import { api } from "@genni/convex-types";
 import { Id } from "@genni/convex-types/dataModel";
 import { CreateCustomSubscriptionModal } from "./CreateCustomSubscriptionModal";
@@ -121,6 +121,7 @@ export function CustomSubscriptionList() {
   const [isCancelling, setIsCancelling] = useState(false);
 
   const { toast } = useToast();
+  const convex = useConvex();
 
   const subscriptions = useQuery(
     api.billing.stripe.subscriptions.listAllSubscriptions,
@@ -274,7 +275,12 @@ export function CustomSubscriptionList() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => window.location.reload()}
+          onClick={() => {
+            void convex.refreshQuery(
+              api.billing.stripe.subscriptions.listAllSubscriptions,
+              statusFilter === "all" ? {} : { status: statusFilter }
+            );
+          }}
         >
           <RefreshCw className="h-4 w-4 mr-2" />
           Refresh
