@@ -105,9 +105,9 @@ export const validateKey = action({
       }),
     });
 
-    let payload: ValidationResponse = { valid: false };
+    let payload: ValidationResponse & { detail?: Array<{ msg?: string }> } = { valid: false };
     try {
-      payload = (await response.json()) as ValidationResponse;
+      payload = await response.json();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to parse validation response";
@@ -115,7 +115,17 @@ export const validateKey = action({
     }
 
     if (!response.ok) {
-      throw new Error(payload.error || "Provider validation failed");
+      // Handle Pydantic validation errors (422) which have a different format
+      const errorMessage =
+        payload.error ||
+        (payload.detail?.[0]?.msg) ||
+        `Provider validation failed (HTTP ${response.status})`;
+      console.error("validateKey: Worker returned error", {
+        status: response.status,
+        error: errorMessage,
+        provider: args.provider,
+      });
+      throw new Error(errorMessage);
     }
 
     // ✅ FIX: Handle encryption directly to avoid nested action auth issues

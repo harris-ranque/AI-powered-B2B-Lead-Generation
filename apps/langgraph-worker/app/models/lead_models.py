@@ -122,6 +122,7 @@ ProviderLiteral = Literal[
     "findymail",
     "icypeas",
     "apify",
+    "instantly",
 ]
 
 
