@@ -385,7 +385,7 @@ function buildCampaignPayload(
           "5": true,  // Friday
           "6": false, // Saturday
         },
-        timezone: "America/New_York",
+        timezone: "America/Chicago",
       },
     ],
   };
