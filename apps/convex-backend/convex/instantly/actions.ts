@@ -509,12 +509,15 @@ export const fetchSenderAccounts = action({
     const formattedAccounts: InstantlyAccount[] = accounts
       .filter((acc): acc is Record<string, unknown> => acc !== null && typeof acc === "object")
       .map((acc) => {
-        const a = acc as Record<string, string | undefined>;
+        const a = acc as Record<string, unknown>;
+        // Status can be a number (1.0) or string from API - normalize to string
+        const rawStatus = a.status ?? a.warmup_status;
+        const status = rawStatus != null ? String(rawStatus) : undefined;
         return {
           id: String(a.id || a.email || ""),
           email: String(a.email || ""),
-          displayName: a.display_name || a.first_name || undefined,
-          status: a.status || a.warmup_status || undefined,
+          displayName: (a.display_name || a.first_name) as string | undefined,
+          status,
         };
       })
       .filter((acc) => acc.email); // Only include accounts with valid emails
