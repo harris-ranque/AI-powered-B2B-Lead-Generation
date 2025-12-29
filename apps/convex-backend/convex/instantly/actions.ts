@@ -318,7 +318,7 @@ function parseName(fullName?: string): { firstName: string; lastName: string } {
   };
 }
 
-// Helper: Build campaign payload
+// Helper: Build campaign payload (Instantly API V2)
 function buildCampaignPayload(
   name: string,
   senderEmail: string,
@@ -366,10 +366,35 @@ function buildCampaignPayload(
     }
   }
 
+  // Instantly API V2 requires campaign_schedule
+  // Default schedule: Monday-Friday 9AM-5PM in America/New_York timezone
+  const campaign_schedule = {
+    schedules: [
+      {
+        name: "Default Schedule",
+        timing: {
+          from: "09:00",
+          to: "17:00",
+        },
+        days: {
+          "0": false, // Sunday
+          "1": true,  // Monday
+          "2": true,  // Tuesday
+          "3": true,  // Wednesday
+          "4": true,  // Thursday
+          "5": true,  // Friday
+          "6": false, // Saturday
+        },
+        timezone: "America/New_York",
+      },
+    ],
+  };
+
   return {
     name,
     email_list: [senderEmail],
     sequences: [{ steps }],
+    campaign_schedule,
     // Campaign created as draft by default (not active)
   };
 }
