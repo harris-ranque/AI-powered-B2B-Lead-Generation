@@ -107,6 +107,7 @@ function parseInstantlyError(
 ): InstantlyApiError {
   let errorCode: InstantlyErrorCode = INSTANTLY_ERROR_CODES.UNKNOWN;
   let details = responseText;
+  let userMessage: string | undefined;
   let retryable = false;
   let retryAfterMs: number | undefined;
 
@@ -118,7 +119,7 @@ function parseInstantlyError(
     // Check for specific error patterns in the response
     const errorLower = details.toLowerCase();
 
-    if (errorLower.includes("unauthorized") || errorLower.includes("invalid") && errorLower.includes("key")) {
+    if (errorLower.includes("unauthorized") || (errorLower.includes("invalid") && errorLower.includes("key"))) {
       errorCode = INSTANTLY_ERROR_CODES.INVALID_API_KEY;
     } else if (errorLower.includes("expired")) {
       errorCode = INSTANTLY_ERROR_CODES.EXPIRED_API_KEY;
@@ -130,7 +131,7 @@ function parseInstantlyError(
       errorCode = INSTANTLY_ERROR_CODES.ACCOUNT_NOT_FOUND;
     } else if (errorLower.includes("invalid") && errorLower.includes("email")) {
       errorCode = INSTANTLY_ERROR_CODES.INVALID_EMAIL;
-    } else if (errorLower.includes("invalid") || errorLower.includes("validation")) {
+    } else if (errorLower.includes("invalid") || errorLower.includes("validation") || errorLower.includes("must be")) {
       errorCode = INSTANTLY_ERROR_CODES.INVALID_REQUEST;
     }
   } catch {
@@ -140,6 +141,20 @@ function parseInstantlyError(
 
   // Map HTTP status codes to error types
   switch (httpStatus) {
+    case 400:
+      // Bad Request - validation errors
+      errorCode = INSTANTLY_ERROR_CODES.INVALID_REQUEST;
+      // Provide more helpful message for common validation errors
+      if (details.includes("campaign_schedule")) {
+        userMessage = "Campaign schedule configuration is invalid. This is an internal error - please contact support.";
+      } else if (details.includes("sequences") || details.includes("steps")) {
+        userMessage = "Email sequence configuration is invalid. This is an internal error - please contact support.";
+      } else if (details.includes("timezone")) {
+        userMessage = "Invalid timezone configuration. This is an internal error - please contact support.";
+      } else if (details.includes("email_list")) {
+        userMessage = "The selected sender email account is not valid. Please select a different account or refresh your accounts in Settings.";
+      }
+      break;
     case 401:
       errorCode = INSTANTLY_ERROR_CODES.INVALID_API_KEY;
       break;
@@ -175,7 +190,7 @@ function parseInstantlyError(
   return {
     code: errorCode,
     message: `${context}: ${details}`,
-    userMessage: USER_FRIENDLY_MESSAGES[errorCode],
+    userMessage: userMessage || USER_FRIENDLY_MESSAGES[errorCode],
     httpStatus,
     details,
     retryable,
@@ -348,12 +363,13 @@ function buildCampaignPayload(
   });
 
   // Add follow-up emails if template lead has them
+  // Note: Instantly API V2 only supports type "email" - delay differentiates follow-ups
   if (templateLead?.followUpEmails && templateLead.followUpEmails.length > 0) {
     for (let i = 0; i < templateLead.followUpEmails.length; i++) {
       const followUp = templateLead.followUpEmails[i];
       if (!followUp) continue;
       steps.push({
-        type: "automatic_email",
+        type: "email", // Must be "email" - only supported type in API V2
         delay: followUp.delay_days ?? (i + 1) * 3, // Default 3-day intervals
         variants: [
           {
