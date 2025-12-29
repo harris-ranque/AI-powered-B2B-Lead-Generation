@@ -137,7 +137,7 @@ function getErrorGuidance(errorMessage: string): {
       description: "Instantly is experiencing technical difficulties. Please try again in a few minutes.",
       action: {
         label: "Check Instantly Status",
-        href: "https://status.instantly.ai",
+        href: "https://instantlyai.instatus.com/",
       },
     };
   }
