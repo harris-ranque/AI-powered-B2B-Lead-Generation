@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { useAuth as useClerkAuth } from "@clerk/clerk-react";
+import { useQuery } from "convex/react";
+import { api } from "@genni/convex-types";
 import type { Doc } from "@genni/convex-types/dataModel";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,8 +26,10 @@ import {
   Zap,
   BarChart3,
   Crown,
+  Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PushToInstantlyButton } from "./instantly/PushToInstantlyButton";
 
 export function LeadSearchHistory() {
   const { searches, isLoading } = useSearches();
@@ -34,6 +38,11 @@ export function LeadSearchHistory() {
   const { toast } = useToast();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [expandedSearchId, setExpandedSearchId] = useState<string | null>(null);
+
+  // Check if Instantly is configured
+  const userApiKeys = useQuery(api.userApiKeys.queries.getUserApiKeys);
+  const instantlyKey = userApiKeys?.find((key) => key.provider === "instantly");
+  const isInstantlyConfigured = instantlyKey?.validated ?? false;
 
   const items = useMemo<Doc<"searches">[]>(() => searches ?? [], [searches]);
 
@@ -331,6 +340,7 @@ export function LeadSearchHistory() {
 
                   {/* Action Buttons */}
                   <div className="flex items-center gap-2 flex-shrink-0">
+                    {/* Export CSV Button */}
                     <Button
                       data-testid="export-csv-button"
                       size="sm"
@@ -354,6 +364,29 @@ export function LeadSearchHistory() {
                         </>
                       )}
                     </Button>
+
+                    {/* Push to Instantly - Show disabled button if not configured */}
+                    {isInstantlyConfigured ? (
+                      <PushToInstantlyButton
+                        searchId={s._id}
+                        searchName={s.name}
+                        status={s.status}
+                        totalLeads={s.results?.totalFound ?? 0}
+                        analyzedCount={s.results?.analyzedCount ?? 0}
+                        enrichedCount={s.results?.enrichedCount ?? 0}
+                      />
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled
+                        className="gap-2 opacity-50"
+                        title="Configure Instantly API key in Settings"
+                      >
+                        <Send className="h-4 w-4" />
+                        Push to Instantly
+                      </Button>
+                    )}
 
                     <Button
                       size="sm"
