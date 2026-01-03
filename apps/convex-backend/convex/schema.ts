@@ -1707,8 +1707,13 @@ export default defineSchema({
       v.literal("cancelled"),
       v.literal("paused")
     ),
-    checkoutUrl: v.optional(v.string()), // Stripe Checkout URL for customer
-    checkoutSessionId: v.optional(v.string()), // Stripe Checkout session ID
+    // Checkout URLs (dual pricing - ACH vs Card with 3% fee)
+    checkoutUrl: v.optional(v.string()), // Legacy: single checkout URL (deprecated)
+    checkoutUrlAch: v.optional(v.string()), // ACH checkout URL (lower price)
+    checkoutUrlCard: v.optional(v.string()), // Card checkout URL (includes 3% fee)
+    checkoutSessionId: v.optional(v.string()), // Legacy: single session ID (deprecated)
+    checkoutSessionIdAch: v.optional(v.string()), // ACH session ID
+    checkoutSessionIdCard: v.optional(v.string()), // Card session ID
     checkoutExpiresAt: v.optional(v.number()),
 
     // Billing period

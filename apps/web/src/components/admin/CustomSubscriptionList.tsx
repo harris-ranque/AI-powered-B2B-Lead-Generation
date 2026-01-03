@@ -48,6 +48,9 @@ import {
   Coins,
   User,
   Ban,
+  Trash2,
+  Building2,
+  Landmark,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useAction, useConvex } from "convex/react";
@@ -62,13 +65,20 @@ interface EnrichedSubscription {
   userId: Id<"users">;
   stripeCustomerId: string;
   stripeSubscriptionId?: string;
+  stripePriceIdAch: string;
+  stripePriceIdCard: string;
   monthlyPriceCents: number;
   monthlyCredits: number;
   allowExtraCredits: boolean;
   extraCreditPriceCents?: number;
   extraCreditPackSize?: number;
   status: SubscriptionStatus;
+  // Legacy single checkout URL
   checkoutUrl?: string;
+  // Dual checkout URLs (ACH vs Card pricing)
+  checkoutUrlAch?: string;
+  checkoutUrlCard?: string;
+  checkoutExpiresAt?: number;
   currentPeriodStart?: number;
   currentPeriodEnd?: number;
   createdAt: number;
@@ -116,9 +126,13 @@ export function CustomSubscriptionList() {
   const [statusFilter, setStatusFilter] = useState<SubscriptionStatus | "all">("all");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [subscriptionToCancel, setSubscriptionToCancel] = useState<Id<"customSubscriptions"> | null>(null);
+  const [subscriptionToDelete, setSubscriptionToDelete] = useState<Id<"customSubscriptions"> | null>(null);
   const [cancelImmediately, setCancelImmediately] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState<Id<"customSubscriptions"> | null>(null);
 
   const { toast } = useToast();
   const convex = useConvex();
@@ -129,6 +143,8 @@ export function CustomSubscriptionList() {
   ) as EnrichedSubscription[] | undefined;
 
   const cancelSubscription = useAction(api.billing.stripe.subscriptions.cancelSubscription);
+  const deleteSubscription = useAction(api.billing.stripe.subscriptions.deletePendingSubscription);
+  const regenerateLinks = useAction(api.billing.stripe.subscriptions.regenerateCheckoutLinks);
 
   const formatCurrency = (cents: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -156,6 +172,65 @@ export function CustomSubscriptionList() {
   const handleCancelClick = (subscriptionId: Id<"customSubscriptions">) => {
     setSubscriptionToCancel(subscriptionId);
     setCancelDialogOpen(true);
+  };
+
+  const handleDeleteClick = (subscriptionId: Id<"customSubscriptions">) => {
+    setSubscriptionToDelete(subscriptionId);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!subscriptionToDelete) return;
+
+    try {
+      setIsDeleting(true);
+      await deleteSubscription({ subscriptionId: subscriptionToDelete });
+      toast({
+        title: "Subscription Deleted",
+        description: "The pending subscription has been removed",
+      });
+      setDeleteDialogOpen(false);
+      setSubscriptionToDelete(null);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete subscription";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleRegenerate = async (subscriptionId: Id<"customSubscriptions">) => {
+    try {
+      setIsRegenerating(subscriptionId);
+      const result = await regenerateLinks({ subscriptionId });
+      toast({
+        title: "Links Regenerated",
+        description: "New checkout links have been created",
+      });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to regenerate links";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsRegenerating(null);
+    }
+  };
+
+  const isCheckoutExpired = (expiresAt?: number) => {
+    if (!expiresAt) return false;
+    return Date.now() > expiresAt;
+  };
+
+  // Calculate card price with 3% convenience fee
+  const getCardPrice = (basePriceCents: number) => {
+    return Math.round(basePriceCents * 1.03);
   };
 
   const handleConfirmCancel = async () => {
@@ -367,24 +442,55 @@ export function CustomSubscriptionList() {
                   </TableCell>
                   <TableCell>{formatDate(subscription.createdAt)}</TableCell>
                   <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {subscription.status === "pending_checkout" && subscription.checkoutUrl && (
+                    <div className="flex items-center justify-end gap-1">
+                      {subscription.status === "pending_checkout" && (
                         <>
+                          {/* ACH Link (Bank Transfer - lower price) */}
+                          {(subscription.checkoutUrlAch || subscription.checkoutUrl) && (
+                            <div className="flex items-center">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleCopyCheckoutUrl(subscription.checkoutUrlAch || subscription.checkoutUrl!)}
+                                title={`Copy ACH link (${formatCurrency(subscription.monthlyPriceCents)})`}
+                                className="text-green-600 hover:text-green-700"
+                              >
+                                <Landmark className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          )}
+                          {/* Card Link (higher price with 3% fee) */}
+                          {subscription.checkoutUrlCard && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleCopyCheckoutUrl(subscription.checkoutUrlCard!)}
+                              title={`Copy Card link (${formatCurrency(getCardPrice(subscription.monthlyPriceCents))})`}
+                              className="text-blue-600 hover:text-blue-700"
+                            >
+                              <CreditCard className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {/* Regenerate Links */}
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleCopyCheckoutUrl(subscription.checkoutUrl!)}
-                            title="Copy checkout URL"
+                            onClick={() => handleRegenerate(subscription._id)}
+                            disabled={isRegenerating === subscription._id}
+                            title={isCheckoutExpired(subscription.checkoutExpiresAt) ? "Links expired - click to regenerate" : "Regenerate checkout links"}
+                            className={isCheckoutExpired(subscription.checkoutExpiresAt) ? "text-amber-600 hover:text-amber-700" : ""}
                           >
-                            <Copy className="h-4 w-4" />
+                            <RefreshCw className={`h-4 w-4 ${isRegenerating === subscription._id ? "animate-spin" : ""}`} />
                           </Button>
+                          {/* Delete Pending */}
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => window.open(subscription.checkoutUrl, "_blank")}
-                            title="Open checkout URL"
+                            onClick={() => handleDeleteClick(subscription._id)}
+                            title="Delete pending subscription"
+                            className="text-destructive hover:text-destructive"
                           >
-                            <ExternalLink className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </>
                       )}
@@ -447,6 +553,29 @@ export function CustomSubscriptionList() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isCancelling ? "Cancelling..." : "Cancel Subscription"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Pending Subscription</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this pending subscription? The customer has not yet
+              completed checkout. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Deleting..." : "Delete Subscription"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

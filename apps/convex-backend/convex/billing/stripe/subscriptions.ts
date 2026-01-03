@@ -213,11 +213,12 @@ export const createCustomSubscription = action({
       }
     );
 
-    // Step 6: Create Stripe Checkout session
-    // Use ACH as default, customer can switch to card at checkout
+    // Step 6: Create TWO Stripe Checkout sessions (ACH and Card with different prices)
     const appUrl = process.env.APP_URL || "http://localhost:3000";
+    const expiresAt = Math.floor(Date.now() / 1000) + CHECKOUT_EXPIRATION_SECONDS;
 
-    const session = await stripe.checkout.sessions.create({
+    // ACH Checkout Session (lower price - no convenience fee)
+    const achSession = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: stripeCustomerId,
       line_items: [
@@ -226,7 +227,7 @@ export const createCustomSubscription = action({
           quantity: 1,
         },
       ],
-      payment_method_types: ["us_bank_account", "card"],
+      payment_method_types: ["us_bank_account"],
       payment_method_options: {
         us_bank_account: {
           financial_connections: {
@@ -240,35 +241,71 @@ export const createCustomSubscription = action({
           userId: userId,
           subscriptionId: subscriptionId,
           monthlyCredits: args.monthlyCredits.toString(),
-          achPriceId: achPrice.id,
-          cardPriceId: cardPrice.id,
+          paymentMethod: "ach",
         },
       },
       metadata: {
         userId: userId,
         subscriptionId: subscriptionId,
         type: "custom_subscription",
+        paymentMethod: "ach",
       },
       success_url: `${appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/subscription/cancelled`,
-      expires_at: Math.floor(Date.now() / 1000) + CHECKOUT_EXPIRATION_SECONDS,
+      expires_at: expiresAt,
     });
 
-    // Step 7: Update subscription with checkout URL and session ID
-    await ctx.runMutation(internal.billing.stripe.internal.updateCheckoutUrl, {
+    // Card Checkout Session (higher price - includes 3% convenience fee)
+    const cardSession = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: stripeCustomerId,
+      line_items: [
+        {
+          price: cardPrice.id,
+          quantity: 1,
+        },
+      ],
+      payment_method_types: ["card"],
+      subscription_data: {
+        metadata: {
+          userId: userId,
+          subscriptionId: subscriptionId,
+          monthlyCredits: args.monthlyCredits.toString(),
+          paymentMethod: "card",
+          convenienceFeeCents: calculateConvenienceFee(args.monthlyPriceCents).toString(),
+        },
+      },
+      metadata: {
+        userId: userId,
+        subscriptionId: subscriptionId,
+        type: "custom_subscription",
+        paymentMethod: "card",
+      },
+      success_url: `${appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appUrl}/subscription/cancelled`,
+      expires_at: expiresAt,
+    });
+
+    // Step 7: Update subscription with both checkout URLs
+    await ctx.runMutation(internal.billing.stripe.internal.updateCheckoutUrls, {
       subscriptionId,
-      checkoutUrl: session.url!,
-      checkoutExpiresAt: session.expires_at * 1000, // Convert to ms
-      checkoutSessionId: session.id, // Required for webhook lookup
+      checkoutUrlAch: achSession.url!,
+      checkoutUrlCard: cardSession.url!,
+      checkoutExpiresAt: expiresAt * 1000, // Convert to ms
+      checkoutSessionIdAch: achSession.id,
+      checkoutSessionIdCard: cardSession.id,
     });
 
     return {
       success: true,
       subscriptionId,
-      checkoutUrl: session.url,
+      checkoutUrlAch: achSession.url,
+      checkoutUrlCard: cardSession.url,
       customerId: stripeCustomerId,
       achPriceId: achPrice.id,
       cardPriceId: cardPrice.id,
+      achPriceCents: args.monthlyPriceCents,
+      cardPriceCents: cardPriceCents,
     };
   },
 });
@@ -423,6 +460,161 @@ export const getSubscriptionById = query({
   },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.subscriptionId);
+  },
+});
+
+/**
+ * Delete a pending checkout subscription (Admin only)
+ * Use this to remove abandoned/stale pending checkouts
+ */
+export const deletePendingSubscription = action({
+  args: {
+    subscriptionId: v.id("customSubscriptions"),
+  },
+  handler: async (ctx, args) => {
+    // Verify admin
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Unauthorized");
+    }
+
+    const adminUser: Doc<"users"> | null = await ctx.runQuery(internal.users.internal.getUserByClerkId, {
+      clerkId: identity.subject,
+    });
+    if (!adminUser || adminUser.role !== "admin") {
+      throw new Error("Admin access required");
+    }
+
+    await ctx.runMutation(internal.billing.stripe.internal.deletePendingSubscription, {
+      subscriptionId: args.subscriptionId,
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Regenerate checkout links for an expired/pending subscription (Admin only)
+ * Creates new Stripe checkout sessions with fresh expiration
+ */
+export const regenerateCheckoutLinks = action({
+  args: {
+    subscriptionId: v.id("customSubscriptions"),
+  },
+  handler: async (ctx, args) => {
+    // Verify admin
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Unauthorized");
+    }
+
+    const adminUser: Doc<"users"> | null = await ctx.runQuery(internal.users.internal.getUserByClerkId, {
+      clerkId: identity.subject,
+    });
+    if (!adminUser || adminUser.role !== "admin") {
+      throw new Error("Admin access required");
+    }
+
+    const subscription: Doc<"customSubscriptions"> | null = await ctx.runQuery(
+      internal.billing.stripe.internal.getSubscriptionById,
+      { subscriptionId: args.subscriptionId }
+    );
+    if (!subscription) {
+      throw new Error("Subscription not found");
+    }
+
+    if (subscription.status !== "pending_checkout") {
+      throw new Error("Can only regenerate links for pending_checkout subscriptions");
+    }
+
+    const stripe = getStripeClient();
+    const appUrl = process.env.APP_URL || "http://localhost:3000";
+    const expiresAt = Math.floor(Date.now() / 1000) + CHECKOUT_EXPIRATION_SECONDS;
+
+    // ACH Checkout Session (lower price)
+    const achSession = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: subscription.stripeCustomerId,
+      line_items: [
+        {
+          price: subscription.stripePriceIdAch,
+          quantity: 1,
+        },
+      ],
+      payment_method_types: ["us_bank_account"],
+      payment_method_options: {
+        us_bank_account: {
+          financial_connections: {
+            permissions: ["payment_method"],
+          },
+          verification_method: "instant",
+        },
+      },
+      subscription_data: {
+        metadata: {
+          userId: subscription.userId,
+          subscriptionId: args.subscriptionId,
+          monthlyCredits: subscription.monthlyCredits.toString(),
+          paymentMethod: "ach",
+        },
+      },
+      metadata: {
+        userId: subscription.userId,
+        subscriptionId: args.subscriptionId,
+        type: "custom_subscription",
+        paymentMethod: "ach",
+      },
+      success_url: `${appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appUrl}/subscription/cancelled`,
+      expires_at: expiresAt,
+    });
+
+    // Card Checkout Session (higher price with 3% fee)
+    const cardSession = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: subscription.stripeCustomerId,
+      line_items: [
+        {
+          price: subscription.stripePriceIdCard,
+          quantity: 1,
+        },
+      ],
+      payment_method_types: ["card"],
+      subscription_data: {
+        metadata: {
+          userId: subscription.userId,
+          subscriptionId: args.subscriptionId,
+          monthlyCredits: subscription.monthlyCredits.toString(),
+          paymentMethod: "card",
+        },
+      },
+      metadata: {
+        userId: subscription.userId,
+        subscriptionId: args.subscriptionId,
+        type: "custom_subscription",
+        paymentMethod: "card",
+      },
+      success_url: `${appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appUrl}/subscription/cancelled`,
+      expires_at: expiresAt,
+    });
+
+    // Update subscription with new checkout URLs
+    await ctx.runMutation(internal.billing.stripe.internal.updateCheckoutUrls, {
+      subscriptionId: args.subscriptionId,
+      checkoutUrlAch: achSession.url!,
+      checkoutUrlCard: cardSession.url!,
+      checkoutExpiresAt: expiresAt * 1000,
+      checkoutSessionIdAch: achSession.id,
+      checkoutSessionIdCard: cardSession.id,
+    });
+
+    return {
+      success: true,
+      checkoutUrlAch: achSession.url,
+      checkoutUrlCard: cardSession.url,
+      expiresAt: expiresAt * 1000,
+    };
   },
 });
 

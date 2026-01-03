@@ -121,20 +121,73 @@ export const createCustomSubscriptionRecord = internalMutation({
   },
 });
 
+/**
+ * Legacy: Update single checkout URL (deprecated - use updateCheckoutUrls)
+ */
 export const updateCheckoutUrl = internalMutation({
   args: {
     subscriptionId: v.id("customSubscriptions"),
     checkoutUrl: v.string(),
     checkoutExpiresAt: v.number(),
-    checkoutSessionId: v.string(), // Required for webhook lookup
+    checkoutSessionId: v.string(),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.subscriptionId, {
       checkoutUrl: args.checkoutUrl,
       checkoutExpiresAt: args.checkoutExpiresAt,
-      checkoutSessionId: args.checkoutSessionId, // Store for webhook handler lookup
+      checkoutSessionId: args.checkoutSessionId,
       updatedAt: Date.now(),
     });
+  },
+});
+
+/**
+ * Update dual checkout URLs (ACH and Card with different prices)
+ */
+export const updateCheckoutUrls = internalMutation({
+  args: {
+    subscriptionId: v.id("customSubscriptions"),
+    checkoutUrlAch: v.string(),
+    checkoutUrlCard: v.string(),
+    checkoutExpiresAt: v.number(),
+    checkoutSessionIdAch: v.string(),
+    checkoutSessionIdCard: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.subscriptionId, {
+      checkoutUrlAch: args.checkoutUrlAch,
+      checkoutUrlCard: args.checkoutUrlCard,
+      checkoutExpiresAt: args.checkoutExpiresAt,
+      checkoutSessionIdAch: args.checkoutSessionIdAch,
+      checkoutSessionIdCard: args.checkoutSessionIdCard,
+      // Also set legacy field for backward compatibility
+      checkoutUrl: args.checkoutUrlAch,
+      checkoutSessionId: args.checkoutSessionIdAch,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Delete a pending checkout subscription (admin only)
+ * Only allows deletion of pending_checkout status subscriptions
+ */
+export const deletePendingSubscription = internalMutation({
+  args: {
+    subscriptionId: v.id("customSubscriptions"),
+  },
+  handler: async (ctx, args) => {
+    const subscription = await ctx.db.get(args.subscriptionId);
+    if (!subscription) {
+      throw new Error("Subscription not found");
+    }
+
+    if (subscription.status !== "pending_checkout") {
+      throw new Error("Can only delete subscriptions with pending_checkout status");
+    }
+
+    await ctx.db.delete(args.subscriptionId);
+    return { success: true };
   },
 });
 
