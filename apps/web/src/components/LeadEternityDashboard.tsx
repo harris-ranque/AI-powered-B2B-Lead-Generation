@@ -717,14 +717,9 @@ function LeadEternityDashboardContent() {
                 userName={user?.name || profile?.contactInfo?.name || undefined}
                 businessName={profile?.companyName ?? null}
                 planId={normalizedPlan}
-                credits={userCredits}
                 leadStats={leadStatsSummary}
-                emailCount={pipelineEmails.length}
                 searches={searches ?? []}
-                usageSummary={usageSummary}
-                pipelineStage={state.currentStage}
                 hasCompletedProfile={hasCompletedOnboarding}
-                hasNewEmails={hasNewEmails}
                 isAdmin={isAdmin}
               />
             </div>
