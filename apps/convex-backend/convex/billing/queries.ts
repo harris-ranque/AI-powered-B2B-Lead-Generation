@@ -297,3 +297,78 @@ export const getSubscriptionStatus = query({
     };
   },
 });
+
+// Get custom subscription dashboard data - unified view for custom subscription users
+export const getCustomSubscriptionDashboard = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    // Check for custom subscription
+    const customSubscription = await ctx.db
+      .query("customSubscriptions")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("status"), "active"),
+          q.eq(q.field("status"), "pending_checkout"),
+          q.eq(q.field("status"), "past_due")
+        )
+      )
+      .first();
+
+    if (!customSubscription) {
+      return {
+        hasCustomSubscription: false,
+        subscription: null,
+        currentAllocation: null,
+        creditUsagePercent: 0,
+      };
+    }
+
+    // Get current active credit allocation
+    const currentAllocation = await ctx.db
+      .query("subscriptionCreditAllocations")
+      .withIndex("by_user_status", (q) =>
+        q.eq("userId", user._id).eq("status", "active")
+      )
+      .first();
+
+    // Calculate credits and usage
+    const creditsAllocated = currentAllocation?.creditsAllocated ?? customSubscription.monthlyCredits;
+    const creditsUsed = currentAllocation?.creditsUsed ?? 0;
+    const creditsRemaining = creditsAllocated - creditsUsed;
+    const creditUsagePercent = creditsAllocated > 0
+      ? Math.round((creditsUsed / creditsAllocated) * 100)
+      : 0;
+
+    // Calculate days remaining until next allocation
+    const now = Date.now();
+    const periodEnd = currentAllocation?.periodEnd ?? customSubscription.currentPeriodEnd ?? now;
+    const daysRemaining = Math.max(0, Math.ceil((periodEnd - now) / (1000 * 60 * 60 * 24)));
+
+    return {
+      hasCustomSubscription: true,
+      subscription: {
+        status: customSubscription.status,
+        monthlyCredits: customSubscription.monthlyCredits,
+        monthlyPriceCents: customSubscription.monthlyPriceCents,
+        paymentMethodType: customSubscription.paymentMethodType,
+        convenienceFeeCents: customSubscription.convenienceFeeCents,
+        currentPeriodStart: customSubscription.currentPeriodStart,
+        currentPeriodEnd: customSubscription.currentPeriodEnd,
+      },
+      currentAllocation: {
+        creditsAllocated,
+        creditsUsed,
+        creditsRemaining,
+        periodEnd,
+        daysRemaining,
+      },
+      creditUsagePercent,
+    };
+  },
+});

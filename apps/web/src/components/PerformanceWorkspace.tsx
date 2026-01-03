@@ -31,8 +31,7 @@ import { PipelineProgressProvider } from "@/contexts/PipelineProgressContext";
 import { PipelineProgressPanel } from "@/components/PipelineProgressPanel";
 import { featureFlags } from "@/lib/featureFlags";
 import { UsageWarnings } from "@/components/SubscriptionGuard";
-import { SubscriptionStatusCard } from "@/components/SubscriptionStatusCard";
-import { UsageMetersCard } from "@/components/UsageMetersCard";
+import { PlanStatusCard } from "@/components/PlanStatusCard";
 import { CreditManager } from "@/components/CreditManager";
 import { withErrorBoundary } from "@/utils/errorHandling";
 import { createLogger } from "@/utils/logger";
@@ -488,8 +487,7 @@ function PerformanceWorkspaceComponent({
               <CardDescription>Your current plan and usage at a glance.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <SubscriptionStatusCard />
-              <UsageMetersCard />
+              <PlanStatusCard />
             </CardContent>
           </Card>
 

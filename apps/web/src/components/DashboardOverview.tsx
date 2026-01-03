@@ -14,7 +14,6 @@ import {
   BarChart3,
   Building2,
   CheckCircle,
-  CreditCard,
   Mail,
   PlayCircle,
   Search,
@@ -25,8 +24,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import type { Search } from "@/lib/types";
 import type { PipelineStage } from "@/pipeline/types";
-import { SubscriptionStatusCard } from "@/components/SubscriptionStatusCard";
-import { UsageMetersCard } from "@/components/UsageMetersCard";
+import { PlanStatusCard } from "@/components/PlanStatusCard";
 import { DashboardHelpWidget } from "@/components/DashboardHelpWidget";
 import { cn } from "@/lib/utils";
 
@@ -171,15 +169,6 @@ export function DashboardOverview({
       icon: Sparkles,
     },
     {
-      label: "Credits available",
-      value: credits.toLocaleString(),
-      sublabel:
-        usageSummary.currentPeriodUsage > 0
-          ? `${usageSummary.currentPeriodUsage} used this cycle`
-          : `${credits.toLocaleString()} remaining`,
-      icon: CreditCard,
-    },
-    {
       label: "Highly targeted emails created",
       value: targetedEmailsCount > 0 ? targetedEmailsCount.toLocaleString() : "0",
       sublabel: targetedEmailsCount > 0 ? `${targetedEmailsCount} personalized email${targetedEmailsCount !== 1 ? 's' : ''} ready` : "No emails generated yet",
@@ -217,7 +206,7 @@ export function DashboardOverview({
       </header>
 
       <section>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           {stats.map((stat) => {
             const Icon = stat.icon;
             return (
@@ -418,8 +407,7 @@ export function DashboardOverview({
         </Card>
 
         <div className="space-y-4">
-          <SubscriptionStatusCard />
-          <UsageMetersCard />
+          <PlanStatusCard />
         </div>
       </section>
 
