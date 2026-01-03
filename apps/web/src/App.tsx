@@ -30,6 +30,9 @@ import { GenniApp } from "@/components/GenniApp";
 import { AdminDashboard } from "@/components/AdminDashboard";
 import AdminDocs from "@/components/docs/AdminDocs";
 
+// Subscription Pages
+import SubscriptionSuccess from "./pages/SubscriptionSuccess";
+
 // Other Pages
 import NotFound from "./pages/NotFound";
 
@@ -88,6 +91,15 @@ const App = () => (
                           <GenniApp />
                         </ProtectedRoute>
                       </ErrorBoundary>
+                    }
+                  />
+                  {/* Subscription Routes */}
+                  <Route
+                    path="/subscription/success"
+                    element={
+                      <ProtectedRoute>
+                        <SubscriptionSuccess />
+                      </ProtectedRoute>
                     }
                   />
                   {/* Admin Routes */}

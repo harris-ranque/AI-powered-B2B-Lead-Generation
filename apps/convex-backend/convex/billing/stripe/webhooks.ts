@@ -129,6 +129,7 @@ export const markEventProcessed = internalMutation({
 /**
  * Verify Stripe webhook signature and parse event.
  * Called from the HTTP handler.
+ * Uses constructEventAsync for Convex's SubtleCrypto environment.
  */
 export const verifyAndParseWebhook = internalAction({
   args: {
@@ -140,7 +141,8 @@ export const verifyAndParseWebhook = internalAction({
       const stripe = getStripeClient();
       const webhookSecret = getWebhookSecret();
 
-      const event = stripe.webhooks.constructEvent(
+      // IMPORTANT: Use constructEventAsync for environments with SubtleCrypto (like Convex)
+      const event = await stripe.webhooks.constructEventAsync(
         args.payload,
         args.signature,
         webhookSecret

@@ -31,11 +31,10 @@ export function getStripeClient(): Stripe {
   }
 
   stripeClient = new Stripe(secretKey, {
-    // API version must match the Stripe SDK version's expected version.
-    // SDK v20.0.0 requires "2025-11-17.clover" - codenames (clover, basil, etc.)
-    // are Stripe's internal naming convention, not instability indicators.
-    // Update when upgrading the stripe package.
-    apiVersion: "2025-11-17.clover",
+    // API version must match your Stripe Dashboard API version.
+    // Codenames (clover, basil, etc.) are Stripe's internal naming convention.
+    // Update when changing API version in Stripe Dashboard.
+    apiVersion: "2025-12-15.clover",
     typescript: true,
     // Enable telemetry for Stripe to improve their service
     telemetry: true,
@@ -145,11 +144,10 @@ export function formatCentsToDollars(cents: number): string {
 
 /**
  * Stripe API version being used.
- * Must match the Stripe SDK version's expected API version.
+ * Must match your Stripe Dashboard API version.
  * Codenames (clover, basil, acacia) are Stripe's internal naming - not stability indicators.
- * Update when upgrading the stripe package.
  */
-export const STRIPE_API_VERSION = "2025-11-17.clover";
+export const STRIPE_API_VERSION = "2025-12-15.clover";
 
 /**
  * Default checkout session expiration time (24 hours in seconds).
