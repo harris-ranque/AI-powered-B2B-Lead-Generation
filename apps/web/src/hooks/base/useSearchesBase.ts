@@ -236,15 +236,20 @@ export function useSearchesBase() {
 
 export type UseSearchesResult = ReturnType<typeof useSearchesBase>;
 
+// Helper to check if an ID is a temporary optimistic ID (not yet persisted to Convex)
+const isTempId = (id: string | undefined): boolean =>
+  typeof id === "string" && id.startsWith("temp_");
+
 export function useSearchBase(searchId: Id<"searches"> | undefined) {
+  // Skip query for temp IDs to avoid validation errors
   const search = useQuery(
     api.search.queries.getSearch,
-    searchId ? { searchId } : "skip",
+    searchId && !isTempId(searchId) ? { searchId } : "skip",
   );
 
   return {
     search,
-    isLoading: search === undefined && searchId !== undefined,
+    isLoading: search === undefined && searchId !== undefined && !isTempId(searchId),
   };
 }
 

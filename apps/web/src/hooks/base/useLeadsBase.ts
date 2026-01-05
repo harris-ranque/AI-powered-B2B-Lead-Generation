@@ -7,10 +7,15 @@ import type { Lead } from "@/lib/types";
 
 const logger = createLogger("useLeads");
 
+// Helper to check if an ID is a temporary optimistic ID (not yet persisted to Convex)
+const isTempId = (id: string | undefined): boolean =>
+  typeof id === "string" && id.startsWith("temp_");
+
 export function useLeadsBase(searchId?: Id<"searches">) {
+  // Skip query for temp IDs to avoid validation errors
   const leadsResult = useQuery(
     api.leads.queries.getLeadsBySearch,
-    searchId ? { searchId } : "skip",
+    searchId && !isTempId(searchId) ? { searchId } : "skip",
   );
 
   const leads = leadsResult || [];

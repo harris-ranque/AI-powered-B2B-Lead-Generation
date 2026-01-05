@@ -1083,6 +1083,9 @@ export const searchGoogleMaps: any = action({
           maxResults: initialFetchCount,
           maxTiles: maxTilesForSearch,
           concurrency: concurrencyForSearch,
+          // 🎯 Pass resolved city center for intelligent tile ordering
+          // This ensures business districts are searched first, not geographic corners
+          sortCenterHint: lat !== 0 && lng !== 0 ? { lat, lng } : undefined,
           correlation: discoveryCorrelation,
           shouldCancel: async () => !(await ensureSearchActive()),
         });
@@ -1404,6 +1407,8 @@ export const searchGoogleMaps: any = action({
               maxResults: segmentFetchCount,
               maxTiles: expansionMaxTiles,
               concurrency: expansionConcurrency,
+              // 🎯 Use original city center for expansion tile ordering too
+              sortCenterHint: lat !== 0 && lng !== 0 ? { lat, lng } : undefined,
               correlation: discoveryCorrelation,
               shouldCancel: async () => !(await ensureSearchActive()),
             });

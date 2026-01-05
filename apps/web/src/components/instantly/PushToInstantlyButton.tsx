@@ -174,10 +174,17 @@ export function PushToInstantlyButton({
   const [selectedEmail, setSelectedEmail] = useState<string>("");
   const [lastError, setLastError] = useState<string | null>(null);
 
+  // Check if this is a temporary/optimistic ID (not yet persisted to Convex)
+  const isTempId = typeof searchId === "string" && searchId.startsWith("temp_");
+
   // Check if user has Instantly configured
   const userApiKeys = useQuery(api.userApiKeys.queries.getUserApiKeys);
   const instantlySettings = useQuery(api.instantly.queries.getSettings) as InstantlySettingsData | null | undefined;
-  const pushStatus = useQuery(api.instantly.queries.isSearchPushed, { searchId }) as PushStatusData | null | undefined;
+  // Skip query for temp IDs to avoid validation errors
+  const pushStatus = useQuery(
+    api.instantly.queries.isSearchPushed,
+    isTempId ? "skip" : { searchId }
+  ) as PushStatusData | null | undefined;
 
   // Action
   const pushToInstantly = useAction(api.instantly.actions.pushToInstantly);
@@ -194,9 +201,10 @@ export function PushToInstantlyButton({
   const alreadyPushed = pushStatus?.pushed;
   const campaignInfo = pushStatus?.campaign;
 
-  // Can push check
+  // Can push check - also exclude temp IDs (optimistic updates not yet persisted)
   const canPush =
     hasValidKey &&
+    !isTempId &&
     status === "completed" &&
     analyzedCount > 0 &&
     !alreadyPushed;

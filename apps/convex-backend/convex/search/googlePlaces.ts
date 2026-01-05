@@ -61,6 +61,8 @@ export type TilingParams = {
   maxTiles?: number; // Default: 250 (safety cap)
   concurrency?: number; // Default: 5 workers (range: 1-10)
   tilesOverride?: TileDefinition[]; // Optional explicit tiles (used for expansion)
+  // Tile ordering optimization
+  sortCenterHint?: LatLng; // Optional: Sort tiles by proximity to this point (e.g., resolved city center)
   // Logging
   correlation: CorrelationContext;
   // Cancellation check
@@ -606,17 +608,47 @@ export async function searchPlacesWithTiling(
 
   const tiles = [...generatedTiles];
 
-  // Cap tiles for safety
+  // 🎯 CENTER-BASED TILE ORDERING: Sort tiles by proximity to city center
+  // This ensures downtown/business districts are searched first before capping
+  // Critical for small maxResults requests in large city bounds
+  const sortCenter = params.sortCenterHint || params.center || (params.bounds ? {
+    lat: (params.bounds.ne.lat + params.bounds.sw.lat) / 2,
+    lng: (params.bounds.ne.lng + params.bounds.sw.lng) / 2,
+  } : null);
+
+  if (sortCenter && tiles.length > 1) {
+    tiles.sort((a, b) =>
+      distanceMeters(a.center, sortCenter) - distanceMeters(b.center, sortCenter)
+    );
+
+    const firstTile = tiles[0];
+    const lastTile = tiles[tiles.length - 1];
+    logWithCorrelation(
+      "info",
+      params.correlation,
+      `🎯 Tiles sorted by proximity to center (business district priority)`,
+      {
+        sortCenter,
+        totalTiles: tiles.length,
+        nearestTileDistance: firstTile ? Math.round(distanceMeters(firstTile.center, sortCenter)) : 0,
+        farthestTileDistance: lastTile ? Math.round(distanceMeters(lastTile.center, sortCenter)) : 0,
+        optimization: "Downtown/business areas searched first",
+      },
+    );
+  }
+
+  // Cap tiles for safety (now sorted by proximity to center)
   const maxTiles = params.maxTiles || 250;
   if (tiles.length > maxTiles) {
     logWithCorrelation(
       "warn",
       params.correlation,
-      `⚠️ Capping tiles at ${maxTiles} (generated ${tiles.length})`,
+      `⚠️ Capping tiles at ${maxTiles} (generated ${tiles.length}) - keeping closest to center`,
       {
         generated: tiles.length,
         capped: maxTiles,
-        note: "Increase maxTiles parameter for larger coverage",
+        note: "Tiles closest to city center retained for best business coverage",
+        sortCenter,
       },
     );
     tiles.length = maxTiles;
