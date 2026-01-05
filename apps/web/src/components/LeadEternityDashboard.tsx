@@ -6,7 +6,6 @@ import {
   Search,
   BarChart3,
   Settings,
-  Bot,
   Sparkles,
   UserCheck,
   Building2,
@@ -608,10 +607,15 @@ function LeadEternityDashboardContent() {
         <div className="harborlight-topbar-inner flex items-center px-6 py-5">
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-3">
-              <Bot className="harborlight-logo-icon h-10 w-10" aria-hidden="true" />
+              <img
+                src="/thebeeai-logo.webp"
+                alt="The Bee AI"
+                className="h-10 w-10 object-contain"
+                aria-hidden="true"
+              />
               <div>
                 <h1 className="text-2xl font-display font-semibold tracking-tight text-foreground">
-                  Genni
+                  The Bee AI
                 </h1>
                 <p className="text-[0.65rem] font-medium uppercase tracking-[0.32em] text-muted-foreground opacity-90">
                   AI-Powered Lead Generation
