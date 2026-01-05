@@ -56,7 +56,10 @@
       "Bash(grep:*)",
       "Bash(pnpm build:*)",
       "Bash(pnpm list:*)",
-      "Bash(pnpm install)"
+      "Bash(pnpm install)",
+      "mcp__convex-mcp__envList",
+      "mcp__convex-mcp__logs",
+      "mcp__convex-mcp__data"
     ],
     "deny": [],
     "ask": []

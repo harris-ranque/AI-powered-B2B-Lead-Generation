@@ -206,7 +206,7 @@ export function PipelineOrchestrator({
         label: "Standard Research",
         icon: Search,
         badgeClass:
-          "border border-cyan-500/40 bg-cyan-500/10 text-cyan-200",
+          "border border-cyan-300 bg-cyan-50 text-cyan-700 dark:border-cyan-500/40 dark:bg-cyan-500/10 dark:text-cyan-200",
         description: "Fast business context (2-3s)",
       };
     case "perplexity":
@@ -214,7 +214,7 @@ export function PipelineOrchestrator({
         label: "Deep Research",
         icon: Zap,
         badgeClass:
-          "border border-amber-500/40 bg-amber-500/10 text-amber-200",
+          "border border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200",
         description: "Comprehensive report (8-12s)",
       };
       default:
@@ -522,7 +522,7 @@ export function PipelineOrchestrator({
       {systemStatus?.leadGenerationPaused && (
         <Alert
           variant="destructive"
-          className="border border-red-500/50 bg-red-500/10 text-red-200"
+          className="border border-red-300 bg-red-50 text-red-900 dark:border-red-500/50 dark:bg-red-500/10 dark:text-red-200"
         >
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
@@ -548,7 +548,7 @@ export function PipelineOrchestrator({
       {systemConfiguration?.orchestrationSettings?.langGraphHealth?.status === "unavailable" && (
         <Alert
           variant="destructive"
-          className="border border-red-500/50 bg-red-500/10 text-red-200"
+          className="border border-red-300 bg-red-50 text-red-900 dark:border-red-500/50 dark:bg-red-500/10 dark:text-red-200"
         >
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
@@ -570,17 +570,17 @@ export function PipelineOrchestrator({
       )}
 
       {systemConfiguration?.orchestrationSettings?.langGraphHealth?.status === "degraded" && (
-        <Alert className="border border-amber-500/50 bg-amber-500/10 text-amber-200">
-          <AlertTriangle className="h-4 w-4 text-amber-200" />
+        <Alert className="border border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-200">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-200" />
           <AlertDescription>
             <div className="space-y-1">
-              <div className="font-semibold text-amber-100">
+              <div className="font-semibold text-amber-900 dark:text-amber-100">
                 AI Analysis Service Degraded
               </div>
-              <div className="text-sm text-amber-100/80">
+              <div className="text-sm text-amber-800 dark:text-amber-100/80">
                 The LangGraph worker is experiencing issues. AI analysis may be slower than usual or encounter errors.
               </div>
-              <div className="mt-1 text-xs text-amber-100/70">
+              <div className="mt-1 text-xs text-amber-700 dark:text-amber-100/70">
                 {systemConfiguration.orchestrationSettings.langGraphHealth.consecutiveFailures} consecutive failures detected
               </div>
             </div>

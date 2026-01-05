@@ -326,6 +326,8 @@ function LeadEternityDashboardContent() {
         return "business";
       case "enterprise":
         return "enterprise";
+      case "custom":
+        return "custom";
       default:
         return "starter";
     }

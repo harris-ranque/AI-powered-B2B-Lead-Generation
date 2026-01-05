@@ -969,7 +969,7 @@ export function LeadDiscoveryStage({
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
-              className="mt-4 flex gap-2 rounded-xl border border-red-500/50 bg-red-500/10 p-3 text-red-200"
+              className="mt-4 flex gap-2 rounded-xl border border-red-300 bg-red-50 p-3 text-red-800 dark:border-red-500/50 dark:bg-red-500/10 dark:text-red-200"
             >
               <AlertTriangle className="h-4 w-4 shrink-0" />
               <div>
@@ -984,7 +984,7 @@ export function LeadDiscoveryStage({
           )}
 
           {warningsToShow.length > 0 && (
-            <Alert className="border border-amber-500/40 bg-amber-500/10 text-amber-200">
+            <Alert className="border border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
                 <div className="space-y-1">
@@ -1010,10 +1010,10 @@ export function LeadDiscoveryStage({
             <div className="card-glass p-4 md:p-5">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="space-y-1 text-left">
-                  <h4 className="text-base font-semibold text-white">
+                  <h4 className="text-base font-semibold text-foreground">
                     Ready to discover new leads?
                   </h4>
-                  <p className="text-sm text-slate-300">
+                  <p className="text-sm text-muted-foreground">
                     Kick off this search and we&apos;ll start finding contacts immediately. Results will flow into your workspace as they are found.
                   </p>
                 </div>

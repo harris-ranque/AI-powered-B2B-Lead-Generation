@@ -5,8 +5,10 @@
 /**
  * Available plan types - the canonical list of subscription plans.
  * This is the SINGLE SOURCE OF TRUTH for plan types across the application.
+ *
+ * Note: "custom" is for special managed subscriptions with custom pricing
  */
-export type PlanType = "starter" | "professional" | "business" | "enterprise";
+export type PlanType = "starter" | "professional" | "business" | "enterprise" | "custom";
 
 export type CreditPack = {
   id: string;
@@ -98,6 +100,7 @@ export const getPlanDisplayName = (plan: PlanType): string => {
     professional: "Professional",
     business: "Business",
     enterprise: "Enterprise",
+    custom: "Custom Plan",
   };
   return names[plan];
 };

@@ -102,6 +102,7 @@ export function CreditManager({
       "professional",
       "business",
       "enterprise",
+      "custom",
     ];
     return validPlans.includes((plan as PlanType) || "")
       ? (plan as PlanType)
@@ -436,7 +437,7 @@ export function CreditManager({
       </Card>
 
       {/* Quick Credit Purchase */}
-      {currentPlan !== "enterprise" && (
+      {currentPlan !== "enterprise" && currentPlan !== "custom" && (
         <Card className="p-6">
           <h3 className="text-lg font-semibold mb-4">
             Purchase Additional Credits
@@ -507,7 +508,7 @@ export function CreditManager({
       )}
 
       {/* Plan Upgrade */}
-      {currentPlan !== "enterprise" && (
+      {currentPlan !== "enterprise" && currentPlan !== "custom" && (
         <Card className="p-6">
           <h3 className="text-lg font-semibold mb-4">Upgrade Your Plan</h3>
 
