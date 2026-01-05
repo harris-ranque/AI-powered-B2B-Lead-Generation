@@ -498,22 +498,15 @@ export const searchGoogleMaps: any = action({
             );
             detailsUrl.searchParams.set("place_id", place.place_id);
 
-            // 🎯 PHASE 2 OPTIMIZATION: Request ONLY FREE Basic Data fields
-            // ELIMINATED EXPENSIVE FIELDS:
-            // - address_component (Atmosphere Data SKU - $0.005/call) ❌ REMOVED
-            // - website (Contact Data SKU - $0.003/call) ❌ REMOVED (already have from Nearby Search)
-            // - formatted_phone_number (Contact Data SKU - $0.003/call) ❌ REMOVED
-            // - international_phone_number (Contact Data SKU - $0.003/call) ❌ REMOVED
-            //
-            // KEPT FREE FIELDS:
+            // Place Details API fields:
             // - formatted_address (Basic Data - FREE) ✅
             // - geometry (Basic Data - FREE) ✅
+            // - website (Contact Data SKU - $0.003/call) ✅ REQUIRED for lead enrichment
             //
-            // COST SAVINGS: ~$0.014 per lead (Atmosphere + Contact Data eliminated)
-            // For 100 leads: $1.40 saved vs $99.67 saved monthly (based on current usage)
+            // NOTE: Nearby Search API does NOT return website field - must fetch via Place Details
             detailsUrl.searchParams.set(
               "fields",
-              "formatted_address,geometry" // Only FREE Basic Data fields
+              "formatted_address,geometry,website"
             );
             detailsUrl.searchParams.set("key", googleMapsApiKey!);
 
@@ -563,28 +556,11 @@ export const searchGoogleMaps: any = action({
         }
         processedPlaceIds.add(place.place_id);
 
-        // 🎯 PHASE 2 OPTIMIZATION: Pre-filter BEFORE Place Details call
-        // Nearby Search API already returns website in results
-        // Skip expensive Place Details call if no website found
-        if (!place.website) {
-          logWithCorrelation(
-            "debug",
-            discoveryCorrelation,
-            "⏭️ Skipping lead without website (pre-filter optimization)",
-            {
-              placeId: place.place_id,
-              businessName: place.name || "Unknown",
-              reason: "no_website_in_nearby_result",
-              optimization: "Saved 1 Place Details API call ($0.008)",
-            },
-          );
-          return; // Skip Place Details call entirely - saves $0.008 per lead
-        }
-
-        // Only fetch details for places that passed website filter
+        // Fetch detailed place info including website from Place Details API
+        // NOTE: Nearby Search API does NOT return website field - must fetch via Place Details
         const detailedPlace = await fetchDetailedPlace(place);
 
-        // Double-check website after Details call (redundant but safe)
+        // Filter leads without website (website only available after Place Details call)
         if (!detailedPlace.website) {
           logWithCorrelation(
             "debug",
@@ -1604,9 +1580,9 @@ export const searchGoogleMaps: any = action({
       // 💰 COMPREHENSIVE COST TRACKING
       // Calculate actual vs baseline costs with detailed breakdown
       const nearbySearchCost = totalApiCalls * 0.032; // $0.032 per Nearby Search call
-      const placeDetailsCallsEstimate = deliveredLeads; // 1 per lead (after website pre-filter)
-      const contactDataCost = 0; // $0 (eliminated via field optimization)
-      const atmosphereDataCost = 0; // $0 (eliminated via field optimization)
+      const placeDetailsCallsEstimate = deliveredLeads; // 1 per lead (website filter after Place Details)
+      const contactDataCost = deliveredLeads * 0.003; // $0.003 per lead (website field from Contact Data SKU)
+      const atmosphereDataCost = 0; // $0 (not requesting atmosphere data fields)
       const totalEstimatedCost = nearbySearchCost + contactDataCost + atmosphereDataCost;
 
       // Baseline cost (old implementation)
@@ -1674,8 +1650,8 @@ export const searchGoogleMaps: any = action({
             "50% tile overlap (vs 75% baseline)",
             "Adaptive tile sizing based on area",
             "Progressive termination at target",
-            "Website pre-filtering before Details",
-            "FREE-only field selection",
+            "Website filtering after Place Details",
+            "Minimal field selection (address, geometry, website)",
             "Result-based tile caps",
             "Optimized expansion logic",
           ],
