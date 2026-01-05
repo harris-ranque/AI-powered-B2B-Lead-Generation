@@ -610,7 +610,7 @@ function LeadEternityDashboardContent() {
               <img
                 src="/thebeeai-logo.webp"
                 alt="The Bee AI"
-                className="h-10 w-10 object-contain"
+                className="h-10 w-10 object-contain theme-aware-logo"
                 aria-hidden="true"
               />
               <div>

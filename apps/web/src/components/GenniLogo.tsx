@@ -4,7 +4,7 @@ export function GenniLogo({ className = "w-10 h-10" }: { className?: string }) {
       <img
         src="/thebeeai-logo.webp"
         alt="The Bee AI Logo"
-        className="w-full h-full object-contain"
+        className="w-full h-full object-contain theme-aware-logo"
       />
     </div>
   );
