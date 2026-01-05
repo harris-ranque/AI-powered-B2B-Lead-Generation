@@ -623,13 +623,13 @@ function LeadEternityDashboardContent() {
             <div className="flex items-center space-x-3">
               <img
                 src="/thebeeai-logo.webp"
-                alt="The Bee AI"
+                alt="Genni"
                 className="h-10 w-10 object-contain theme-aware-logo"
                 aria-hidden="true"
               />
               <div>
                 <h1 className="text-2xl font-display font-semibold tracking-tight text-foreground">
-                  The Bee AI
+                  Genni
                 </h1>
                 <p className="text-[0.65rem] font-medium uppercase tracking-[0.32em] text-muted-foreground opacity-90">
                   AI-Powered Lead Generation
