@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useMutation } from "convex/react";
+import { api } from "@genni/convex-types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -67,6 +69,7 @@ function LeadEternityDashboardContent() {
   const [componentError, setComponentError] = useState<string | null>(null);
   const { user } = useAuth();
   const analytics = useAnalytics();
+  const updatePreferences = useMutation(api.users.mutations.updatePreferences);
 
   const handleComponentError = useCallback(
     (error: unknown, context: string, extra?: Record<string, unknown>) => {
@@ -561,15 +564,23 @@ function LeadEternityDashboardContent() {
     [handleComponentError, purchaseCredits, toast],
   );
 
-  const handleToggleTheme = useCallback(() => {
+  const handleToggleTheme = useCallback(async () => {
     const newTheme: AppThemeKey = currentTheme === "harborlight" ? "neon-pulse" : "harborlight";
     setCurrentTheme(newTheme);
     applyAppTheme(newTheme);
+
+    // Persist theme preference to database
+    try {
+      await updatePreferences({ theme: newTheme });
+    } catch (error) {
+      console.warn("Failed to persist theme preference:", error);
+    }
+
     toast({
       title: "Theme Changed",
       description: `Switched to ${newTheme === "harborlight" ? "Horizon" : "Neon"} theme`,
     });
-  }, [currentTheme, toast]);
+  }, [currentTheme, toast, updatePreferences]);
 
   // Avoid flashing onboarding while loading profile
   if (isProfileLoading) {
