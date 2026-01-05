@@ -373,8 +373,11 @@ function LeadEternityDashboardContent() {
           active_searches: searches?.length || 0,
         });
 
-        setCurrentTab(candidateTab);
+        // IMPORTANT: Update hash BEFORE setting state to prevent race condition
+        // The useEffect watching location.hash would otherwise fire between
+        // setCurrentTab and updateHashForTab, potentially redirecting incorrectly
         updateHashForTab(candidateTab);
+        setCurrentTab(candidateTab);
         return;
       }
 
@@ -383,8 +386,9 @@ function LeadEternityDashboardContent() {
         "handle-tab-change",
         { newTab },
       );
-      setCurrentTab("overview");
+      // Update hash before state to prevent race condition
       updateHashForTab("overview");
+      setCurrentTab("overview");
     },
     [handleComponentError, updateHashForTab, analytics, currentTab, user, searches],
   );
