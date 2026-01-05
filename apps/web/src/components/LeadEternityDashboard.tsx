@@ -66,6 +66,7 @@ function LeadEternityDashboardContent() {
   const location = useLocation();
   const completionAnnouncedRef = useRef(false);
   const isHandlingHashChangeRef = useRef(false);
+  const previousHashRef = useRef<string>("");
   const [componentError, setComponentError] = useState<string | null>(null);
   const { user } = useAuth();
   const analytics = useAnalytics();
@@ -285,6 +286,8 @@ function LeadEternityDashboardContent() {
         if (window.location.hash !== "#lead-history") {
           window.location.hash = "lead-history";
         }
+        // Update previousHashRef to prevent false triggers
+        previousHashRef.current = "lead-history";
         return;
       }
 
@@ -297,6 +300,8 @@ function LeadEternityDashboardContent() {
           window.location.hash = "";
         }
       }
+      // Update previousHashRef to prevent false triggers
+      previousHashRef.current = "";
     } finally {
       // Reset flag after hash update completes
       // Use setTimeout to ensure effect doesn't run during same tick
@@ -395,13 +400,18 @@ function LeadEternityDashboardContent() {
 
   // Clear hash on initial mount to prevent auto-redirects from previous sessions
   useEffect(() => {
-    // Only run on mount
-    if (window.location.hash === "#lead-history") {
+    // Initialize previousHashRef with current hash to prevent initial false triggers
+    const currentHash = window.location.hash ? window.location.hash.replace(/^#/, "") : "";
+    previousHashRef.current = currentHash;
+
+    // Only run on mount - clear stale lead-history hash
+    if (currentHash === "lead-history") {
       // Clear the hash without triggering navigation
       if (typeof window.history?.replaceState === "function") {
         const { pathname, search } = window.location;
         window.history.replaceState(null, "", `${pathname}${search}`);
       }
+      previousHashRef.current = "";
     }
   }, []); // Empty deps - only run once on mount
 
@@ -413,6 +423,14 @@ function LeadEternityDashboardContent() {
     }
 
     const hash = location.hash ? location.hash.replace(/^#/, "") : "";
+
+    // Only respond if the hash actually changed (not just other deps changing)
+    // This prevents false redirects when handleTabChange is recreated
+    if (hash === previousHashRef.current) {
+      return;
+    }
+    previousHashRef.current = hash;
+
     if (!hash) {
       return;
     }
