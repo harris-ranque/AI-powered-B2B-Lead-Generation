@@ -142,7 +142,10 @@ function LeadEternityDashboardContent() {
   } = useProfile();
   const { balance } = useCredits();
   // Prevent flashing 0 credits during initial load by falling back to live Convex user data
-  const userCredits = (balance?.credits ?? user?.credits) || 0;
+  // IMPORTANT: Calculate TOTAL credits = purchased credits + subscription credits
+  const purchasedCredits = (balance?.credits ?? user?.credits) || 0;
+  const subscriptionCredits = user?.subscriptionCredits || 0;
+  const userCredits = purchasedCredits + subscriptionCredits;
   const { purchaseCredits, usage } = useBilling();
   const { requests: emailRequests } = useLangGraphRequests();
   const { searches } = useSearches();
@@ -829,6 +832,8 @@ function LeadEternityDashboardContent() {
                 onNavigate={handleOverviewNavigate}
                 onUpgradePlan={handleUpgradePlan}
                 onPurchaseCredits={handlePurchaseCredits}
+                purchasedCredits={purchasedCredits}
+                subscriptionCredits={subscriptionCredits}
               />
             </div>
           )}

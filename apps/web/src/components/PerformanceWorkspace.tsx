@@ -66,6 +66,8 @@ interface PerformanceWorkspaceProps {
   onNavigate: (tab: DashboardTabName) => void;
   onUpgradePlan: (planId: string) => void;
   onPurchaseCredits: (amount: number) => void;
+  purchasedCredits?: number;
+  subscriptionCredits?: number;
 }
 
 function PerformanceWorkspaceComponent({
@@ -78,6 +80,8 @@ function PerformanceWorkspaceComponent({
   onNavigate,
   onUpgradePlan,
   onPurchaseCredits,
+  purchasedCredits = 0,
+  subscriptionCredits = 0,
 }: PerformanceWorkspaceProps) {
   const [componentError, setComponentError] = useState<string | null>(null);
   const {
@@ -468,6 +472,18 @@ function PerformanceWorkspaceComponent({
                 <p className="mt-2 text-xs text-muted-foreground">
                   You've used {creditUsagePercentage}% of the credits you've purchased to date.
                 </p>
+                {subscriptionCredits > 0 && (
+                  <div className="mt-3 space-y-1 rounded-lg border border-border/50 bg-muted/30 p-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Subscription credits</span>
+                      <span className="font-medium">{subscriptionCredits.toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Purchased credits</span>
+                      <span className="font-medium">{purchasedCredits.toLocaleString()}</span>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="rounded-lg border border-border/60 p-4 text-sm text-muted-foreground">
                 <p>
