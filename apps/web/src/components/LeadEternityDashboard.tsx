@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -63,7 +62,6 @@ function LeadEternityDashboardContent() {
   const [currentTab, setCurrentTab] = useState<DashboardTabName>("overview");
   const [currentTheme, setCurrentTheme] = useState<AppThemeKey>("neon-pulse");
   const [hasSkippedOnboarding, setHasSkippedOnboarding] = useState<boolean>(false);
-  const location = useLocation();
   const completionAnnouncedRef = useRef(false);
   const isHandlingHashChangeRef = useRef(false);
   const previousHashRef = useRef<string>("");
@@ -378,9 +376,7 @@ function LeadEternityDashboardContent() {
           active_searches: searches?.length || 0,
         });
 
-        // IMPORTANT: Update hash BEFORE setting state to prevent race condition
-        // The useEffect watching location.hash would otherwise fire between
-        // setCurrentTab and updateHashForTab, potentially redirecting incorrectly
+        // IMPORTANT: Update hash BEFORE setting state to keep them in sync
         updateHashForTab(candidateTab);
         setCurrentTab(candidateTab);
         return;
@@ -415,36 +411,43 @@ function LeadEternityDashboardContent() {
     }
   }, []); // Empty deps - only run once on mount
 
-  // Listen to hash changes only when explicitly set by user actions
+  // Listen to hash changes via native event listener
+  // This is more reliable than React Router's location.hash which can be stale
+  // after replaceState calls (React Router doesn't immediately sync with DOM)
   useEffect(() => {
-    // Prevent loops - if we're already handling a hash change, skip
-    if (isHandlingHashChangeRef.current) {
-      return;
-    }
+    const handleHashChange = () => {
+      // Prevent loops - if we're programmatically changing hash, skip
+      if (isHandlingHashChangeRef.current) {
+        return;
+      }
 
-    const hash = location.hash ? location.hash.replace(/^#/, "") : "";
+      // Use window.location.hash directly (source of truth)
+      const hash = window.location.hash ? window.location.hash.replace(/^#/, "") : "";
 
-    // Only respond if the hash actually changed (not just other deps changing)
-    // This prevents false redirects when handleTabChange is recreated
-    if (hash === previousHashRef.current) {
-      return;
-    }
-    previousHashRef.current = hash;
+      // Only respond if the hash actually changed
+      if (hash === previousHashRef.current) {
+        return;
+      }
+      previousHashRef.current = hash;
 
-    if (!hash) {
-      return;
-    }
+      if (!hash) {
+        return;
+      }
 
-    // Only respond to hash if we're not already on that tab
-    if (hash === "lead-history" && currentTab !== "search-history") {
-      isHandlingHashChangeRef.current = true;
-      handleTabChange("search-history");
-      // Reset the flag after a short delay
-      setTimeout(() => {
-        isHandlingHashChangeRef.current = false;
-      }, 100);
-    }
-  }, [currentTab, handleTabChange, location.hash]);
+      // Only respond to hash if we're not already on that tab
+      if (hash === "lead-history" && currentTab !== "search-history") {
+        isHandlingHashChangeRef.current = true;
+        handleTabChange("search-history");
+        // Reset the flag after a short delay
+        setTimeout(() => {
+          isHandlingHashChangeRef.current = false;
+        }, 100);
+      }
+    };
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [currentTab, handleTabChange]);
 
   const handleGenerateEmail = useCallback(
     (lead: Lead) => {
