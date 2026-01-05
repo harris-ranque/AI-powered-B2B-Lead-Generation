@@ -147,7 +147,7 @@ export function Sidebar({ currentPage, onPageChange }: SidebarProps) {
         <div className="flex items-center justify-center mb-10 px-2">
           <img
             src="/genni-logo.webp"
-            alt="Genni Logo"
+            alt="The Bee AI Logo"
             className="w-32 h-32 object-contain"
           />
         </div>
