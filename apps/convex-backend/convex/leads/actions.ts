@@ -426,7 +426,7 @@ export const enrichLeads: any = action({
       // ========================================================================
       // Schedule all leads with 200ms delays between each to limit concurrency
       // ~5 concurrent at any time (FindyMail's limit)
-      // Each lead gets inline fallback support (FindyMail → IcyPeas)
+      // Each lead gets individual enrichment with retry support
       // No timeout issues - each lead has its own 10-minute action timeout
       // ========================================================================
 

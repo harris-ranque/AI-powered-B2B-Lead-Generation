@@ -24,7 +24,6 @@ export type ApiKeyProvider =
   | "google_places"
   | "google_maps" // Legacy
   | "findymail"
-  | "icypeas"
   | "apify"
   | "instantly"
   | "tavily"

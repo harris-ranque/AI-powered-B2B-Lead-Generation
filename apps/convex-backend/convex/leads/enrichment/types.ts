@@ -1,6 +1,6 @@
 // Shared types for enrichment providers
 
-export type EnrichmentProvider = "findymail" | "icypeas";
+export type EnrichmentProvider = "findymail";
 
 export interface EmailContact {
   email: string;
@@ -77,60 +77,6 @@ export interface EnrichmentProviderInterface {
   ): Promise<EnrichmentResult | null>;
   validateApiKey(apiKey: string): Promise<boolean>;
   getCredits(apiKey: string): Promise<number>;
-}
-
-// IcyPeas specific types
-export interface IcyPeasSearchResponse {
-  success: boolean;
-  searchId?: string; // Legacy field for compatibility
-  item?: {
-    _id: string;
-    status: "NONE" | "SCHEDULED" | "IN_PROGRESS" | "DEBITED";
-  };
-  status?: "NONE" | "SCHEDULED" | "IN_PROGRESS" | "DEBITED";
-  message?: string;
-  validationErrors?: Array<{
-    field: string;
-    message: string;
-    humanReadableMessage: string;
-    type: string;
-  }>;
-}
-
-export interface IcyPeasEmailResult {
-  certainty: "ULTRA_SURE" | "SURE" | "MEDIUM" | "LOW";
-  email: string;
-  mxProvider?: string;
-  records?: string[];
-}
-
-export interface IcyPeasSearchResult {
-  success: boolean;
-  status: "FOUND" | "NOT_FOUND" | "ERROR";
-  emails?: IcyPeasEmailResult[];
-  contacts?: any[];
-  phoneNumbers?: string[];
-  companyInfo?: {
-    headcount?: number;
-    industry?: string;
-    owner?: string;
-  };
-  // New fields for actual API response
-  items?: Array<{
-    _id: string;
-    status: "FOUND" | "NOT_FOUND" | "ERROR" | "IN_PROGRESS" | "SCHEDULED";
-    results: {
-      firstname: string;
-      lastname: string;
-      fullname: string;
-      emails: IcyPeasEmailResult[];
-      phones: string[];
-      saasServices?: any[];
-      gender?: string;
-      li?: string;
-    };
-  }>;
-  total?: number;
 }
 
 // FindyMail specific types

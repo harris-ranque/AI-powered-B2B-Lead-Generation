@@ -1,5 +1,4 @@
 import { FindyMailProvider } from "./findymail";
-import { IcyPeasProvider } from "./icypeas";
 import {
   EnrichmentProvider,
   EnrichmentProviderInterface,
@@ -10,7 +9,7 @@ import {
 } from "./types";
 import { type ApiError, shouldBlockPipeline } from "../../lib/apiErrors";
 
-export type EnrichmentProviderType = "findymail" | "icypeas";
+export type EnrichmentProviderType = "findymail";
 
 /**
  * Factory class for creating and managing enrichment providers
@@ -23,34 +22,14 @@ export class EnrichmentProviderFactory {
     providerType: EnrichmentProviderType,
     apiKey: string
   ): EnrichmentProviderInterface {
-    switch (providerType) {
-      case "icypeas":
-        return new IcyPeasProvider(apiKey);
-      case "findymail":
-        return new FindyMailProvider(apiKey);
-      default:
-        // Default to FindyMail for backward compatibility
-        return new FindyMailProvider(apiKey);
-    }
+    // Only FindyMail is supported
+    return new FindyMailProvider(apiKey);
   }
 
   /**
-   * Get the configured provider type from environment
-   * Default: FindyMail (ICypeas is disabled due to issues)
+   * Get the configured provider type
    */
   static getConfiguredProvider(): EnrichmentProviderType {
-    const provider = process.env.ENRICHMENT_PROVIDER?.toLowerCase();
-
-    // NOTE: ICypeas is currently disabled due to API issues
-    // Always use FindyMail for domain-only searches
-    if (provider === "icypeas") {
-      console.warn(
-        "[EnrichmentProvider] ICypeas is currently disabled. Falling back to FindyMail."
-      );
-      return "findymail";
-    }
-
-    // Default to FindyMail (works with domain-only searches)
     return "findymail";
   }
 
@@ -66,15 +45,7 @@ export class EnrichmentProviderFactory {
       return userApiKey;
     }
 
-    // Otherwise use system API keys
-    switch (providerType) {
-      case "icypeas":
-        return process.env.ICYPEAS_API_KEY || "";
-      case "findymail":
-        return process.env.FINDYMAIL_API_KEY || "";
-      default:
-        return process.env.FINDYMAIL_API_KEY || "";
-    }
+    return process.env.FINDYMAIL_API_KEY || "";
   }
 
   /**

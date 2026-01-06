@@ -11,7 +11,6 @@ export const SUPPORTED_PROVIDERS = [
   // Legacy enrichment providers remain for backwards compatibility
   "google_maps",
   "findymail",
-  "icypeas",
   "apify",
   // Email sending platform
   "instantly",

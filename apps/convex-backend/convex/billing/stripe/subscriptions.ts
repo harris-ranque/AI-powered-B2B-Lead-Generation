@@ -9,6 +9,7 @@ import { v } from "convex/values";
 import { action, query } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { Doc, Id } from "../../_generated/dataModel";
+import Stripe from "stripe";
 import {
   getStripeClient,
   calculateConvenienceFee,
@@ -532,7 +533,7 @@ export const regenerateCheckoutLinks = action({
     const expiresAt = Math.floor(Date.now() / 1000) + CHECKOUT_EXPIRATION_SECONDS;
 
     // ACH Checkout Session (lower price)
-    const achSession = await stripe.checkout.sessions.create({
+    const achSession: Stripe.Checkout.Session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: subscription.stripeCustomerId,
       line_items: [
@@ -570,7 +571,7 @@ export const regenerateCheckoutLinks = action({
     });
 
     // Card Checkout Session (higher price with 3% fee)
-    const cardSession = await stripe.checkout.sessions.create({
+    const cardSession: Stripe.Checkout.Session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: subscription.stripeCustomerId,
       line_items: [

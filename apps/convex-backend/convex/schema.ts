@@ -367,7 +367,6 @@ export default defineSchema({
     enrichmentProvider: v.optional(
       v.union(
         v.literal("findymail"),
-        v.literal("icypeas"),
         v.literal("csv_import") // CSV imports with existing emails
       )
     ),
@@ -1276,7 +1275,7 @@ export default defineSchema({
 
   // Enrichment cache for all providers (replaces findymailDomainCache)
   enrichmentCache: defineTable({
-    provider: v.union(v.literal("findymail"), v.literal("icypeas")),
+    provider: v.literal("findymail"),
     domain: v.string(),
     searchId: v.id("searches"),
     enrichmentData: v.any(), // Flexible storage for different provider response formats
@@ -1287,28 +1286,6 @@ export default defineSchema({
     .index("by_search", ["searchId"])
     .index("by_expires", ["expiresAt"])
     .index("by_provider", ["provider"]),
-
-  // IcyPeas async search tracking
-  icypeasSearchCache: defineTable({
-    searchId: v.string(), // IcyPeas search ID
-    internalSearchId: v.id("searches"), // Our internal search ID
-    domains: v.array(v.string()), // Domains being searched
-    status: v.union(
-      v.literal("NONE"),
-      v.literal("SCHEDULED"),
-      v.literal("IN_PROGRESS"),
-      v.literal("DEBITED"),
-      v.literal("COMPLETED"),
-      v.literal("FAILED")
-    ),
-    results: v.optional(v.any()), // Store results when complete
-    createdAt: v.number(),
-    expiresAt: v.number(),
-  })
-    .index("by_search_id", ["searchId"])
-    .index("by_internal_search", ["internalSearchId"])
-    .index("by_status", ["status"])
-    .index("by_expires", ["expiresAt"]),
 
   // System Control State - Emergency admin controls for lead generation
   systemControlState: defineTable({
@@ -1336,7 +1313,6 @@ export default defineSchema({
       // Legacy enrichment providers still supported for backwards compatibility
       v.literal("google_maps"),
       v.literal("findymail"),
-      v.literal("icypeas"),
       v.literal("apify"),
       // Email sending platform
       v.literal("instantly"),
@@ -1440,7 +1416,6 @@ export default defineSchema({
       v.object({
         googleMaps: v.number(),
         findymail: v.number(),
-        icypeas: v.number(),
         openai: v.number(),
         apify: v.number(),
       }),

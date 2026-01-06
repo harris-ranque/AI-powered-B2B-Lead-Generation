@@ -168,8 +168,6 @@ async function validateLegacyProvider(
       return { valid: await validateGoogleMapsKey(apiKey) };
     case "findymail":
       return { valid: await validateFindyMailKey(apiKey) };
-    case "icypeas":
-      return { valid: await validateIcyPeasKey(apiKey) };
     case "apify":
       return { valid: await validateApifyKey(apiKey) };
     default:
@@ -559,23 +557,6 @@ async function validateFindyMailKey(apiKey: string): Promise<boolean> {
     return response.status === 200;
   } catch (error) {
     console.error("FindyMail validation error:", error);
-    return false;
-  }
-}
-
-async function validateIcyPeasKey(apiKey: string): Promise<boolean> {
-  try {
-    // Test with IcyPeas API - checking credits endpoint
-    const response = await fetch("https://app.icypeas.com/api/credits", {
-      method: "GET",
-      headers: {
-        Authorization: apiKey,
-      },
-    });
-
-    return response.status === 200;
-  } catch (error) {
-    console.error("IcyPeas validation error:", error);
     return false;
   }
 }

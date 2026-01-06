@@ -251,7 +251,6 @@ export const resetSystemCache = mutation({
         label: "findymailDomainCache",
       },
       { table: "enrichmentCache" as const, label: "enrichmentCache" },
-      { table: "icypeasSearchCache" as const, label: "icypeasSearchCache" },
     ];
 
     const clearedCaches: Array<{ table: string; cleared: number }> = [];
@@ -493,7 +492,6 @@ export const runSystemMaintenance = mutation({
                   label: "findymailDomainCache",
                 },
                 { table: "enrichmentCache" as const, label: "enrichmentCache" },
-                { table: "icypeasSearchCache" as const, label: "icypeasSearchCache" },
               ];
 
               const cacheResults: Array<{ table: string; cleared: number }> = [];

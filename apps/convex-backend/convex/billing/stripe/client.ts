@@ -34,7 +34,7 @@ export function getStripeClient(): Stripe {
     // API version must match your Stripe Dashboard API version.
     // Codenames (clover, basil, etc.) are Stripe's internal naming convention.
     // Update when changing API version in Stripe Dashboard.
-    apiVersion: "2025-12-15.clover",
+    apiVersion: "2025-11-17.clover",
     typescript: true,
     // Enable telemetry for Stripe to improve their service
     telemetry: true,

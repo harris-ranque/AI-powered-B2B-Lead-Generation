@@ -3,10 +3,9 @@
  *
  * Uses scheduled actions with staggered delays to process lead enrichment:
  * - ~5 concurrent requests via 200ms staggering (respects FindyMail API limit)
- * - FindyMail primary provider with retry logic
- * - IcyPeas fallback currently disabled (set ICYPEAS_CONFIGURED = true to enable)
+ * - FindyMail as primary provider with retry logic
  * - Fast processing: ~15-20 minutes for 500 leads
- * - Built-in retry with exponential backoff per provider
+ * - Built-in retry with exponential backoff
  *
  * CRITICAL: Phase Transition Handling with Race Prevention
  * =========================================================
@@ -18,11 +17,6 @@
  * - Only ONE action wins the race and triggers analyzeLeads
  * - Other actions log that analysis was already triggered
  * - Prevents duplicate LangGraph requests and wasted costs
- *
- * The atomic check happens in 3 places:
- * 1. After successful enrichment (lines ~309-347)
- * 2. After failed enrichment with no emails (lines ~380-415)
- * 3. After exception/error during enrichment (lines ~447-488)
  */
 
 import { internalAction } from "../_generated/server";
@@ -41,10 +35,6 @@ import {
   EnrichmentProviderFactory,
 } from "./enrichment/provider";
 import { EnrichmentResult, EnrichmentOptions } from "./enrichment/types";
-
-// IcyPeas fallback is disabled in both prod and dev
-// Set to true only when ready to enable fallback provider
-const ICYPEAS_CONFIGURED = false;
 
 // Note: Workpool instance is created per-call in enrichLeads action
 // This is because we need ctx.runMutation which is only available in action context
@@ -66,18 +56,18 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Try enriching a domain with a specific provider
+ * Try enriching a domain with FindyMail
  * Includes retry logic with exponential backoff
  */
 async function tryProvider(
-  provider: "findymail" | "icypeas",
+  provider: "findymail",
   domain: string,
   options: {
     retries: number;
     roles?: string[];
     userApiKey?: string;
   }
-): Promise<(EnrichmentResult & { provider: "findymail" | "icypeas" }) | null> {
+): Promise<(EnrichmentResult & { provider: "findymail" }) | null> {
   const service = createEnrichmentService(options.userApiKey, provider);
 
   for (let attempt = 1; attempt <= options.retries; attempt++) {
@@ -117,15 +107,13 @@ async function tryProvider(
 }
 
 /**
- * Enrich a single lead with inline fallback provider support
+ * Enrich a single lead using FindyMail
  *
  * Flow:
  * 1. Try FindyMail (3 retries with exponential backoff)
- * 2. If no emails found, IcyPeas fallback is currently DISABLED
- * 3. Mark as completed_fallback with no emails
+ * 2. If no emails found, mark as completed_fallback with no emails
  *
  * Each lead has its own 10-minute action timeout
- * IcyPeas fallback can be enabled by setting ICYPEAS_CONFIGURED = true
  */
 export const enrichSingleLead = internalAction({
   args: {
@@ -337,41 +325,11 @@ export const enrichSingleLead = internalAction({
       }
 
       // PRIMARY PROVIDER: FindyMail (3 retries)
-      let result = await tryProvider("findymail", domain, {
+      const result = await tryProvider("findymail", domain, {
         retries: 3,
         roles: args.roles,
         userApiKey: args.userApiKey,
       });
-
-      // FALLBACK PROVIDER: IcyPeas (2 retries)
-      if (!result && ICYPEAS_CONFIGURED) {
-        logWithCorrelation(
-          "warn",
-          correlation,
-          "⚠️ FindyMail failed, trying IcyPeas fallback",
-          {
-            leadId: args.leadId,
-            domain,
-          },
-        );
-
-        result = await tryProvider("icypeas", domain, {
-          retries: 2,
-          roles: args.roles,
-          // Note: IcyPeas doesn't support BYOK yet, so no userApiKey
-        });
-      } else if (!result && !ICYPEAS_CONFIGURED) {
-        logWithCorrelation(
-          "info",
-          correlation,
-          "ℹ️ IcyPeas fallback skipped - provider not configured",
-          {
-            leadId: args.leadId,
-            domain,
-            note: "ICYPEAS_API_KEY not set in environment",
-          },
-        );
-      }
 
       // FINAL RESULT: Update lead based on enrichment outcome
       if (result && result.emails.length > 0) {
@@ -515,7 +473,7 @@ export const enrichSingleLead = internalAction({
             leadId: args.leadId,
             businessName: lead.businessName,
             domain,
-            triedProviders: ["findymail", "icypeas"],
+            triedProviders: ["findymail"],
             durationMs: perfData?.duration || 0,
             reason: "No emails or contacts found, lead deleted per user preference",
           },

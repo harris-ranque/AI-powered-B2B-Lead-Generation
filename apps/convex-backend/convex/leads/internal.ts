@@ -195,7 +195,7 @@ export const updateLeadEnrichment = internalMutation({
       v.literal("completed_fallback"),
       v.literal("failed"),
     ),
-    enrichmentProvider: v.optional(v.union(v.literal("findymail"), v.literal("icypeas"))),
+    enrichmentProvider: v.optional(v.literal("findymail")),
   },
   handler: async (ctx, args) => {
     const updateData: any = {
@@ -991,7 +991,6 @@ export const updateEnrichmentProvider = internalMutation({
     leadId: v.id("leads"),
     provider: v.union(
       v.literal("findymail"),
-      v.literal("icypeas"),
       v.literal("csv_import")
     ),
   },
