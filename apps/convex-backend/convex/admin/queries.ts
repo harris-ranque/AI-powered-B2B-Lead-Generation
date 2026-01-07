@@ -400,22 +400,43 @@ export const getUsageStats = query({
   handler: async (ctx) => {
     await requireAdmin(ctx);
 
-    const searches = await ctx.db.query("searches").collect();
-    const leads = await ctx.db.query("leads").collect();
-    const creditTransactions = await ctx.db
-      .query("creditTransactions")
-      .filter((q) => q.eq(q.field("type"), "usage"))
-      .collect();
+    // Helper to count documents using async iteration (memory efficient)
+    const countDocuments = async <T>(iterable: AsyncIterable<T>) => {
+      let count = 0;
+      for await (const _ of iterable) {
+        count += 1;
+      }
+      return count;
+    };
+
+    // Helper to sum transaction amounts using async iteration
+    const sumTransactionAmounts = async (
+      iterable: AsyncIterable<{ amount: number }>,
+    ) => {
+      let total = 0;
+      for await (const doc of iterable) {
+        total += doc.amount;
+      }
+      return total;
+    };
+
+    // Execute all queries in parallel using streaming (no .collect())
+    const [totalSearches, totalLeads, totalCreditsSpent] = await Promise.all([
+      countDocuments(ctx.db.query("searches")),
+      countDocuments(ctx.db.query("leads")),
+      sumTransactionAmounts(
+        ctx.db
+          .query("creditTransactions")
+          .withIndex("by_type", (q) => q.eq("type", "usage")),
+      ),
+    ]);
 
     return {
-      totalSearches: searches.length,
-      totalLeads: leads.length,
-      totalCreditsSpent: creditTransactions.reduce(
-        (sum, t) => sum + t.amount,
-        0,
-      ),
+      totalSearches,
+      totalLeads,
+      totalCreditsSpent,
       averageLeadsPerSearch:
-        searches.length > 0 ? leads.length / searches.length : 0,
+        totalSearches > 0 ? totalLeads / totalSearches : 0,
     };
   },
 });
