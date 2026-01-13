@@ -1,3 +1,5 @@
+"use node";
+
 /**
  * Async Lead Enrichment with Scheduled Actions
  *
@@ -39,10 +41,20 @@ import {
   EnrichmentProviderFactory,
 } from "./enrichment/provider";
 import { EnrichmentResult, EnrichmentOptions } from "./enrichment/types";
-import { getApiKeyHash } from "../apiKeySemaphore/semaphore";
+import { createHash } from "crypto";
 
 // Note: Workpool instance is created per-call in enrichLeads action
 // This is because we need ctx.runMutation which is only available in action context
+
+/**
+ * Generate a consistent hash for an API key
+ * Uses SHA256 to create a unique identifier for the API key without storing the key itself
+ */
+function getApiKeyHash(apiKey: string | undefined): string {
+  // Default to system API key identifier if no user key provided
+  const keyToHash = apiKey || "SYSTEM_FINDYMAIL_KEY";
+  return createHash("sha256").update(keyToHash).digest("hex");
+}
 
 // Helper function to extract domain from URL
 function extractDomain(url?: string): string {

@@ -10,24 +10,16 @@
  * - User B (own key):   max 5 concurrent
  * - User C (own key):   max 5 concurrent
  * Total: up to 15 concurrent requests (5 per unique API key)
+ *
+ * Note: The getApiKeyHash utility function has been moved to asyncEnrichment.ts
+ * to avoid Node.js crypto import issues in mutation/query files.
  */
 
 import { internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
-import { createHash } from "crypto";
 
 // FindyMail rate limit: 5 concurrent requests per API key
 const MAX_CONCURRENCY_PER_KEY = 5;
-
-/**
- * Generate a consistent hash for an API key
- * Uses SHA256 to create a unique identifier for the API key without storing the key itself
- */
-export function getApiKeyHash(apiKey: string | undefined): string {
-  // Default to system API key identifier if no user key provided
-  const keyToHash = apiKey || "SYSTEM_FINDYMAIL_KEY";
-  return createHash("sha256").update(keyToHash).digest("hex");
-}
 
 /**
  * Try to acquire a slot for an API key (non-blocking)
