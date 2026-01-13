@@ -1,12 +1,14 @@
 """
-Perplexity API Rate Limiter with sliding window algorithm.
+Perplexity API Rate Limiter with per-user sliding window algorithm.
 
-Implements separate rate limits for different Perplexity models:
+Implements separate rate limits for different Perplexity models per user:
 - sonar-pro: 2000 RPM (Tier 5 default)
 - sonar-deep-research: 100 RPM (Tier 5 default)
 
-Defaults to Tier 5 (highest) limits since BYOK clients likely have high tiers.
-Lower-tier users who hit 429 errors are handled by retry logic with exponential backoff.
+**Per-User Architecture:**
+- Each user_id gets independent rate limiter instance
+- Supports BYOK (Bring Your Own Key) with different tiers per user
+- Automatic cleanup of inactive users (prevents memory leaks)
 
 Perplexity Tier System:
 | Tier | Spending   | Sonar Pro RPM | Deep Research RPM |
@@ -19,7 +21,7 @@ Perplexity Tier System:
 | 5    | $5000+     | 2000          | 100               |
 
 Uses sliding window pattern for consistency.
-Supports BYOK clients via environment variable overrides.
+Supports BYOK clients with per-user tier configuration.
 """
 
 import asyncio
@@ -117,7 +119,10 @@ class ModelRateLimiter:
 
 class PerplexityRateLimiter:
     """
-    Rate limiter for Perplexity API with per-model limits.
+    Per-user rate limiter for Perplexity API with per-model limits.
+
+    Each user gets independent rate limiting based on their Perplexity tier.
+    Supports BYOK (Bring Your Own Key) with different subscription tiers.
 
     Perplexity Rate Limits by Tier:
     | Tier | Spending | Sonar Pro RPM | Deep Research RPM |
@@ -137,21 +142,22 @@ class PerplexityRateLimiter:
     DEFAULT_SONAR_PRO_RPM = 2000
     DEFAULT_DEEP_RESEARCH_RPM = 100
 
-    _instance: Optional["PerplexityRateLimiter"] = None
-    _instance_lock = asyncio.Lock()
-
     def __init__(
         self,
+        user_id: str,
         sonar_pro_rpm: Optional[int] = None,
         deep_research_rpm: Optional[int] = None,
     ):
         """
-        Initialize rate limiter with configurable limits.
+        Initialize per-user rate limiter with configurable limits.
 
         Args:
+            user_id: Unique user identifier for this rate limiter
             sonar_pro_rpm: Requests per minute for sonar-pro model
             deep_research_rpm: Requests per minute for sonar-deep-research model
         """
+        self.user_id = user_id
+        self.last_activity = time.monotonic()  # For cleanup tracking
         self._limiters: Dict[str, ModelRateLimiter] = {}
 
         # Initialize rate limiters for each model
@@ -165,33 +171,10 @@ class PerplexityRateLimiter:
         )
 
         logger.info(
-            f"[RateLimit] Initialized Perplexity rate limiter: "
+            f"[RateLimit] Initialized Perplexity rate limiter for user '{user_id}': "
             f"sonar-pro={self._limiters['sonar-pro'].requests_per_minute} RPM, "
             f"deep-research={self._limiters['sonar-deep-research'].requests_per_minute} RPM"
         )
-
-    @classmethod
-    async def get_instance(
-        cls,
-        sonar_pro_rpm: Optional[int] = None,
-        deep_research_rpm: Optional[int] = None,
-    ) -> "PerplexityRateLimiter":
-        """
-        Get singleton instance of rate limiter.
-        Thread-safe initialization.
-        """
-        async with cls._instance_lock:
-            if cls._instance is None:
-                cls._instance = cls(
-                    sonar_pro_rpm=sonar_pro_rpm,
-                    deep_research_rpm=deep_research_rpm,
-                )
-            return cls._instance
-
-    @classmethod
-    def reset_instance(cls) -> None:
-        """Reset singleton instance (for testing)."""
-        cls._instance = None
 
     def get_limiter(self, model: str) -> ModelRateLimiter:
         """
@@ -227,6 +210,8 @@ class PerplexityRateLimiter:
         Returns:
             Async context manager that waits for rate limit if needed
         """
+        # Update last activity timestamp for cleanup tracking
+        self.last_activity = time.monotonic()
         return RateLimitContext(self, model)
 
     def get_metrics(self, model: str) -> RateLimitMetrics:
@@ -256,6 +241,7 @@ class RateLimitContext:
             capture_event(
                 "perplexity_rate_limit_wait",
                 {
+                    "user_id": self.rate_limiter.user_id,
                     "model": self.model,
                     "wait_time_ms": self.wait_time * 1000,
                     "rpm_limit": limiter.requests_per_minute,
@@ -270,35 +256,155 @@ class RateLimitContext:
         pass
 
 
-# Convenience function to get singleton rate limiter
-async def get_perplexity_rate_limiter(
+class PerplexityRateLimiterManager:
+    """
+    Manager for per-user Perplexity rate limiters.
+
+    Provides:
+    - Per-user rate limiter instances
+    - Automatic cleanup of inactive users
+    - Thread-safe access to limiters
+    - BYOK support with different tiers per user
+    """
+
+    _instance: Optional["PerplexityRateLimiterManager"] = None
+    _instance_lock = asyncio.Lock()
+
+    def __init__(self):
+        """Initialize the rate limiter manager."""
+        self._limiters: Dict[str, PerplexityRateLimiter] = {}
+        self._limiter_lock = asyncio.Lock()
+        logger.info("[RateLimit] Initialized PerplexityRateLimiterManager")
+
+    @classmethod
+    async def get_instance(cls) -> "PerplexityRateLimiterManager":
+        """Get singleton instance of rate limiter manager."""
+        async with cls._instance_lock:
+            if cls._instance is None:
+                cls._instance = cls()
+            return cls._instance
+
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Reset singleton instance (for testing)."""
+        cls._instance = None
+
+    async def get_limiter(
+        self,
+        user_id: str,
+        sonar_pro_rpm: Optional[int] = None,
+        deep_research_rpm: Optional[int] = None,
+    ) -> PerplexityRateLimiter:
+        """
+        Get or create rate limiter for a specific user.
+
+        Args:
+            user_id: Unique user identifier
+            sonar_pro_rpm: Override default sonar-pro RPM limit
+            deep_research_rpm: Override default deep-research RPM limit
+
+        Returns:
+            PerplexityRateLimiter instance for this user
+        """
+        async with self._limiter_lock:
+            if user_id not in self._limiters:
+                self._limiters[user_id] = PerplexityRateLimiter(
+                    user_id=user_id,
+                    sonar_pro_rpm=sonar_pro_rpm,
+                    deep_research_rpm=deep_research_rpm,
+                )
+                logger.info(f"[RateLimit] Created new rate limiter for user '{user_id}'")
+            return self._limiters[user_id]
+
+    async def cleanup_inactive(self, max_age_hours: float = 2.0) -> int:
+        """
+        Remove inactive user rate limiters to prevent memory leaks.
+
+        Args:
+            max_age_hours: Remove limiters inactive for this many hours
+
+        Returns:
+            Number of limiters removed
+        """
+        max_age_seconds = max_age_hours * 3600
+        now = time.monotonic()
+        removed_count = 0
+
+        async with self._limiter_lock:
+            inactive_users = [
+                user_id
+                for user_id, limiter in self._limiters.items()
+                if (now - limiter.last_activity) > max_age_seconds
+            ]
+
+            for user_id in inactive_users:
+                del self._limiters[user_id]
+                removed_count += 1
+
+            if removed_count > 0:
+                logger.info(
+                    f"[RateLimit] Cleaned up {removed_count} inactive rate limiters "
+                    f"(max_age={max_age_hours}h, remaining={len(self._limiters)})"
+                )
+
+        return removed_count
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get statistics about managed rate limiters."""
+        return {
+            "total_users": len(self._limiters),
+            "users": list(self._limiters.keys()),
+        }
+
+
+# Convenience functions for per-user rate limiting
+
+async def get_user_rate_limiter(
+    user_id: str,
     sonar_pro_rpm: Optional[int] = None,
     deep_research_rpm: Optional[int] = None,
 ) -> PerplexityRateLimiter:
     """
-    Get singleton Perplexity rate limiter instance.
+    Get or create per-user Perplexity rate limiter instance.
 
     Args:
+        user_id: Unique user identifier
         sonar_pro_rpm: Override default sonar-pro RPM limit
         deep_research_rpm: Override default deep-research RPM limit
 
     Returns:
-        PerplexityRateLimiter singleton instance
+        PerplexityRateLimiter instance for this user
     """
-    return await PerplexityRateLimiter.get_instance(
+    manager = await PerplexityRateLimiterManager.get_instance()
+    return await manager.get_limiter(
+        user_id=user_id,
         sonar_pro_rpm=sonar_pro_rpm,
         deep_research_rpm=deep_research_rpm,
     )
 
 
-# Synchronous factory for use in __init__ methods
+async def cleanup_inactive_limiters(max_age_hours: float = 2.0) -> int:
+    """
+    Clean up inactive user rate limiters.
+
+    Args:
+        max_age_hours: Remove limiters inactive for this many hours
+
+    Returns:
+        Number of limiters removed
+    """
+    manager = await PerplexityRateLimiterManager.get_instance()
+    return await manager.cleanup_inactive(max_age_hours)
+
+
 def create_perplexity_rate_limiter(
     sonar_pro_rpm: Optional[int] = None,
     deep_research_rpm: Optional[int] = None,
 ) -> PerplexityRateLimiter:
     """
-    Create a new Perplexity rate limiter instance (not singleton).
-    Use this when you need a dedicated rate limiter per client.
+    Create a new Perplexity rate limiter instance (for testing/legacy).
+
+    DEPRECATED: Use get_user_rate_limiter() instead for per-user rate limiting.
 
     Args:
         sonar_pro_rpm: Requests per minute for sonar-pro
@@ -308,6 +414,7 @@ def create_perplexity_rate_limiter(
         New PerplexityRateLimiter instance
     """
     return PerplexityRateLimiter(
+        user_id="legacy",
         sonar_pro_rpm=sonar_pro_rpm,
         deep_research_rpm=deep_research_rpm,
     )

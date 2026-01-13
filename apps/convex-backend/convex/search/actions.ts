@@ -208,33 +208,48 @@ export const searchGoogleMaps: any = action({
     let totalApiCalls = 0;
 
     // Run a LangGraph health check before beginning the lead generation pipeline
+    // BLOCKING: Fail fast if LangGraph is down to prevent cascade failures
     try {
       const healthCheckResult = await ctx.runAction(
         internal.langgraph.health.checkLangGraphHealth,
         {},
       );
 
-      const logLevel = healthCheckResult?.success ? "info" : "warn";
+      if (!healthCheckResult?.success) {
+        const errorMessage = healthCheckResult?.error || "LangGraph worker is not responding";
+        logWithCorrelation(
+          "error",
+          correlation,
+          "❌ LangGraph health check FAILED - blocking search",
+          {
+            status: healthCheckResult?.status ?? "unknown",
+            error: errorMessage,
+            blockingReason: "prevent_cascade_failure",
+          },
+        );
+        throw new Error(`LangGraph worker health check failed: ${errorMessage}. Please try again in a few minutes.`);
+      }
+
       logWithCorrelation(
-        logLevel,
+        "info",
         correlation,
-        "🏥 LangGraph health check executed prior to lead generation",
+        "✅ LangGraph health check PASSED - proceeding with search",
         {
-          success: healthCheckResult?.success ?? false,
-          status: healthCheckResult?.status ?? "unknown",
-          error: healthCheckResult?.error,
+          status: healthCheckResult?.status ?? "healthy",
         },
       );
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Health check failed";
       logWithCorrelation(
         "error",
         correlation,
-        "❌ Failed to run LangGraph health check before lead generation",
+        "❌ LangGraph health check ERROR - blocking search",
         {
-          error:
-            error instanceof Error ? error.message : JSON.stringify(error),
+          error: errorMessage,
+          blockingReason: "prevent_cascade_failure",
         },
       );
+      throw new Error(`LangGraph worker health check failed: ${errorMessage}. Please try again in a few minutes.`);
     }
 
     // Check emergency stop first
@@ -841,19 +856,21 @@ export const searchGoogleMaps: any = action({
               },
             );
 
-            // ⚠️ Warning: Detect if we got a county instead of a city
+            // 🚫 BLOCKING: Prevent county-level searches to avoid weak geographic filtering
             if (isCounty && !isCity) {
+              const errorMessage = `Location "${result.formatted_address}" is a county, not a city. County-level searches would return results from a very large geographic area. Please select a specific city instead.`;
               logWithCorrelation(
-                "warn",
+                "error",
                 discoveryCorrelation,
-                "⚠️ Location is a COUNTY, not a city - results may span large area",
+                "❌ County-level search BLOCKED - too broad",
                 {
                   locationType: "county",
                   formattedAddress: result.formatted_address,
-                  suggestion:
-                    "User may have intended a city. Consider UI hint for location selection.",
+                  blockingReason: "prevent_weak_geographic_filtering",
+                  suggestion: "User must select a specific city",
                 },
               );
+              throw new Error(errorMessage);
             }
           } else {
             // Place Details API failed (expired place_id, etc.)
@@ -960,21 +977,23 @@ export const searchGoogleMaps: any = action({
             },
           );
 
-          // ⚠️ Warning: Detect county ambiguity in geocoding results
+          // 🚫 BLOCKING: Prevent county-level searches in geocoding fallback
           if (isCounty && !isCity) {
+            const errorMessage = `Location "${result.formatted_address}" is a county, not a city. County-level searches would return results from a very large geographic area. Please select a specific city instead.`;
             logWithCorrelation(
-              "warn",
+              "error",
               discoveryCorrelation,
-              "⚠️ Geocoding returned COUNTY instead of CITY - may cause geographic mismatch",
+              "❌ County-level search BLOCKED (geocoding) - too broad",
               {
                 searchedFor: location,
                 geocodedTo: result.formatted_address,
                 locationType: "county",
                 types: result.types,
-                suggestion:
-                  "Results may be far from intended location. Consider using place_id from frontend.",
+                blockingReason: "prevent_weak_geographic_filtering",
+                suggestion: "User must select a specific city from location picker",
               },
             );
+            throw new Error(errorMessage);
           }
         } catch (geocodeError) {
           logWithCorrelation(

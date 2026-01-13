@@ -807,3 +807,75 @@ export const updateAdminSettings = mutation({
     return { success: true };
   },
 });
+
+// Pause enrichment for a specific search
+export const pauseSearchEnrichment = mutation({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    const adminUser = await requireAdmin(ctx);
+
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      throw new Error("Search not found");
+    }
+
+    await ctx.db.patch(args.searchId, {
+      enrichmentPaused: true,
+      pausedBy: adminUser._id,
+      pausedAt: Date.now(),
+    });
+
+    // Log the pause action
+    await ctx.db.insert("systemLogs", {
+      type: "admin_enrichment_control",
+      action: "pause_enrichment",
+      userId: adminUser._id,
+      timestamp: Date.now(),
+      data: {
+        searchId: args.searchId,
+        searchName: search.name,
+        userId: search.userId,
+      },
+    });
+
+    return { success: true };
+  },
+});
+
+// Resume enrichment for a specific search
+export const resumeSearchEnrichment = mutation({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    const adminUser = await requireAdmin(ctx);
+
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      throw new Error("Search not found");
+    }
+
+    await ctx.db.patch(args.searchId, {
+      enrichmentPaused: false,
+      pausedBy: undefined,
+      pausedAt: undefined,
+    });
+
+    // Log the resume action
+    await ctx.db.insert("systemLogs", {
+      type: "admin_enrichment_control",
+      action: "resume_enrichment",
+      userId: adminUser._id,
+      timestamp: Date.now(),
+      data: {
+        searchId: args.searchId,
+        searchName: search.name,
+        userId: search.userId,
+      },
+    });
+
+    return { success: true };
+  },
+});

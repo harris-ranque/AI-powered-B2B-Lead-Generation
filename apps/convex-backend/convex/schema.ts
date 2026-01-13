@@ -207,6 +207,11 @@ export default defineSchema({
     ),
     researchCompletedAt: v.optional(v.number()),
 
+    // Admin controls for enrichment pause/resume
+    enrichmentPaused: v.optional(v.boolean()),
+    pausedBy: v.optional(v.id("users")),
+    pausedAt: v.optional(v.number()),
+
     // Discovery diagnostics & dedup metrics
     initialSearchRadius: v.optional(v.number()), // In meters
     finalSearchRadius: v.optional(v.number()),   // In meters
@@ -1788,4 +1793,15 @@ export default defineSchema({
     .index("by_event_id", ["eventId"])
     .index("by_event_type", ["eventType"])
     .index("by_processed_at", ["processedAt"]),
+
+  // Enrichment API Key Semaphores - Per-API-key concurrency limiting (5 concurrent per FindyMail key)
+  enrichmentApiKeySemaphores: defineTable({
+    apiKeyHash: v.string(),        // SHA256 hash of API key (system or user-provided)
+    activeRequests: v.number(),     // Current number of active enrichment requests
+    maxConcurrency: v.number(),     // Maximum concurrent requests (always 5 for FindyMail)
+    waitingRequests: v.number(),    // Number of requests waiting for a slot
+    lastUpdated: v.number(),        // Timestamp of last update
+  })
+    .index("by_key_hash", ["apiKeyHash"])
+    .index("by_active", ["activeRequests"]),
 });

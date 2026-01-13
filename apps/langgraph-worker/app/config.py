@@ -120,6 +120,10 @@ PERPLEXITY_RATE_LIMIT_CONFIG = {
 
     # Timeout configuration
     'TIMEOUT_RETRY_ONCE': get_env_bool('PERPLEXITY_TIMEOUT_RETRY_ONCE', True),
+
+    # Per-user rate limiter cleanup configuration
+    'INACTIVE_USER_CLEANUP_HOURS': get_env_int('PERPLEXITY_CLEANUP_HOURS', 2),
+    'CLEANUP_INTERVAL_MINUTES': get_env_int('PERPLEXITY_CLEANUP_INTERVAL', 30),
 }
 
 # Environment detection

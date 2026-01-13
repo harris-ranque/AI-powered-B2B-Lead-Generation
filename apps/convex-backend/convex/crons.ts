@@ -33,4 +33,14 @@ crons.interval(
   (internal as any)["search/monitoring"].checkPendingCompletions,
 );
 
+// ============================================================================
+// STUCK SEARCH RECOVERY (Every 10 minutes)
+// ============================================================================
+// Detect and recover searches stuck in processing phases beyond timeout
+crons.interval(
+  "recover-stuck-searches",
+  { minutes: 10 },
+  (internal as any)["search/monitoring"].recoverStuckSearches,
+);
+
 export default crons;
