@@ -68,79 +68,25 @@ export const tryAcquireApiKeySlot = internalMutation({
 });
 
 /**
- * Acquire a slot for an API key (blocking with polling)
- * Waits until a slot becomes available, then acquires it
- * Max wait time: 5 minutes (300 seconds)
+ * REMOVED: acquireApiKeySlot (blocking version with setTimeout)
+ *
+ * The blocking version used setTimeout which is not allowed in Convex mutations.
+ * Instead, use tryAcquireApiKeySlot at the action level and handle retries
+ * with ctx.scheduler.runAfter() if the slot is not immediately available.
+ *
+ * Migration pattern:
+ *
+ * // OLD (mutation with setTimeout - NOT ALLOWED):
+ * const result = await ctx.runMutation(internal.apiKeySemaphore.semaphore.acquireApiKeySlot, { apiKeyHash });
+ *
+ * // NEW (action with scheduler-based retry):
+ * const result = await ctx.runMutation(internal.apiKeySemaphore.semaphore.tryAcquireApiKeySlot, { apiKeyHash });
+ * if (!result.acquired) {
+ *   // Schedule retry after 1-2 seconds using scheduler
+ *   await ctx.scheduler.runAfter(1000 + Math.random() * 1000, currentAction, args);
+ *   return { success: false, retrying: true };
+ * }
  */
-export const acquireApiKeySlot = internalMutation({
-  args: {
-    apiKeyHash: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const startTime = Date.now();
-    const MAX_WAIT_TIME_MS = 300000; // 5 minutes
-
-    while (true) {
-      // Check if we've exceeded max wait time
-      if (Date.now() - startTime > MAX_WAIT_TIME_MS) {
-        throw new Error(
-          `Timeout waiting for API key slot (waited ${MAX_WAIT_TIME_MS / 1000}s). ` +
-          `The API key may be at maximum concurrency (${MAX_CONCURRENCY_PER_KEY} concurrent requests).`
-        );
-      }
-
-      // Try to acquire a slot
-      const existing = await ctx.db
-        .query("enrichmentApiKeySemaphores")
-        .withIndex("by_key_hash", (q) => q.eq("apiKeyHash", args.apiKeyHash))
-        .first();
-
-      if (existing) {
-        // Check if we can acquire a slot
-        if (existing.activeRequests < existing.maxConcurrency) {
-          // Acquire a slot
-          await ctx.db.patch(existing._id, {
-            activeRequests: existing.activeRequests + 1,
-            waitingRequests: Math.max(0, existing.waitingRequests - 1),
-            lastUpdated: Date.now(),
-          });
-
-          return {
-            acquired: true,
-            currentActive: existing.activeRequests + 1,
-            waitedMs: Date.now() - startTime,
-          };
-        }
-
-        // At capacity, increment waiting counter
-        await ctx.db.patch(existing._id, {
-          waitingRequests: existing.waitingRequests + 1,
-          lastUpdated: Date.now(),
-        });
-
-        // Wait before retrying (exponential backoff with jitter)
-        const waitTime = Math.min(1000 + Math.random() * 1000, 5000); // 1-2s, max 5s
-        await new Promise((resolve) => setTimeout(resolve, waitTime));
-        continue;
-      } else {
-        // Create new semaphore record and acquire first slot
-        await ctx.db.insert("enrichmentApiKeySemaphores", {
-          apiKeyHash: args.apiKeyHash,
-          activeRequests: 1,
-          maxConcurrency: MAX_CONCURRENCY_PER_KEY,
-          waitingRequests: 0,
-          lastUpdated: Date.now(),
-        });
-
-        return {
-          acquired: true,
-          currentActive: 1,
-          waitedMs: Date.now() - startTime,
-        };
-      }
-    }
-  },
-});
 
 /**
  * Release a slot for an API key

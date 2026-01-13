@@ -89,6 +89,23 @@ export const deleteLead = internalMutation({
       return { success: false, reason: "Lead not found" };
     }
 
+    // Update search progress metrics before deleting
+    const search = await ctx.db.get(lead.searchId);
+    if (search && search.progress) {
+      // Decrement the discovered count since we're removing a lead
+      const newDiscovered = Math.max(0, (search.progress.discovered || 0) - 1);
+
+      await ctx.db.patch(search._id, {
+        progress: {
+          ...search.progress,
+          discovered: newDiscovered,
+          // Update total to match actual lead count
+          total: newDiscovered,
+        },
+        updatedAt: Date.now(),
+      });
+    }
+
     // Delete the lead from database
     await ctx.db.delete(args.leadId);
 

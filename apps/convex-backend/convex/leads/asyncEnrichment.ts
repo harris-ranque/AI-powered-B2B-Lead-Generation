@@ -156,13 +156,13 @@ export const enrichSingleLead = internalAction({
 
     const performanceTracker = startPerformanceTracking();
 
-    // Acquire API key slot for rate limiting (5 concurrent per unique API key)
+    // Try to acquire API key slot for rate limiting (5 concurrent per unique API key)
     const apiKeyHash = getApiKeyHash(args.userApiKey);
 
     logWithCorrelation(
       "info",
       correlation,
-      "🔐 Acquiring API key slot for enrichment",
+      "🔐 Trying to acquire API key slot for enrichment",
       {
         leadId: args.leadId,
         apiKeyHash: apiKeyHash.substring(0, 8) + "...", // Show first 8 chars only
@@ -170,10 +170,40 @@ export const enrichSingleLead = internalAction({
       },
     );
 
+    // Try to acquire slot (non-blocking)
     const slotResult = await ctx.runMutation(
-      internal.apiKeySemaphore.semaphore.acquireApiKeySlot,
+      internal.apiKeySemaphore.semaphore.tryAcquireApiKeySlot,
       { apiKeyHash },
     );
+
+    // If slot not available, reschedule this action for later retry
+    if (!slotResult.acquired) {
+      logWithCorrelation(
+        "info",
+        correlation,
+        "⏳ API key at capacity - Rescheduling enrichment",
+        {
+          leadId: args.leadId,
+          currentActive: slotResult.currentActive,
+          retryDelay: "1-2 seconds",
+        },
+      );
+
+      // Schedule retry after 1-2 seconds with jitter
+      const retryDelay = 1000 + Math.random() * 1000;
+      await ctx.scheduler.runAfter(
+        retryDelay,
+        internal.leads.asyncEnrichment.enrichSingleLead,
+        args
+      );
+
+      return {
+        success: false,
+        skipped: false,
+        retrying: true,
+        reason: "api_key_at_capacity",
+      };
+    }
 
     logWithCorrelation(
       "info",
@@ -182,7 +212,6 @@ export const enrichSingleLead = internalAction({
       {
         leadId: args.leadId,
         currentActive: slotResult.currentActive,
-        waitedMs: slotResult.waitedMs,
       },
     );
 
