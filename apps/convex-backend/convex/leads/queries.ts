@@ -251,7 +251,6 @@ export const getEnrichmentProgress = query({
 
     // Get provider breakdown for completed leads
     const findymailCount = allLeads.filter(l => l.enrichmentProvider === "findymail").length;
-    const icypeasCount = allLeads.filter(l => l.enrichmentProvider === "icypeas").length;
 
     return {
       searchId: args.searchId,
@@ -264,7 +263,6 @@ export const getEnrichmentProgress = query({
       percentComplete,
       providers: {
         findymail: findymailCount,
-        icypeas: icypeasCount,
       },
       isComplete: pending === 0 && inProgress === 0,
       isPaused: search.enrichmentPaused || false,

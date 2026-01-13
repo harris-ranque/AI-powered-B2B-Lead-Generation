@@ -39,7 +39,7 @@ import {
   EnrichmentProviderFactory,
 } from "./enrichment/provider";
 import { EnrichmentResult, EnrichmentOptions } from "./enrichment/types";
-import { getApiKeyHash } from "../workpool/semaphore";
+import { getApiKeyHash } from "../apiKeySemaphore/semaphore";
 
 // Note: Workpool instance is created per-call in enrichLeads action
 // This is because we need ctx.runMutation which is only available in action context
@@ -159,7 +159,7 @@ export const enrichSingleLead = internalAction({
     );
 
     const slotResult = await ctx.runMutation(
-      internal.workpool.semaphore.acquireApiKeySlot,
+      internal.apiKeySemaphore.semaphore.acquireApiKeySlot,
       { apiKeyHash },
     );
 
@@ -188,7 +188,7 @@ export const enrichSingleLead = internalAction({
       if (search.enrichmentPaused) {
         // Release API key slot before exiting
         await ctx.runMutation(
-          internal.workpool.semaphore.releaseApiKeySlot,
+          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
           { apiKeyHash },
         );
 
@@ -338,7 +338,7 @@ export const enrichSingleLead = internalAction({
 
         // Release API key slot
         await ctx.runMutation(
-          internal.workpool.semaphore.releaseApiKeySlot,
+          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
           { apiKeyHash },
         );
 
@@ -556,7 +556,7 @@ export const enrichSingleLead = internalAction({
 
         // Release API key slot
         await ctx.runMutation(
-          internal.workpool.semaphore.releaseApiKeySlot,
+          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
           { apiKeyHash },
         );
 
@@ -649,7 +649,7 @@ export const enrichSingleLead = internalAction({
 
         // Release API key slot
         await ctx.runMutation(
-          internal.workpool.semaphore.releaseApiKeySlot,
+          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
           { apiKeyHash },
         );
 
@@ -746,7 +746,7 @@ export const enrichSingleLead = internalAction({
       // Release API key slot before throwing error
       try {
         await ctx.runMutation(
-          internal.workpool.semaphore.releaseApiKeySlot,
+          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
           { apiKeyHash },
         );
 

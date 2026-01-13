@@ -54,7 +54,6 @@ export const testGetEnrichmentProgress = query({
       percentComplete,
       providers: {
         findymail: allLeads.filter(l => l.enrichmentProvider === "findymail").length,
-        icypeas: allLeads.filter(l => l.enrichmentProvider === "icypeas").length,
       },
       isComplete: pending === 0 && inProgress === 0,
       isPaused: search.enrichmentPaused || false,

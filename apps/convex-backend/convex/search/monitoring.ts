@@ -198,8 +198,9 @@ export const recoverStuckSearches: any = internalAction({
           },
         );
 
-        await ctx.runMutation(internal.search.internal.markSearchFailedInternal, {
+        await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
           searchId: search._id as any,
+          status: "failed" as const,
           error: `Search timed out during discovery phase (exceeded ${Math.floor(DISCOVERY_TIMEOUT_MS / 60000)} minutes)`,
         });
 
@@ -238,8 +239,9 @@ export const recoverStuckSearches: any = internalAction({
             },
           );
 
-          await ctx.runMutation(internal.search.internal.markSearchFailedInternal, {
+          await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
             searchId: search._id as any,
+            status: "failed" as const,
             error: `Search timed out during processing phase (exceeded ${Math.floor(PROCESSING_TIMEOUT_MS / 60000)} minutes). ${pendingEnrichment.length} leads pending enrichment, ${pendingAnalysis.length} leads pending analysis.`,
           });
 
