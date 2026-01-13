@@ -28,7 +28,7 @@ import asyncio
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Deque, Dict, Optional
+from typing import Any, Deque, Dict, Optional
 
 from .logger import setup_logger
 from .analytics import capture_event
