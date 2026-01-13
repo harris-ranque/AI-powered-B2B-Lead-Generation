@@ -23,7 +23,7 @@ from ..utils.logger import setup_logger
 from ..utils.tavily_tool import TavilySearchTool, TavilySearchResult
 from ..utils.data_validation import BaseDataValidator, DataValidationResult
 from ..utils.analytics import capture_event, capture_error
-from ..utils.perplexity_rate_limiter import create_perplexity_rate_limiter, PerplexityRateLimiter
+from ..utils.perplexity_rate_limiter import get_user_rate_limiter, PerplexityRateLimiter
 from ..utils.perplexity_retry import (
     perplexity_request_with_retry,
     handle_perplexity_response,
@@ -412,12 +412,10 @@ class PerplexityClient:
         self.base_url = "https://api.perplexity.ai"
         self.timeout = 20.0  # Longer timeout for comprehensive analysis
 
-        # Initialize rate limiter with configurable limits
-        # BYOK clients may override via environment variables
-        self.rate_limiter = create_perplexity_rate_limiter(
-            sonar_pro_rpm=PERPLEXITY_RATE_LIMIT_CONFIG['SONAR_PRO_RPM'],
-            deep_research_rpm=PERPLEXITY_RATE_LIMIT_CONFIG['DEEP_RESEARCH_RPM'],
-        )
+        # Store rate limit configuration for per-user limiters
+        # Per-user rate limiters will be created on-demand via get_user_rate_limiter()
+        self.sonar_pro_rpm = PERPLEXITY_RATE_LIMIT_CONFIG['SONAR_PRO_RPM']
+        self.deep_research_rpm = PERPLEXITY_RATE_LIMIT_CONFIG['DEEP_RESEARCH_RPM']
 
         # Initialize retry configuration
         self.retry_config = RetryConfig(
@@ -436,7 +434,8 @@ class PerplexityClient:
                                    company_name: str,
                                    domain: str = "",
                                    location: str = "",
-                                   previous_context: str = "") -> ResearchResult:
+                                   previous_context: str = "",
+                                   user_id: Optional[str] = None) -> ResearchResult:
         """
         Generate comprehensive business research report using Perplexity Sonar Pro.
 
@@ -445,13 +444,15 @@ class PerplexityClient:
             domain: Company domain/website
             location: Company physical location/address for context
             previous_context: Context from previous research tiers
+            user_id: User identifier for per-user rate limiting
 
         Returns:
             ResearchResult with comprehensive business intelligence
 
         Rate Limiting:
-            - Acquires rate limit slot for sonar-pro model (50 RPM default)
-            - Waits if rate limit reached before making API call
+            - Per-user rate limiting for sonar-pro model (2000 RPM Tier 5 default)
+            - Each user gets independent rate limit tracking
+            - Waits if user's rate limit reached before making API call
 
         Retry Logic:
             - Retries on 429, 5xx errors with exponential backoff
@@ -467,6 +468,13 @@ class PerplexityClient:
                 confidence_score=0.0,
                 error="Perplexity API key not configured"
             )
+
+        # Get per-user rate limiter
+        rate_limiter = await get_user_rate_limiter(
+            user_id=user_id or "system",
+            sonar_pro_rpm=self.sonar_pro_rpm,
+            deep_research_rpm=self.deep_research_rpm,
+        )
 
         # Construct comprehensive research query
         query = self._build_comprehensive_query(company_name, domain, location, previous_context)
@@ -512,11 +520,11 @@ class PerplexityClient:
                     )
 
         try:
-            # Acquire rate limit slot for sonar-pro (waits if at capacity)
-            async with self.rate_limiter.acquire("sonar-pro") as ctx:
+            # Acquire per-user rate limit slot for sonar-pro (waits if at capacity)
+            async with rate_limiter.acquire("sonar-pro") as ctx:
                 if ctx.wait_time > 0:
                     logger.info(
-                        f"[RateLimit] Waited {ctx.wait_time:.2f}s for sonar-pro slot before researching {company_name}"
+                        f"[RateLimit] User '{user_id or 'system'}' waited {ctx.wait_time:.2f}s for sonar-pro slot before researching {company_name}"
                     )
 
                 # Execute request with retry logic
@@ -644,7 +652,8 @@ class PerplexityClient:
                            company_name: str,
                            domain: str = "",
                            location: str = "",
-                           previous_context: str = "") -> ResearchResult:
+                           previous_context: str = "",
+                           user_id: Optional[str] = None) -> ResearchResult:
         """
         Generate exhaustive research report using Perplexity Deep Research model.
         Runs 30-60 seconds and searches hundreds of sources for comprehensive analysis.
@@ -654,14 +663,16 @@ class PerplexityClient:
             domain: Company domain/website
             location: Company physical location/address for context
             previous_context: Context from previous research tiers
+            user_id: User identifier for per-user rate limiting
 
         Returns:
             ResearchResult with exhaustive business intelligence
 
         Rate Limiting (CRITICAL - Deep Research has strict limits):
-            - Acquires rate limit slot for sonar-deep-research model (4 RPM default)
-            - Perplexity Tier 0 limit is 5 RPM, we use 4 RPM for safety margin
-            - Waits if rate limit reached - may wait 15+ seconds between requests
+            - Per-user rate limiting for sonar-deep-research model (100 RPM Tier 5 default)
+            - Each user gets independent rate limit tracking
+            - Waits if user's rate limit reached - may wait 15+ seconds between requests
+            - Lower tier users (e.g., Tier 0: 5 RPM) will experience longer waits
 
         Retry Logic:
             - Retries on 429, 5xx errors with exponential backoff
@@ -678,6 +689,13 @@ class PerplexityClient:
                 confidence_score=0.0,
                 error="Perplexity API key not configured"
             )
+
+        # Get per-user rate limiter
+        rate_limiter = await get_user_rate_limiter(
+            user_id=user_id or "system",
+            sonar_pro_rpm=self.sonar_pro_rpm,
+            deep_research_rpm=self.deep_research_rpm,
+        )
 
         # Construct deep research query using same query builder
         query = self._build_comprehensive_query(company_name, domain, location, previous_context)
@@ -728,12 +746,12 @@ class PerplexityClient:
                     )
 
         try:
-            # Acquire rate limit slot for sonar-deep-research (CRITICAL - only 4 RPM!)
-            # This may wait 15+ seconds if at capacity
-            async with self.rate_limiter.acquire("sonar-deep-research") as ctx:
+            # Acquire per-user rate limit slot for sonar-deep-research
+            # May wait 15+ seconds if user's rate limit is at capacity
+            async with rate_limiter.acquire("sonar-deep-research") as ctx:
                 if ctx.wait_time > 0:
                     logger.info(
-                        f"[RateLimit] Waited {ctx.wait_time:.2f}s for deep-research slot before researching {company_name}"
+                        f"[RateLimit] User '{user_id or 'system'}' waited {ctx.wait_time:.2f}s for deep-research slot before researching {company_name}"
                     )
 
                 # Execute request with retry logic
@@ -1317,6 +1335,7 @@ class ResearchOrchestrator:
             domain,
             location,
             "",  # No previous context since we skipped Tavily
+            user_id=user_id,  # Pass user_id for per-user rate limiting
         )
         sonar_pro_duration_ms = (time.time() - tier2_start) * 1000
         sonar_pro_result.final_tier_used = "pro"  # Mark as Sonar Pro tier
@@ -1399,6 +1418,7 @@ class ResearchOrchestrator:
             domain,
             location,
             tier2_result.company_overview,
+            user_id=user_id,  # Pass user_id for per-user rate limiting
         )
         deep_research_duration_ms = (time.time() - tier3_start) * 1000
         deep_research_result.final_tier_used = "deep"  # Mark as Deep Research tier

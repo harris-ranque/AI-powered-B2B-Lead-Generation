@@ -2,6 +2,8 @@ import { action } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { Doc } from "../_generated/dataModel";
+import { components } from "../_generated/api";
+import { Workpool } from "@convex-dev/workpool";
 import {
   createCorrelationContext,
   createChildContext,
@@ -16,6 +18,7 @@ import {
   EnrichmentProviderFactory
 } from "./enrichment/provider";
 import { getSingleProviderError } from "../lib/errorMessages";
+import { trackEnrichmentBatchStarted } from "../lib/analytics";
 
 // Import enrichment types
 import { EnrichmentBatchResult, EnrichmentOptions } from "./enrichment/types";
@@ -422,40 +425,50 @@ export const enrichLeads: any = action({
       );
 
       // ========================================================================
-      // SCHEDULED ACTIONS WITH STAGGERED DELAYS (Rate-Limited Enrichment)
+      // WORKPOOL-BASED ENRICHMENT (Official @convex-dev/workpool)
       // ========================================================================
-      // Schedule all leads with 200ms delays between each to limit concurrency
-      // ~5 concurrent at any time (FindyMail's limit)
+      // Using official Convex workpool component for precise concurrency control
+      // High parallelism (25) with per-API-key slot limiting (5 concurrent per key)
       // Each lead gets inline fallback support (FindyMail → IcyPeas)
-      // No timeout issues - each lead has its own 10-minute action timeout
+      // Semaphore system ensures proper rate limiting per unique API key
       // ========================================================================
 
       logWithCorrelation(
         "info",
         correlation,
-        "🚀 Scheduling All Leads for Async Enrichment (Staggered)",
+        "🚀 Enqueueing Leads to Workpool for Async Enrichment",
         {
           totalLeads: leads.length,
-          approximateConcurrency: 5,
-          architecture: "scheduled_actions_staggered",
-          staggerDelay: "200ms per lead",
+          workpoolMaxParallelism: 25,
+          perApiKeyConcurrency: 5,
+          architecture: "workpool_with_semaphore",
           estimatedDuration: `${Math.ceil((leads.length * 4) / 5 / 60)} minutes`,
           inlineFallback: true,
-          note: "200ms stagger approximates 5 concurrent limit",
+          note: "Semaphore system enforces 5 concurrent per unique API key",
         },
       );
 
-      let scheduledCount = 0;
-      let schedulingErrors = 0;
+      // Initialize workpool with high parallelism
+      // Per-API-key limiting handled by semaphore system in asyncEnrichment.ts
+      const pool = new Workpool(components.enrichmentPool, {
+        maxParallelism: 25, // Support multiple users with different API keys
+        retryActionsByDefault: true,
+        defaultRetryBehavior: {
+          maxAttempts: 3,
+          initialBackoffMs: 1000,
+          base: 2,
+        },
+      });
 
-      // Schedule all leads with staggered delays (fire-and-forget)
-      for (let i = 0; i < leads.length; i++) {
-        const lead = leads[i];
+      let enqueuedCount = 0;
+      let enqueueErrors = 0;
+
+      // Enqueue all leads to workpool (fire-and-forget)
+      for (const lead of leads) {
         try {
-          // Schedule with 200ms delay per lead to limit concurrency
-          await ctx.scheduler.runAfter(
-            i * 200, // 200ms stagger between leads
-            (internal as any)["leads/asyncEnrichment"].enrichSingleLead,
+          await pool.enqueueAction(
+            ctx,
+            internal.leads.asyncEnrichment.enrichSingleLead,
             {
               leadId: lead._id,
               searchId: args.searchId,
@@ -465,10 +478,10 @@ export const enrichLeads: any = action({
             },
           );
 
-          scheduledCount++;
+          enqueuedCount++;
         } catch (error) {
-          schedulingErrors++;
-          console.error(`Failed to schedule lead ${lead._id} for enrichment:`, error);
+          enqueueErrors++;
+          console.error(`Failed to enqueue lead ${lead._id} for enrichment:`, error);
 
           // Mark lead as failed immediately
           await ctx.runMutation(
@@ -476,7 +489,7 @@ export const enrichLeads: any = action({
             {
               leadId: lead._id,
               status: "failed",
-              error: error instanceof Error ? error.message : "Scheduling failed",
+              error: error instanceof Error ? error.message : "Enqueue failed",
             },
           );
         }
@@ -488,38 +501,54 @@ export const enrichLeads: any = action({
       logWithCorrelation(
         "info",
         correlation,
-        "🎉 PHASE 2 SCHEDULING COMPLETE: All Leads Scheduled with Staggered Delays",
+        "🎉 PHASE 2 ENQUEUE COMPLETE: All Leads Enqueued to Workpool",
         {
           totalLeads: leads.length,
-          scheduledCount,
-          schedulingErrors,
-          schedulingSuccessRate: (scheduledCount / leads.length) * 100,
-          architecture: "scheduled_actions_staggered",
-          staggerDelay: "200ms",
-          approximateConcurrency: 5,
+          enqueuedCount,
+          enqueueErrors,
+          enqueueSuccessRate: (enqueuedCount / leads.length) * 100,
+          architecture: "workpool_with_semaphore",
+          workpoolMaxParallelism: 25,
+          perApiKeyConcurrency: 5,
           estimatedCompletionTime: `${Math.ceil((leads.length * 4) / 5 / 60)} minutes`,
-          schedulingDurationMs: performanceData?.duration || 0,
+          enqueueDurationMs: performanceData?.duration || 0,
           nextPhase: "ai_analysis_after_enrichment",
-          note: "Enrichment will complete asynchronously via scheduled actions",
+          note: "Enrichment will complete asynchronously via workpool workers",
         },
       );
 
-      // Broadcast initial progress (leads scheduled, processing will happen async)
+      // Track enrichment batch start for performance analytics
+      trackEnrichmentBatchStarted({
+        searchId: args.searchId,
+        totalLeads: leads.length,
+        workpoolParallelism: 25,
+        apiKeysUsed: userApiKey ? 1 : 0, // User-provided key or system key
+      });
+
+      // Broadcast initial progress (leads enqueued, processing will happen async)
       await ctx.runMutation(
         internal.realtime.broadcaster.broadcastPipelineUpdate,
         {
           userId: search.userId,
           searchId: args.searchId,
           stage: "enrichment",
-          progress: 0, // 0% enriched (scheduled but not complete yet)
-          message: `Scheduled ${scheduledCount} leads for enrichment`,
+          progress: 0, // 0% enriched (enqueued but not complete yet)
+          message: `Enriching ${enqueuedCount} leads with AI-powered contact discovery`,
           data: {
             progress: {
               discovered: leads.length,
               enriched: 0, // None complete yet
               analyzed: 0,
-              scheduled: scheduledCount,
+              enqueued: enqueuedCount,
               total: leads.length,
+            },
+            workpool: {
+              totalLeads: leads.length,
+              enqueuedJobs: enqueuedCount,
+              failedToEnqueue: enqueueErrors,
+              maxParallelism: 25,
+              perApiKeyConcurrency: 5,
+              estimatedMinutes: Math.ceil((leads.length * 4) / 5 / 60),
             },
           },
         },
@@ -534,19 +563,19 @@ export const enrichLeads: any = action({
         correlation,
         "ℹ️  AI Analysis will trigger automatically when all enrichment completes",
         {
-          scheduledLeads: scheduledCount,
+          enqueuedLeads: enqueuedCount,
           note: "Last enrichment action to complete will trigger analysis phase",
         },
       );
 
       return {
         success: true,
-        message: `Scheduled ${scheduledCount}/${leads.length} leads for async enrichment`,
-        scheduledCount,
-        schedulingErrors,
+        message: `Enqueued ${enqueuedCount}/${leads.length} leads for async enrichment`,
+        enqueuedCount,
+        enqueueErrors,
         totalLeads: leads.length,
         enrichmentProvider: providerType,
-        note: "Enrichment will complete asynchronously via scheduled actions",
+        note: "Enrichment will complete asynchronously via workpool workers",
       };
     } catch (error) {
       const performanceData = endPerformanceTracking(performanceTracker);
@@ -554,7 +583,7 @@ export const enrichLeads: any = action({
       logWithCorrelation(
         "error",
         correlation,
-        "💥 PHASE 2 FAILED: Lead Enrichment Scheduling Error",
+        "💥 PHASE 2 FAILED: Lead Enrichment Workpool Enqueue Error",
         {
           errorType: error instanceof Error ? error.constructor.name : "Unknown",
           duration: performanceData?.duration || 0,
@@ -569,7 +598,7 @@ export const enrichLeads: any = action({
         {
           searchId: args.searchId,
           status: "failed",
-          error: error instanceof Error ? error.message : "Enrichment scheduling failed",
+          error: error instanceof Error ? error.message : "Enrichment workpool enqueue failed",
         },
       );
 

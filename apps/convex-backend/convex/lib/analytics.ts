@@ -42,3 +42,48 @@ export function captureAnalyticsException(
     error: error instanceof Error ? error.message : String(error),
   });
 }
+
+/**
+ * Track lead enrichment completion performance metrics
+ * Frontend should send these events to PostHog for analytics
+ */
+export function trackEnrichmentCompleted(properties: {
+  searchId: string;
+  leadId: string;
+  provider: "findymail" | "icypeas";
+  durationMs: number;
+  rolesFound: number;
+  emailFound: boolean;
+  retryAttempt: number;
+  apiKeyHash?: string;
+}): void {
+  captureAnalyticsEvent(null, "lead_enrichment_completed", properties);
+}
+
+/**
+ * Track lead enrichment failure metrics
+ * Frontend should send these events to PostHog for analytics
+ */
+export function trackEnrichmentFailed(properties: {
+  searchId: string;
+  leadId: string;
+  provider: "findymail" | "icypeas";
+  durationMs: number;
+  errorType: string;
+  retryAttempt: number;
+}): void {
+  captureAnalyticsEvent(null, "lead_enrichment_failed", properties);
+}
+
+/**
+ * Track enrichment batch start metrics
+ * Frontend should send these events to PostHog for analytics
+ */
+export function trackEnrichmentBatchStarted(properties: {
+  searchId: string;
+  totalLeads: number;
+  workpoolParallelism: number;
+  apiKeysUsed: number;
+}): void {
+  captureAnalyticsEvent(null, "enrichment_batch_started", properties);
+}

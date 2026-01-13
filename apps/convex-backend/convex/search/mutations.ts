@@ -109,6 +109,18 @@ export const createSearch = mutation({
 
         // NOTE: Plan-based restrictions removed - all users can create searches (limited only by credits)
 
+        // PRE-VALIDATION: Check credit balance before creating search (non-enterprise)
+        if (user.plan !== "enterprise") {
+          const estimatedCredits = Math.ceil(adjustedParameters.maxResults * 1.5); // Estimate 1.5 credits per lead (Tier 2 avg)
+          const currentBalance = user.credits || 0;
+
+          if (currentBalance < estimatedCredits) {
+            throw new Error(
+              `Insufficient credits. You need approximately ${estimatedCredits} credits for this search (you have ${currentBalance}). Please purchase more credits.`
+            );
+          }
+        }
+
         // Validate enterprise users have required API keys
         if (user.plan === "enterprise") {
           const apiKeys = await ctx.db
@@ -269,6 +281,18 @@ export const createSearchCompleted = mutation({
         const user = await requireAuth(ctx);
 
         // NOTE: Plan-based restrictions removed - all users can create searches (limited only by credits)
+
+        // PRE-VALIDATION: Check credit balance before creating search (non-enterprise)
+        if (user.plan !== "enterprise") {
+          const estimatedCredits = Math.ceil(adjustedParameters.maxResults * 1.5); // Estimate 1.5 credits per lead (Tier 2 avg)
+          const currentBalance = user.credits || 0;
+
+          if (currentBalance < estimatedCredits) {
+            throw new Error(
+              `Insufficient credits. You need approximately ${estimatedCredits} credits for this search (you have ${currentBalance}). Please purchase more credits.`
+            );
+          }
+        }
 
         // Validate enterprise users have required API keys
         if (user.plan === "enterprise") {

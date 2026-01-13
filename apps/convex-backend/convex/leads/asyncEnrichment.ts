@@ -37,10 +37,15 @@ import {
   OPERATION_TYPES,
 } from "../lib/correlation";
 import {
+  trackEnrichmentCompleted,
+  trackEnrichmentFailed,
+} from "../lib/analytics";
+import {
   createEnrichmentService,
   EnrichmentProviderFactory,
 } from "./enrichment/provider";
 import { EnrichmentResult, EnrichmentOptions } from "./enrichment/types";
+import { getApiKeyHash } from "../workpool/semaphore";
 
 // IcyPeas fallback is disabled in both prod and dev
 // Set to true only when ready to enable fallback provider
@@ -151,7 +156,69 @@ export const enrichSingleLead = internalAction({
 
     const performanceTracker = startPerformanceTracking();
 
+    // Acquire API key slot for rate limiting (5 concurrent per unique API key)
+    const apiKeyHash = getApiKeyHash(args.userApiKey);
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "🔐 Acquiring API key slot for enrichment",
+      {
+        leadId: args.leadId,
+        apiKeyHash: apiKeyHash.substring(0, 8) + "...", // Show first 8 chars only
+        maxConcurrency: 5,
+      },
+    );
+
+    const slotResult = await ctx.runMutation(
+      internal.workpool.semaphore.acquireApiKeySlot,
+      { apiKeyHash },
+    );
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "✅ API key slot acquired",
+      {
+        leadId: args.leadId,
+        currentActive: slotResult.currentActive,
+        waitedMs: slotResult.waitedMs,
+      },
+    );
+
     try {
+      // Check if enrichment is paused for this search
+      const search = await ctx.runQuery(
+        internal.search.internal.getSearchInternal,
+        { searchId: args.searchId },
+      );
+
+      if (!search) {
+        throw new Error(`Search ${args.searchId} not found`);
+      }
+
+      if (search.enrichmentPaused) {
+        // Release API key slot before exiting
+        await ctx.runMutation(
+          internal.workpool.semaphore.releaseApiKeySlot,
+          { apiKeyHash },
+        );
+
+        logWithCorrelation(
+          "info",
+          correlation,
+          "⏸️ Enrichment Paused - Skipping Lead",
+          {
+            leadId: args.leadId,
+            searchId: args.searchId,
+            pausedBy: search.pausedBy,
+            pausedAt: search.pausedAt,
+          },
+        );
+
+        return { success: false, skipped: true, reason: "enrichment_paused" };
+      }
+
       // Get lead details
       const lead: any = await ctx.runQuery(
         internal.leads.internal.getLeadInternal,
@@ -183,6 +250,19 @@ export const enrichSingleLead = internalAction({
             status: "completed_fallback",
             error: "No valid domain available",
           },
+        );
+
+        // Release API key slot
+        await ctx.runMutation(
+          internal.workpool.semaphore.releaseApiKeySlot,
+          { apiKeyHash },
+        );
+
+        logWithCorrelation(
+          "info",
+          correlation,
+          "🔓 Released API key slot (no domain)",
+          { leadId: args.leadId },
         );
 
         return { success: false, provider: "none", reason: "no_domain" };
@@ -276,6 +356,18 @@ export const enrichSingleLead = internalAction({
           },
         );
 
+        // Track enrichment completion for analytics
+        trackEnrichmentCompleted({
+          searchId: args.searchId,
+          leadId: args.leadId,
+          provider: result.provider,
+          durationMs: perfData?.duration || 0,
+          rolesFound: result.contacts?.length || 0,
+          emailFound: result.emails.length > 0,
+          retryAttempt: 0,
+          apiKeyHash: args.userApiKey ? apiKeyHash : undefined,
+        });
+
         // Update overall search progress
         const allLeads: any = await ctx.runQuery(
           internal.leads.internal.getSearchLeadsInternal,
@@ -291,6 +383,10 @@ export const enrichSingleLead = internalAction({
         const progressPercent = (enrichedLeads.length / allLeads.length) * 100;
 
         // Broadcast real-time progress update
+        const pendingLeads = allLeads.filter((l: any) => l.enrichmentStatus === "pending");
+        const inProgressLeads = allLeads.filter((l: any) => l.enrichmentStatus === "in_progress");
+        const failedLeads = allLeads.filter((l: any) => l.enrichmentStatus === "failed");
+
         await ctx.runMutation(
           internal.realtime.broadcaster.broadcastPipelineUpdate,
           {
@@ -298,7 +394,7 @@ export const enrichSingleLead = internalAction({
             searchId: args.searchId,
             stage: "enrichment",
             progress: progressPercent,
-            message: `Enriched ${enrichedLeads.length} of ${allLeads.length} leads`,
+            message: `Enriched ${enrichedLeads.length} of ${allLeads.length} leads (${Math.round(progressPercent)}% complete)`,
             data: {
               progress: {
                 discovered: allLeads.length,
@@ -306,10 +402,19 @@ export const enrichSingleLead = internalAction({
                 analyzed: 0,
                 total: allLeads.length,
               },
+              enrichmentBreakdown: {
+                pending: pendingLeads.length,
+                inProgress: inProgressLeads.length,
+                completed: enrichedLeads.filter((l: any) => l.enrichmentStatus === "completed").length,
+                completedFallback: enrichedLeads.filter((l: any) => l.enrichmentStatus === "completed_fallback").length,
+                failed: failedLeads.length,
+                percentComplete: Math.round(progressPercent),
+              },
               lastEnrichedLead: {
                 businessName: lead.businessName,
                 provider: result.provider,
                 emailCount: result.emails.length,
+                contactCount: result.contacts?.length || 0,
               },
             },
           },
@@ -355,6 +460,22 @@ export const enrichSingleLead = internalAction({
           );
         }
 
+        // Release API key slot
+        await ctx.runMutation(
+          internal.workpool.semaphore.releaseApiKeySlot,
+          { apiKeyHash },
+        );
+
+        logWithCorrelation(
+          "info",
+          correlation,
+          "🔓 Released API key slot (success)",
+          {
+            leadId: args.leadId,
+            emailsFound: result.emails.length,
+          },
+        );
+
         return {
           success: true,
           provider: result.provider,
@@ -384,6 +505,16 @@ export const enrichSingleLead = internalAction({
             reason: "No emails or contacts found, lead deleted per user preference",
           },
         );
+
+        // Track enrichment failure for analytics
+        trackEnrichmentFailed({
+          searchId: args.searchId,
+          leadId: args.leadId,
+          provider: "findymail",
+          durationMs: perfData?.duration || 0,
+          errorType: "no_emails_found",
+          retryAttempt: 0,
+        });
 
         // CHECK: Atomically try to trigger AI analysis phase (prevents race conditions)
         const shouldTriggerAnalysis = await ctx.runMutation(
@@ -422,6 +553,19 @@ export const enrichSingleLead = internalAction({
           );
         }
 
+        // Release API key slot
+        await ctx.runMutation(
+          internal.workpool.semaphore.releaseApiKeySlot,
+          { apiKeyHash },
+        );
+
+        logWithCorrelation(
+          "info",
+          correlation,
+          "🔓 Released API key slot (no emails)",
+          { leadId: args.leadId },
+        );
+
         return {
           success: false,
           provider: "none",
@@ -451,6 +595,16 @@ export const enrichSingleLead = internalAction({
           error: error instanceof Error ? error.message : "Enrichment failed",
         },
       );
+
+      // Track enrichment failure for analytics
+      trackEnrichmentFailed({
+        searchId: args.searchId,
+        leadId: args.leadId,
+        provider: "findymail",
+        durationMs: perfData?.duration || 0,
+        errorType: error instanceof Error ? error.message : "enrichment_error",
+        retryAttempt: 0,
+      });
 
       // CHECK: Atomically try to trigger AI analysis phase (prevents race conditions)
       // (Even if this lead failed, we need to progress the pipeline)
@@ -493,6 +647,24 @@ export const enrichSingleLead = internalAction({
       } catch (checkError) {
         // Don't let analysis trigger failure break the original error handling
         console.error("Failed to check/trigger analysis after enrichment error:", checkError);
+      }
+
+      // Release API key slot before throwing error
+      try {
+        await ctx.runMutation(
+          internal.workpool.semaphore.releaseApiKeySlot,
+          { apiKeyHash },
+        );
+
+        logWithCorrelation(
+          "info",
+          correlation,
+          "🔓 Released API key slot (error)",
+          { leadId: args.leadId },
+        );
+      } catch (releaseError) {
+        // Don't let slot release failure break error handling
+        console.error("Failed to release API key slot after enrichment error:", releaseError);
       }
 
       throw error;

@@ -3,6 +3,36 @@ import { v } from "convex/values";
 import { Doc } from "../_generated/dataModel";
 import { withUpdatedAtIfSupported, isUpdatedAtSchemaError } from "./utils";
 
+// Search status state machine validation
+type SearchStatus = "pending" | "in_progress" | "processing" | "completed" | "failed" | "cancelled";
+
+const VALID_STATUS_TRANSITIONS: Record<SearchStatus, SearchStatus[]> = {
+  pending: ["in_progress", "cancelled", "failed"],
+  in_progress: ["processing", "completed", "failed", "cancelled"],
+  processing: ["completed", "failed", "cancelled"],
+  completed: [], // Terminal state - no transitions allowed
+  failed: [], // Terminal state - no transitions allowed
+  cancelled: [], // Terminal state - no transitions allowed
+};
+
+function validateStatusTransition(currentStatus: SearchStatus, newStatus: SearchStatus): { valid: boolean; reason?: string } {
+  // Allow same status (idempotent updates)
+  if (currentStatus === newStatus) {
+    return { valid: true };
+  }
+
+  const allowedTransitions = VALID_STATUS_TRANSITIONS[currentStatus];
+
+  if (!allowedTransitions.includes(newStatus)) {
+    return {
+      valid: false,
+      reason: `Invalid state transition from "${currentStatus}" to "${newStatus}". Allowed transitions: ${allowedTransitions.length > 0 ? allowedTransitions.join(", ") : "none (terminal state)"}`,
+    };
+  }
+
+  return { valid: true };
+}
+
 // Internal query to get search without auth check
 export const getSearchInternal = internalQuery({
   args: { searchId: v.id("searches") },
@@ -120,6 +150,23 @@ export const updateSearchStatusInternal = internalMutation({
     const search = await ctx.db.get(args.searchId);
     if (!search) {
       throw new Error("Search not found");
+    }
+
+    // Validate state transition
+    const currentStatus = search.status as SearchStatus;
+    const newStatus = args.status as SearchStatus;
+    const validation = validateStatusTransition(currentStatus, newStatus);
+
+    if (!validation.valid) {
+      console.warn(
+        `⚠️ Invalid search status transition blocked: ${validation.reason}`,
+        {
+          searchId: args.searchId,
+          currentStatus,
+          attemptedStatus: newStatus,
+        }
+      );
+      throw new Error(validation.reason);
     }
 
     const now = Date.now();
@@ -326,6 +373,58 @@ export const updateDiscoveryMetadataInternal = internalMutation({
     updateData.updatedAt = Date.now();
 
     await ctx.db.patch(searchId, updateData);
+    return { success: true };
+  },
+});
+
+// Mark search as failed (used by stuck search recovery cron - bypasses state machine validation)
+export const markSearchFailedInternal = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    error: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      throw new Error("Search not found");
+    }
+
+    // Skip validation for timeout recovery - allow marking as failed from any non-terminal state
+    const currentStatus = search.status as SearchStatus;
+    if (currentStatus === "completed" || currentStatus === "failed" || currentStatus === "cancelled") {
+      console.warn(
+        `⚠️ Attempted to mark terminal search as failed`,
+        {
+          searchId: args.searchId,
+          currentStatus,
+          reason: "already_terminal",
+        }
+      );
+      return { success: false, reason: "Search already in terminal state" };
+    }
+
+    const now = Date.now();
+
+    const updates = withUpdatedAtIfSupported(
+      {
+        status: "failed" as const,
+        error: args.error,
+        completedAt: now,
+      },
+      search,
+      now
+    );
+
+    try {
+      await ctx.db.patch(args.searchId, updates);
+    } catch (error) {
+      if (!isUpdatedAtSchemaError(error)) {
+        throw error;
+      }
+      const { updatedAt, ...updatesWithoutTimestamp } = updates;
+      await ctx.db.patch(args.searchId, updatesWithoutTimestamp);
+    }
+
     return { success: true };
   },
 });

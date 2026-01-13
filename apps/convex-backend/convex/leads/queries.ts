@@ -215,6 +215,63 @@ export const getEmailSequences = query({
   },
 });
 
+// Get enrichment progress for a specific search (for user-facing status updates)
+export const getEnrichmentProgress = query({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    // Verify user owns the search
+    const search = await ctx.db.get(args.searchId);
+    if (!search || search.userId !== user._id) {
+      throw new Error("Search not found or access denied");
+    }
+
+    // Get all leads for this search
+    const allLeads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    // Count by enrichment status
+    const pending = allLeads.filter(l => l.enrichmentStatus === "pending").length;
+    const inProgress = allLeads.filter(l => l.enrichmentStatus === "in_progress").length;
+    const completed = allLeads.filter(l =>
+      l.enrichmentStatus === "completed" ||
+      l.enrichmentStatus === "completed_fallback"
+    ).length;
+    const failed = allLeads.filter(l => l.enrichmentStatus === "failed").length;
+
+    // Calculate completion percentage
+    const total = allLeads.length;
+    const percentComplete = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    // Get provider breakdown for completed leads
+    const findymailCount = allLeads.filter(l => l.enrichmentProvider === "findymail").length;
+    const icypeasCount = allLeads.filter(l => l.enrichmentProvider === "icypeas").length;
+
+    return {
+      searchId: args.searchId,
+      searchStatus: search.status,
+      total,
+      pending,
+      inProgress,
+      completed,
+      failed,
+      percentComplete,
+      providers: {
+        findymail: findymailCount,
+        icypeas: icypeasCount,
+      },
+      isComplete: pending === 0 && inProgress === 0,
+      isPaused: search.enrichmentPaused || false,
+    };
+  },
+});
+
 // Get lead statistics for user (OPTIMIZED VERSION)
 export const getLeadStats = query({
   args: {},

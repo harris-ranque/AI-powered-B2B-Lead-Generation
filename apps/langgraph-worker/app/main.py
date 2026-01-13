@@ -70,6 +70,8 @@ from .utils.concurrent_handler import concurrent_handler
 from .utils.logger import setup_logger, log_request_details, log_response_details, log_error_details
 from .utils.key_validation import validate_user_key
 from .utils.analytics import capture_event, capture_error
+from .utils.perplexity_rate_limiter import cleanup_inactive_limiters
+from .config import PERPLEXITY_RATE_LIMIT_CONFIG
 
 # Configure logging
 logger = setup_logger(__name__)
@@ -111,6 +113,46 @@ logger.info(f"Environment WEBHOOK_URL: {os.getenv('WEBHOOK_URL', 'Not set')}")
 logger.info(f"Environment CONVEX_URL: {os.getenv('CONVEX_URL', 'Not set')}")
 
 webhook_client = WebhookClient(settings.webhook_url, settings.api_key)
+
+async def perplexity_rate_limiter_cleanup():
+    """
+    Background task to periodically clean up inactive per-user rate limiters.
+
+    Runs every CLEANUP_INTERVAL_MINUTES (default: 30 minutes)
+    Removes users inactive for INACTIVE_USER_CLEANUP_HOURS (default: 2 hours)
+
+    Prevents memory leaks from accumulating user-specific rate limiter instances.
+    """
+    cleanup_interval = PERPLEXITY_RATE_LIMIT_CONFIG['CLEANUP_INTERVAL_MINUTES'] * 60  # Convert to seconds
+    max_age_hours = PERPLEXITY_RATE_LIMIT_CONFIG['INACTIVE_USER_CLEANUP_HOURS']
+
+    logger.info(
+        f"[RateLimit] Starting periodic cleanup task: "
+        f"interval={cleanup_interval/60:.0f}min, max_age={max_age_hours}h"
+    )
+
+    while True:
+        try:
+            await asyncio.sleep(cleanup_interval)
+
+            logger.debug(f"[RateLimit] Running periodic cleanup (max_age={max_age_hours}h)")
+            removed_count = await cleanup_inactive_limiters(max_age_hours)
+
+            if removed_count > 0:
+                logger.info(
+                    f"[RateLimit] Cleaned up {removed_count} inactive user rate limiters "
+                    f"(inactive for >{max_age_hours}h)"
+                )
+            else:
+                logger.debug(f"[RateLimit] No inactive rate limiters to clean up")
+
+        except asyncio.CancelledError:
+            logger.info("[RateLimit] Cleanup task cancelled, stopping...")
+            break
+        except Exception as e:
+            logger.error(f"[RateLimit] Error in cleanup task: {e}", exc_info=True)
+            # Continue running despite errors
+            await asyncio.sleep(60)  # Wait 1 minute before retrying
 
 @app.on_event("startup")
 async def startup_event():
@@ -154,6 +196,15 @@ async def startup_event():
     # Start the background processor
     asyncio.create_task(single_replica_optimizer.background_processor())
     logger.info("Background processor started successfully")
+
+    # Start per-user rate limiter cleanup task
+    asyncio.create_task(perplexity_rate_limiter_cleanup())
+    logger.info(
+        f"Perplexity rate limiter cleanup started (interval: "
+        f"{PERPLEXITY_RATE_LIMIT_CONFIG['CLEANUP_INTERVAL_MINUTES']}min, "
+        f"max_age: {PERPLEXITY_RATE_LIMIT_CONFIG['INACTIVE_USER_CLEANUP_HOURS']}h)"
+    )
+
     logger.info("LangGraph workflow system initialized")
     
     # Send startup event to Sentry
