@@ -449,6 +449,11 @@ async def generate_email(
             )
 
             # Send webhook in background (non-blocking) - don't hold up HTTP response
+            # TODO: Add exponential backoff retry for webhook delivery failures
+            # Current fire-and-forget pattern can cause silent data loss if webhook fails.
+            # Implement: 3 retries with exponential backoff (1s, 2s, 4s), log failures
+            # for monitoring, consider dead letter queue for persistent failures.
+            # See: https://github.com/user/repo/issues/XXX
             result_obj = result["result"]
             background_tasks.add_task(
                 webhook_client.send_result,

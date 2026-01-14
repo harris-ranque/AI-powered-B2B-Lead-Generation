@@ -85,10 +85,10 @@ export function EnrichmentStage() {
       <div className="text-center space-y-2">
         <h3 className="text-xl font-semibold flex items-center justify-center gap-2">
           <Mail className="h-5 w-5" />
-          Finding Contacts
+          Getting Email Addresses
         </h3>
         <p className="text-muted-foreground">
-          Discovering contact emails and additional information for your leads
+          Finding decision-maker emails for each business
         </p>
       </div>
 
@@ -98,9 +98,9 @@ export function EnrichmentStage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
-                <h4 className="font-semibold">Contact Discovery Progress</h4>
+                <h4 className="font-semibold">Email Discovery Progress</h4>
                 <p className="text-sm text-muted-foreground">
-                  {enrichedCount} of {leads.length} contacts found
+                  {enrichedCount} of {leads.length} emails found
                 </p>
               </div>
 
@@ -119,7 +119,7 @@ export function EnrichmentStage() {
             {enrichmentProgress === 100 && (
               <div className="flex items-center justify-center gap-2 text-green-600">
                 <CheckCircle className="h-5 w-5" />
-                <span className="font-medium">Contact Discovery Complete!</span>
+                <span className="font-medium">Email Discovery Complete!</span>
               </div>
             )}
           </div>
@@ -132,7 +132,7 @@ export function EnrichmentStage() {
           <CardContent className="p-4 text-center">
             <Building className="h-6 w-6 mx-auto mb-2 text-primary" />
             <div className="text-2xl font-bold">{leads.length}</div>
-            <div className="text-sm text-muted-foreground">Total Leads</div>
+            <div className="text-sm text-muted-foreground">Total Businesses</div>
           </CardContent>
         </Card>
 
@@ -140,7 +140,7 @@ export function EnrichmentStage() {
           <CardContent className="p-4 text-center">
             <Mail className="h-6 w-6 mx-auto mb-2 text-green-500" />
             <div className="text-2xl font-bold">{enrichedCount}</div>
-            <div className="text-sm text-muted-foreground">Emails Found</div>
+            <div className="text-sm text-muted-foreground">Email Addresses</div>
           </CardContent>
         </Card>
 
@@ -168,7 +168,7 @@ export function EnrichmentStage() {
       {/* Recently Found Contacts Preview */}
       <Card className="glass-card">
         <CardHeader>
-          <CardTitle className="text-lg">Recently Found Contacts</CardTitle>
+          <CardTitle className="text-lg">Recently Found Emails</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -217,7 +217,7 @@ export function EnrichmentStage() {
             {enrichedCount === 0 && (
               <div className="text-center py-8 text-muted-foreground">
                 <Clock className="h-8 w-8 mx-auto mb-3 animate-pulse text-primary" />
-                <p>Finding contacts...</p>
+                <p>Finding emails...</p>
                 <p className="text-sm">This may take a few minutes</p>
               </div>
             )}
@@ -230,7 +230,7 @@ export function EnrichmentStage() {
         <div className="text-center">
           <Button onClick={handleContinue} size="lg" className="min-w-48">
             <Sparkles className="h-4 w-4 mr-2" />
-            Continue to AI Analysis
+            Continue to Email Writing
             <ArrowRight className="h-4 w-4 ml-2" />
           </Button>
         </div>

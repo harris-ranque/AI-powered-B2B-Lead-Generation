@@ -4,6 +4,18 @@ import { v } from "convex/values";
 import { createOperationLogger } from "../lib/logger";
 import { Id, Doc } from "../_generated/dataModel";
 
+// TODO: Add webhook idempotency table to prevent duplicate processing
+// Current implementation has partial checks but no dedicated tracking.
+// Implement: webhookDeliveries table with webhookId index, check before
+// processing any webhook, return early if already processed.
+// Schema addition needed:
+//   webhookDeliveries: defineTable({
+//     webhookId: v.string(),
+//     type: v.string(),
+//     processedAt: v.number(),
+//     status: v.string(),
+//   }).index("by_webhook_id", ["webhookId"])
+
 // Type definitions for LangGraph webhook payloads
 const WebhookStatus = v.union(
   v.literal("completed"),

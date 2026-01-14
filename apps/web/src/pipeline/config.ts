@@ -11,8 +11,8 @@ export const STAGE_CONFIGS: Record<PipelineStage, StageConfig> = {
   },
   lead_discovery: {
     id: "lead_discovery",
-    title: "Find Leads",
-    description: "Find potential customers and prospects",
+    title: "Find Businesses",
+    description: "Discover local businesses matching your search",
     icon: "Search",
     estimatedTime: "2-5 min",
     requiresCredits: true,
@@ -20,8 +20,8 @@ export const STAGE_CONFIGS: Record<PipelineStage, StageConfig> = {
   },
   enrichment: {
     id: "enrichment",
-    title: "Get Contacts",
-    description: "Find contact emails and additional information",
+    title: "Get Email Addresses",
+    description: "Find decision-maker emails for each business",
     icon: "Mail",
     estimatedTime: "3-8 min",
     requiresCredits: true,
@@ -29,8 +29,8 @@ export const STAGE_CONFIGS: Record<PipelineStage, StageConfig> = {
   },
   ai_personalization: {
     id: "ai_personalization",
-    title: "Create Emails",
-    description: "AI-powered email personalization and generation",
+    title: "Write Emails",
+    description: "AI writes personalized emails for each contact",
     icon: "Sparkles",
     estimatedTime: "5-10 min",
     requiresCredits: true,
@@ -38,8 +38,8 @@ export const STAGE_CONFIGS: Record<PipelineStage, StageConfig> = {
   },
   review_export: {
     id: "review_export",
-    title: "Ready",
-    description: "Review results and download your leads",
+    title: "Download Results",
+    description: "Export your leads with personalized emails",
     icon: "Download",
     estimatedTime: "1 min",
     requiresCredits: false,

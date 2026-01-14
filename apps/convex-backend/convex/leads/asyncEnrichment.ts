@@ -1,24 +1,30 @@
 "use node";
 
 /**
- * Async Lead Enrichment with Scheduled Actions
+ * Async Lead Enrichment with Workpool (Enterprise-Grade Queue Management)
  *
- * Uses scheduled actions with staggered delays to process lead enrichment:
- * - ~5 concurrent requests via 200ms staggering (respects FindyMail API limit)
- * - FindyMail as primary provider with retry logic
- * - Fast processing: ~15-20 minutes for 500 leads
- * - Built-in retry with exponential backoff
+ * ARCHITECTURE: Workpool + Semaphore Hybrid
+ * ==========================================
+ * - Workpool handles: Queue management, global parallelism (25), automatic retry
+ * - Semaphore handles: Per-API-key rate limiting (5 concurrent per unique API key)
  *
- * CRITICAL: Phase Transition Handling with Race Prevention
- * =========================================================
- * Each enrichment action checks if ALL leads are enriched (success, fallback, or failed).
- * The LAST action to complete automatically triggers the AI analysis phase.
+ * KEY FEATURES:
+ * - Supports 500+ lead searches sustainably
+ * - Multiple users with their own API keys
+ * - Automatic retry with exponential backoff (2s, 4s, 8s, 16s, 32s)
+ * - Completion tracking via onComplete handlers
+ * - Race-safe phase transition to AI analysis
  *
- * RACE CONDITION PREVENTION:
- * - Uses atomic Compare-And-Set via tryTriggerAnalysisPhase mutation
- * - Only ONE action wins the race and triggers analyzeLeads
- * - Other actions log that analysis was already triggered
- * - Prevents duplicate LangGraph requests and wasted costs
+ * TWO ACTION TYPES:
+ * 1. enrichSingleLeadWorkpool - NEW: Simplified action for Workpool
+ *    - No manual retry logic (Workpool handles retries)
+ *    - No phase transition (onComplete handler handles it)
+ *    - Throws errors to trigger Workpool retry
+ *
+ * 2. enrichSingleLead - LEGACY: Original action with manual retry
+ *    - Kept for backwards compatibility
+ *    - Has manual slot retry logic
+ *    - Handles phase transition itself
  */
 
 import { internalAction } from "../_generated/server";
@@ -124,15 +130,17 @@ async function tryProvider(
 }
 
 /**
- * Enrich a single lead using FindyMail
+ * WORKPOOL-COMPATIBLE: Enrich a single lead using FindyMail
  *
- * Flow:
- * 1. Try FindyMail (3 retries with exponential backoff)
- * 2. If no emails found, mark as completed_fallback with no emails
+ * This is the simplified action designed for Workpool orchestration:
+ * - NO manual retry logic - Workpool handles retries with exponential backoff
+ * - NO phase transition - onComplete handler in workpool.ts handles it
+ * - THROWS errors to trigger Workpool retry mechanism
  *
- * Each lead has its own 10-minute action timeout
+ * The semaphore slot acquisition throws an error if no slot available,
+ * which causes Workpool to retry with exponential backoff.
  */
-export const enrichSingleLead = internalAction({
+export const enrichSingleLeadWorkpool = internalAction({
   args: {
     leadId: v.id("leads"),
     searchId: v.id("searches"),
@@ -141,6 +149,348 @@ export const enrichSingleLead = internalAction({
     userApiKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Create correlation context for this lead
+    const correlation = createCorrelationContext(
+      OPERATION_TYPES.LEAD_ENRICHMENT,
+      args.userId,
+      {
+        searchId: args.searchId,
+        leadId: args.leadId,
+        metadata: {
+          stage: "workpool_enrichment",
+        },
+      },
+    );
+
+    const performanceTracker = startPerformanceTracking();
+
+    // Try to acquire API key slot for rate limiting (5 concurrent per unique API key)
+    const apiKeyHash = getApiKeyHash(args.userApiKey);
+    const claimId = args.leadId; // Use leadId as claimId for precise slot tracking
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "🔐 [Workpool] Trying to acquire API key slot",
+      {
+        leadId: args.leadId,
+        apiKeyHash: apiKeyHash.substring(0, 8) + "...",
+        maxConcurrency: 5,
+      },
+    );
+
+    // Try to acquire slot - if not available, throw error to trigger Workpool retry
+    const slotResult = await ctx.runMutation(
+      internal.apiKeySemaphore.semaphore.tryAcquireApiKeySlot,
+      { apiKeyHash, claimId },
+    );
+
+    if (!slotResult.acquired) {
+      // Throw error to trigger Workpool retry with exponential backoff
+      logWithCorrelation(
+        "warn",
+        correlation,
+        "⏳ [Workpool] API key at capacity - Workpool will retry",
+        {
+          leadId: args.leadId,
+          currentActive: slotResult.currentActive,
+        },
+      );
+      throw new Error(`API_KEY_AT_CAPACITY: ${slotResult.currentActive}/5 slots in use`);
+    }
+
+    const acquiredClaimId = slotResult.claimId;
+    const acquiredSlotIndex = slotResult.slotIndex;
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "✅ [Workpool] API key slot acquired",
+      {
+        leadId: args.leadId,
+        slotIndex: acquiredSlotIndex,
+      },
+    );
+
+    try {
+      // Check if enrichment is paused for this search
+      const search = await ctx.runQuery(
+        internal.search.internal.getSearchInternal,
+        { searchId: args.searchId },
+      );
+
+      if (!search) {
+        throw new Error(`Search ${args.searchId} not found`);
+      }
+
+      if (search.enrichmentPaused) {
+        // Release slot and skip
+        await ctx.runMutation(
+          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+        );
+        return { success: false, skipped: true, reason: "enrichment_paused" };
+      }
+
+      // Get lead details
+      const lead: any = await ctx.runQuery(
+        internal.leads.internal.getLeadInternal,
+        { leadId: args.leadId },
+      );
+
+      if (!lead) {
+        throw new Error(`Lead ${args.leadId} not found`);
+      }
+
+      // CHECK: Skip enrichment if lead already has emails (e.g., from CSV upload)
+      if (
+        lead.contactInfo?.emails &&
+        Array.isArray(lead.contactInfo.emails) &&
+        lead.contactInfo.emails.length > 0 &&
+        lead.enrichmentStatus === "completed" &&
+        lead.dataSource === "csv_upload"
+      ) {
+        logWithCorrelation(
+          "info",
+          correlation,
+          "⏭️ [Workpool] Skipping - Lead Already Has Emails",
+          {
+            leadId: args.leadId,
+            businessName: lead.businessName,
+            emailCount: lead.contactInfo.emails.length,
+          },
+        );
+
+        await ctx.runMutation(
+          internal.leads.internal.updateEnrichmentProvider,
+          { leadId: args.leadId, provider: "csv_import" }
+        );
+
+        await ctx.runMutation(
+          internal.leads.internal.checkEmailDuplication,
+          { leadId: args.leadId, userId: args.userId, searchId: args.searchId },
+        );
+
+        // Release slot before returning
+        await ctx.runMutation(
+          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+        );
+
+        return { success: true, provider: "csv_import", emailsFound: lead.contactInfo.emails.length };
+      }
+
+      const domain = extractDomain(lead.website);
+
+      if (!domain) {
+        logWithCorrelation(
+          "warn",
+          correlation,
+          "⚠️ [Workpool] No valid domain for lead",
+          { leadId: args.leadId, businessName: lead.businessName },
+        );
+
+        await ctx.runMutation(
+          internal.leads.internal.updateEnrichmentStatus,
+          { leadId: args.leadId, status: "completed_fallback", error: "No valid domain available" },
+        );
+
+        // Release slot
+        await ctx.runMutation(
+          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+        );
+
+        return { success: false, provider: "none", reason: "no_domain" };
+      }
+
+      logWithCorrelation(
+        "info",
+        correlation,
+        "🔍 [Workpool] Starting Lead Enrichment",
+        { leadId: args.leadId, businessName: lead.businessName, domain },
+      );
+
+      // CHECK RATE LIMIT
+      const rateLimitResult: { ok: boolean; retryAfter?: number; reason?: string } = await ctx.runMutation(
+        internal.leads.enrichment.rateLimitMutations.checkFindyMailRateLimit,
+        { userId: args.userId, apiKey: args.userApiKey, count: 1 },
+      );
+
+      if (!rateLimitResult.ok) {
+        // Release slot and throw to trigger Workpool retry
+        await ctx.runMutation(
+          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+        );
+        throw new Error(`RATE_LIMIT_EXCEEDED: Retry after ${rateLimitResult.retryAfter}ms`);
+      }
+
+      // PRIMARY PROVIDER: FindyMail (3 retries with internal backoff)
+      const result = await tryProvider("findymail", domain, {
+        retries: 3,
+        roles: args.roles,
+        userApiKey: args.userApiKey,
+      });
+
+      // RESULT HANDLING
+      if (result && result.emails.length > 0) {
+        // SUCCESS
+        await ctx.runMutation(
+          internal.leads.internal.updateLeadEnrichment,
+          {
+            leadId: args.leadId,
+            enrichmentData: result,
+            status: "completed",
+            enrichmentProvider: result.provider,
+          },
+        );
+
+        await ctx.runMutation(
+          internal.leads.internal.checkEmailDuplication,
+          { leadId: args.leadId, userId: args.userId, searchId: args.searchId },
+        );
+
+        const perfData = endPerformanceTracking(performanceTracker);
+
+        logWithCorrelation(
+          "info",
+          correlation,
+          "✅ [Workpool] Lead Enrichment Successful",
+          {
+            leadId: args.leadId,
+            businessName: lead.businessName,
+            provider: result.provider,
+            emailsFound: result.emails.length,
+            durationMs: perfData?.duration || 0,
+          },
+        );
+
+        trackEnrichmentCompleted({
+          searchId: args.searchId,
+          leadId: args.leadId,
+          provider: result.provider,
+          durationMs: perfData?.duration || 0,
+          rolesFound: result.contacts?.length || 0,
+          emailFound: true,
+          retryAttempt: 0,
+          apiKeyHash: args.userApiKey ? apiKeyHash : undefined,
+        });
+
+        // Release slot
+        await ctx.runMutation(
+          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+        );
+
+        return { success: true, provider: result.provider, emailsFound: result.emails.length };
+      } else {
+        // NO EMAILS FOUND - Delete the lead
+        await ctx.runMutation(
+          internal.leads.internal.deleteLead,
+          { leadId: args.leadId },
+        );
+
+        const perfData = endPerformanceTracking(performanceTracker);
+
+        logWithCorrelation(
+          "info",
+          correlation,
+          "🗑️ [Workpool] Lead Deleted - No Contacts Found",
+          { leadId: args.leadId, businessName: lead.businessName, domain, durationMs: perfData?.duration || 0 },
+        );
+
+        trackEnrichmentFailed({
+          searchId: args.searchId,
+          leadId: args.leadId,
+          provider: "findymail",
+          durationMs: perfData?.duration || 0,
+          errorType: "no_emails_found",
+          retryAttempt: 0,
+        });
+
+        // Release slot
+        await ctx.runMutation(
+          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+        );
+
+        return { success: false, provider: "none", reason: "no_emails_found" };
+      }
+    } catch (error) {
+      const perfData = endPerformanceTracking(performanceTracker);
+
+      logWithCorrelation(
+        "error",
+        correlation,
+        "💥 [Workpool] Lead Enrichment Error",
+        { leadId: args.leadId, durationMs: perfData?.duration || 0 },
+        error as Error,
+      );
+
+      // Mark lead as failed
+      await ctx.runMutation(
+        internal.leads.internal.updateEnrichmentStatus,
+        { leadId: args.leadId, status: "failed", error: error instanceof Error ? error.message : "Enrichment failed" },
+      );
+
+      trackEnrichmentFailed({
+        searchId: args.searchId,
+        leadId: args.leadId,
+        provider: "findymail",
+        durationMs: perfData?.duration || 0,
+        errorType: error instanceof Error ? error.message : "enrichment_error",
+        retryAttempt: 0,
+      });
+
+      // Release slot
+      try {
+        await ctx.runMutation(
+          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+        );
+      } catch (releaseError) {
+        console.error("Failed to release API key slot:", releaseError);
+      }
+
+      // Re-throw to trigger Workpool retry (unless it's a permanent failure)
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      if (errorMsg.includes("not found") || errorMsg.includes("No valid domain")) {
+        // Permanent failure - don't retry
+        return { success: false, provider: "none", reason: errorMsg };
+      }
+
+      throw error;
+    }
+  },
+});
+
+/**
+ * LEGACY: Enrich a single lead using FindyMail (Original action with manual retry)
+ *
+ * Flow:
+ * 1. Try FindyMail (3 retries with exponential backoff)
+ * 2. If no emails found, mark as completed_fallback with no emails
+ *
+ * Each lead has its own 10-minute action timeout
+ */
+// Maximum retries for slot acquisition to prevent infinite retry loops
+const MAX_SLOT_RETRIES = 30; // With exponential backoff, this gives ~5 minutes of total wait time
+// Base delay for slot retry backoff (exponential: 2s, 4s, 8s... capped at 30s)
+const SLOT_RETRY_BASE_DELAY_MS = 2000;
+const SLOT_RETRY_MAX_DELAY_MS = 30000;
+
+export const enrichSingleLead = internalAction({
+  args: {
+    leadId: v.id("leads"),
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+    roles: v.optional(v.array(v.string())),
+    userApiKey: v.optional(v.string()),
+    slotRetryAttempt: v.optional(v.number()), // Track slot acquisition retries
+  },
+  handler: async (ctx, args) => {
+    const slotRetryAttempt = args.slotRetryAttempt ?? 0;
     // Create correlation context for this lead
     const correlation = createCorrelationContext(
       OPERATION_TYPES.LEAD_ENRICHMENT,
@@ -181,23 +531,85 @@ export const enrichSingleLead = internalAction({
 
     // If slot not available, reschedule this action for later retry
     if (!slotResult.acquired) {
+      // Check if we've exceeded maximum retries
+      if (slotRetryAttempt >= MAX_SLOT_RETRIES) {
+        logWithCorrelation(
+          "error",
+          correlation,
+          "❌ Max slot retries exceeded - marking lead as failed",
+          {
+            leadId: args.leadId,
+            currentActive: slotResult.currentActive,
+            retryAttempt: slotRetryAttempt,
+            maxRetries: MAX_SLOT_RETRIES,
+          },
+        );
+
+        // Mark lead as failed
+        await ctx.runMutation(
+          internal.leads.internal.updateEnrichmentStatus,
+          {
+            leadId: args.leadId,
+            status: "failed",
+            error: `Failed to acquire API slot after ${MAX_SLOT_RETRIES} attempts`,
+          },
+        );
+
+        // Check if we should trigger analysis phase (even with this failure)
+        const shouldTriggerAnalysis = await ctx.runMutation(
+          internal.leads.internal.tryTriggerAnalysisPhase,
+          { searchId: args.searchId }
+        );
+
+        if (shouldTriggerAnalysis) {
+          await ctx.scheduler.runAfter(
+            0,
+            (internal as any)["leads/actions"].analyzeLeads,
+            { searchId: args.searchId }
+          );
+        }
+
+        return {
+          success: false,
+          skipped: false,
+          retrying: false,
+          reason: "max_slot_retries_exceeded",
+        };
+      }
+
+      // Calculate exponential backoff with jitter (2s, 4s, 8s, 16s... capped at 30s)
+      const baseDelay = Math.min(
+        SLOT_RETRY_BASE_DELAY_MS * Math.pow(2, slotRetryAttempt),
+        SLOT_RETRY_MAX_DELAY_MS
+      );
+      const jitter = Math.random() * 1000; // 0-1 second jitter
+      const retryDelay = baseDelay + jitter;
+
       logWithCorrelation(
         "info",
         correlation,
-        "⏳ API key at capacity - Rescheduling enrichment",
+        "⏳ API key at capacity - Rescheduling enrichment with backoff",
         {
           leadId: args.leadId,
           currentActive: slotResult.currentActive,
-          retryDelay: "1-2 seconds",
+          retryAttempt: slotRetryAttempt + 1,
+          maxRetries: MAX_SLOT_RETRIES,
+          retryDelayMs: Math.round(retryDelay),
         },
       );
 
-      // Schedule retry after 1-2 seconds with jitter
-      const retryDelay = 1000 + Math.random() * 1000;
+      // Schedule retry with incremented attempt counter
       await ctx.scheduler.runAfter(
         retryDelay,
         internal.leads.asyncEnrichment.enrichSingleLead,
-        args
+        {
+          leadId: args.leadId,
+          searchId: args.searchId,
+          userId: args.userId,
+          roles: args.roles,
+          userApiKey: args.userApiKey,
+          slotRetryAttempt: slotRetryAttempt + 1,
+        }
       );
 
       return {
@@ -205,6 +617,7 @@ export const enrichSingleLead = internalAction({
         skipped: false,
         retrying: true,
         reason: "api_key_at_capacity",
+        retryAttempt: slotRetryAttempt + 1,
       };
     }
 

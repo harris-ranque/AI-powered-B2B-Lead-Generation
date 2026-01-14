@@ -1820,4 +1820,27 @@ export default defineSchema({
     .index("by_key_hash", ["apiKeyHash"])
     .index("by_key_and_slot", ["apiKeyHash", "slotIndex"])
     .index("by_expires", ["expiresAt"]),
+
+  // Enrichment Batches - Tracks Workpool enrichment batches for progress and completion
+  // Used by the Workpool onComplete handler to track when all leads are enriched
+  enrichmentBatches: defineTable({
+    batchId: v.string(),              // Unique batch identifier
+    searchId: v.id("searches"),       // Associated search
+    userId: v.id("users"),            // User who initiated the search
+    totalLeads: v.number(),           // Total leads in this batch
+    completedLeads: v.number(),       // Leads that have finished (success or fail)
+    successfulLeads: v.number(),      // Leads that enriched successfully
+    failedLeads: v.number(),          // Leads that failed enrichment
+    workIds: v.array(v.string()),     // Workpool work IDs for cancellation
+    status: v.union(
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    startedAt: v.number(),            // When the batch started
+    completedAt: v.optional(v.number()), // When the batch completed
+  })
+    .index("by_batch_id", ["batchId"])
+    .index("by_search", ["searchId"])
+    .index("by_status", ["status"]),
 });

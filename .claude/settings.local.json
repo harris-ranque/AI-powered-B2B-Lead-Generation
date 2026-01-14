@@ -34,7 +34,9 @@
       "Bash(git show:*)",
       "WebFetch(domain:www.perplexity.ai)",
       "WebFetch(domain:www.convex.dev)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(npx vite build)"
     ],
     "deny": [],
     "ask": []

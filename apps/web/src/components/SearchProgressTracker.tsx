@@ -243,20 +243,20 @@ export function SearchProgressTracker({
   const timelineStages: TimelineStage[] = [
     {
       id: "discovery",
-      label: "Find Leads",
+      label: "Find Businesses",
       icon: Search,
       count: discoveredCount,
     },
     {
       id: "enrichment",
-      label: "Get Contacts",
+      label: "Get Email Addresses",
       icon: Mail,
       count: enrichedCount,
-      tooltip: "Finding email contacts for each lead",
+      tooltip: "Finding decision-maker emails for each business",
     },
     {
       id: "analysis",
-      label: "Create Emails",
+      label: "Write Emails",
       icon: analysisStageIcon,
       count: analyzedCount,
       tooltip:
@@ -266,11 +266,11 @@ export function SearchProgressTracker({
             ? `${researchSources} research sources analyzed`
             : search.researchTier && search.researchTier !== "error"
               ? `${researchTierDisplay.label} research with AI personalization`
-              : "AI-powered email personalization",
+              : "AI writes personalized emails for each contact",
     },
     {
       id: "completion",
-      label: "Ready",
+      label: "Download Results",
       icon: CheckCircle,
       count: search.results?.totalFound ?? (search.status === "completed" ? totalCount : undefined),
     },
@@ -281,17 +281,17 @@ export function SearchProgressTracker({
 
   const metrics = [
     {
-      label: "Found",
+      label: "Businesses",
       value: discoveredCount,
       stageIndex: STAGE_ORDER.indexOf("discovery"),
     },
     {
-      label: "Contacts",
+      label: "Emails",
       value: enrichedCount,
       stageIndex: STAGE_ORDER.indexOf("enrichment"),
     },
     {
-      label: "Created",
+      label: "Personalized",
       value: analyzedCount,
       stageIndex: STAGE_ORDER.indexOf("analysis"),
     },
@@ -808,9 +808,9 @@ export function SearchProgressTracker({
                   .filter(([key]) => ["discovered", "enriched", "analyzed", "total"].includes(key))
                   .map(([key, value]) => {
                     const labelMap: Record<string, string> = {
-                      discovered: "Found",
-                      enriched: "Contacts",
-                      analyzed: "Created",
+                      discovered: "Businesses",
+                      enriched: "Emails",
+                      analyzed: "Personalized",
                       total: "Total",
                     };
                     const displayLabel = labelMap[key] || key;

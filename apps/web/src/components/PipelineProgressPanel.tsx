@@ -56,9 +56,9 @@ interface PipelineProgressPanelProps {
 
 // Live, active user-facing metrics only - no internal implementation details
 const METRIC_LABELS: Record<string, { label: string; icon: LucideIcon; accent: string }> = {
-  discovered: { label: "Found", icon: Search, accent: "text-blue-500" },
-  enriched: { label: "Contacts", icon: Users, accent: "text-emerald-500" },
-  analyzed: { label: "Created", icon: Bot, accent: "text-purple-500" },
+  discovered: { label: "Businesses", icon: Search, accent: "text-blue-500" },
+  enriched: { label: "Emails", icon: Mail, accent: "text-emerald-500" },
+  analyzed: { label: "Personalized", icon: Sparkles, accent: "text-purple-500" },
   total: { label: "Total", icon: Activity, accent: "text-slate-500" },
 };
 
