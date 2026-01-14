@@ -640,8 +640,9 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
                 },
             )
         else:  # Rejected
-            logger.error(f"Email REJECTED for {lead.company_name}: Score={overall_score:.2f}, "
-                        f"Major issues found")
+            # Use WARNING not ERROR - rejection is business logic, not a system error
+            logger.warning(f"Email REJECTED for {lead.company_name}: Score={overall_score:.2f}, "
+                          f"Major issues found (Quality Gate - Expected Behavior)")
             capture_event(
                 "qa_agent_rejected",
                 {

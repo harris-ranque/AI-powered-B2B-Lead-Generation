@@ -1795,6 +1795,8 @@ export default defineSchema({
     .index("by_processed_at", ["processedAt"]),
 
   // Enrichment API Key Semaphores - Per-API-key concurrency limiting (5 concurrent per FindyMail key)
+  // DEPRECATED: This table caused OCC failures due to single-document contention.
+  // Kept for backward compatibility during migration. Use enrichmentApiKeySlots instead.
   enrichmentApiKeySemaphores: defineTable({
     apiKeyHash: v.string(),        // SHA256 hash of API key (system or user-provided)
     activeRequests: v.number(),     // Current number of active enrichment requests
@@ -1804,4 +1806,18 @@ export default defineSchema({
   })
     .index("by_key_hash", ["apiKeyHash"])
     .index("by_active", ["activeRequests"]),
+
+  // Enrichment API Key Slots - Distributed slot-based concurrency limiting
+  // Each API key has 5 slots (0-4). Actions claim individual slots to avoid OCC contention.
+  // This approach eliminates hot-spot contention by distributing claims across 5 documents per key.
+  enrichmentApiKeySlots: defineTable({
+    apiKeyHash: v.string(),        // SHA256 hash of API key
+    slotIndex: v.number(),          // Slot index 0-4 (5 slots per key)
+    claimedBy: v.optional(v.string()), // Lead ID or unique request ID that claimed this slot
+    claimedAt: v.optional(v.number()), // Timestamp when slot was claimed
+    expiresAt: v.optional(v.number()), // Auto-expiration for stuck claims (e.g., 10 minutes)
+  })
+    .index("by_key_hash", ["apiKeyHash"])
+    .index("by_key_and_slot", ["apiKeyHash", "slotIndex"])
+    .index("by_expires", ["expiresAt"]),
 });

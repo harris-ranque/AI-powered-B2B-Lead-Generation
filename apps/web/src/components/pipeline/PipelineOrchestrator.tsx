@@ -419,10 +419,10 @@ export function PipelineOrchestrator({
     <>
       {/* Search Completion Dialog */}
       <Dialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
-        <DialogContent className="sm:max-w-md border border-slate-800/60 bg-slate-950/90 shadow-[0_24px_72px_-32px_rgba(0,255,204,0.35)]">
+        <DialogContent className="sm:max-w-md border border-border bg-card shadow-[0_24px_48px_-24px_hsl(var(--shadow-glow))]">
           <DialogHeader>
             <div className="flex items-center gap-3 mb-2">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-emerald-500/50 bg-emerald-500/15 text-emerald-200 shadow-[0_0_22px_rgba(0,255,132,0.25)]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary shadow-[0_8px_16px_-8px_hsl(var(--primary-glow))]">
                 <CheckCircle className="h-6 w-6" />
               </div>
               <DialogTitle className="text-2xl">Search Complete!</DialogTitle>
@@ -434,19 +434,19 @@ export function PipelineOrchestrator({
                     Great news! We found and processed your leads.
                   </p>
                   <div className="grid grid-cols-3 gap-3 pt-3">
-                    <div className="flex flex-col items-center justify-center rounded-lg border-2 border-emerald-500/50 bg-emerald-500/10 p-3">
-                      <div className="text-2xl font-bold text-emerald-100">{totalFound}</div>
-                      <div className="text-xs font-medium text-emerald-200/80">Found</div>
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-primary/40 bg-primary/5 p-3 transition-all hover:border-primary/60 hover:bg-primary/10">
+                      <div className="text-2xl font-bold text-foreground">{totalFound}</div>
+                      <div className="text-xs font-medium text-muted-foreground">Found</div>
                     </div>
-                    <div className="flex flex-col items-center justify-center rounded-lg border-2 border-cyan-500/50 bg-cyan-500/10 p-3">
-                      <div className="text-2xl font-bold text-cyan-100">{enrichedCount}</div>
-                      <div className="text-xs font-medium text-cyan-200/80">Contacts Found</div>
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-accent/40 bg-accent/5 p-3 transition-all hover:border-accent/60 hover:bg-accent/10">
+                      <div className="text-2xl font-bold text-foreground">{enrichedCount}</div>
+                      <div className="text-xs font-medium text-muted-foreground">Contacts Found</div>
                     </div>
-                    <div className="flex flex-col items-center justify-center rounded-lg border-2 border-purple-500/50 bg-purple-500/10 p-3">
-                      <div className="text-2xl font-bold text-purple-100">
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-ring/40 bg-ring/5 p-3 transition-all hover:border-ring/60 hover:bg-ring/10">
+                      <div className="text-2xl font-bold text-foreground">
                         {search?.results?.analyzedCount || 0}
                       </div>
-                      <div className="text-xs font-medium text-purple-200/80">Analyzed</div>
+                      <div className="text-xs font-medium text-muted-foreground">Analyzed</div>
                     </div>
                   </div>
                 </div>
@@ -463,14 +463,14 @@ export function PipelineOrchestrator({
                 resetPipeline();
                 setIsPipelineCollapsed(false);
               }}
-              className="border-2 border-orange-500/50 bg-orange-500/10 text-orange-100 hover:border-orange-500/70 hover:bg-orange-500/20"
+              className="border border-border hover:bg-secondary"
             >
               <RotateCcw className="h-4 w-4 mr-2" />
               Start New Search
             </Button>
             <Button
               onClick={openLeadHistory}
-              className="gap-2 border-2 bg-gradient-to-r from-blue-500/20 to-pink-500/20 border-blue-500/50 text-blue-100 hover:from-blue-500/30 hover:to-pink-500/30"
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_8px_16px_-8px_hsl(var(--primary-glow))]"
             >
               <FileText className="h-4 w-4" />
               View Results

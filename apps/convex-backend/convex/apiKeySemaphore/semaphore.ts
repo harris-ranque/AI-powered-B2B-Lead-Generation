@@ -1,180 +1,388 @@
 /**
- * API Key Semaphore System for FindyMail Enrichment
+ * API Key Semaphore System for FindyMail Enrichment (v2 - Slot-Based)
  *
- * Provides per-API-key concurrency limiting (5 concurrent requests per unique API key).
- * This allows multiple users with their own API keys to run concurrently,
- * while ensuring each individual API key respects the 5 concurrent limit.
+ * PROBLEM SOLVED: OCC (Optimistic Concurrency Control) failures
+ * The previous implementation used a single counter document per API key,
+ * causing hot-spot contention when many concurrent requests tried to
+ * increment/decrement the same document.
  *
- * Example:
- * - User A (system key): max 5 concurrent
- * - User B (own key):   max 5 concurrent
- * - User C (own key):   max 5 concurrent
- * Total: up to 15 concurrent requests (5 per unique API key)
+ * SOLUTION: Distributed slot-based approach
+ * Instead of one counter document, we create 5 slot documents per API key.
+ * Each request claims an individual slot, eliminating contention because
+ * different requests target different documents.
  *
- * Note: The getApiKeyHash utility function has been moved to asyncEnrichment.ts
- * to avoid Node.js crypto import issues in mutation/query files.
+ * Flow:
+ * 1. tryAcquireApiKeySlot: Tries to claim any available slot (0-4)
+ * 2. releaseApiKeySlot: Releases the specific slot that was claimed
+ * 3. Expired slots (>10 min) are auto-released to handle stuck requests
+ *
+ * Concurrency Model:
+ * - Each unique API key gets 5 slots (indices 0-4)
+ * - A slot is "available" if claimedBy is null or claimedAt is expired
+ * - Claiming a slot = writing claimedBy + claimedAt to that slot's document
+ * - Different requests will naturally distribute across different slots
  */
 
 import { internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 
 // FindyMail rate limit: 5 concurrent requests per API key
-const MAX_CONCURRENCY_PER_KEY = 5;
+const MAX_SLOTS_PER_KEY = 5;
+// Slot expiration time: 10 minutes (handles stuck requests)
+const SLOT_EXPIRATION_MS = 10 * 60 * 1000;
+
+/**
+ * Initialize slots for an API key if they don't exist
+ * Creates 5 slot documents (indices 0-4) for the given API key hash
+ */
+async function ensureSlotsExist(
+  ctx: { db: any },
+  apiKeyHash: string
+): Promise<void> {
+  // Check if slots already exist
+  const existingSlots = await ctx.db
+    .query("enrichmentApiKeySlots")
+    .withIndex("by_key_hash", (q: any) => q.eq("apiKeyHash", apiKeyHash))
+    .collect();
+
+  if (existingSlots.length >= MAX_SLOTS_PER_KEY) {
+    return; // Slots already initialized
+  }
+
+  // Create missing slots
+  const existingIndices = new Set(existingSlots.map((s: any) => s.slotIndex));
+  for (let i = 0; i < MAX_SLOTS_PER_KEY; i++) {
+    if (!existingIndices.has(i)) {
+      await ctx.db.insert("enrichmentApiKeySlots", {
+        apiKeyHash,
+        slotIndex: i,
+        claimedBy: undefined,
+        claimedAt: undefined,
+        expiresAt: undefined,
+      });
+    }
+  }
+}
 
 /**
  * Try to acquire a slot for an API key (non-blocking)
  * Returns true if slot acquired, false if at capacity
+ *
+ * IMPORTANT: The claimId should be unique per request (e.g., leadId or UUID)
+ * This allows proper slot release and debugging.
  */
 export const tryAcquireApiKeySlot = internalMutation({
   args: {
     apiKeyHash: v.string(),
+    claimId: v.optional(v.string()), // Optional unique ID for the request
   },
   handler: async (ctx, args) => {
-    // Find or create semaphore record for this API key
-    const existing = await ctx.db
-      .query("enrichmentApiKeySemaphores")
-      .withIndex("by_key_hash", (q) => q.eq("apiKeyHash", args.apiKeyHash))
-      .first();
+    const now = Date.now();
+    const claimId = args.claimId || `claim_${now}_${Math.random().toString(36).slice(2)}`;
 
-    if (existing) {
-      // Check if we can acquire a slot
-      if (existing.activeRequests >= existing.maxConcurrency) {
-        // At capacity, cannot acquire
-        await ctx.db.patch(existing._id, {
-          waitingRequests: existing.waitingRequests + 1,
-          lastUpdated: Date.now(),
-        });
-        return { acquired: false, currentActive: existing.activeRequests };
+    // Ensure slots exist for this API key
+    await ensureSlotsExist(ctx, args.apiKeyHash);
+
+    // Get all slots for this API key
+    const slots = await ctx.db
+      .query("enrichmentApiKeySlots")
+      .withIndex("by_key_hash", (q: any) => q.eq("apiKeyHash", args.apiKeyHash))
+      .collect();
+
+    // Sort by slot index for deterministic behavior
+    slots.sort((a: any, b: any) => a.slotIndex - b.slotIndex);
+
+    // Count active slots and find first available
+    let activeCount = 0;
+    let availableSlot: any = null;
+
+    for (const slot of slots) {
+      const isExpired = slot.expiresAt && slot.expiresAt < now;
+      const isClaimed = slot.claimedBy && !isExpired;
+
+      if (isClaimed) {
+        activeCount++;
+      } else if (!availableSlot) {
+        availableSlot = slot;
       }
-
-      // Acquire a slot
-      await ctx.db.patch(existing._id, {
-        activeRequests: existing.activeRequests + 1,
-        lastUpdated: Date.now(),
-      });
-      return { acquired: true, currentActive: existing.activeRequests + 1 };
-    } else {
-      // Create new semaphore record and acquire first slot
-      await ctx.db.insert("enrichmentApiKeySemaphores", {
-        apiKeyHash: args.apiKeyHash,
-        activeRequests: 1,
-        maxConcurrency: MAX_CONCURRENCY_PER_KEY,
-        waitingRequests: 0,
-        lastUpdated: Date.now(),
-      });
-      return { acquired: true, currentActive: 1 };
     }
-  },
-});
 
-/**
- * REMOVED: acquireApiKeySlot (blocking version with setTimeout)
- *
- * The blocking version used setTimeout which is not allowed in Convex mutations.
- * Instead, use tryAcquireApiKeySlot at the action level and handle retries
- * with ctx.scheduler.runAfter() if the slot is not immediately available.
- *
- * Migration pattern:
- *
- * // OLD (mutation with setTimeout - NOT ALLOWED):
- * const result = await ctx.runMutation(internal.apiKeySemaphore.semaphore.acquireApiKeySlot, { apiKeyHash });
- *
- * // NEW (action with scheduler-based retry):
- * const result = await ctx.runMutation(internal.apiKeySemaphore.semaphore.tryAcquireApiKeySlot, { apiKeyHash });
- * if (!result.acquired) {
- *   // Schedule retry after 1-2 seconds using scheduler
- *   await ctx.scheduler.runAfter(1000 + Math.random() * 1000, currentAction, args);
- *   return { success: false, retrying: true };
- * }
- */
-
-/**
- * Release a slot for an API key
- * Called when enrichment completes (success, failure, or error)
- */
-export const releaseApiKeySlot = internalMutation({
-  args: {
-    apiKeyHash: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const semaphore = await ctx.db
-      .query("enrichmentApiKeySemaphores")
-      .withIndex("by_key_hash", (q) => q.eq("apiKeyHash", args.apiKeyHash))
-      .first();
-
-    if (!semaphore) {
-      console.error(
-        `[Semaphore] No semaphore record found for API key hash: ${args.apiKeyHash.substring(0, 8)}...`
+    // If no slot available, return failure
+    if (!availableSlot) {
+      console.log(
+        `[Semaphore] No slots available for API key ${args.apiKeyHash.substring(0, 8)}... ` +
+        `(${activeCount}/${MAX_SLOTS_PER_KEY} active)`
       );
-      return { released: false };
+      return {
+        acquired: false,
+        currentActive: activeCount,
+        slotIndex: undefined,
+        claimId: undefined,
+      };
     }
 
-    // Decrement active requests (ensure it doesn't go below 0)
-    const newActiveRequests = Math.max(0, semaphore.activeRequests - 1);
-
-    await ctx.db.patch(semaphore._id, {
-      activeRequests: newActiveRequests,
-      lastUpdated: Date.now(),
+    // Claim the slot
+    const expiresAt = now + SLOT_EXPIRATION_MS;
+    await ctx.db.patch(availableSlot._id, {
+      claimedBy: claimId,
+      claimedAt: now,
+      expiresAt,
     });
 
+    console.log(
+      `[Semaphore] Claimed slot ${availableSlot.slotIndex} for API key ${args.apiKeyHash.substring(0, 8)}... ` +
+      `(claim: ${claimId.substring(0, 16)}..., active: ${activeCount + 1}/${MAX_SLOTS_PER_KEY})`
+    );
+
     return {
-      released: true,
-      currentActive: newActiveRequests,
-      waitingRequests: semaphore.waitingRequests,
+      acquired: true,
+      currentActive: activeCount + 1,
+      slotIndex: availableSlot.slotIndex,
+      claimId,
     };
   },
 });
 
 /**
- * Get current semaphore status for an API key (for debugging/monitoring)
+ * Release a slot for an API key
+ * Called when enrichment completes (success, failure, or error)
+ *
+ * Can release by claimId (preferred) or slotIndex (fallback)
+ */
+export const releaseApiKeySlot = internalMutation({
+  args: {
+    apiKeyHash: v.string(),
+    claimId: v.optional(v.string()),
+    slotIndex: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    // Find the slot to release
+    let slotToRelease: any = null;
+
+    if (args.claimId) {
+      // Find by claimId (preferred - more precise)
+      const slots = await ctx.db
+        .query("enrichmentApiKeySlots")
+        .withIndex("by_key_hash", (q: any) => q.eq("apiKeyHash", args.apiKeyHash))
+        .collect();
+
+      slotToRelease = slots.find((s: any) => s.claimedBy === args.claimId);
+    }
+
+    if (!slotToRelease && args.slotIndex !== undefined) {
+      // Fallback to slotIndex
+      slotToRelease = await ctx.db
+        .query("enrichmentApiKeySlots")
+        .withIndex("by_key_and_slot", (q: any) =>
+          q.eq("apiKeyHash", args.apiKeyHash).eq("slotIndex", args.slotIndex)
+        )
+        .first();
+    }
+
+    if (!slotToRelease) {
+      console.error(
+        `[Semaphore] No slot found to release for API key ${args.apiKeyHash.substring(0, 8)}... ` +
+        `(claimId: ${args.claimId?.substring(0, 16) || "N/A"}, slotIndex: ${args.slotIndex ?? "N/A"})`
+      );
+      return { released: false };
+    }
+
+    // Release the slot
+    await ctx.db.patch(slotToRelease._id, {
+      claimedBy: undefined,
+      claimedAt: undefined,
+      expiresAt: undefined,
+    });
+
+    // Count remaining active slots
+    const allSlots = await ctx.db
+      .query("enrichmentApiKeySlots")
+      .withIndex("by_key_hash", (q: any) => q.eq("apiKeyHash", args.apiKeyHash))
+      .collect();
+
+    const now = Date.now();
+    const activeCount = allSlots.filter((s: any) => {
+      const isExpired = s.expiresAt && s.expiresAt < now;
+      return s.claimedBy && !isExpired && s._id !== slotToRelease._id;
+    }).length;
+
+    console.log(
+      `[Semaphore] Released slot ${slotToRelease.slotIndex} for API key ${args.apiKeyHash.substring(0, 8)}... ` +
+      `(active: ${activeCount}/${MAX_SLOTS_PER_KEY})`
+    );
+
+    return {
+      released: true,
+      currentActive: activeCount,
+      releasedSlotIndex: slotToRelease.slotIndex,
+    };
+  },
+});
+
+/**
+ * Clean up expired slots (can be called by cron or manually)
+ * This ensures stuck requests don't permanently block slots
+ */
+export const cleanupExpiredSlots = internalMutation({
+  handler: async (ctx) => {
+    const now = Date.now();
+
+    // Find all expired slots
+    const expiredSlots = await ctx.db
+      .query("enrichmentApiKeySlots")
+      .withIndex("by_expires")
+      .filter((q: any) =>
+        q.and(
+          q.neq(q.field("expiresAt"), undefined),
+          q.lt(q.field("expiresAt"), now)
+        )
+      )
+      .collect();
+
+    if (expiredSlots.length === 0) {
+      return { cleaned: 0 };
+    }
+
+    // Release each expired slot
+    for (const slot of expiredSlots) {
+      console.log(
+        `[Semaphore] Auto-releasing expired slot ${slot.slotIndex} for API key ${slot.apiKeyHash.substring(0, 8)}... ` +
+        `(claimed by: ${slot.claimedBy?.substring(0, 16) || "N/A"}, ` +
+        `expired: ${Math.round((now - (slot.expiresAt || 0)) / 1000)}s ago)`
+      );
+
+      await ctx.db.patch(slot._id, {
+        claimedBy: undefined,
+        claimedAt: undefined,
+        expiresAt: undefined,
+      });
+    }
+
+    return { cleaned: expiredSlots.length };
+  },
+});
+
+/**
+ * Get current slot status for an API key (for debugging/monitoring)
  */
 export const getApiKeySlotStatus = internalQuery({
   args: {
     apiKeyHash: v.string(),
   },
   handler: async (ctx, args) => {
-    const semaphore = await ctx.db
-      .query("enrichmentApiKeySemaphores")
-      .withIndex("by_key_hash", (q) => q.eq("apiKeyHash", args.apiKeyHash))
-      .first();
+    const slots = await ctx.db
+      .query("enrichmentApiKeySlots")
+      .withIndex("by_key_hash", (q: any) => q.eq("apiKeyHash", args.apiKeyHash))
+      .collect();
 
-    if (!semaphore) {
+    if (slots.length === 0) {
       return {
         exists: false,
-        activeRequests: 0,
-        maxConcurrency: MAX_CONCURRENCY_PER_KEY,
-        waitingRequests: 0,
-        availableSlots: MAX_CONCURRENCY_PER_KEY,
+        slots: [],
+        activeCount: 0,
+        maxSlots: MAX_SLOTS_PER_KEY,
+        availableSlots: MAX_SLOTS_PER_KEY,
       };
     }
 
+    const now = Date.now();
+    const slotDetails = slots.map((s: any) => {
+      const isExpired = s.expiresAt && s.expiresAt < now;
+      return {
+        slotIndex: s.slotIndex,
+        isClaimed: !!s.claimedBy && !isExpired,
+        isExpired,
+        claimedBy: s.claimedBy?.substring(0, 16),
+        claimedAt: s.claimedAt,
+        expiresAt: s.expiresAt,
+        remainingMs: s.expiresAt ? Math.max(0, s.expiresAt - now) : null,
+      };
+    });
+
+    slotDetails.sort((a: any, b: any) => a.slotIndex - b.slotIndex);
+
+    const activeCount = slotDetails.filter((s: any) => s.isClaimed).length;
+
     return {
       exists: true,
-      activeRequests: semaphore.activeRequests,
-      maxConcurrency: semaphore.maxConcurrency,
-      waitingRequests: semaphore.waitingRequests,
-      availableSlots: semaphore.maxConcurrency - semaphore.activeRequests,
-      lastUpdated: semaphore.lastUpdated,
+      slots: slotDetails,
+      activeCount,
+      maxSlots: MAX_SLOTS_PER_KEY,
+      availableSlots: MAX_SLOTS_PER_KEY - activeCount,
     };
   },
 });
 
 /**
- * Get all active semaphores (for admin monitoring)
+ * Get all active slots across all API keys (for admin monitoring)
  */
 export const getAllSemaphores = internalQuery({
   handler: async (ctx) => {
-    const semaphores = await ctx.db
-      .query("enrichmentApiKeySemaphores")
+    const allSlots = await ctx.db.query("enrichmentApiKeySlots").collect();
+
+    // Group by API key hash
+    const byApiKey = new Map<string, any[]>();
+    for (const slot of allSlots) {
+      const existing = byApiKey.get(slot.apiKeyHash) || [];
+      existing.push(slot);
+      byApiKey.set(slot.apiKeyHash, existing);
+    }
+
+    const now = Date.now();
+    const results = [];
+
+    for (const [apiKeyHash, slots] of byApiKey) {
+      const activeSlots = slots.filter((s: any) => {
+        const isExpired = s.expiresAt && s.expiresAt < now;
+        return s.claimedBy && !isExpired;
+      });
+
+      results.push({
+        apiKeyHash: apiKeyHash.substring(0, 8) + "...",
+        activeRequests: activeSlots.length,
+        maxConcurrency: MAX_SLOTS_PER_KEY,
+        availableSlots: MAX_SLOTS_PER_KEY - activeSlots.length,
+        slots: slots.map((s: any) => ({
+          index: s.slotIndex,
+          claimed: !!s.claimedBy,
+          claimedBy: s.claimedBy?.substring(0, 8),
+        })),
+      });
+    }
+
+    return results;
+  },
+});
+
+/**
+ * Force release all slots for an API key (emergency/admin use)
+ */
+export const forceReleaseAllSlots = internalMutation({
+  args: {
+    apiKeyHash: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const slots = await ctx.db
+      .query("enrichmentApiKeySlots")
+      .withIndex("by_key_hash", (q: any) => q.eq("apiKeyHash", args.apiKeyHash))
       .collect();
 
-    return semaphores.map((s) => ({
-      apiKeyHash: s.apiKeyHash.substring(0, 8) + "...", // Show first 8 chars for privacy
-      activeRequests: s.activeRequests,
-      maxConcurrency: s.maxConcurrency,
-      waitingRequests: s.waitingRequests,
-      availableSlots: s.maxConcurrency - s.activeRequests,
-      lastUpdated: s.lastUpdated,
-    }));
+    let released = 0;
+    for (const slot of slots) {
+      if (slot.claimedBy) {
+        await ctx.db.patch(slot._id, {
+          claimedBy: undefined,
+          claimedAt: undefined,
+          expiresAt: undefined,
+        });
+        released++;
+      }
+    }
+
+    console.log(
+      `[Semaphore] Force-released ${released} slots for API key ${args.apiKeyHash.substring(0, 8)}...`
+    );
+
+    return { released, totalSlots: slots.length };
   },
 });

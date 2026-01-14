@@ -158,6 +158,8 @@ export const enrichSingleLead = internalAction({
 
     // Try to acquire API key slot for rate limiting (5 concurrent per unique API key)
     const apiKeyHash = getApiKeyHash(args.userApiKey);
+    // Use leadId as claimId for precise slot tracking and release
+    const claimId = args.leadId;
 
     logWithCorrelation(
       "info",
@@ -167,13 +169,14 @@ export const enrichSingleLead = internalAction({
         leadId: args.leadId,
         apiKeyHash: apiKeyHash.substring(0, 8) + "...", // Show first 8 chars only
         maxConcurrency: 5,
+        claimId,
       },
     );
 
-    // Try to acquire slot (non-blocking)
+    // Try to acquire slot (non-blocking) - now uses slot-based system to avoid OCC failures
     const slotResult = await ctx.runMutation(
       internal.apiKeySemaphore.semaphore.tryAcquireApiKeySlot,
-      { apiKeyHash },
+      { apiKeyHash, claimId },
     );
 
     // If slot not available, reschedule this action for later retry
@@ -205,6 +208,10 @@ export const enrichSingleLead = internalAction({
       };
     }
 
+    // Store the claimId and slotIndex for release later
+    const acquiredClaimId = slotResult.claimId;
+    const acquiredSlotIndex = slotResult.slotIndex;
+
     logWithCorrelation(
       "info",
       correlation,
@@ -212,6 +219,8 @@ export const enrichSingleLead = internalAction({
       {
         leadId: args.leadId,
         currentActive: slotResult.currentActive,
+        slotIndex: acquiredSlotIndex,
+        claimId: acquiredClaimId,
       },
     );
 
@@ -230,7 +239,7 @@ export const enrichSingleLead = internalAction({
         // Release API key slot before exiting
         await ctx.runMutation(
           internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
-          { apiKeyHash },
+          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
         );
 
         logWithCorrelation(
@@ -380,14 +389,14 @@ export const enrichSingleLead = internalAction({
         // Release API key slot
         await ctx.runMutation(
           internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
-          { apiKeyHash },
+          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
         );
 
         logWithCorrelation(
           "info",
           correlation,
           "🔓 Released API key slot (no domain)",
-          { leadId: args.leadId },
+          { leadId: args.leadId, slotIndex: acquiredSlotIndex },
         );
 
         return { success: false, provider: "none", reason: "no_domain" };
@@ -416,32 +425,47 @@ export const enrichSingleLead = internalAction({
       );
 
       if (!rateLimitResult.ok) {
+        const retryAfterMs = rateLimitResult.retryAfter || 60000; // Default to 60s if not provided
+        const retryAfterSeconds = Math.ceil(retryAfterMs / 1000);
+
         logWithCorrelation(
           "warn",
           correlation,
-          "⚠️ Rate Limit Exceeded",
+          "⚠️ Rate Limit Exceeded - Scheduling Retry",
           {
             leadId: args.leadId,
             reason: rateLimitResult.reason,
             retryAfter: rateLimitResult.retryAfter,
+            retryAfterSeconds,
           },
         );
 
-        // Mark as failed with rate limit error
+        // Release API key slot before scheduling retry
         await ctx.runMutation(
-          internal.leads.internal.updateEnrichmentStatus,
-          {
-            leadId: args.leadId,
-            status: "failed",
-            error: `Rate limit exceeded: ${rateLimitResult.reason}. Retry after ${Math.ceil((rateLimitResult.retryAfter || 60000) / 1000)} seconds.`,
-          },
+          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+        );
+
+        logWithCorrelation(
+          "info",
+          correlation,
+          "🔓 Released API key slot (rate limited)",
+          { leadId: args.leadId, slotIndex: acquiredSlotIndex },
+        );
+
+        // Schedule retry after rate limit window expires
+        await ctx.scheduler.runAfter(
+          retryAfterMs,
+          internal.leads.asyncEnrichment.enrichSingleLead,
+          args
         );
 
         return {
           success: false,
           provider: "none",
           reason: "rate_limit_exceeded",
-          retryAfter: rateLimitResult.retryAfter,
+          retrying: true,
+          retryAfter: retryAfterMs,
         };
       }
 
@@ -598,7 +622,7 @@ export const enrichSingleLead = internalAction({
         // Release API key slot
         await ctx.runMutation(
           internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
-          { apiKeyHash },
+          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
         );
 
         logWithCorrelation(
@@ -608,6 +632,7 @@ export const enrichSingleLead = internalAction({
           {
             leadId: args.leadId,
             emailsFound: result.emails.length,
+            slotIndex: acquiredSlotIndex,
           },
         );
 
@@ -691,14 +716,14 @@ export const enrichSingleLead = internalAction({
         // Release API key slot
         await ctx.runMutation(
           internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
-          { apiKeyHash },
+          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
         );
 
         logWithCorrelation(
           "info",
           correlation,
           "🔓 Released API key slot (no emails)",
-          { leadId: args.leadId },
+          { leadId: args.leadId, slotIndex: acquiredSlotIndex },
         );
 
         return {
@@ -788,14 +813,14 @@ export const enrichSingleLead = internalAction({
       try {
         await ctx.runMutation(
           internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
-          { apiKeyHash },
+          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
         );
 
         logWithCorrelation(
           "info",
           correlation,
           "🔓 Released API key slot (error)",
-          { leadId: args.leadId },
+          { leadId: args.leadId, slotIndex: acquiredSlotIndex },
         );
       } catch (releaseError) {
         // Don't let slot release failure break error handling

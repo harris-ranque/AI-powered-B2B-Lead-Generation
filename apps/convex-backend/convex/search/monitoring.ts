@@ -221,11 +221,14 @@ export const recoverStuckSearches: any = internalAction({
         const pendingEnrichment = leads.filter(
           (l) => l.enrichmentStatus === "pending" || l.enrichmentStatus === "in_progress"
         );
+        const failedEnrichment = leads.filter(
+          (l) => l.enrichmentStatus === "failed"
+        );
         const pendingAnalysis = leads.filter(
           (l) => l.analysisStatus === "pending" || l.analysisStatus === "scheduled" || l.analysisStatus === "processing"
         );
 
-        if (pendingEnrichment.length > 0 || pendingAnalysis.length > 0) {
+        if (pendingEnrichment.length > 0 || failedEnrichment.length > 0 || pendingAnalysis.length > 0) {
           logWithCorrelation(
             "warn",
             correlation,
@@ -235,6 +238,7 @@ export const recoverStuckSearches: any = internalAction({
               ageMinutes: Math.floor(age / 60000),
               status: search.status,
               pendingEnrichment: pendingEnrichment.length,
+              failedEnrichment: failedEnrichment.length,
               pendingAnalysis: pendingAnalysis.length,
             },
           );
@@ -242,8 +246,111 @@ export const recoverStuckSearches: any = internalAction({
           await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
             searchId: search._id as any,
             status: "failed" as const,
-            error: `Search timed out during processing phase (exceeded ${Math.floor(PROCESSING_TIMEOUT_MS / 60000)} minutes). ${pendingEnrichment.length} leads pending enrichment, ${pendingAnalysis.length} leads pending analysis.`,
+            error: `Search timed out during processing phase (exceeded ${Math.floor(PROCESSING_TIMEOUT_MS / 60000)} minutes). ${pendingEnrichment.length} leads pending enrichment, ${failedEnrichment.length} leads failed enrichment, ${pendingAnalysis.length} leads pending analysis.`,
           });
+
+          recoveredCount++;
+        }
+      }
+
+      // NEW: Check for searches with failed enrichment leads BEFORE timeout
+      if (search.status === "processing" && age < PROCESSING_TIMEOUT_MS) {
+        // Get leads to check for failures
+        const leads = (await ctx.runQuery(
+          internal.leads.internal.getSearchLeadsInternal,
+          {
+            searchId: search._id as any,
+          },
+        )) as Doc<"leads">[];
+
+        const completedLeads = leads.filter(
+          (l) => l.enrichmentStatus === "completed" || l.enrichmentStatus === "completed_fallback"
+        );
+        const failedLeads = leads.filter((l) => l.enrichmentStatus === "failed");
+        const pendingLeads = leads.filter(
+          (l) => l.enrichmentStatus === "pending" || l.enrichmentStatus === "in_progress"
+        );
+
+        // STRATEGY 1: Force completion after 30 minutes if we have SOME enriched leads
+        const FORCE_COMPLETE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+        const hasEnrichedLeads = completedLeads.length > 0;
+        const hasOnlyFailures = failedLeads.length > 0 && pendingLeads.length === 0;
+
+        if (age > FORCE_COMPLETE_TIMEOUT_MS && hasEnrichedLeads && hasOnlyFailures) {
+          logWithCorrelation(
+            "warn",
+            correlation,
+            "⏩ Force completing search - proceeding with enriched leads",
+            {
+              searchId: search._id,
+              ageMinutes: Math.floor(age / 60000),
+              enrichedLeads: completedLeads.length,
+              failedLeads: failedLeads.length,
+              totalLeads: leads.length,
+              reason: "timeout_with_partial_success",
+            },
+          );
+
+          // Mark all failed leads as completed_fallback so they don't block progress
+          for (const lead of failedLeads) {
+            await ctx.runMutation(internal.leads.internal.updateEnrichmentStatus, {
+              leadId: lead._id as any,
+              status: "completed_fallback",
+              error: lead.enrichmentError || "Skipped due to search timeout",
+            });
+          }
+
+          // Trigger analysis phase with the leads we have
+          await ctx.scheduler.runAfter(
+            0,
+            (internal as any)["leads/actions"].analyzeLeads,
+            { searchId: search._id as any }
+          );
+
+          recoveredCount++;
+          continue;
+        }
+
+        // STRATEGY 2: Retry rate-limited leads (if under 30 min timeout)
+        const rateLimitedLeads = failedLeads.filter(
+          (l) => l.enrichmentError &&
+                 (l.enrichmentError.includes("Rate limit") || l.enrichmentError.includes("rate_limit"))
+        );
+
+        if (rateLimitedLeads.length > 0 && age < FORCE_COMPLETE_TIMEOUT_MS) {
+          logWithCorrelation(
+            "info",
+            correlation,
+            "🔄 Retrying rate-limited leads",
+            {
+              searchId: search._id,
+              rateLimitedLeads: rateLimitedLeads.length,
+              ageMinutes: Math.floor(age / 60000),
+            },
+          );
+
+          // Reset each rate-limited lead back to pending and schedule retry
+          for (const lead of rateLimitedLeads) {
+            // Reset enrichment status to pending
+            await ctx.runMutation(internal.leads.internal.updateEnrichmentStatus, {
+              leadId: lead._id as any,
+              status: "pending",
+              error: undefined,
+            });
+
+            // Schedule enrichment retry with 5-second delay to avoid immediate re-rate-limiting
+            await ctx.scheduler.runAfter(
+              5000,
+              internal.leads.asyncEnrichment.enrichSingleLead,
+              {
+                leadId: lead._id as any,
+                searchId: search._id as any,
+                userId: search.userId as any,
+                roles: lead.targetRoles,
+                userApiKey: search.userApiKey,
+              }
+            );
+          }
 
           recoveredCount++;
         }

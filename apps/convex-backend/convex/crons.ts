@@ -43,4 +43,15 @@ crons.interval(
   (internal as any)["search/monitoring"].recoverStuckSearches,
 );
 
+// ============================================================================
+// API KEY SEMAPHORE SLOT CLEANUP (Every 5 minutes)
+// ============================================================================
+// Clean up expired slots from the distributed semaphore system
+// Slots auto-expire after 10 minutes, this cron ensures cleanup of stuck slots
+crons.interval(
+  "cleanup-expired-semaphore-slots",
+  { minutes: 5 },
+  internal.apiKeySemaphore.semaphore.cleanupExpiredSlots,
+);
+
 export default crons;

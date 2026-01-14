@@ -322,10 +322,45 @@ class ProviderRequestQueue:
             if not request.future.done():
                 request.future.set_exception(e)
 
-            logger.error(
-                f"[RequestQueue] Request failed for {self.provider.value}: "
-                f"id={request.request_id}, error={e}"
+            # Context-aware logging: use WARNING for transient issues, ERROR for serious problems
+            error_str = str(e).lower()
+            error_type = type(e).__name__
+
+            # Transient/expected issues (WARNING) - system handles gracefully
+            is_transient = (
+                isinstance(e, asyncio.TimeoutError) or
+                "timeout" in error_str or
+                "429" in error_str or
+                "rate limit" in error_str or
+                "temporary" in error_str or
+                "connection" in error_str
             )
+
+            # Serious issues (ERROR) - requires attention
+            is_serious = (
+                "401" in error_str or  # Auth failure
+                "403" in error_str or  # Permission denied
+                "invalid" in error_str and "key" in error_str or  # Invalid API key
+                "quota exhausted" in error_str or  # Quota depleted
+                "configuration" in error_str  # Config problem
+            )
+
+            if is_serious:
+                logger.error(
+                    f"[RequestQueue] Request failed for {self.provider.value}: "
+                    f"id={request.request_id}, type={error_type}, error={e}"
+                )
+            elif is_transient:
+                logger.warning(
+                    f"[RequestQueue] Request failed (transient) for {self.provider.value}: "
+                    f"id={request.request_id}, type={error_type}, error={e}"
+                )
+            else:
+                # Unknown error type - log as error to be safe
+                logger.error(
+                    f"[RequestQueue] Request failed for {self.provider.value}: "
+                    f"id={request.request_id}, type={error_type}, error={e}"
+                )
         finally:
             async with self._condition:
                 self._active_count -= 1
