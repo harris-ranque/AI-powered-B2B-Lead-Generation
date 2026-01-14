@@ -7,8 +7,16 @@ import type { Search } from "@/lib/types";
 
 const logger = createLogger("useSearches");
 
-export function useSearchesBase() {
-  const searches = useQuery(api.search.queries.getUserSearches);
+export interface UseSearchesOptions {
+  limit?: number;
+  offset?: number;
+}
+
+export function useSearchesBase(options?: UseSearchesOptions) {
+  const searches = useQuery(api.search.queries.getUserSearches, {
+    limit: options?.limit,
+    offset: options?.offset,
+  });
 
   const createSearchMutation = useMutation(
     api.search.mutations.createSearchCompleted,

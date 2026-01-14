@@ -27,12 +27,22 @@ import {
   BarChart3,
   Crown,
   Send,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PushToInstantlyButton } from "./instantly/PushToInstantlyButton";
 
+const ITEMS_PER_PAGE = 20;
+
 export function LeadSearchHistory() {
-  const { searches, isLoading } = useSearches();
+  const [currentPage, setCurrentPage] = useState(1);
+  const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+
+  const { searches, isLoading } = useSearches({
+    limit: ITEMS_PER_PAGE,
+    offset,
+  });
   const { user } = useAuth();
   const { getToken: getClerkToken } = useClerkAuth();
   const { toast } = useToast();
@@ -724,6 +734,93 @@ export function LeadSearchHistory() {
             </Card>
           );
         })
+      )}
+
+      {/* Pagination Controls */}
+      {items.length > 0 && (
+        <div className="flex items-center justify-between mt-6 pt-4 border-t">
+          <div className="text-sm text-muted-foreground">
+            Page {currentPage} • Showing {items.length} {items.length === 1 ? 'search' : 'searches'}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="gap-1"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Previous
+            </Button>
+
+            <div className="flex items-center gap-1">
+              {currentPage > 2 && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCurrentPage(1)}
+                  >
+                    1
+                  </Button>
+                  {currentPage > 3 && (
+                    <span className="px-2 text-muted-foreground">...</span>
+                  )}
+                </>
+              )}
+
+              {currentPage > 1 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                >
+                  {currentPage - 1}
+                </Button>
+              )}
+
+              <Button
+                variant="default"
+                size="sm"
+                disabled
+              >
+                {currentPage}
+              </Button>
+
+              {items.length === ITEMS_PER_PAGE && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCurrentPage(currentPage + 1)}
+                  >
+                    {currentPage + 1}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCurrentPage(currentPage + 2)}
+                  >
+                    {currentPage + 2}
+                  </Button>
+                </>
+              )}
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => p + 1)}
+              disabled={items.length < ITEMS_PER_PAGE}
+              className="gap-1"
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );
