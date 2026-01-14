@@ -14,6 +14,16 @@ import {
 } from "../../lib/apiErrors";
 
 const FINDYMAIL_BASE_URL = "https://app.findymail.com/api";
+const FINDYMAIL_TIMEOUT_MS = 50_000;
+
+function createTimeoutController(timeoutMs: number) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timeout),
+  };
+}
 
 const DEFAULT_ROLES = ["ceo", "founder", "owner"] as const;
 const MAX_ROLES = 3;
@@ -199,19 +209,32 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
     options?: EnrichmentOptions,
   ): Promise<EnrichmentResult | null> {
     console.log(`[FindyMail] Enriching domain: ${domain}`);
-
-    const response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        domain: domain,
-        roles: resolveRoles(options),
-        limit: 1, // Get top contact per domain
-      }),
-    });
+    const timeout = createTimeoutController(FINDYMAIL_TIMEOUT_MS);
+    let response: Response;
+    try {
+      response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          domain: domain,
+          roles: resolveRoles(options),
+          limit: 1, // Get top contact per domain
+        }),
+        signal: timeout.signal,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error(
+          `FindyMail request timed out after ${FINDYMAIL_TIMEOUT_MS}ms`,
+        );
+      }
+      throw error;
+    } finally {
+      timeout.clear();
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -675,18 +698,25 @@ async function fetchDomainContacts(
     attempt += 1;
     const attemptStartedAt = Date.now();
     try {
-      const response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          domain,
-          roles,
-          limit: 5,
-        }),
-      });
+      const timeout = createTimeoutController(FINDYMAIL_TIMEOUT_MS);
+      let response: Response;
+      try {
+        response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            domain,
+            roles,
+            limit: 5,
+          }),
+          signal: timeout.signal,
+        });
+      } finally {
+        timeout.clear();
+      }
 
       const elapsed = Date.now() - attemptStartedAt;
       console.info(
@@ -764,6 +794,21 @@ async function fetchDomainContacts(
       );
       return { contacts };
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        const timeoutError = new Error(
+          `FindyMail request timed out after ${FINDYMAIL_TIMEOUT_MS}ms`,
+        );
+        if (attempt >= maxRetries) {
+          console.error(`[FindyMail] domain=${domain} network error:`, timeoutError);
+          break;
+        }
+        const delayMs = Math.min(maxDelayMs, withJitter(baseDelayMs * 2 ** (attempt - 1)));
+        console.warn(
+          `[FindyMail] domain=${domain} attempt ${attempt} failed (${timeoutError.message}), retrying in ${delayMs}ms`,
+        );
+        await sleep(delayMs);
+        continue;
+      }
       if (attempt >= maxRetries) {
         console.error(`[FindyMail] domain=${domain} network error:`, error);
         break;
