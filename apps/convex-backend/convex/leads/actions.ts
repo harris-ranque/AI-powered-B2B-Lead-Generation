@@ -606,6 +606,143 @@ export const enrichLeads: any = action({
   },
 });
 
+/**
+ * Resume enrichment from checkpoint
+ *
+ * Called when user wants to resume enrichment after a pipeline-blocking error
+ * (credits exhausted, subscription paused) has been resolved.
+ *
+ * Flow:
+ * 1. Check if resumable checkpoint exists
+ * 2. Get checkpoint status for logging
+ * 3. Clear the checkpoint
+ * 4. Trigger enrichment for remaining leads (unprocessed)
+ */
+export const resumeEnrichment: any = action({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    // Create correlation context
+    const correlation = createCorrelationContext(
+      OPERATION_TYPES.LEAD_ENRICHMENT,
+      "system",
+      {
+        searchId: args.searchId,
+        metadata: {
+          stage: "resume_enrichment",
+        },
+      },
+    );
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "🔄 Attempting to resume enrichment from checkpoint",
+      { searchId: args.searchId },
+    );
+
+    // Get search info
+    const search = await ctx.runQuery(
+      internal.search.internal.getSearchInternal,
+      { searchId: args.searchId },
+    );
+
+    if (!search) {
+      throw new Error("Search not found");
+    }
+
+    // Check for resumable checkpoint
+    const checkpointStatus = await ctx.runQuery(
+      internal.leads.enrichment.checkpoint.getCheckpoint,
+      { searchId: args.searchId },
+    );
+
+    if (!checkpointStatus) {
+      logWithCorrelation(
+        "warn",
+        correlation,
+        "⚠️ No checkpoint found - starting fresh enrichment",
+        { searchId: args.searchId },
+      );
+
+      // No checkpoint, just trigger normal enrichment
+      await ctx.scheduler.runAfter(
+        0,
+        (internal as any)["leads/actions"].enrichLeads,
+        { searchId: args.searchId }
+      );
+
+      return {
+        success: true,
+        resumed: false,
+        message: "No checkpoint found - started fresh enrichment",
+      };
+    }
+
+    if (!checkpointStatus.resumable) {
+      throw new Error(
+        `Checkpoint is not resumable: ${checkpointStatus.errorMessage || "Unknown reason"}`
+      );
+    }
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "📋 Found resumable checkpoint",
+      {
+        searchId: args.searchId,
+        lastProcessedIndex: checkpointStatus.lastProcessedIndex,
+        totalLeads: checkpointStatus.totalLeads,
+        enrichedCount: checkpointStatus.enrichedCount,
+        noContactsCount: checkpointStatus.noContactsCount,
+        failedCount: checkpointStatus.failedCount,
+        remainingLeads: checkpointStatus.totalLeads - checkpointStatus.lastProcessedIndex - 1,
+        errorCode: checkpointStatus.errorCode,
+      },
+    );
+
+    // Clear the checkpoint since we're resuming
+    await ctx.runMutation(
+      internal.leads.enrichment.checkpoint.clearCheckpoint,
+      { searchId: args.searchId },
+    );
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "✅ Checkpoint cleared - triggering enrichment for remaining leads",
+      { searchId: args.searchId },
+    );
+
+    // Trigger enrichment for remaining leads
+    // The enrichLeads action will naturally only process unprocessed (pending) leads
+    await ctx.scheduler.runAfter(
+      0,
+      (internal as any)["leads/actions"].enrichLeads,
+      { searchId: args.searchId }
+    );
+
+    return {
+      success: true,
+      resumed: true,
+      message: "Enrichment resumed from checkpoint",
+      previousProgress: {
+        lastProcessedIndex: checkpointStatus.lastProcessedIndex,
+        totalLeads: checkpointStatus.totalLeads,
+        enrichedCount: checkpointStatus.enrichedCount,
+        noContactsCount: checkpointStatus.noContactsCount,
+        failedCount: checkpointStatus.failedCount,
+        remainingLeads: checkpointStatus.totalLeads - checkpointStatus.lastProcessedIndex - 1,
+      },
+      previousError: {
+        code: checkpointStatus.errorCode,
+        message: checkpointStatus.errorMessage,
+      },
+    };
+  },
+});
+
 // Analyze leads using LangGraph AI system (Async Fire-and-Forget Architecture)
 export const analyzeLeads: any = action({
   args: {

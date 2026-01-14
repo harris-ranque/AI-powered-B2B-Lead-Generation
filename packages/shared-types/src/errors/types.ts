@@ -26,10 +26,12 @@ export type ApiErrorCategory =
   | "authentication" // 401 - Invalid/expired API key
   | "authorization" // 403 - Insufficient permissions
   | "quota_exhausted" // 402, OVER_QUERY_LIMIT - Account credits/quota depleted
+  | "subscription_paused" // 423 - Subscription paused (user action needed)
   | "rate_limited" // 429 - Transient rate limiting (retryable)
   | "rate_limit_exceeded" // 429 - Persistent rate limiting (user action needed)
   | "invalid_request" // 400 - Malformed request
   | "not_found" // 404 - Resource not found
+  | "no_results" // API succeeded but no data found
   | "server_error" // 5xx - Server-side errors (retryable)
   | "timeout" // Timeout errors
   | "network" // Network connectivity issues

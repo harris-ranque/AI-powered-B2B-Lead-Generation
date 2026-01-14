@@ -339,6 +339,13 @@ export const recoverStuckSearches: any = internalAction({
             });
 
             // Schedule enrichment retry with 5-second delay to avoid immediate re-rate-limiting
+            // Note: roles come from search parameters, userApiKey will be fetched during enrichment
+            const requestedRoles = Array.isArray(search.parameters?.roles)
+              ? search.parameters.roles.filter((role: unknown): role is string =>
+                  typeof role === "string" && role.trim().length > 0,
+                )
+              : undefined;
+
             await ctx.scheduler.runAfter(
               5000,
               internal.leads.asyncEnrichment.enrichSingleLead,
@@ -346,8 +353,8 @@ export const recoverStuckSearches: any = internalAction({
                 leadId: lead._id as any,
                 searchId: search._id as any,
                 userId: search.userId as any,
-                roles: lead.targetRoles,
-                userApiKey: search.userApiKey,
+                roles: requestedRoles,
+                // userApiKey is fetched during enrichment based on user plan
               }
             );
           }

@@ -212,6 +212,29 @@ export default defineSchema({
     pausedBy: v.optional(v.id("users")),
     pausedAt: v.optional(v.number()),
 
+    // Enrichment checkpoint tracking (for pipeline-blocking error recovery)
+    enrichmentCheckpoint: v.optional(
+      v.object({
+        // Last successfully processed lead index
+        lastProcessedIndex: v.number(),
+        // Total leads at time of checkpoint
+        totalLeads: v.number(),
+        // Leads successfully enriched before error
+        enrichedCount: v.number(),
+        // Leads with no contacts found
+        noContactsCount: v.number(),
+        // Leads that failed
+        failedCount: v.number(),
+        // Error that caused checkpoint
+        errorCode: v.optional(v.string()),
+        errorMessage: v.optional(v.string()),
+        // Timestamp of checkpoint
+        checkpointedAt: v.number(),
+        // Whether this checkpoint can be resumed
+        resumable: v.boolean(),
+      }),
+    ),
+
     // Discovery diagnostics & dedup metrics
     initialSearchRadius: v.optional(v.number()), // In meters
     finalSearchRadius: v.optional(v.number()),   // In meters
@@ -365,6 +388,7 @@ export default defineSchema({
       v.literal("in_progress"),
       v.literal("completed"),
       v.literal("completed_fallback"),
+      v.literal("no_contacts_found"), // API succeeded but no discoverable contacts
       v.literal("failed"),
     ),
 
@@ -495,6 +519,16 @@ export default defineSchema({
       ),
     ),
 
+    // Enrichment retry tracking (circuit breaker support)
+    enrichmentAttempts: v.optional(v.number()),
+    enrichmentRateLimitRetries: v.optional(v.number()), // Tracks rate-limit-specific retries
+    lastEnrichmentAttempt: v.optional(v.number()),
+    enrichmentError: v.optional(v.string()),
+
+    // Enrichment timing (for stuck detection and monitoring)
+    enrichmentStartedAt: v.optional(v.number()),    // When enrichment began
+    enrichmentCompletedAt: v.optional(v.number()),  // When enrichment finished
+
     // Analysis retry tracking
     analysisAttempts: v.optional(v.number()),
     lastAnalysisAttempt: v.optional(v.number()),
@@ -564,6 +598,7 @@ export default defineSchema({
     .index("by_search_place", ["searchId", "placeId"]) // Per-search deduplication (for spatial tiling)
     .index("by_user_address", ["userId", "address"]) // User-level address deduplication
     .index("by_enrichment_status", ["enrichmentStatus"])
+    .index("by_enrichment_status_time", ["enrichmentStatus", "enrichmentStartedAt"]) // For stuck detection
     .index("by_analysis_status", ["analysisStatus"])
     .index("by_analysis_scheduled", ["analysisScheduledAt"])
     .index("by_search_analysis_status", ["searchId", "analysisStatus"]),
@@ -1843,4 +1878,51 @@ export default defineSchema({
     .index("by_batch_id", ["batchId"])
     .index("by_search", ["searchId"])
     .index("by_status", ["status"]),
+
+  // ============================================================================
+  // FAILED OPERATIONS - Dead Letter Queue for Pipeline Recovery
+  // ============================================================================
+  // Tracks failed pipeline operations (completion handlers, phase transitions)
+  // for automatic retry with exponential backoff
+  failedOperations: defineTable({
+    // Operation identification
+    operationType: v.union(
+      v.literal("enrichment_completion"),
+      v.literal("analysis_trigger"),
+      v.literal("batch_finalization"),
+      v.literal("slot_release")
+    ),
+
+    // Reference IDs
+    searchId: v.id("searches"),
+    leadId: v.optional(v.id("leads")),
+
+    // Error context
+    error: v.string(),
+    errorCode: v.optional(v.string()),
+    context: v.optional(v.any()), // Serialized operation context (batchId, workId, etc.)
+
+    // Retry tracking
+    retryCount: v.number(),
+    maxRetries: v.number(),
+    lastAttemptAt: v.number(),
+    nextRetryAt: v.optional(v.number()),
+
+    // Status
+    status: v.union(
+      v.literal("pending"),   // Ready for retry
+      v.literal("retrying"),  // Currently being retried
+      v.literal("resolved"),  // Successfully recovered
+      v.literal("exhausted")  // Max retries exceeded
+    ),
+    resolvedAt: v.optional(v.number()),
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status", ["status"])
+    .index("by_search", ["searchId", "status"])
+    .index("by_operation_type", ["operationType", "status"])
+    .index("by_next_retry", ["status", "nextRetryAt"]),
 });

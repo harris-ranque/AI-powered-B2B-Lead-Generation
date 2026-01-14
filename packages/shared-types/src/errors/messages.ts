@@ -121,6 +121,21 @@ export const ERROR_MESSAGES: Record<ApiErrorCode, ErrorMessageTemplate> = {
     severity: "warning",
     retryable: false,
   },
+  [API_ERROR_CODES.FINDYMAIL_SUBSCRIPTION_PAUSED]: {
+    userMessage:
+      "Your FindyMail subscription is paused. Please reactivate your subscription to continue email enrichment.",
+    suggestedAction: "add_credits",
+    severity: "error",
+    actionLabel: "Reactivate Subscription",
+    actionUrl: "https://app.findymail.com/dashboard/billing",
+    retryable: false,
+  },
+  [API_ERROR_CODES.FINDYMAIL_NO_CONTACTS_FOUND]: {
+    userMessage: "No contacts found for this business. The domain may not have discoverable email addresses.",
+    suggestedAction: "none",
+    severity: "info",
+    retryable: false,
+  },
 
   // ============================================
   // Perplexity Errors

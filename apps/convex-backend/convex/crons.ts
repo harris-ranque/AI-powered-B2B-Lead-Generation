@@ -54,4 +54,50 @@ crons.interval(
   internal.apiKeySemaphore.semaphore.cleanupExpiredSlots,
 );
 
+// ============================================================================
+// FINDYMAIL API HEALTH CHECK (Every 30 minutes)
+// ============================================================================
+// Proactively check FindyMail API health and alert on issues
+// Checks: authentication, credits, rate limits, API availability
+crons.interval(
+  "findymail-health-check",
+  { minutes: 30 },
+  (internal as any)["leads/enrichment/healthCheck"].checkFindyMailHealth,
+);
+
+// ============================================================================
+// STUCK ENRICHMENT DETECTION (Every 5 minutes)
+// ============================================================================
+// Detects and recovers leads stuck in "in_progress" state
+// - Leads stuck > 10 minutes are reset to pending for retry
+// - Leads stuck > 30 minutes are marked as failed
+crons.interval(
+  "monitor-stuck-enrichments",
+  { minutes: 5 },
+  (internal as any)["leads/enrichmentMonitoring"].monitorStuckEnrichments,
+);
+
+// ============================================================================
+// DEAD LETTER QUEUE PROCESSOR (Every 2 minutes)
+// ============================================================================
+// Processes failed pipeline operations (completion handlers, phase transitions)
+// - Retries failed operations with exponential backoff
+// - Marks exhausted operations after 5 attempts
+crons.interval(
+  "process-dead-letter-queue",
+  { minutes: 2 },
+  (internal as any)["leads/deadLetterProcessor"].processDeadLetterQueue,
+);
+
+// ============================================================================
+// DLQ CLEANUP (Daily)
+// ============================================================================
+// Cleans up old resolved operations from the dead letter queue
+// Keeps last 7 days of resolved operations for auditing
+crons.interval(
+  "cleanup-resolved-dlq-operations",
+  { hours: 24 },
+  internal.leads.deadLetterQueue.cleanupResolvedOperations,
+);
+
 export default crons;

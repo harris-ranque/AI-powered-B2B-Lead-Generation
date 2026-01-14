@@ -48,6 +48,11 @@ import {
 } from "./enrichment/provider";
 import { EnrichmentResult, EnrichmentOptions } from "./enrichment/types";
 import { createHash } from "crypto";
+import {
+  classifyFindyMailError,
+  shouldBlockPipeline,
+  type ApiError,
+} from "../lib/apiErrors";
 
 // Note: Workpool instance is created per-call in enrichLeads action
 // This is because we need ctx.runMutation which is only available in action context
@@ -79,8 +84,19 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Result from tryProvider - includes pipeline-blocking error info if applicable
+ */
+interface TryProviderResult {
+  result: (EnrichmentResult & { provider: "findymail" }) | null;
+  pipelineBlockingError?: ApiError;
+}
+
+/**
  * Try enriching a domain with FindyMail
  * Includes retry logic with exponential backoff
+ *
+ * IMPORTANT: Detects pipeline-blocking errors (credits exhausted, subscription paused)
+ * and propagates them for checkpoint handling rather than swallowing them.
  */
 async function tryProvider(
   provider: "findymail",
@@ -90,7 +106,7 @@ async function tryProvider(
     roles?: string[];
     userApiKey?: string;
   }
-): Promise<(EnrichmentResult & { provider: "findymail" }) | null> {
+): Promise<TryProviderResult> {
   const service = createEnrichmentService(options.userApiKey, provider);
 
   for (let attempt = 1; attempt <= options.retries; attempt++) {
@@ -102,16 +118,29 @@ async function tryProvider(
       // Check if we got valid emails
       if (result && result.emails && result.emails.length > 0) {
         console.log(`[${provider}] ✅ Success for ${domain}: found ${result.emails.length} emails`);
-        return { ...result, provider }; // Tag with provider that worked
+        return { result: { ...result, provider } }; // Tag with provider that worked
       }
 
       // API succeeded but no emails found - don't retry (wastes credits)
       // The domain simply doesn't have discoverable contacts
       console.log(`[${provider}] ⚠️ No emails found for ${domain} - API succeeded but domain has no discoverable contacts`);
-      return null; // Exit immediately, no point retrying
+      return { result: null }; // Exit immediately, no point retrying
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
       console.error(`[${provider}] ❌ Error on attempt ${attempt}/${options.retries} for ${domain}: ${errorMsg}`);
+
+      // Check if this is a pipeline-blocking error (credits exhausted, subscription paused, auth failed)
+      // These errors should NOT be retried - they require user action
+      const apiError = (error as any)?.apiError as ApiError | undefined;
+      if (apiError && shouldBlockPipeline(apiError)) {
+        console.error(`[${provider}] 🚨 Pipeline-blocking error for ${domain}:`, {
+          errorCode: apiError.errorCode,
+          category: apiError.category,
+          userMessage: apiError.userMessage,
+          retryable: apiError.retryable,
+        });
+        return { result: null, pipelineBlockingError: apiError };
+      }
 
       // If this is the last attempt, break and return null
       if (attempt === options.retries) {
@@ -126,7 +155,7 @@ async function tryProvider(
     }
   }
 
-  return null;
+  return { result: null };
 }
 
 /**
@@ -209,6 +238,52 @@ export const enrichSingleLeadWorkpool = internalAction({
       {
         leadId: args.leadId,
         slotIndex: acquiredSlotIndex,
+      },
+    );
+
+    // Check circuit breaker status for this search
+    const circuitStatus = await ctx.runQuery(
+      internal.leads.enrichment.circuitBreaker.getSearchCircuitStatus,
+      { searchId: args.searchId }
+    );
+
+    if (circuitStatus.circuitState === "open") {
+      // Circuit is open - too many failures, skip this lead for now
+      logWithCorrelation(
+        "warn",
+        correlation,
+        "🔴 [Workpool] Circuit breaker OPEN - skipping enrichment",
+        {
+          leadId: args.leadId,
+          searchId: args.searchId,
+          failureRate: circuitStatus.failureRate,
+          failed: circuitStatus.failed,
+          total: circuitStatus.total,
+        },
+      );
+
+      // Release slot
+      await ctx.runMutation(
+        internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+        { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+      );
+
+      // Don't mark as failed - keep as pending for later retry when circuit closes
+      return {
+        success: false,
+        skipped: true,
+        reason: "circuit_breaker_open",
+        failureRate: circuitStatus.failureRate,
+      };
+    }
+
+    // Mark lead as in_progress with timestamp for stuck detection
+    await ctx.runMutation(
+      internal.leads.internal.updateEnrichmentStatus,
+      {
+        leadId: args.leadId,
+        status: "in_progress",
+        enrichmentStartedAt: Date.now(),
       },
     );
 
@@ -327,11 +402,64 @@ export const enrichSingleLeadWorkpool = internalAction({
       }
 
       // PRIMARY PROVIDER: FindyMail (3 retries with internal backoff)
-      const result = await tryProvider("findymail", domain, {
+      const { result, pipelineBlockingError } = await tryProvider("findymail", domain, {
         retries: 3,
         roles: args.roles,
         userApiKey: args.userApiKey,
       });
+
+      // PIPELINE-BLOCKING ERROR: Credits exhausted, subscription paused, or auth failed
+      // Save checkpoint and propagate error for user action
+      if (pipelineBlockingError) {
+        logWithCorrelation(
+          "error",
+          correlation,
+          "🚨 [Workpool] Pipeline-blocking error - Saving checkpoint",
+          {
+            leadId: args.leadId,
+            searchId: args.searchId,
+            errorCode: pipelineBlockingError.errorCode,
+            category: pipelineBlockingError.category,
+            userMessage: pipelineBlockingError.userMessage,
+          },
+        );
+
+        // Save checkpoint for resume capability
+        await ctx.runMutation(
+          internal.leads.enrichment.checkpoint.createCheckpointFromCurrentState,
+          {
+            searchId: args.searchId,
+            errorCode: pipelineBlockingError.errorCode,
+            errorMessage: pipelineBlockingError.userMessage,
+          },
+        );
+
+        // Mark lead as failed with specific error
+        await ctx.runMutation(
+          internal.leads.internal.updateEnrichmentStatus,
+          {
+            leadId: args.leadId,
+            status: "failed",
+            error: `Pipeline blocked: ${pipelineBlockingError.userMessage}`,
+          },
+        );
+
+        // Release slot
+        await ctx.runMutation(
+          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+        );
+
+        // Return with error info for workpool to handle
+        return {
+          success: false,
+          provider: "findymail",
+          reason: "pipeline_blocked",
+          errorCode: pipelineBlockingError.errorCode,
+          errorMessage: pipelineBlockingError.userMessage,
+          checkpointSaved: true,
+        };
+      }
 
       // RESULT HANDLING
       if (result && result.emails.length > 0) {
@@ -385,10 +513,21 @@ export const enrichSingleLeadWorkpool = internalAction({
 
         return { success: true, provider: result.provider, emailsFound: result.emails.length };
       } else {
-        // NO EMAILS FOUND - Delete the lead
+        // NO EMAILS FOUND - Preserve lead with "no_contacts_found" status
+        // This distinguishes between "API succeeded but no results" vs "API error"
         await ctx.runMutation(
-          internal.leads.internal.deleteLead,
-          { leadId: args.leadId },
+          internal.leads.internal.updateEnrichmentStatus,
+          {
+            leadId: args.leadId,
+            status: "no_contacts_found",
+            error: "FindyMail API succeeded but no discoverable email contacts found for this domain",
+          },
+        );
+
+        // Update enrichment provider to track that we attempted FindyMail
+        await ctx.runMutation(
+          internal.leads.internal.updateEnrichmentProvider,
+          { leadId: args.leadId, provider: "findymail" },
         );
 
         const perfData = endPerformanceTracking(performanceTracker);
@@ -396,8 +535,14 @@ export const enrichSingleLeadWorkpool = internalAction({
         logWithCorrelation(
           "info",
           correlation,
-          "🗑️ [Workpool] Lead Deleted - No Contacts Found",
-          { leadId: args.leadId, businessName: lead.businessName, domain, durationMs: perfData?.duration || 0 },
+          "📭 [Workpool] Lead Preserved - No Contacts Found",
+          {
+            leadId: args.leadId,
+            businessName: lead.businessName,
+            domain,
+            durationMs: perfData?.duration || 0,
+            note: "Lead preserved with 'no_contacts_found' status for user visibility",
+          },
         );
 
         trackEnrichmentFailed({
@@ -415,7 +560,7 @@ export const enrichSingleLeadWorkpool = internalAction({
           { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
         );
 
-        return { success: false, provider: "none", reason: "no_emails_found" };
+        return { success: true, provider: "findymail", reason: "no_contacts_found", emailsFound: 0 };
       }
     } catch (error) {
       const perfData = endPerformanceTracking(performanceTracker);
@@ -443,14 +588,31 @@ export const enrichSingleLeadWorkpool = internalAction({
         retryAttempt: 0,
       });
 
-      // Release slot
+      // Release slot with DLQ fallback for failed releases
       try {
         await ctx.runMutation(
           internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
           { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
         );
       } catch (releaseError) {
-        console.error("Failed to release API key slot:", releaseError);
+        const releaseErrorMsg = releaseError instanceof Error ? releaseError.message : String(releaseError);
+        console.error("Failed to release API key slot:", releaseErrorMsg);
+
+        // Record to DLQ for retry - ensures slot doesn't leak forever
+        // Note: Slots auto-expire after 10 min, but DLQ provides faster recovery
+        try {
+          await ctx.runMutation(internal.leads.deadLetterQueue.recordFailedOperation, {
+            operationType: "slot_release",
+            searchId: args.searchId,
+            leadId: args.leadId,
+            error: `Slot release failed: ${releaseErrorMsg}`,
+            context: { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+            maxRetries: 3, // Limited retries - slots auto-expire anyway
+          });
+        } catch (dlqError) {
+          // DLQ recording also failed - slot will auto-expire in 10 min
+          console.error("Failed to record slot release to DLQ:", dlqError);
+        }
       }
 
       // Re-throw to trigger Workpool retry (unless it's a permanent failure)
@@ -462,6 +624,111 @@ export const enrichSingleLeadWorkpool = internalAction({
 
       throw error;
     }
+  },
+});
+
+/**
+ * Resume enrichment from checkpoint
+ *
+ * Called by the enrichment monitoring cron when stuck leads are detected
+ * and need to be re-processed. This function re-triggers the enrichment
+ * pipeline for any remaining pending leads in the search.
+ *
+ * Flow:
+ * 1. Get all pending leads for the search
+ * 2. If pending leads exist, trigger enrichLeads action
+ * 3. The enrichLeads action will only process unprocessed leads
+ */
+export const resumeEnrichmentFromCheckpoint = internalAction({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    const { searchId } = args;
+
+    console.log(`[Resume Enrichment] Starting resume for search ${searchId}`);
+
+    // Get checkpoint info if available
+    const checkpoint = await ctx.runQuery(
+      internal.leads.enrichment.checkpoint.getCheckpoint,
+      { searchId }
+    );
+
+    if (checkpoint) {
+      console.log(`[Resume Enrichment] Found checkpoint:`, {
+        lastProcessedIndex: checkpoint.lastProcessedIndex,
+        totalLeads: checkpoint.totalLeads,
+        enrichedCount: checkpoint.enrichedCount,
+        errorCode: checkpoint.errorCode,
+      });
+
+      // Clear checkpoint before resuming
+      await ctx.runMutation(
+        internal.leads.enrichment.checkpoint.clearCheckpoint,
+        { searchId }
+      );
+    }
+
+    // Get current search status
+    const searchStatus = await ctx.runQuery(
+      internal.leads.internal.getSearchEnrichmentStatus,
+      { searchId }
+    );
+
+    if (!searchStatus) {
+      console.log(`[Resume Enrichment] Search ${searchId} not found`);
+      return { success: false, reason: "search_not_found" };
+    }
+
+    const pendingCount = searchStatus.statusCounts.pending;
+    const inProgressCount = searchStatus.statusCounts.in_progress;
+
+    console.log(`[Resume Enrichment] Search status:`, {
+      totalLeads: searchStatus.totalLeads,
+      pending: pendingCount,
+      inProgress: inProgressCount,
+      enriched: searchStatus.enrichedCount,
+    });
+
+    // If no pending leads, nothing to resume
+    if (pendingCount === 0 && inProgressCount === 0) {
+      console.log(`[Resume Enrichment] No pending leads to process for search ${searchId}`);
+
+      // Check if we should trigger analysis instead
+      if (searchStatus.allLeadsEnriched) {
+        console.log(`[Resume Enrichment] All leads enriched, triggering analysis`);
+        const shouldTriggerAnalysis = await ctx.runMutation(
+          internal.leads.internal.tryTriggerAnalysisPhase,
+          { searchId }
+        );
+
+        if (shouldTriggerAnalysis) {
+          await ctx.scheduler.runAfter(
+            0,
+            (internal as any)["leads/actions"].analyzeLeads,
+            { searchId }
+          );
+        }
+      }
+
+      return { success: true, resumed: false, reason: "no_pending_leads" };
+    }
+
+    // Trigger enrichment for remaining leads
+    console.log(`[Resume Enrichment] Triggering enrichment for ${pendingCount} pending leads`);
+
+    await ctx.scheduler.runAfter(
+      0,
+      (internal as any)["leads/actions"].enrichLeads,
+      { searchId }
+    );
+
+    return {
+      success: true,
+      resumed: true,
+      pendingLeads: pendingCount,
+      message: `Enrichment resumed for ${pendingCount} pending leads`,
+    };
   },
 });
 
@@ -883,11 +1150,71 @@ export const enrichSingleLead = internalAction({
       }
 
       // PRIMARY PROVIDER: FindyMail (3 retries)
-      const result = await tryProvider("findymail", domain, {
+      const { result, pipelineBlockingError } = await tryProvider("findymail", domain, {
         retries: 3,
         roles: args.roles,
         userApiKey: args.userApiKey,
       });
+
+      // PIPELINE-BLOCKING ERROR: Credits exhausted, subscription paused, or auth failed
+      // Save checkpoint and propagate error for user action
+      if (pipelineBlockingError) {
+        logWithCorrelation(
+          "error",
+          correlation,
+          "🚨 [Legacy] Pipeline-blocking error - Saving checkpoint",
+          {
+            leadId: args.leadId,
+            searchId: args.searchId,
+            errorCode: pipelineBlockingError.errorCode,
+            category: pipelineBlockingError.category,
+            userMessage: pipelineBlockingError.userMessage,
+          },
+        );
+
+        // Save checkpoint for resume capability
+        await ctx.runMutation(
+          internal.leads.enrichment.checkpoint.createCheckpointFromCurrentState,
+          {
+            searchId: args.searchId,
+            errorCode: pipelineBlockingError.errorCode,
+            errorMessage: pipelineBlockingError.userMessage,
+          },
+        );
+
+        // Mark lead as failed with specific error
+        await ctx.runMutation(
+          internal.leads.internal.updateEnrichmentStatus,
+          {
+            leadId: args.leadId,
+            status: "failed",
+            error: `Pipeline blocked: ${pipelineBlockingError.userMessage}`,
+          },
+        );
+
+        // Release slot
+        await ctx.runMutation(
+          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+        );
+
+        logWithCorrelation(
+          "info",
+          correlation,
+          "🔓 Released API key slot (pipeline blocked)",
+          { leadId: args.leadId, slotIndex: acquiredSlotIndex },
+        );
+
+        // Return with error info
+        return {
+          success: false,
+          provider: "findymail",
+          reason: "pipeline_blocked",
+          errorCode: pipelineBlockingError.errorCode,
+          errorMessage: pipelineBlockingError.userMessage,
+          checkpointSaved: true,
+        };
+      }
 
       // FINAL RESULT: Update lead based on enrichment outcome
       if (result && result.emails.length > 0) {
@@ -1055,12 +1382,21 @@ export const enrichSingleLead = internalAction({
           emailsFound: result.emails.length,
         };
       } else {
-        // FAILURE: No emails found from any provider - DELETE the lead
+        // NO EMAILS FOUND - Preserve lead with "no_contacts_found" status
+        // This distinguishes between "API succeeded but no results" vs "API error"
         await ctx.runMutation(
-          internal.leads.internal.deleteLead,
+          internal.leads.internal.updateEnrichmentStatus,
           {
             leadId: args.leadId,
+            status: "no_contacts_found",
+            error: "FindyMail API succeeded but no discoverable email contacts found for this domain",
           },
+        );
+
+        // Update enrichment provider to track that we attempted FindyMail
+        await ctx.runMutation(
+          internal.leads.internal.updateEnrichmentProvider,
+          { leadId: args.leadId, provider: "findymail" },
         );
 
         const perfData = endPerformanceTracking(performanceTracker);
@@ -1068,18 +1404,18 @@ export const enrichSingleLead = internalAction({
         logWithCorrelation(
           "info",
           correlation,
-          "🗑️ Lead Deleted - No Contacts Found",
+          "📭 Lead Preserved - No Contacts Found",
           {
             leadId: args.leadId,
             businessName: lead.businessName,
             domain,
             triedProviders: ["findymail"],
             durationMs: perfData?.duration || 0,
-            reason: "No emails or contacts found, lead deleted per user preference",
+            note: "Lead preserved with 'no_contacts_found' status for user visibility",
           },
         );
 
-        // Track enrichment failure for analytics
+        // Track enrichment completion (not failure - API succeeded)
         trackEnrichmentFailed({
           searchId: args.searchId,
           leadId: args.leadId,
@@ -1088,6 +1424,46 @@ export const enrichSingleLead = internalAction({
           errorType: "no_emails_found",
           retryAttempt: 0,
         });
+
+        // Update overall search progress
+        const allLeadsForNoContacts: any = await ctx.runQuery(
+          internal.leads.internal.getSearchLeadsInternal,
+          { searchId: args.searchId },
+        );
+
+        const processedLeadsForNoContacts = allLeadsForNoContacts.filter(
+          (l: any) =>
+            l.enrichmentStatus === "completed" ||
+            l.enrichmentStatus === "completed_fallback" ||
+            l.enrichmentStatus === "no_contacts_found",
+        );
+
+        const progressPercentNoContacts = (processedLeadsForNoContacts.length / allLeadsForNoContacts.length) * 100;
+
+        // Broadcast real-time progress update
+        await ctx.runMutation(
+          internal.realtime.broadcaster.broadcastPipelineUpdate,
+          {
+            userId: args.userId,
+            searchId: args.searchId,
+            stage: "enrichment",
+            progress: progressPercentNoContacts,
+            message: `Processed ${processedLeadsForNoContacts.length} of ${allLeadsForNoContacts.length} leads (${Math.round(progressPercentNoContacts)}% complete)`,
+            data: {
+              progress: {
+                discovered: allLeadsForNoContacts.length,
+                enriched: processedLeadsForNoContacts.length,
+                analyzed: 0,
+                total: allLeadsForNoContacts.length,
+              },
+              lastProcessedLead: {
+                businessName: lead.businessName,
+                status: "no_contacts_found",
+                domain,
+              },
+            },
+          },
+        );
 
         // CHECK: Atomically try to trigger AI analysis phase (prevents race conditions)
         const shouldTriggerAnalysis = await ctx.runMutation(
@@ -1103,7 +1479,7 @@ export const enrichSingleLead = internalAction({
             {
               searchId: args.searchId,
               nextPhase: "ai_analysis",
-              triggeredBy: "failed_enrichment_completion",
+              triggeredBy: "no_contacts_found_completion",
               note: "This action won the race to trigger analysis",
             },
           );
@@ -1135,14 +1511,15 @@ export const enrichSingleLead = internalAction({
         logWithCorrelation(
           "info",
           correlation,
-          "🔓 Released API key slot (no emails)",
+          "🔓 Released API key slot (no contacts found)",
           { leadId: args.leadId, slotIndex: acquiredSlotIndex },
         );
 
         return {
-          success: false,
-          provider: "none",
-          reason: "no_emails_found",
+          success: true,
+          provider: "findymail",
+          reason: "no_contacts_found",
+          emailsFound: 0,
         };
       }
     } catch (error) {
@@ -1222,7 +1599,7 @@ export const enrichSingleLead = internalAction({
         console.error("Failed to check/trigger analysis after enrichment error:", checkError);
       }
 
-      // Release API key slot before throwing error
+      // Release API key slot before throwing error with DLQ fallback
       try {
         await ctx.runMutation(
           internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
@@ -1237,7 +1614,22 @@ export const enrichSingleLead = internalAction({
         );
       } catch (releaseError) {
         // Don't let slot release failure break error handling
-        console.error("Failed to release API key slot after enrichment error:", releaseError);
+        const releaseErrorMsg = releaseError instanceof Error ? releaseError.message : String(releaseError);
+        console.error("Failed to release API key slot after enrichment error:", releaseErrorMsg);
+
+        // Record to DLQ for retry - ensures slot doesn't leak forever
+        try {
+          await ctx.runMutation(internal.leads.deadLetterQueue.recordFailedOperation, {
+            operationType: "slot_release",
+            searchId: args.searchId,
+            leadId: args.leadId,
+            error: `Slot release failed (legacy action): ${releaseErrorMsg}`,
+            context: { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+            maxRetries: 3,
+          });
+        } catch (dlqError) {
+          console.error("Failed to record slot release to DLQ:", dlqError);
+        }
       }
 
       throw error;

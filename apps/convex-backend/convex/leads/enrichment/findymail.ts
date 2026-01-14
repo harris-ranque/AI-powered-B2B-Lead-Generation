@@ -28,9 +28,26 @@ function createTimeoutController(timeoutMs: number) {
 const DEFAULT_ROLES = ["ceo", "founder", "owner"] as const;
 const MAX_ROLES = 3;
 
-function sanitizeRoles(roles?: string[] | null): string[] {
+/**
+ * Sanitize and normalize roles for FindyMail API
+ * FindyMail API only supports a maximum of 3 roles per request
+ *
+ * @param roles - Array of role strings to sanitize
+ * @returns Object containing sanitized roles and any truncation warning
+ */
+interface SanitizedRolesResult {
+  roles: string[];
+  truncated: boolean;
+  originalCount: number;
+}
+
+function sanitizeRoles(roles?: string[] | null): SanitizedRolesResult {
   if (!roles || roles.length === 0) {
-    return [...DEFAULT_ROLES];
+    return {
+      roles: [...DEFAULT_ROLES],
+      truncated: false,
+      originalCount: 0,
+    };
   }
 
   const normalized = roles
@@ -42,20 +59,36 @@ function sanitizeRoles(roles?: string[] | null): string[] {
     if (!deduped.includes(role)) {
       deduped.push(role);
     }
-    if (deduped.length >= MAX_ROLES) {
-      break;
-    }
+  }
+
+  const originalCount = deduped.length;
+  const truncated = originalCount > MAX_ROLES;
+
+  if (truncated) {
+    console.warn(
+      `[FindyMail] ⚠️ Role truncation: Requested ${originalCount} roles but FindyMail API only supports ${MAX_ROLES}. ` +
+      `Using: [${deduped.slice(0, MAX_ROLES).join(", ")}]. ` +
+      `Truncated: [${deduped.slice(MAX_ROLES).join(", ")}]`
+    );
   }
 
   if (deduped.length === 0) {
-    return [...DEFAULT_ROLES];
+    return {
+      roles: [...DEFAULT_ROLES],
+      truncated: false,
+      originalCount: 0,
+    };
   }
 
-  return deduped.slice(0, MAX_ROLES);
+  return {
+    roles: deduped.slice(0, MAX_ROLES),
+    truncated,
+    originalCount,
+  };
 }
 
 function resolveRoles(options?: EnrichmentOptions): string[] {
-  return sanitizeRoles(options?.roles);
+  return sanitizeRoles(options?.roles).roles;
 }
 
 export class FindyMailProvider implements EnrichmentProviderInterface {
@@ -518,6 +551,173 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
       return 0;
     }
   }
+
+  /**
+   * Comprehensive health check for FindyMail API
+   * Checks authentication, credits, and API availability
+   *
+   * @returns Health check result with detailed status
+   */
+  async healthCheck(apiKey: string): Promise<FindyMailHealthCheckResult> {
+    const startTime = Date.now();
+
+    try {
+      // Test 1: Check credits endpoint (validates auth + API availability)
+      const creditsResponse = await fetch(`${FINDYMAIL_BASE_URL}/credits`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        signal: AbortSignal.timeout(10000), // 10 second timeout
+      });
+
+      const responseTime = Date.now() - startTime;
+
+      if (creditsResponse.status === 401) {
+        return {
+          healthy: false,
+          status: "auth_failed",
+          message: "FindyMail API key is invalid or expired",
+          responseTimeMs: responseTime,
+          timestamp: Date.now(),
+        };
+      }
+
+      if (creditsResponse.status === 402) {
+        const data = await creditsResponse.json().catch(() => ({}));
+        return {
+          healthy: false,
+          status: "credits_exhausted",
+          message: "FindyMail account has no remaining credits",
+          credits: 0,
+          responseTimeMs: responseTime,
+          timestamp: Date.now(),
+        };
+      }
+
+      if (creditsResponse.status === 423) {
+        return {
+          healthy: false,
+          status: "subscription_paused",
+          message: "FindyMail subscription is paused. Please reactivate your subscription.",
+          responseTimeMs: responseTime,
+          timestamp: Date.now(),
+        };
+      }
+
+      if (creditsResponse.status === 429) {
+        return {
+          healthy: true,
+          status: "rate_limited",
+          message: "FindyMail API is available but currently rate limited",
+          responseTimeMs: responseTime,
+          timestamp: Date.now(),
+        };
+      }
+
+      if (!creditsResponse.ok) {
+        return {
+          healthy: false,
+          status: "api_error",
+          message: `FindyMail API returned status ${creditsResponse.status}`,
+          responseTimeMs: responseTime,
+          timestamp: Date.now(),
+        };
+      }
+
+      // Parse credits response
+      const creditsData = await creditsResponse.json() as { credits?: number };
+      const credits = creditsData.credits ?? 0;
+
+      // Determine health status based on credits
+      if (credits === 0) {
+        return {
+          healthy: false,
+          status: "credits_exhausted",
+          message: "FindyMail account has no remaining credits",
+          credits: 0,
+          responseTimeMs: responseTime,
+          timestamp: Date.now(),
+        };
+      }
+
+      if (credits < 10) {
+        return {
+          healthy: true,
+          status: "low_credits",
+          message: `FindyMail API is healthy but credits are low (${credits} remaining)`,
+          credits,
+          responseTimeMs: responseTime,
+          timestamp: Date.now(),
+        };
+      }
+
+      // Full health
+      return {
+        healthy: true,
+        status: "healthy",
+        message: `FindyMail API is fully operational`,
+        credits,
+        responseTimeMs: responseTime,
+        timestamp: Date.now(),
+      };
+
+    } catch (error) {
+      const responseTime = Date.now() - startTime;
+
+      if (error instanceof Error) {
+        if (error.name === "AbortError" || error.name === "TimeoutError") {
+          return {
+            healthy: false,
+            status: "timeout",
+            message: "FindyMail API health check timed out (>10s)",
+            responseTimeMs: responseTime,
+            timestamp: Date.now(),
+          };
+        }
+
+        if (error.message.includes("fetch") || error.message.includes("network")) {
+          return {
+            healthy: false,
+            status: "network_error",
+            message: `Network error connecting to FindyMail API: ${error.message}`,
+            responseTimeMs: responseTime,
+            timestamp: Date.now(),
+          };
+        }
+      }
+
+      return {
+        healthy: false,
+        status: "unknown_error",
+        message: `FindyMail health check failed: ${error instanceof Error ? error.message : String(error)}`,
+        responseTimeMs: responseTime,
+        timestamp: Date.now(),
+      };
+    }
+  }
+}
+
+/**
+ * Health check result interface
+ */
+export interface FindyMailHealthCheckResult {
+  healthy: boolean;
+  status:
+    | "healthy"
+    | "low_credits"
+    | "credits_exhausted"
+    | "auth_failed"
+    | "subscription_paused"
+    | "rate_limited"
+    | "api_error"
+    | "timeout"
+    | "network_error"
+    | "unknown_error";
+  message: string;
+  credits?: number;
+  responseTimeMs: number;
+  timestamp: number;
 }
 
 type DomainContact = { name?: string; email: string; verified: boolean };
@@ -851,7 +1051,7 @@ export async function resolveDomainsWithFindyMail(
   const concurrency = Math.min(options.concurrency ?? 5, 5);
   const maxRetries = options.maxRetries ?? 5;
   const baseDelayMs = options.baseDelayMs ?? 800;
-  const sanitizedRoles = sanitizeRoles(roles);
+  const sanitizedRoles = sanitizeRoles(roles).roles;
 
   let pipelineBlockingError: ApiError | undefined;
 

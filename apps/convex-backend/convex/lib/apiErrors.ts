@@ -161,6 +161,15 @@ export function classifyFindyMailError(
         ...getErrorMessage(API_ERROR_CODES.FINDYMAIL_CREDITS_EXHAUSTED),
       };
 
+    case 423:
+      // Subscription is paused (per FindyMail API docs)
+      return {
+        ...base,
+        errorCode: API_ERROR_CODES.FINDYMAIL_SUBSCRIPTION_PAUSED,
+        category: "subscription_paused",
+        ...getErrorMessage(API_ERROR_CODES.FINDYMAIL_SUBSCRIPTION_PAUSED),
+      };
+
     case 429:
       // Check if it's transient rate limiting or quota exhaustion
       const isQuotaExhausted =
@@ -218,6 +227,20 @@ export function classifyFindyMailError(
         technicalMessage: errorMessage,
       };
   }
+}
+
+/**
+ * Create a "no contacts found" result for FindyMail
+ * This is NOT an error - it's a successful API call with no results
+ */
+export function createFindyMailNoContactsResult(): ApiError {
+  return {
+    provider: "findymail" as ApiProvider,
+    timestamp: Date.now(),
+    errorCode: API_ERROR_CODES.FINDYMAIL_NO_CONTACTS_FOUND,
+    category: "no_results",
+    ...getErrorMessage(API_ERROR_CODES.FINDYMAIL_NO_CONTACTS_FOUND),
+  };
 }
 
 // ============================================
@@ -548,6 +571,7 @@ export function shouldBlockPipeline(apiError: ApiError): boolean {
     "authentication",
     "authorization",
     "quota_exhausted",
+    "subscription_paused",
     "rate_limit_exceeded",
   ];
   return blockingCategories.includes(apiError.category);
