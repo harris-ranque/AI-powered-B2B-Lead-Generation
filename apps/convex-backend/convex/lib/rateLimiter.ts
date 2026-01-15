@@ -4,81 +4,34 @@
  * Uses @convex-dev/rate-limiter to provide:
  * - Token bucket algorithm for smooth rate limiting with burst capacity
  * - Per-API-key isolation for BYOK support
- * - Adaptive adjustments based on actual API behavior
  * - Transactional safety with automatic rollback
+ *
+ * IMPORTANT: FindyMail's only limit is 5 concurrent requests per API key.
+ * This is handled by the semaphore system in apiKeySemaphore/semaphore.ts.
+ * The rate limiter here is kept minimal for potential future use cases.
  */
 
-import { RateLimiter, MINUTE, HOUR, SECOND } from "@convex-dev/rate-limiter";
+import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter";
 import { components } from "../_generated/api";
 
 /**
  * Global rate limiter instance for all external API calls.
  *
- * Configuration is based on known API limits:
- * - FindyMail: ~60 RPM with 5 concurrent requests
- * - System defaults: Conservative starting points that adapt over time
- *
- * Usage:
- *   // In a mutation:
- *   const { ok, retryAfter } = await rateLimiter.limit(ctx, "findymailApi", {
- *     key: apiKeyHash,  // Per-API-key isolation
- *   });
- *
- *   if (!ok) {
- *     // Handle rate limit - wait or queue
- *   }
+ * NOTE: FindyMail only enforces 5 concurrent requests per API key.
+ * This is handled by the slot-based semaphore system, NOT this rate limiter.
+ * The rate limiter is kept for potential future APIs or abuse prevention.
  */
 export const rateLimiter = new RateLimiter(components.rateLimiter, {
   /**
-   * FindyMail API rate limit.
-   * Token bucket with burst capacity for batch operations.
-   *
-   * Configuration rationale:
-   * - rate: 60 requests per minute (conservative estimate)
-   * - capacity: 10 tokens for burst (allows small batches)
-   * - Tokens refill at ~1 per second
+   * FindyMail API rate limit - DISABLED/GENEROUS.
+   * The real limit (5 concurrent) is handled by the semaphore system.
+   * This is kept as a safety net with very generous limits.
    */
   findymailApi: {
     kind: "token bucket",
-    rate: 60,
+    rate: 1000,        // Very generous - semaphore is the real limiter
     period: MINUTE,
-    capacity: 10,
-  },
-
-  /**
-   * FindyMail concurrent request limit.
-   * Limits parallel requests to prevent API overload.
-   *
-   * FindyMail recommends max 5 concurrent requests.
-   */
-  findymailConcurrent: {
-    kind: "token bucket",
-    rate: 5,
-    period: SECOND,
-    capacity: 5,
-  },
-
-  /**
-   * FindyMail daily limit per user.
-   * Prevents single user from exhausting shared API quota.
-   *
-   * Conservative limit to protect system-wide credits.
-   */
-  findymailDailyPerUser: {
-    kind: "fixed window",
-    rate: 500,
-    period: 24 * HOUR,
-  },
-
-  /**
-   * FindyMail hourly limit per user.
-   * Smooths out usage patterns within a day.
-   */
-  findymailHourlyPerUser: {
-    kind: "token bucket",
-    rate: 100,
-    period: HOUR,
-    capacity: 20,
+    capacity: 100,     // Large burst capacity
   },
 });
 
