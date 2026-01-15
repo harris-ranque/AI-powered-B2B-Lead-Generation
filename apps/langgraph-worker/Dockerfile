@@ -70,7 +70,8 @@ RUN pip install --no-cache-dir \
     "langgraph-checkpoint>=2.0.0,<3.0.0" \
     "instructor>=1.10.0,<2.0.0" \
     "beautifulsoup4>=4.12.0,<5.0.0" \
-    "sentry-sdk[fastapi]>=2.20.0,<3.0.0"
+    "sentry-sdk[fastapi]>=2.20.0,<3.0.0" \
+    "posthog[langchain]>=7.5.0,<8.0.0"
 
 # Copy application code
 COPY . .
