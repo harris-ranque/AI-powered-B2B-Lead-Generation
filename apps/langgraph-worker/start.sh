@@ -9,9 +9,13 @@ echo "Starting LangGraph Worker on port $PORT"
 which gunicorn || echo "WARNING: gunicorn not found in PATH: $PATH"
 
 # Start gunicorn with environment-based port (using absolute path as fallback)
+# --graceful-timeout: Time workers have to finish during shutdown (must be < Railway drainSeconds)
+# --timeout: Request timeout (long for AI processing)
 exec /usr/local/bin/gunicorn -k uvicorn.workers.UvicornWorker app.main:app \
     --bind "0.0.0.0:$PORT" \
     --workers 2 \
+    --graceful-timeout 110 \
+    --timeout 300 \
     --access-logfile - \
     --error-logfile - \
     --log-level info

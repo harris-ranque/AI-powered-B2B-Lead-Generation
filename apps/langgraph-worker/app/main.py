@@ -4,7 +4,6 @@ FastAPI application with LangGraph multi-agent AI system for email personalizati
 """
 import os
 import logging
-import signal
 from datetime import datetime
 import asyncio
 import json
@@ -81,34 +80,15 @@ logger = setup_logger(__name__)
 # ============================================================
 # Track active batch processing tasks for graceful shutdown
 # Railway sends SIGTERM → we have drainSeconds (120s) before SIGKILL
+# Note: We rely on FastAPI's shutdown event (triggered by gunicorn) rather than
+# direct signal handlers to avoid conflicts with gunicorn's multi-worker setup
 active_batch_tasks: Set[str] = set()  # batch_id -> task tracking
 active_batch_tasks_lock = asyncio.Lock()
 shutdown_initiated = False
-shutdown_event = asyncio.Event()
 
 # Maximum time to wait for in-flight requests during shutdown
 # Leave 10s buffer before Railway's SIGKILL at 120s
 GRACEFUL_SHUTDOWN_TIMEOUT = 110
-
-def handle_sigterm(signum, frame):
-    """Handle SIGTERM signal from Railway deployment"""
-    global shutdown_initiated
-    shutdown_initiated = True
-    logger.warning(f"📡 Received SIGTERM (signal {signum}) - initiating graceful shutdown")
-    logger.warning(f"⏳ Waiting up to {GRACEFUL_SHUTDOWN_TIMEOUT}s for {len(active_batch_tasks)} active batches to complete")
-    # Set the event to wake up any waiting coroutines
-    # Note: This runs in signal context, so we use call_soon_threadsafe
-    try:
-        loop = asyncio.get_running_loop()
-        loop.call_soon_threadsafe(shutdown_event.set)
-    except RuntimeError:
-        # No running loop, shutdown_event will be checked on next await
-        pass
-
-# Register signal handler for SIGTERM (Railway uses this for graceful shutdown)
-signal.signal(signal.SIGTERM, handle_sigterm)
-# Also handle SIGINT (Ctrl+C) for local development
-signal.signal(signal.SIGINT, handle_sigterm)
 
 # ============================================================
 
