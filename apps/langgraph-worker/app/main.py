@@ -4,11 +4,12 @@ FastAPI application with LangGraph multi-agent AI system for email personalizati
 """
 import os
 import logging
+import signal
 from datetime import datetime
 import asyncio
 import json
 import time
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set
 
 # Initialize Sentry SDK before other imports
 import sentry_sdk
@@ -74,6 +75,42 @@ from .utils.rate_limiting import get_rate_limit_manager, shutdown_rate_limiting
 
 # Configure logging
 logger = setup_logger(__name__)
+
+# ============================================================
+# GRACEFUL SHUTDOWN TRACKING
+# ============================================================
+# Track active batch processing tasks for graceful shutdown
+# Railway sends SIGTERM → we have drainSeconds (120s) before SIGKILL
+active_batch_tasks: Set[str] = set()  # batch_id -> task tracking
+active_batch_tasks_lock = asyncio.Lock()
+shutdown_initiated = False
+shutdown_event = asyncio.Event()
+
+# Maximum time to wait for in-flight requests during shutdown
+# Leave 10s buffer before Railway's SIGKILL at 120s
+GRACEFUL_SHUTDOWN_TIMEOUT = 110
+
+def handle_sigterm(signum, frame):
+    """Handle SIGTERM signal from Railway deployment"""
+    global shutdown_initiated
+    shutdown_initiated = True
+    logger.warning(f"📡 Received SIGTERM (signal {signum}) - initiating graceful shutdown")
+    logger.warning(f"⏳ Waiting up to {GRACEFUL_SHUTDOWN_TIMEOUT}s for {len(active_batch_tasks)} active batches to complete")
+    # Set the event to wake up any waiting coroutines
+    # Note: This runs in signal context, so we use call_soon_threadsafe
+    try:
+        loop = asyncio.get_running_loop()
+        loop.call_soon_threadsafe(shutdown_event.set)
+    except RuntimeError:
+        # No running loop, shutdown_event will be checked on next await
+        pass
+
+# Register signal handler for SIGTERM (Railway uses this for graceful shutdown)
+signal.signal(signal.SIGTERM, handle_sigterm)
+# Also handle SIGINT (Ctrl+C) for local development
+signal.signal(signal.SIGINT, handle_sigterm)
+
+# ============================================================
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -221,15 +258,28 @@ async def health_check():
         validation_status = "error"
         validation_errors.append(str(e))
 
+    # Determine overall health status (shutdown takes priority)
+    if shutdown_initiated:
+        overall_status = "draining"  # Signals to load balancer to stop sending traffic
+    elif validation_status == "passed":
+        overall_status = "healthy"
+    else:
+        overall_status = "degraded"
+
     health_response = {
-        "status": "healthy" if validation_status == "passed" else "degraded",
+        "status": overall_status,
         "timestamp": datetime.utcnow().isoformat(),
+        "shutdown": {
+            "initiated": shutdown_initiated,
+            "active_batches": len(active_batch_tasks),
+            "drain_timeout_seconds": GRACEFUL_SHUTDOWN_TIMEOUT if shutdown_initiated else None
+        },
         "validation": {
             "status": validation_status,
             "errors": validation_errors
         },
         "services": {
-            "fastapi": "running",
+            "fastapi": "running" if not shutdown_initiated else "draining",
             "langgraph": "initialized",
             "openai": "connected" if settings.openai_api_key and settings.openai_api_key != "test-openai-key" else "not configured",
             "convex": "connected" if settings.webhook_url and settings.api_key else "not configured"
@@ -361,6 +411,14 @@ async def generate_email(
 
     Benefits: 57% fewer LLM calls, 50% faster execution, better personalization
     """
+    # Reject new requests during shutdown
+    if shutdown_initiated:
+        logger.warning(f"[Email] ⛔ Rejecting request {request.request_id} - service is shutting down")
+        raise HTTPException(
+            status_code=503,
+            detail="Service is shutting down. Please retry with a different replica."
+        )
+
     start_time = datetime.utcnow()
 
     # Extract client ID from request (use search ID as client identifier)
@@ -758,6 +816,14 @@ async def batch_generate_emails(
     - 200 leads @ 20x: ~15 minutes (95% faster)
     - 200 leads @ 50x: ~6 minutes (98% faster)
     """
+    # Reject new batch requests during shutdown
+    if shutdown_initiated:
+        logger.warning(f"[Batch] ⛔ Rejecting batch {request.batch_id} - service is shutting down")
+        raise HTTPException(
+            status_code=503,
+            detail="Service is shutting down. Please retry with a different replica."
+        )
+
     start_time = datetime.utcnow()
 
     logger.info(
@@ -838,6 +904,7 @@ async def process_batch_with_progress(
     - Progress webhook every 3 completions (or at end)
     - Final completion webhook with all results
     - Tolerant error handling (continues on failures)
+    - Graceful shutdown support: tracks in-flight batches for Railway SIGTERM handling
 
     Performance examples @ 90s per lead:
     - Sequential (1x): 200 leads = 5 hours
@@ -845,6 +912,13 @@ async def process_batch_with_progress(
     - 20x concurrent: 200 leads = 15 minutes (95% faster)
     - 50x concurrent: 200 leads = 6 minutes (98% faster)
     """
+    global shutdown_initiated
+
+    # Track this batch for graceful shutdown
+    async with active_batch_tasks_lock:
+        active_batch_tasks.add(batch_id)
+        logger.info(f"[Batch] 📝 Tracking batch {batch_id} for graceful shutdown (active: {len(active_batch_tasks)})")
+
     batch_start = time.time()
     results: list[BatchLeadResult] = []
     completed_count = 0
@@ -1099,6 +1173,11 @@ async def process_batch_with_progress(
             "search_id": search_id,
         })
 
+    # Remove batch from graceful shutdown tracking (always runs, even on error)
+    async with active_batch_tasks_lock:
+        active_batch_tasks.discard(batch_id)
+        logger.info(f"[Batch] ✅ Untracked batch {batch_id} from graceful shutdown (remaining: {len(active_batch_tasks)})")
+
 @app.get("/status/{request_id}")
 async def get_request_status(
     request_id: str,
@@ -1235,12 +1314,77 @@ async def get_rate_limit_status(authenticated: bool = Depends(verify_api_key)):
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Graceful shutdown of background services"""
-    logger.info("Shutting down LangGraph worker...")
+    """
+    Graceful shutdown of background services.
+
+    Railway graceful shutdown flow:
+    1. SIGTERM received → handle_sigterm() sets shutdown_initiated=True
+    2. FastAPI shutdown event triggered (this function)
+    3. We wait up to GRACEFUL_SHUTDOWN_TIMEOUT (110s) for active batches
+    4. Railway sends SIGKILL at drainSeconds (120s) if still running
+
+    This prevents incomplete batch processing during deployments.
+    """
+    global shutdown_initiated
+    shutdown_initiated = True
+
+    logger.warning("=" * 60)
+    logger.warning("🛑 GRACEFUL SHUTDOWN INITIATED")
+    logger.warning(f"⏳ Active batch tasks: {len(active_batch_tasks)}")
+    logger.warning(f"⏳ Max wait time: {GRACEFUL_SHUTDOWN_TIMEOUT}s")
+    logger.warning("=" * 60)
+
+    # Wait for active batch tasks to complete
+    if active_batch_tasks:
+        start_time = time.time()
+        check_interval = 2  # Check every 2 seconds
+
+        while active_batch_tasks and (time.time() - start_time) < GRACEFUL_SHUTDOWN_TIMEOUT:
+            elapsed = time.time() - start_time
+            remaining = GRACEFUL_SHUTDOWN_TIMEOUT - elapsed
+
+            async with active_batch_tasks_lock:
+                batch_count = len(active_batch_tasks)
+                batch_ids = list(active_batch_tasks)[:3]  # Show first 3
+
+            logger.warning(
+                f"⏳ Waiting for {batch_count} active batches... "
+                f"({elapsed:.0f}s elapsed, {remaining:.0f}s remaining)"
+            )
+            if batch_ids:
+                logger.warning(f"   Active batches: {batch_ids}")
+
+            await asyncio.sleep(check_interval)
+
+        # Check final status
+        async with active_batch_tasks_lock:
+            remaining_batches = len(active_batch_tasks)
+
+        if remaining_batches > 0:
+            elapsed = time.time() - start_time
+            logger.error(
+                f"⚠️ SHUTDOWN TIMEOUT: {remaining_batches} batches still running after {elapsed:.1f}s"
+            )
+            logger.error(f"   Remaining batches will be terminated by Railway SIGKILL")
+
+            # Send Sentry alert for forced shutdown
+            sentry_sdk.capture_message(
+                f"Graceful shutdown timeout: {remaining_batches} batches terminated",
+                level="error"
+            )
+        else:
+            elapsed = time.time() - start_time
+            logger.info(f"✅ All batches completed successfully in {elapsed:.1f}s")
+    else:
+        logger.info("✅ No active batches - proceeding with immediate shutdown")
 
     # Shutdown rate limiting system
     await shutdown_rate_limiting()
     logger.info("Rate limiting system shutdown complete")
+
+    logger.warning("=" * 60)
+    logger.warning("👋 LANGGRAPH WORKER SHUTDOWN COMPLETE")
+    logger.warning("=" * 60)
 
 
 @app.get("/workflow-engine")

@@ -23,10 +23,17 @@ LANGCHAIN_API_KEY = "{{ secrets.LANGCHAIN_API_KEY }}"
 
 [deploy]
 startCommand = "./start.sh"
-healthcheckPath = "/health" 
+healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "always"
 numReplicas = 1
+
+# Graceful shutdown configuration for AI batch processing
+# AI email generation takes 60-100+ seconds per lead, batches can run 15+ minutes
+# drainSeconds: Time after SIGTERM before SIGKILL (default is only 3s!)
+# overlapSeconds: Zero-downtime deployment overlap period
+drainSeconds = 120
+overlapSeconds = 30
 
 [variables]
 PYTHONUNBUFFERED = "1"
