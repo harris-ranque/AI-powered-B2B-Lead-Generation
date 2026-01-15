@@ -204,10 +204,27 @@ export function FileUploadArea({
         ) {
           autoMapping[header] = "domain";
         }
-        // Contact person name
+        // Contact person name - recognize common name column variants
         else if (
-          lowerHeader.includes("contact") &&
-          (lowerHeader.includes("name") || lowerHeader.includes("person"))
+          // Original: "contact name", "contact person"
+          (lowerHeader.includes("contact") &&
+            (lowerHeader.includes("name") || lowerHeader.includes("person"))) ||
+          // Common CRM exports: "first_name", "firstname", "first name"
+          lowerHeader === "first_name" ||
+          lowerHeader === "firstname" ||
+          lowerHeader === "first name" ||
+          // Full name variants: "full_name", "fullname", "full name"
+          lowerHeader === "full_name" ||
+          lowerHeader === "fullname" ||
+          lowerHeader === "full name" ||
+          // Person name variants
+          lowerHeader === "person_name" ||
+          lowerHeader === "person name" ||
+          lowerHeader === "personname" ||
+          // Representative/rep variants
+          lowerHeader === "rep_name" ||
+          lowerHeader === "rep name" ||
+          lowerHeader === "representative"
         ) {
           autoMapping[header] = "contact_name";
         }

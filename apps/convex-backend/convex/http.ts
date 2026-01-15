@@ -903,6 +903,23 @@ http.route({
         });
       }
 
+      // Filter out leads without email addresses - only export actionable leads
+      const totalBeforeFilter = leads.length;
+      leads = leads.filter((lead) => {
+        const emails = (lead as any).contactInfo?.emails;
+        return Array.isArray(emails) && emails.length > 0 && emails[0]?.email;
+      });
+
+      if (leads.length === 0) {
+        return new Response(
+          `No leads with email addresses found for export (${totalBeforeFilter} leads discovered but none had contact emails)`,
+          {
+            status: 404,
+            headers: baseHeaders,
+          },
+        );
+      }
+
       const userId = resolvedUserId as Id<"users">;
       const leadIdSet = new Set(leads.map((lead) => String(lead._id)));
 
@@ -947,10 +964,6 @@ http.route({
       const csvHeaders = [
         "id",
         "company_name",
-        "country",
-        "city",
-        "state",
-        "postal_code",
         "website",
         "company_profile",
         "first_name",
@@ -1004,12 +1017,6 @@ http.route({
         const primaryBody =
           firstNonEmptyString(emailDetails?.primaryBody, lead.emailContent?.body);
 
-        const location = lead.location ?? {};
-        const postalCode =
-          "postalCode" in location && typeof (location as any).postalCode === "string"
-            ? (location as any).postalCode
-            : "";
-
         // Extract raw Perplexity research data from aiAnalysis
         const aiAnalysis = (lead as any).aiAnalysis;
         const leadAnalysis = aiAnalysis?.leadAnalysis;
@@ -1025,10 +1032,6 @@ http.route({
         const rowValues: unknown[] = [
           leadKey,
           lead.businessName ?? "",
-          location.country ?? "",
-          location.city ?? "",
-          location.state ?? "",
-          postalCode,
           lead.website ?? "",
           companyProfile,
           contactDetails.firstName,
