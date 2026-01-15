@@ -179,6 +179,7 @@ type EnrichmentWorkpoolResult = {
   errorMessage?: string;
   checkpointSaved?: boolean;
   emailsFound?: number;
+  queueDepth?: number; // Present when lead was queued for later processing
 };
 
 // Enrichment checkpoint type - matches schema definition
@@ -201,6 +202,9 @@ export const enrichSingleLeadWorkpool = internalAction({
     userId: v.id("users"),
     roles: v.optional(v.array(v.string())),
     userApiKey: v.optional(v.string()),
+    // Queue-based retry fields (set when triggered from slot queue)
+    _fromQueue: v.optional(v.boolean()),
+    correlationId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<EnrichmentWorkpoolResult> => {
     // Create correlation context for this lead
@@ -266,24 +270,75 @@ export const enrichSingleLeadWorkpool = internalAction({
       },
     );
 
-    // Try to acquire slot - if not available, throw error to trigger Workpool retry
+    // Try to acquire slot - if not available, queue for later processing
     const slotResult = await ctx.runMutation(
       internal.apiKeySemaphore.semaphore.tryAcquireApiKeySlot,
       { apiKeyHash, claimId },
     );
 
     if (!slotResult.acquired) {
-      // Throw error to trigger Workpool retry with exponential backoff
+      // If this came from the queue and still can't get a slot, re-queue it
+      // This handles edge cases where multiple leads are triggered simultaneously
+      if (args._fromQueue) {
+        logWithCorrelation(
+          "warn",
+          correlation,
+          "⏳ [Workpool] Re-queuing lead from queue (still at capacity)",
+          {
+            leadId: args.leadId,
+            currentActive: slotResult.currentActive,
+          },
+        );
+        // Re-queue the lead - it will be triggered again when a slot frees up
+        await ctx.runMutation(
+          internal.apiKeySemaphore.semaphore.queueLeadForSlot,
+          {
+            apiKeyHash,
+            leadId: args.leadId,
+            searchId: args.searchId,
+            userId: args.userId,
+            userApiKey: args.userApiKey || "",
+            correlationId: correlation.correlationId,
+            priority: 1, // Slightly lower priority for re-queued items
+          },
+        );
+        // Return success with queued flag - tells Workpool this job is "done"
+        // The lead will be processed when triggered from the queue
+        return { success: true, skipped: true, reason: "requeued" };
+      }
+
+      // First time hitting capacity - queue the lead instead of failing
       logWithCorrelation(
-        "warn",
+        "info",
         correlation,
-        "⏳ [Workpool] API key at capacity - Workpool will retry",
+        "📥 [Workpool] API key at capacity - queuing lead for later",
         {
           leadId: args.leadId,
           currentActive: slotResult.currentActive,
         },
       );
-      throw new Error(`API_KEY_AT_CAPACITY: ${slotResult.currentActive}/5 slots in use`);
+
+      // Queue the lead - it will be automatically triggered when a slot frees up
+      const queueResult = await ctx.runMutation(
+        internal.apiKeySemaphore.semaphore.queueLeadForSlot,
+        {
+          apiKeyHash,
+          leadId: args.leadId,
+          searchId: args.searchId,
+          userId: args.userId,
+          userApiKey: args.userApiKey || "",
+          correlationId: correlation.correlationId,
+        },
+      );
+
+      // Return success with queued flag - tells Workpool this job is "done"
+      // The lead will be processed later when triggered from the queue
+      return {
+        success: true,
+        skipped: true,
+        reason: "queued",
+        queueDepth: queueResult.queueDepth,
+      };
     }
 
     const acquiredClaimId = slotResult.claimId;
@@ -562,6 +617,19 @@ export const enrichSingleLeadWorkpool = internalAction({
           { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
         );
 
+        // If this lead came from the queue, report completion to batch tracker
+        if (args._fromQueue) {
+          await ctx.runMutation(
+            internal.leads.workpool.reportQueuedLeadCompletion,
+            { searchId: args.searchId, leadId: args.leadId, success: true },
+          );
+          // Also mark queue entry as completed
+          await ctx.runMutation(
+            internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
+            { leadId: args.leadId },
+          );
+        }
+
         return { success: true, provider: result.provider, emailsFound: result.emails.length };
       } else {
         // NO EMAILS FOUND - Preserve lead with "no_contacts_found" status
@@ -610,6 +678,18 @@ export const enrichSingleLeadWorkpool = internalAction({
           internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
           { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
         );
+
+        // If this lead came from the queue, report completion to batch tracker
+        if (args._fromQueue) {
+          await ctx.runMutation(
+            internal.leads.workpool.reportQueuedLeadCompletion,
+            { searchId: args.searchId, leadId: args.leadId, success: true },
+          );
+          await ctx.runMutation(
+            internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
+            { leadId: args.leadId },
+          );
+        }
 
         return { success: true, provider: "findymail", reason: "no_contacts_found", emailsFound: 0 };
       }
@@ -670,7 +750,31 @@ export const enrichSingleLeadWorkpool = internalAction({
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
       if (errorMsg.includes("not found") || errorMsg.includes("No valid domain")) {
         // Permanent failure - don't retry
+        // If this lead came from the queue, report completion (as failed)
+        if (args._fromQueue) {
+          await ctx.runMutation(
+            internal.leads.workpool.reportQueuedLeadCompletion,
+            { searchId: args.searchId, leadId: args.leadId, success: false },
+          );
+          await ctx.runMutation(
+            internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
+            { leadId: args.leadId },
+          );
+        }
         return { success: false, provider: "none", reason: errorMsg };
+      }
+
+      // For retryable errors, if from queue, report as failed
+      // The workpool will handle retrying if this was a direct workpool call
+      if (args._fromQueue) {
+        await ctx.runMutation(
+          internal.leads.workpool.reportQueuedLeadCompletion,
+          { searchId: args.searchId, leadId: args.leadId, success: false },
+        );
+        await ctx.runMutation(
+          internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
+          { leadId: args.leadId },
+        );
       }
 
       throw error;

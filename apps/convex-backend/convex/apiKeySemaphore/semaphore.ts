@@ -24,6 +24,7 @@
  */
 
 import { internalMutation, internalQuery } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { v } from "convex/values";
 
 // FindyMail rate limit: 5 concurrent requests per API key
@@ -148,6 +149,8 @@ export const tryAcquireApiKeySlot = internalMutation({
  * Called when enrichment completes (success, failure, or error)
  *
  * Can release by claimId (preferred) or slotIndex (fallback)
+ *
+ * IMPORTANT: After releasing, this automatically triggers the next queued lead!
  */
 export const releaseApiKeySlot = internalMutation({
   args: {
@@ -184,7 +187,7 @@ export const releaseApiKeySlot = internalMutation({
         `[Semaphore] No slot found to release for API key ${args.apiKeyHash.substring(0, 8)}... ` +
         `(claimId: ${args.claimId?.substring(0, 16) || "N/A"}, slotIndex: ${args.slotIndex ?? "N/A"})`
       );
-      return { released: false };
+      return { released: false, triggeredNext: false };
     }
 
     // Release the slot
@@ -211,10 +214,198 @@ export const releaseApiKeySlot = internalMutation({
       `(active: ${activeCount}/${MAX_SLOTS_PER_KEY})`
     );
 
+    // Check if there are queued leads waiting for a slot
+    const nextQueued = await ctx.db
+      .query("enrichmentSlotQueue")
+      .withIndex("by_api_key_status", (q: any) =>
+        q.eq("apiKeyHash", args.apiKeyHash).eq("status", "pending")
+      )
+      .first();
+
+    let triggeredNext = false;
+    if (nextQueued) {
+      console.log(
+        `[Semaphore] 🚀 Triggering next queued lead ${nextQueued.leadId} for API key ${args.apiKeyHash.substring(0, 8)}...`
+      );
+
+      // Mark as processing to prevent duplicate triggers
+      await ctx.db.patch(nextQueued._id, {
+        status: "processing",
+        processedAt: now,
+      });
+
+      // Schedule the enrichment action to run immediately
+      // Import is done via internal reference to avoid circular deps
+      await ctx.scheduler.runAfter(0, internal.leads.asyncEnrichment.enrichSingleLeadWorkpool, {
+        leadId: nextQueued.leadId,
+        searchId: nextQueued.searchId,
+        userId: nextQueued.userId,
+        userApiKey: nextQueued.userApiKey,
+        correlationId: nextQueued.correlationId,
+        // Mark this as a retry from queue so it doesn't re-queue on failure
+        _fromQueue: true,
+      });
+
+      triggeredNext = true;
+    }
+
     return {
       released: true,
       currentActive: activeCount,
       releasedSlotIndex: slotToRelease.slotIndex,
+      triggeredNext,
+      nextLeadId: nextQueued?.leadId,
+    };
+  },
+});
+
+/**
+ * Add a lead to the enrichment queue when slots are full
+ * Called by enrichSingleLeadWorkpool when it can't acquire a slot
+ */
+export const queueLeadForSlot = internalMutation({
+  args: {
+    apiKeyHash: v.string(),
+    leadId: v.id("leads"),
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+    userApiKey: v.string(),
+    correlationId: v.optional(v.string()),
+    priority: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    // Check if this lead is already queued (prevent duplicates)
+    const existing = await ctx.db
+      .query("enrichmentSlotQueue")
+      .withIndex("by_lead", (q: any) => q.eq("leadId", args.leadId))
+      .filter((q: any) =>
+        q.or(
+          q.eq(q.field("status"), "pending"),
+          q.eq(q.field("status"), "processing")
+        )
+      )
+      .first();
+
+    if (existing) {
+      console.log(
+        `[Semaphore] Lead ${args.leadId} already queued (status: ${existing.status})`
+      );
+      return { queued: false, reason: "already_queued", queueId: existing._id };
+    }
+
+    // Add to queue
+    const queueId = await ctx.db.insert("enrichmentSlotQueue", {
+      apiKeyHash: args.apiKeyHash,
+      leadId: args.leadId,
+      searchId: args.searchId,
+      userId: args.userId,
+      userApiKey: args.userApiKey,
+      correlationId: args.correlationId,
+      queuedAt: now,
+      priority: args.priority ?? 0,
+      status: "pending",
+    });
+
+    // Count queue depth for logging
+    const queueDepth = await ctx.db
+      .query("enrichmentSlotQueue")
+      .withIndex("by_api_key_status", (q: any) =>
+        q.eq("apiKeyHash", args.apiKeyHash).eq("status", "pending")
+      )
+      .collect();
+
+    console.log(
+      `[Semaphore] 📥 Queued lead ${args.leadId} for API key ${args.apiKeyHash.substring(0, 8)}... ` +
+      `(queue depth: ${queueDepth.length})`
+    );
+
+    return { queued: true, queueId, queueDepth: queueDepth.length };
+  },
+});
+
+/**
+ * Mark a queued lead as completed (called after successful enrichment)
+ */
+export const markQueuedLeadCompleted = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+  },
+  handler: async (ctx, args) => {
+    const queueEntry = await ctx.db
+      .query("enrichmentSlotQueue")
+      .withIndex("by_lead", (q: any) => q.eq("leadId", args.leadId))
+      .filter((q: any) => q.eq(q.field("status"), "processing"))
+      .first();
+
+    if (queueEntry) {
+      await ctx.db.patch(queueEntry._id, {
+        status: "completed",
+      });
+      return { updated: true };
+    }
+
+    return { updated: false };
+  },
+});
+
+/**
+ * Cancel all queued leads for a search (called when search is cancelled)
+ */
+export const cancelQueuedLeadsForSearch = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    const queuedLeads = await ctx.db
+      .query("enrichmentSlotQueue")
+      .withIndex("by_search", (q: any) =>
+        q.eq("searchId", args.searchId).eq("status", "pending")
+      )
+      .collect();
+
+    for (const entry of queuedLeads) {
+      await ctx.db.patch(entry._id, {
+        status: "cancelled",
+      });
+    }
+
+    console.log(
+      `[Semaphore] Cancelled ${queuedLeads.length} queued leads for search ${args.searchId}`
+    );
+
+    return { cancelled: queuedLeads.length };
+  },
+});
+
+/**
+ * Get queue status for an API key (for monitoring)
+ */
+export const getQueueStatus = internalQuery({
+  args: {
+    apiKeyHash: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const pending = await ctx.db
+      .query("enrichmentSlotQueue")
+      .withIndex("by_api_key_status", (q: any) =>
+        q.eq("apiKeyHash", args.apiKeyHash).eq("status", "pending")
+      )
+      .collect();
+
+    const processing = await ctx.db
+      .query("enrichmentSlotQueue")
+      .withIndex("by_api_key_status", (q: any) =>
+        q.eq("apiKeyHash", args.apiKeyHash).eq("status", "processing")
+      )
+      .collect();
+
+    return {
+      pendingCount: pending.length,
+      processingCount: processing.length,
+      pendingLeads: pending.map((p: any) => p.leadId),
+      processingLeads: processing.map((p: any) => p.leadId),
     };
   },
 });

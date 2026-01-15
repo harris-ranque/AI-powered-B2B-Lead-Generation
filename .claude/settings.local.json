@@ -40,7 +40,9 @@
       "WebFetch(domain:app.findymail.com)",
       "WebFetch(domain:docs.findymail.com)",
       "WebFetch(domain:www.findymail.com)",
-      "WebFetch(domain:dlthub.com)"
+      "WebFetch(domain:dlthub.com)",
+      "Bash(npx eslint:*)",
+      "Bash(echo:*)"
     ],
     "deny": [],
     "ask": []

@@ -158,6 +158,19 @@ export const onEnrichmentComplete = internalMutation({
     const { searchId, userId, leadId, batchId } = context;
 
     try {
+      // Check if this was a queued lead (not actually processed yet)
+      // When a lead is queued for later processing, it returns success with reason: "queued"
+      // In this case, DON'T count it as completed - it will be processed later from the queue
+      if (result.kind === "success" && result.returnValue) {
+        const returnValue = result.returnValue as any;
+        if (returnValue.reason === "queued" || returnValue.reason === "requeued") {
+          console.log(
+            `[Workpool] Lead ${leadId} queued for later processing (not counting as completed)`
+          );
+          return; // Don't update batch counters - lead will be processed later
+        }
+      }
+
       // Get the batch tracker
       const batch = await ctx.db
         .query("enrichmentBatches")
@@ -323,6 +336,176 @@ export const onEnrichmentComplete = internalMutation({
 export function generateBatchId(searchId: Id<"searches">): string {
   return `batch_${searchId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
+
+/**
+ * Report completion for a lead that was processed from the queue
+ *
+ * When a lead is processed from the slot queue (not directly from workpool),
+ * we need to manually update the batch progress since the workpool's onComplete
+ * handler won't be called.
+ *
+ * This is called after enrichment completes for a queued lead.
+ */
+export const reportQueuedLeadCompletion = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    leadId: v.id("leads"),
+    success: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    try {
+      // Find the batch for this search
+      const batch = await ctx.db
+        .query("enrichmentBatches")
+        .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+        .filter((q) => q.eq(q.field("status"), "running"))
+        .first();
+
+      if (!batch) {
+        console.log(
+          `[Workpool] No running batch found for search ${args.searchId} (lead ${args.leadId})`
+        );
+        return { updated: false, reason: "no_running_batch" };
+      }
+
+      // Update batch progress
+      const newCompletedLeads = batch.completedLeads + 1;
+      const newSuccessfulLeads = batch.successfulLeads + (args.success ? 1 : 0);
+      const newFailedLeads = batch.failedLeads + (args.success ? 0 : 1);
+
+      const isComplete = newCompletedLeads >= batch.totalLeads;
+
+      await ctx.db.patch(batch._id, {
+        completedLeads: newCompletedLeads,
+        successfulLeads: newSuccessfulLeads,
+        failedLeads: newFailedLeads,
+        status: isComplete ? "completed" : "running",
+        completedAt: isComplete ? Date.now() : undefined,
+      });
+
+      // Log progress
+      const progressPercent = Math.round((newCompletedLeads / batch.totalLeads) * 100);
+      console.log(
+        `[Workpool] Queued lead ${args.leadId} enrichment ${args.success ? "success" : "failed"} ` +
+        `(${newCompletedLeads}/${batch.totalLeads} = ${progressPercent}%)`
+      );
+
+      // Also get userId for broadcasting
+      const search = await ctx.db.get(args.searchId);
+      if (!search) {
+        return { updated: true, isComplete };
+      }
+
+      // Broadcast progress update
+      await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+        userId: search.userId,
+        searchId: args.searchId,
+        stage: "enrichment",
+        progress: progressPercent,
+        message: `Enriched ${newCompletedLeads} of ${batch.totalLeads} leads (${progressPercent}% complete)`,
+        data: {
+          progress: {
+            discovered: batch.totalLeads,
+            enriched: newCompletedLeads,
+            analyzed: 0,
+            total: batch.totalLeads,
+          },
+          enrichmentBreakdown: {
+            completed: newSuccessfulLeads,
+            failed: newFailedLeads,
+            pending: batch.totalLeads - newCompletedLeads,
+            percentComplete: progressPercent,
+          },
+          workpoolBatch: {
+            batchId: batch.batchId,
+            completedLeads: newCompletedLeads,
+            totalLeads: batch.totalLeads,
+          },
+        },
+      });
+
+      // If all leads are complete, trigger the analysis phase
+      if (isComplete) {
+        console.log(
+          `[Workpool] 🎉 All ${batch.totalLeads} leads enriched (from queue)! Triggering analysis phase...`
+        );
+
+        // Clear any existing checkpoint since enrichment completed successfully
+        await ctx.runMutation(
+          internal.leads.enrichment.checkpoint.clearCheckpoint,
+          { searchId: args.searchId }
+        );
+
+        // Use the existing tryTriggerAnalysisPhase for race-safe transition
+        const shouldTriggerAnalysis = await ctx.runMutation(
+          internal.leads.internal.tryTriggerAnalysisPhase,
+          { searchId: args.searchId }
+        );
+
+        if (shouldTriggerAnalysis) {
+          console.log(`[Workpool] Analysis phase triggered for search ${args.searchId}`);
+
+          // Schedule the analysis phase with DLQ fallback for guaranteed delivery
+          try {
+            await ctx.scheduler.runAfter(
+              0,
+              (internal as any)["leads/actions"].analyzeLeads,
+              { searchId: args.searchId }
+            );
+            console.log(`[Workpool] ✅ Analysis scheduled successfully for search ${args.searchId}`);
+          } catch (scheduleError) {
+            // CRITICAL: Analysis scheduling failed - record to DLQ for retry
+            const scheduleErrorMsg = scheduleError instanceof Error ? scheduleError.message : String(scheduleError);
+            console.error(
+              `[Workpool] ❌ Failed to schedule analysis for search ${args.searchId}: ${scheduleErrorMsg}`
+            );
+
+            await ctx.runMutation(internal.leads.deadLetterQueue.recordFailedOperation, {
+              operationType: "analysis_trigger",
+              searchId: args.searchId,
+              error: `Analysis scheduling failed: ${scheduleErrorMsg}`,
+              context: { batchId: batch.batchId, triggeredBy: "queued_lead_completion" },
+              maxRetries: 5,
+            });
+          }
+        } else {
+          console.log(`[Workpool] Analysis already triggered for search ${args.searchId}`);
+        }
+      }
+
+      return { updated: true, isComplete, progressPercent };
+    } catch (error) {
+      // CRITICAL: Record to dead letter queue for retry
+      // This prevents pipeline stalls when completion handler fails due to OCC or other issues
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(
+        `[Workpool] Queued lead completion handler failed for lead ${args.leadId}: ${errorMessage}`
+      );
+
+      await ctx.runMutation(internal.leads.deadLetterQueue.recordFailedOperation, {
+        operationType: "enrichment_completion",
+        searchId: args.searchId,
+        leadId: args.leadId,
+        error: errorMessage,
+        context: { success: args.success, triggeredBy: "slot_queue", isQueuedLead: true },
+        maxRetries: 5,
+      });
+
+      // Also record analysis trigger as a separate DLQ entry to ensure it gets retried
+      // This provides a safety net if the batch completion was the last lead
+      await ctx.runMutation(internal.leads.deadLetterQueue.recordFailedOperation, {
+        operationType: "analysis_trigger",
+        searchId: args.searchId,
+        error: `Analysis trigger needed after queued lead completion failure: ${errorMessage}`,
+        context: { triggeredBy: "queued_completion_failure_recovery" },
+        maxRetries: 5,
+      });
+
+      // Return error state but don't throw - DLQ processor will retry
+      return { updated: false, reason: "handler_failed", error: errorMessage };
+    }
+  },
+});
 
 /**
  * Cancel all pending enrichment work for a search

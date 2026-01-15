@@ -1856,6 +1856,31 @@ export default defineSchema({
     .index("by_key_and_slot", ["apiKeyHash", "slotIndex"])
     .index("by_expires", ["expiresAt"]),
 
+  // Enrichment Slot Queue - Queue for leads waiting for an API key slot
+  // When all 5 slots are in use, leads are queued here instead of failing
+  // When a slot is released, the next queued lead is automatically triggered
+  enrichmentSlotQueue: defineTable({
+    apiKeyHash: v.string(),           // SHA256 hash of API key (for queue partitioning)
+    leadId: v.id("leads"),            // Lead waiting to be enriched
+    searchId: v.id("searches"),       // Associated search
+    userId: v.id("users"),            // User who owns the lead
+    userApiKey: v.string(),           // User's FindyMail API key (needed for re-triggering)
+    correlationId: v.optional(v.string()), // Correlation ID for logging
+    queuedAt: v.number(),             // When the lead was queued
+    priority: v.number(),             // Priority (lower = higher priority, default 0)
+    status: v.union(
+      v.literal("pending"),           // Waiting for a slot
+      v.literal("processing"),        // Slot acquired, being processed
+      v.literal("completed"),         // Successfully processed
+      v.literal("cancelled")          // Cancelled (search stopped, etc.)
+    ),
+    processedAt: v.optional(v.number()), // When processing started
+  })
+    .index("by_api_key_status", ["apiKeyHash", "status", "queuedAt"])
+    .index("by_lead", ["leadId"])
+    .index("by_search", ["searchId", "status"])
+    .index("by_status_queued", ["status", "queuedAt"]),
+
   // Enrichment Batches - Tracks Workpool enrichment batches for progress and completion
   // Used by the Workpool onComplete handler to track when all leads are enriched
   enrichmentBatches: defineTable({
