@@ -386,6 +386,19 @@ export const enrichSingleLeadWorkpool = internalAction({
           internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
           { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
         );
+
+        // If this lead came from the queue, report completion to batch tracker
+        if (args._fromQueue) {
+          await ctx.runMutation(
+            internal.leads.workpool.reportQueuedLeadCompletion,
+            { searchId: args.searchId, leadId: args.leadId, success: false },
+          );
+          await ctx.runMutation(
+            internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
+            { leadId: args.leadId },
+          );
+        }
+
         return { success: false, skipped: true, reason: "enrichment_paused" };
       }
 
@@ -434,6 +447,18 @@ export const enrichSingleLeadWorkpool = internalAction({
           { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
         );
 
+        // If this lead came from the queue, report completion to batch tracker
+        if (args._fromQueue) {
+          await ctx.runMutation(
+            internal.leads.workpool.reportQueuedLeadCompletion,
+            { searchId: args.searchId, leadId: args.leadId, success: true },
+          );
+          await ctx.runMutation(
+            internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
+            { leadId: args.leadId },
+          );
+        }
+
         return { success: true, provider: "csv_import", emailsFound: lead.contactInfo.emails.length };
       }
 
@@ -457,6 +482,18 @@ export const enrichSingleLeadWorkpool = internalAction({
           internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
           { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
         );
+
+        // If this lead came from the queue, report completion to batch tracker
+        if (args._fromQueue) {
+          await ctx.runMutation(
+            internal.leads.workpool.reportQueuedLeadCompletion,
+            { searchId: args.searchId, leadId: args.leadId, success: false },
+          );
+          await ctx.runMutation(
+            internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
+            { leadId: args.leadId },
+          );
+        }
 
         return { success: false, provider: "none", reason: "no_domain" };
       }
@@ -555,6 +592,18 @@ export const enrichSingleLeadWorkpool = internalAction({
           internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
           { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
         );
+
+        // If this lead came from the queue, report completion to batch tracker
+        if (args._fromQueue) {
+          await ctx.runMutation(
+            internal.leads.workpool.reportQueuedLeadCompletion,
+            { searchId: args.searchId, leadId: args.leadId, success: false },
+          );
+          await ctx.runMutation(
+            internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
+            { leadId: args.leadId },
+          );
+        }
 
         // Return with error info for workpool to handle
         return {
