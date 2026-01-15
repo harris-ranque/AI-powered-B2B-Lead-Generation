@@ -289,6 +289,22 @@ export const queueLeadForSlot = internalMutation({
       .first();
 
     if (existing) {
+      // If lead is in "processing" status but being re-queued, it means the lead
+      // couldn't acquire a slot after being triggered. Reset it to "pending".
+      if (existing.status === "processing") {
+        console.log(
+          `[Semaphore] Lead ${args.leadId} failed to acquire slot after trigger - resetting to pending`
+        );
+        await ctx.db.patch(existing._id, {
+          status: "pending",
+          queuedAt: now,  // Update queue time for fair ordering
+          priority: args.priority ?? existing.priority ?? 0,
+          processedAt: undefined,
+        });
+        return { queued: true, reason: "reset_to_pending", queueId: existing._id };
+      }
+
+      // Already pending - no action needed
       console.log(
         `[Semaphore] Lead ${args.leadId} already queued (status: ${existing.status})`
       );
