@@ -144,21 +144,23 @@ export class EnrichmentService {
 
   /**
    * Enrich a single domain
+   *
+   * IMPORTANT: This method now RETHROWS errors to enable retry logic upstream.
+   * - Pipeline-blocking errors (auth, credits, subscription) will stop retries
+   * - Transient errors (rate limits, server errors, timeouts) will be retried
+   *
+   * @throws Error with apiError property for classified API errors
    */
   async enrichSingle(
     domain: string,
     options?: EnrichmentOptions,
   ): Promise<EnrichmentResult | null> {
-    try {
-      console.log(`Enriching domain ${domain} using ${this.providerType}`);
-      return await this.provider.enrichSingle(domain, options);
-    } catch (error) {
-      console.error(
-        `Single enrichment failed for ${domain} with ${this.providerType}:`,
-        error
-      );
-      return null;
-    }
+    console.log(`Enriching domain ${domain} using ${this.providerType}`);
+
+    // Let errors propagate for retry logic - don't catch here
+    // The caller (tryProvider) handles retries for transient errors
+    // and stops immediately for pipeline-blocking errors
+    return await this.provider.enrichSingle(domain, options);
   }
 
   /**

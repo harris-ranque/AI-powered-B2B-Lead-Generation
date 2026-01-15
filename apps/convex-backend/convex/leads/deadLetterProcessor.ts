@@ -13,7 +13,17 @@
 import { internalAction, internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
-import { Id } from "../_generated/dataModel";
+import { Id, Doc } from "../_generated/dataModel";
+
+// Return type for processDeadLetterQueue
+type DLQProcessResult = {
+  processed: number;
+  succeeded: number;
+  failed: number;
+};
+
+// Type for pending DLQ operations
+type DLQOperation = Doc<"failedOperations">;
 
 /**
  * Main cron handler - processes all pending DLQ operations
@@ -25,9 +35,9 @@ import { Id } from "../_generated/dataModel";
  */
 export const processDeadLetterQueue = internalAction({
   args: {},
-  handler: async (ctx) => {
+  handler: async (ctx): Promise<DLQProcessResult> => {
     // Get pending operations ready for retry
-    const pendingOps = await ctx.runQuery(
+    const pendingOps: DLQOperation[] = await ctx.runQuery(
       internal.leads.deadLetterQueue.getPendingRetries,
       { limit: 20 } // Process in batches to avoid timeout
     );
@@ -419,19 +429,39 @@ async function handleSlotRelease(
   }
 }
 
+// Type for DLQ operation stats
+type DLQOperationStats = {
+  pending: number;
+  retrying: number;
+  resolved: number;
+  exhausted: number;
+  total: number;
+};
+
+// Return type for getDLQStats
+type DLQStatsResult = DLQOperationStats & {
+  exhaustedDetails: Array<{
+    id: Id<"failedOperations">;
+    type: string;
+    searchId: Id<"searches">;
+    error: string;
+    retryCount: number;
+  }>;
+};
+
 /**
  * Get DLQ statistics for monitoring
  */
 export const getDLQStats = internalMutation({
   args: {},
-  handler: async (ctx) => {
-    const stats = await ctx.runQuery(
+  handler: async (ctx): Promise<DLQStatsResult> => {
+    const stats: DLQOperationStats = await ctx.runQuery(
       internal.leads.deadLetterQueue.getOperationStats,
       {}
     );
 
     // Get exhausted operations for alerting
-    const exhausted = await ctx.runQuery(
+    const exhausted: DLQOperation[] = await ctx.runQuery(
       internal.leads.deadLetterQueue.getExhaustedOperations,
       { limit: 10 }
     );
@@ -452,7 +482,7 @@ export const getDLQStats = internalMutation({
 
     return {
       ...stats,
-      exhaustedDetails: exhausted.map((op) => ({
+      exhaustedDetails: exhausted.map((op: Doc<"failedOperations">) => ({
         id: op._id,
         type: op.operationType,
         searchId: op.searchId,

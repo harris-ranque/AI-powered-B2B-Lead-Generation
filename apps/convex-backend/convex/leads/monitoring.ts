@@ -362,3 +362,247 @@ export const checkScheduledActionsHealth: any = internalAction({
     }
   },
 });
+
+/**
+ * Combined Lead Health Monitor
+ *
+ * Unified monitoring for all lead-related health checks:
+ * 1. Stuck enrichment leads (10/30 min thresholds)
+ * 2. Stuck analysis leads (15 min threshold)
+ * 3. Scheduled actions health (30 min threshold)
+ *
+ * Runs every 5 minutes via cron. Consolidates 3 separate crons into 1.
+ */
+export const monitorLeadHealth: any = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const correlation = createCorrelationContext(
+      OPERATION_TYPES.MONITORING,
+      "system",
+      {
+        metadata: {
+          monitorType: "lead_health_combined",
+        },
+      },
+    );
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "🏥 Starting Combined Lead Health Monitor",
+      {
+        checks: ["enrichment_stuck", "analysis_stuck", "scheduled_actions"],
+      },
+    );
+
+    const results = {
+      enrichment: { checked: 0, recovered: 0, failed: 0 },
+      analysis: { stuckLeadsFound: 0, retriedLeads: 0, timeoutLeads: 0 },
+      scheduledActions: { status: "healthy", overdueLeads: 0 },
+    };
+
+    try {
+      // ========================================================================
+      // CHECK 1: Stuck Enrichment Leads (10/30 min thresholds)
+      // ========================================================================
+      logWithCorrelation("info", correlation, "📋 Check 1: Stuck Enrichment Leads", {});
+
+      const stuckEnrichmentLeads = await ctx.runQuery(
+        internal.leads.enrichmentMonitoring.getStuckEnrichmentLeads,
+        { limit: 50 }
+      );
+
+      if (stuckEnrichmentLeads.length > 0) {
+        logWithCorrelation(
+          "warn",
+          correlation,
+          `⚠️ Found ${stuckEnrichmentLeads.length} stuck enrichment leads`,
+          {}
+        );
+
+        const affectedSearchIds = new Set<string>();
+
+        for (const lead of stuckEnrichmentLeads) {
+          const result = await ctx.runMutation(
+            internal.leads.enrichmentMonitoring.recoverStuckEnrichmentLead,
+            {
+              leadId: lead._id,
+              forceFailure: lead.shouldFail,
+            }
+          );
+
+          if (result.action === "reset") {
+            results.enrichment.recovered++;
+            affectedSearchIds.add(lead.searchId);
+          } else if (result.action === "failed") {
+            results.enrichment.failed++;
+            affectedSearchIds.add(lead.searchId);
+          }
+        }
+
+        results.enrichment.checked = stuckEnrichmentLeads.length;
+
+        // Check each affected search for re-triggering enrichment or completion
+        for (const searchId of affectedSearchIds) {
+          await ctx.runMutation(
+            internal.leads.enrichmentMonitoring.checkSearchEnrichmentState,
+            { searchId: searchId as any }
+          );
+        }
+      }
+
+      // ========================================================================
+      // CHECK 2: Stuck Analysis Leads (15 min threshold)
+      // ========================================================================
+      logWithCorrelation("info", correlation, "📋 Check 2: Stuck Analysis Leads", {});
+
+      const stuckAnalysisLeads = (await ctx.runQuery(
+        internal.leads.internal.getStuckLeads,
+        { timeoutMinutes: 15 }
+      )) as Doc<"leads">[];
+
+      if (stuckAnalysisLeads.length > 0) {
+        logWithCorrelation(
+          "warn",
+          correlation,
+          `⚠️ Found ${stuckAnalysisLeads.length} stuck analysis leads`,
+          {}
+        );
+
+        results.analysis.stuckLeadsFound = stuckAnalysisLeads.length;
+
+        // Group stuck leads by search for batch retry
+        const leadsGroupedBySearch = new Map<string, Doc<"leads">[]>();
+
+        for (const lead of stuckAnalysisLeads) {
+          const searchId = lead.searchId;
+          if (!leadsGroupedBySearch.has(searchId)) {
+            leadsGroupedBySearch.set(searchId, []);
+          }
+          leadsGroupedBySearch.get(searchId)!.push(lead);
+        }
+
+        // Process each search's stuck leads
+        for (const [searchId, leads] of leadsGroupedBySearch) {
+          if (leads.length === 0) continue;
+          const maxRetries = 3;
+
+          // Filter leads by retry count
+          const leadsToTimeout = leads.filter((l) => (l.analysisAttempts || 0) >= maxRetries);
+          const leadsToRetry = leads.filter((l) => (l.analysisAttempts || 0) < maxRetries);
+
+          // Mark exceeded leads as timeout
+          for (const lead of leadsToTimeout) {
+            await ctx.runMutation(internal.leads.internal.markLeadAnalysisTimeout, {
+              leadId: lead._id,
+            });
+            results.analysis.timeoutLeads++;
+          }
+
+          // Retry eligible leads using batch system
+          if (leadsToRetry.length > 0) {
+            const search = await ctx.runQuery(
+              internal.search.internal.getSearchInternal,
+              { searchId: searchId as any }
+            );
+
+            if (!search) continue;
+
+            const profile = await ctx.runQuery(
+              internal.profile.internal.getProfileByUserIdInternal,
+              { userId: search.userId }
+            );
+
+            if (!profile) continue;
+
+            // Mark all leads as failed so retry system can pick them up
+            for (const lead of leadsToRetry) {
+              await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
+                leadId: lead._id,
+                error: "Stuck in processing - marked for batch retry",
+              });
+            }
+
+            // Use batch retry system
+            await ctx.runAction(
+              (internal as any)["leads/asyncAnalysis"].retryFailedLeads,
+              {
+                searchId: search._id,
+                userId: search.userId,
+                profileId: profile._id,
+                maxRetries: 2,
+              }
+            );
+
+            results.analysis.retriedLeads += leadsToRetry.length;
+          }
+        }
+      }
+
+      // ========================================================================
+      // CHECK 3: Scheduled Actions Health (30 min threshold)
+      // ========================================================================
+      logWithCorrelation("info", correlation, "📋 Check 3: Scheduled Actions Health", {});
+
+      const overdueLeads = (await ctx.runQuery(
+        internal.leads.internal.getStuckLeads,
+        { timeoutMinutes: 30 }
+      )) as Doc<"leads">[];
+
+      // Filter to only leads in "scheduled" status (not "processing")
+      const scheduledOverdue = overdueLeads.filter(
+        (lead: Doc<"leads">) => lead.analysisStatus === "scheduled"
+      );
+
+      if (scheduledOverdue.length > 0) {
+        results.scheduledActions.status = "degraded";
+        results.scheduledActions.overdueLeads = scheduledOverdue.length;
+
+        logWithCorrelation(
+          "error",
+          correlation,
+          "🚨 ALERT: Scheduled Actions May Be Stuck",
+          {
+            overdueCount: scheduledOverdue.length,
+            status: "degraded",
+            oldestLeads: scheduledOverdue.slice(0, 5).map((l: Doc<"leads">) => ({
+              leadId: l._id,
+              businessName: l.businessName,
+              status: l.analysisStatus,
+              scheduledAt: l.analysisScheduledAt,
+            })),
+          }
+        );
+      }
+
+      // ========================================================================
+      // SUMMARY
+      // ========================================================================
+      logWithCorrelation(
+        "info",
+        correlation,
+        "✅ Combined Lead Health Monitor Complete",
+        {
+          enrichment: results.enrichment,
+          analysis: results.analysis,
+          scheduledActions: results.scheduledActions,
+        }
+      );
+
+      return {
+        success: true,
+        ...results,
+      };
+    } catch (error) {
+      logWithCorrelation(
+        "error",
+        correlation,
+        "💥 Combined Lead Health Monitor Failed",
+        {},
+        error as Error
+      );
+
+      throw error;
+    }
+  },
+});

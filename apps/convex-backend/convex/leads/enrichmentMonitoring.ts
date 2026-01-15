@@ -12,7 +12,7 @@
 import { internalMutation, internalQuery, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
-import { Id } from "../_generated/dataModel";
+import { Id, Doc } from "../_generated/dataModel";
 
 // Thresholds for stuck detection
 const STUCK_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
@@ -116,14 +116,27 @@ export const recoverStuckEnrichmentLead = internalMutation({
   },
 });
 
+// Return type for monitorStuckEnrichments
+type MonitorStuckEnrichmentsResult = {
+  checked: number;
+  recovered: number;
+  failed: number;
+};
+
+// Type for stuck lead from query
+type StuckLead = Doc<"leads"> & {
+  stuckDurationMs: number;
+  shouldFail: boolean;
+};
+
 /**
  * Main cron handler - monitor and recover stuck enrichments
  */
 export const monitorStuckEnrichments = internalAction({
   args: {},
-  handler: async (ctx) => {
+  handler: async (ctx): Promise<MonitorStuckEnrichmentsResult> => {
     // Get stuck leads
-    const stuckLeads = await ctx.runQuery(
+    const stuckLeads: StuckLead[] = await ctx.runQuery(
       internal.leads.enrichmentMonitoring.getStuckEnrichmentLeads,
       { limit: 50 }
     );
@@ -225,6 +238,16 @@ export const checkSearchEnrichmentState = internalMutation({
         `pending=${statusCounts.pending}, in_progress=${statusCounts.in_progress}, ` +
         `completed=${statusCounts.completed}, failed=${statusCounts.failed}`
     );
+
+    // Check for active checkpoint with error - if exists, search is paused waiting for user action
+    // Do NOT re-trigger enrichment in this case; user must resolve the issue (e.g., add credits) first
+    const checkpoint = search.enrichmentCheckpoint;
+    if (checkpoint?.errorCode && checkpoint.resumable) {
+      console.log(
+        `[Enrichment Monitor] Search ${searchId} paused with error: ${checkpoint.errorCode} - waiting for user action`
+      );
+      return; // Exit early - don't re-trigger or advance to analysis
+    }
 
     // If there are pending leads and no in_progress, re-trigger enrichment
     if (statusCounts.pending > 0 && statusCounts.in_progress === 0) {

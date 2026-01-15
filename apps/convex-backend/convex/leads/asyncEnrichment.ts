@@ -169,6 +169,31 @@ async function tryProvider(
  * The semaphore slot acquisition throws an error if no slot available,
  * which causes Workpool to retry with exponential backoff.
  */
+// Return type for enrichSingleLeadWorkpool - breaks TypeScript circular reference
+type EnrichmentWorkpoolResult = {
+  success: boolean;
+  skipped?: boolean;
+  provider?: string;
+  reason?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  checkpointSaved?: boolean;
+  emailsFound?: number;
+};
+
+// Enrichment checkpoint type - matches schema definition
+type EnrichmentCheckpoint = {
+  lastProcessedIndex: number;
+  totalLeads: number;
+  enrichedCount: number;
+  noContactsCount: number;
+  failedCount: number;
+  errorCode?: string;
+  errorMessage?: string;
+  checkpointedAt: number;
+  resumable: boolean;
+} | null;
+
 export const enrichSingleLeadWorkpool = internalAction({
   args: {
     leadId: v.id("leads"),
@@ -177,7 +202,7 @@ export const enrichSingleLeadWorkpool = internalAction({
     roles: v.optional(v.array(v.string())),
     userApiKey: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<EnrichmentWorkpoolResult> => {
     // Create correlation context for this lead
     const correlation = createCorrelationContext(
       OPERATION_TYPES.LEAD_ENRICHMENT,
@@ -192,6 +217,39 @@ export const enrichSingleLeadWorkpool = internalAction({
     );
 
     const performanceTracker = startPerformanceTracking();
+
+    // CHECK: Skip if search is already paused due to pipeline-blocking error
+    // This prevents all workpool items from hitting the same error (e.g., credits exhausted)
+    const existingCheckpoint: EnrichmentCheckpoint = await ctx.runQuery(
+      internal.leads.enrichment.checkpoint.getCheckpoint,
+      { searchId: args.searchId }
+    );
+
+    if (existingCheckpoint?.errorCode && existingCheckpoint.resumable) {
+      // Search is paused with a pipeline-blocking error - skip this lead
+      // IMPORTANT: Do NOT mark lead as "failed" - leave as "pending" so resume logic works
+      // The checkpoint already captures the error state; marking as failed would prevent
+      // proper resume since monitoring/resume queries check for pending leads
+      logWithCorrelation(
+        "info",
+        correlation,
+        "⏸️ [Workpool] Search paused - skipping lead (user action required)",
+        {
+          leadId: args.leadId,
+          searchId: args.searchId,
+          errorCode: existingCheckpoint.errorCode,
+          errorMessage: existingCheckpoint.errorMessage,
+        },
+      );
+
+      // Return early without changing status - lead stays "pending" for resume
+      return {
+        success: false,
+        skipped: true,
+        reason: "search_paused",
+        errorCode: existingCheckpoint.errorCode,
+      };
+    }
 
     // Try to acquire API key slot for rate limiting (5 concurrent per unique API key)
     const apiKeyHash = getApiKeyHash(args.userApiKey);
@@ -241,41 +299,10 @@ export const enrichSingleLeadWorkpool = internalAction({
       },
     );
 
-    // Check circuit breaker status for this search
-    const circuitStatus = await ctx.runQuery(
-      internal.leads.enrichment.circuitBreaker.getSearchCircuitStatus,
-      { searchId: args.searchId }
-    );
-
-    if (circuitStatus.circuitState === "open") {
-      // Circuit is open - too many failures, skip this lead for now
-      logWithCorrelation(
-        "warn",
-        correlation,
-        "🔴 [Workpool] Circuit breaker OPEN - skipping enrichment",
-        {
-          leadId: args.leadId,
-          searchId: args.searchId,
-          failureRate: circuitStatus.failureRate,
-          failed: circuitStatus.failed,
-          total: circuitStatus.total,
-        },
-      );
-
-      // Release slot
-      await ctx.runMutation(
-        internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
-        { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
-      );
-
-      // Don't mark as failed - keep as pending for later retry when circuit closes
-      return {
-        success: false,
-        skipped: true,
-        reason: "circuit_breaker_open",
-        failureRate: circuitStatus.failureRate,
-      };
-    }
+    // NOTE: Circuit breaker disabled - all leads will attempt enrichment regardless of failure rate
+    // The circuit breaker was causing pipeline stalls when failure rates were high but expected
+    // (e.g., many domains without discoverable emails). If re-enabling, ensure failed leads
+    // are marked with a terminal status so the pipeline can advance to analysis.
 
     // Mark lead as in_progress with timestamp for stuck detection
     await ctx.runMutation(
@@ -414,7 +441,7 @@ export const enrichSingleLeadWorkpool = internalAction({
         logWithCorrelation(
           "error",
           correlation,
-          "🚨 [Workpool] Pipeline-blocking error - Saving checkpoint",
+          "🚨 [Workpool] Pipeline-blocking error - Saving checkpoint & notifying user",
           {
             leadId: args.leadId,
             searchId: args.searchId,
@@ -431,6 +458,30 @@ export const enrichSingleLeadWorkpool = internalAction({
             searchId: args.searchId,
             errorCode: pipelineBlockingError.errorCode,
             errorMessage: pipelineBlockingError.userMessage,
+          },
+        );
+
+        // Broadcast critical notification to user
+        await ctx.runMutation(
+          internal.realtime.broadcaster.broadcast,
+          {
+            userId: args.userId,
+            type: "pipeline_blocked",
+            title: "Email Enrichment Paused",
+            message: pipelineBlockingError.userMessage || "Enrichment has been paused due to an issue that requires your attention.",
+            data: {
+              searchId: args.searchId,
+              errorCode: pipelineBlockingError.errorCode,
+              category: pipelineBlockingError.category,
+              actionRequired: pipelineBlockingError.suggestedAction,
+              actionUrl: pipelineBlockingError.actionUrl,
+            },
+            priority: "critical",
+            category: "enrichment_error",
+            entityType: "search",
+            entityId: args.searchId,
+            requiresAck: true,
+            tags: ["enrichment", "blocked", pipelineBlockingError.category],
           },
         );
 
@@ -639,17 +690,41 @@ export const enrichSingleLeadWorkpool = internalAction({
  * 2. If pending leads exist, trigger enrichLeads action
  * 3. The enrichLeads action will only process unprocessed leads
  */
+// Return type for resumeEnrichmentFromCheckpoint
+type ResumeEnrichmentResult = {
+  success: boolean;
+  resumed?: boolean;
+  reason?: string;
+  pendingLeads?: number;
+  message?: string;
+};
+
+// Type for search enrichment status query result
+type SearchEnrichmentStatus = {
+  totalLeads: number;
+  enrichedCount: number;
+  allLeadsEnriched: boolean;
+  statusCounts: {
+    pending: number;
+    in_progress: number;
+    completed: number;
+    failed: number;
+    no_contacts_found: number;
+    completed_fallback: number;
+  };
+} | null;
+
 export const resumeEnrichmentFromCheckpoint = internalAction({
   args: {
     searchId: v.id("searches"),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<ResumeEnrichmentResult> => {
     const { searchId } = args;
 
     console.log(`[Resume Enrichment] Starting resume for search ${searchId}`);
 
-    // Get checkpoint info if available
-    const checkpoint = await ctx.runQuery(
+    // Get checkpoint info if available - explicit type to break circular ref
+    const checkpoint: EnrichmentCheckpoint = await ctx.runQuery(
       internal.leads.enrichment.checkpoint.getCheckpoint,
       { searchId }
     );
@@ -669,8 +744,8 @@ export const resumeEnrichmentFromCheckpoint = internalAction({
       );
     }
 
-    // Get current search status
-    const searchStatus = await ctx.runQuery(
+    // Get current search status - explicit type to break circular ref
+    const searchStatus: SearchEnrichmentStatus = await ctx.runQuery(
       internal.leads.internal.getSearchEnrichmentStatus,
       { searchId }
     );
@@ -680,7 +755,7 @@ export const resumeEnrichmentFromCheckpoint = internalAction({
       return { success: false, reason: "search_not_found" };
     }
 
-    const pendingCount = searchStatus.statusCounts.pending;
+    const pendingCount: number = searchStatus.statusCounts.pending;
     const inProgressCount = searchStatus.statusCounts.in_progress;
 
     console.log(`[Resume Enrichment] Search status:`, {
