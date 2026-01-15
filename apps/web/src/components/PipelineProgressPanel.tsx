@@ -56,9 +56,9 @@ interface PipelineProgressPanelProps {
 
 // Live, active user-facing metrics only - no internal implementation details
 const METRIC_LABELS: Record<string, { label: string; icon: LucideIcon; accent: string }> = {
-  discovered: { label: "Found", icon: Search, accent: "text-blue-500" },
-  enriched: { label: "Contacts", icon: Users, accent: "text-emerald-500" },
-  analyzed: { label: "Created", icon: Bot, accent: "text-purple-500" },
+  discovered: { label: "Businesses", icon: Search, accent: "text-blue-500" },
+  enriched: { label: "Checked", icon: Mail, accent: "text-emerald-500" },
+  analyzed: { label: "Personalized", icon: Sparkles, accent: "text-purple-500" },
   total: { label: "Total", icon: Activity, accent: "text-slate-500" },
 };
 
@@ -99,11 +99,11 @@ const StageMarker = ({
         onClick={interactive ? onClick : undefined}
         disabled={!interactive}
         className={cn(
-          "relative flex h-12 w-12 items-center justify-center rounded-full border-2 bg-slate-900/80 text-sm font-semibold text-slate-300 shadow-[0_0_18px_rgba(0,255,204,0.08)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-default",
+          "relative flex h-12 w-12 items-center justify-center rounded-full border-2 bg-muted/60 text-sm font-semibold text-muted-foreground shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-default",
           status === "completed" &&
-            "border-emerald-400 bg-emerald-500/20 text-emerald-100",
-          status === "current" && "border-cyan-400 text-cyan-200",
-          status === "upcoming" && "border-slate-700 text-slate-600",
+            "border-emerald-500 bg-emerald-500/20 text-emerald-600 dark:border-emerald-400 dark:text-emerald-300",
+          status === "current" && "border-primary bg-primary/10 text-primary shadow-[0_0_12px_rgba(var(--primary)/0.25)]",
+          status === "upcoming" && "border-border text-muted-foreground/60",
           interactive && "cursor-pointer hover:scale-[1.04]",
         )}
         aria-current={status === "current" ? "step" : undefined}
@@ -116,9 +116,9 @@ const StageMarker = ({
       </motion.button>
       <span
         className={cn(
-          "text-xs	font-medium text-slate-500",
-          status === "current" && "text-cyan-200",
-          status === "completed" && "text-emerald-200",
+          "text-xs font-medium text-muted-foreground",
+          status === "current" && "text-primary",
+          status === "completed" && "text-emerald-600 dark:text-emerald-300",
         )}
       >
         {STAGE_CONFIGS[stage].title}
@@ -176,7 +176,7 @@ function StageRail({ inlinePanel }: { inlinePanel?: React.ReactNode }) {
                     "h-0.5 w-10 rounded-full transition-all md:w-14",
                     connectorActive
                       ? "bg-gradient-to-r from-genniBlue via-genniIndigo to-genniRose"
-                      : "bg-slate-200/60",
+                      : "bg-border",
                   )}
                   aria-hidden="true"
                 />
@@ -201,7 +201,7 @@ function Timeline({
 }) {
   if (events.length === 0) {
     return (
-      <div className="flex items-center gap-2 rounded-md border border-dashed border-slate-300/70 p-3 text-sm text-muted-foreground dark:border-slate-700/70">
+      <div className="flex items-center gap-2 rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
         <AlertCircle className="h-4 w-4" />
         {emptyLabel}
       </div>

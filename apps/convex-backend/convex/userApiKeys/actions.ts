@@ -168,8 +168,6 @@ async function validateLegacyProvider(
       return { valid: await validateGoogleMapsKey(apiKey) };
     case "findymail":
       return { valid: await validateFindyMailKey(apiKey) };
-    case "icypeas":
-      return { valid: await validateIcyPeasKey(apiKey) };
     case "apify":
       return { valid: await validateApifyKey(apiKey) };
     default:
@@ -190,7 +188,8 @@ export const upsertApiKey = action({
     action: "updated" | "created";
   }> => {
     const user = await requireAuth(ctx);
-    ensureUserCanManageKeys(user.plan);
+    // Pass provider for universal access check (e.g., Instantly is allowed for all plans)
+    ensureUserCanManageKeys(user.plan, args.provider);
 
     // Crypto operations in action (allowed with "use node" in crypto.ts)
     const encryptedKey = encryptApiKey(args.apiKey);
@@ -229,8 +228,6 @@ export const validateApiKey = action({
   handler: async (ctx, args): Promise<any> => {
     const user = await requireAuth(ctx);
 
-    ensureUserCanManageKeys(user.plan);
-
     // Get the API key with full details using internal query
     const apiKey = await ctx.runQuery(
       internal.userApiKeys.internal.getApiKeyById,
@@ -246,6 +243,9 @@ export const validateApiKey = action({
     if (apiKey.userId !== user._id) {
       throw new Error("Not authorized to validate this API key");
     }
+
+    // Pass provider for universal access check (e.g., Instantly is allowed for all plans)
+    ensureUserCanManageKeys(user.plan, apiKey.provider);
 
     let validationSuccess = false;
     let validationError: string | undefined;
@@ -329,7 +329,9 @@ export const validateAllApiKeys = action({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
 
-    ensureUserCanManageKeys(user.plan);
+    // No plan check here - validateApiKey will check each key's provider individually
+    // This allows users to validate their universal provider keys (e.g., Instantly)
+    // while validateApiKey enforces per-provider access control
 
     // Get all API keys using internal query with full details
     const apiKeys = await ctx.runQuery(
@@ -505,7 +507,7 @@ export const resolveUserProviderKeys = internalAction({
     }
 
     // Log deprecation warning if legacy google_maps key is being used
-    if (hasLegacyGoogleMaps && !keys.some(k => k.provider === "google_places" && k.isActive && k.validated)) {
+    if (hasLegacyGoogleMaps && !keys.some((k: { provider: string; isActive: boolean; validated?: boolean }) => k.provider === "google_places" && k.isActive && k.validated)) {
       console.warn(
         `⚠️ DEPRECATION: User ${args.userId} is using legacy google_maps key. ` +
         `Please migrate to google_places by re-saving your Google Places API key.`
@@ -555,23 +557,6 @@ async function validateFindyMailKey(apiKey: string): Promise<boolean> {
     return response.status === 200;
   } catch (error) {
     console.error("FindyMail validation error:", error);
-    return false;
-  }
-}
-
-async function validateIcyPeasKey(apiKey: string): Promise<boolean> {
-  try {
-    // Test with IcyPeas API - checking credits endpoint
-    const response = await fetch("https://app.icypeas.com/api/credits", {
-      method: "GET",
-      headers: {
-        Authorization: apiKey,
-      },
-    });
-
-    return response.status === 200;
-  } catch (error) {
-    console.error("IcyPeas validation error:", error);
     return false;
   }
 }

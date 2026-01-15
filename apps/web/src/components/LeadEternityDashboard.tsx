@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useLocation } from "react-router-dom";
+import { useMutation } from "convex/react";
+import { api } from "@genni/convex-types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -7,7 +8,6 @@ import {
   Search,
   BarChart3,
   Settings,
-  Bot,
   Sparkles,
   UserCheck,
   Building2,
@@ -33,7 +33,7 @@ import {
 import { PerformanceWorkspace } from "./PerformanceWorkspace";
 // import { Dashboard } from "./Dashboard"; // UNUSED - See warning in Dashboard.tsx
 import { CreditManager } from "./CreditManager";
-import type { PlanType } from "@/lib/pricing-config";
+import type { PlanType } from "@/lib/runtime-config";
 import type {
   Lead,
   BusinessProfileInput,
@@ -55,6 +55,7 @@ import { ClerkUserButton } from "@/components/auth/ClerkAuthWrapper";
 import { withErrorBoundary } from "@/utils/errorHandling";
 import { createLogger } from "@/utils/logger";
 import { applyAppTheme, getStoredAppTheme, type AppThemeKey } from "@/lib/appTheme";
+import { useAnalytics } from "@/hooks/useAnalytics";
 
 const leadDashboardLogger = createLogger("LeadEternityDashboard");
 
@@ -62,11 +63,13 @@ function LeadEternityDashboardContent() {
   const [currentTab, setCurrentTab] = useState<DashboardTabName>("overview");
   const [currentTheme, setCurrentTheme] = useState<AppThemeKey>("neon-pulse");
   const [hasSkippedOnboarding, setHasSkippedOnboarding] = useState<boolean>(false);
-  const location = useLocation();
   const completionAnnouncedRef = useRef(false);
   const isHandlingHashChangeRef = useRef(false);
+  const previousHashRef = useRef<string>("");
   const [componentError, setComponentError] = useState<string | null>(null);
   const { user } = useAuth();
+  const analytics = useAnalytics();
+  const updatePreferences = useMutation(api.users.mutations.updatePreferences);
 
   const handleComponentError = useCallback(
     (error: unknown, context: string, extra?: Record<string, unknown>) => {
@@ -107,6 +110,30 @@ function LeadEternityDashboardContent() {
     }
   }, [user]);
 
+  // PostHog user identification - Update user properties from Convex data
+  // Note: AuthAnalyticsProvider handles initial identification on sign-in.
+  // This updates additional properties (plan, credits, role) from Convex that
+  // aren't available in Clerk. PostHog deduplicates multiple identify calls.
+  useEffect(() => {
+    if (user) {
+      analytics.identifyUser(
+        user._id,
+        // $set properties - updated on every identify call
+        {
+          email: user.email,
+          name: user.name,
+          plan: user.plan || 'free',
+          role: user.role || 'user',
+          credits: user.credits || 0,
+        },
+        // $set_once properties - only set if not already present
+        {
+          first_seen: new Date().toISOString(),
+        }
+      );
+    }
+  }, [user, analytics]);
+
   // Real backend integration
   const {
     profile,
@@ -115,7 +142,10 @@ function LeadEternityDashboardContent() {
   } = useProfile();
   const { balance } = useCredits();
   // Prevent flashing 0 credits during initial load by falling back to live Convex user data
-  const userCredits = (balance?.credits ?? user?.credits) || 0;
+  // IMPORTANT: Calculate TOTAL credits = purchased credits + subscription credits
+  const purchasedCredits = (balance?.credits ?? user?.credits) || 0;
+  const subscriptionCredits = user?.subscriptionCredits || 0;
+  const userCredits = purchasedCredits + subscriptionCredits;
   const { purchaseCredits, usage } = useBilling();
   const { requests: emailRequests } = useLangGraphRequests();
   const { searches } = useSearches();
@@ -259,6 +289,8 @@ function LeadEternityDashboardContent() {
         if (window.location.hash !== "#lead-history") {
           window.location.hash = "lead-history";
         }
+        // Update previousHashRef to prevent false triggers
+        previousHashRef.current = "lead-history";
         return;
       }
 
@@ -271,6 +303,8 @@ function LeadEternityDashboardContent() {
           window.location.hash = "";
         }
       }
+      // Update previousHashRef to prevent false triggers
+      previousHashRef.current = "";
     } finally {
       // Reset flag after hash update completes
       // Use setTimeout to ensure effect doesn't run during same tick
@@ -292,6 +326,8 @@ function LeadEternityDashboardContent() {
         return "business";
       case "enterprise":
         return "enterprise";
+      case "custom":
+        return "custom";
       default:
         return "starter";
     }
@@ -337,8 +373,19 @@ function LeadEternityDashboardContent() {
 
       if (isValidTabName(candidateTab)) {
         leadDashboardLogger.info("Tab changed", { newTab: candidateTab });
-        setCurrentTab(candidateTab);
+
+        // Track tab change in analytics
+        analytics.trackDashboardTabViewed({
+          tab: candidateTab,
+          from_tab: currentTab,
+          plan: user?.plan || 'free',
+          credits: user?.credits || 0,
+          active_searches: searches?.length || 0,
+        });
+
+        // IMPORTANT: Update hash BEFORE setting state to keep them in sync
         updateHashForTab(candidateTab);
+        setCurrentTab(candidateTab);
         return;
       }
 
@@ -347,46 +394,67 @@ function LeadEternityDashboardContent() {
         "handle-tab-change",
         { newTab },
       );
-      setCurrentTab("overview");
+      // Update hash before state to prevent race condition
       updateHashForTab("overview");
+      setCurrentTab("overview");
     },
-    [handleComponentError, updateHashForTab],
+    [handleComponentError, updateHashForTab, analytics, currentTab, user, searches],
   );
 
   // Clear hash on initial mount to prevent auto-redirects from previous sessions
   useEffect(() => {
-    // Only run on mount
-    if (window.location.hash === "#lead-history") {
+    // Initialize previousHashRef with current hash to prevent initial false triggers
+    const currentHash = window.location.hash ? window.location.hash.replace(/^#/, "") : "";
+    previousHashRef.current = currentHash;
+
+    // Only run on mount - clear stale lead-history hash
+    if (currentHash === "lead-history") {
       // Clear the hash without triggering navigation
       if (typeof window.history?.replaceState === "function") {
         const { pathname, search } = window.location;
         window.history.replaceState(null, "", `${pathname}${search}`);
       }
+      previousHashRef.current = "";
     }
   }, []); // Empty deps - only run once on mount
 
-  // Listen to hash changes only when explicitly set by user actions
+  // Listen to hash changes via native event listener
+  // This is more reliable than React Router's location.hash which can be stale
+  // after replaceState calls (React Router doesn't immediately sync with DOM)
   useEffect(() => {
-    // Prevent loops - if we're already handling a hash change, skip
-    if (isHandlingHashChangeRef.current) {
-      return;
-    }
+    const handleHashChange = () => {
+      // Prevent loops - if we're programmatically changing hash, skip
+      if (isHandlingHashChangeRef.current) {
+        return;
+      }
 
-    const hash = location.hash ? location.hash.replace(/^#/, "") : "";
-    if (!hash) {
-      return;
-    }
+      // Use window.location.hash directly (source of truth)
+      const hash = window.location.hash ? window.location.hash.replace(/^#/, "") : "";
 
-    // Only respond to hash if we're not already on that tab
-    if (hash === "lead-history" && currentTab !== "search-history") {
-      isHandlingHashChangeRef.current = true;
-      handleTabChange("search-history");
-      // Reset the flag after a short delay
-      setTimeout(() => {
-        isHandlingHashChangeRef.current = false;
-      }, 100);
-    }
-  }, [currentTab, handleTabChange, location.hash]);
+      // Only respond if the hash actually changed
+      if (hash === previousHashRef.current) {
+        return;
+      }
+      previousHashRef.current = hash;
+
+      if (!hash) {
+        return;
+      }
+
+      // Only respond to hash if we're not already on that tab
+      if (hash === "lead-history" && currentTab !== "search-history") {
+        isHandlingHashChangeRef.current = true;
+        handleTabChange("search-history");
+        // Reset the flag after a short delay
+        setTimeout(() => {
+          isHandlingHashChangeRef.current = false;
+        }, 100);
+      }
+    };
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [currentTab, handleTabChange]);
 
   const handleGenerateEmail = useCallback(
     (lead: Lead) => {
@@ -466,7 +534,7 @@ function LeadEternityDashboardContent() {
   }, [handleComponentError, handleTabChange, toast, user]);
 
   const handleUpgradePlan = (planId: string) => {
-    // In real app, this would integrate with Stripe
+    // In real app, this would integrate with FastSpring popup checkout
     toast({
       title: "Upgrade Plan",
       description: `Upgrading to ${planId} plan...`,
@@ -501,15 +569,23 @@ function LeadEternityDashboardContent() {
     [handleComponentError, purchaseCredits, toast],
   );
 
-  const handleToggleTheme = useCallback(() => {
+  const handleToggleTheme = useCallback(async () => {
     const newTheme: AppThemeKey = currentTheme === "harborlight" ? "neon-pulse" : "harborlight";
     setCurrentTheme(newTheme);
     applyAppTheme(newTheme);
+
+    // Persist theme preference to database
+    try {
+      await updatePreferences({ theme: newTheme });
+    } catch (error) {
+      console.warn("Failed to persist theme preference:", error);
+    }
+
     toast({
       title: "Theme Changed",
       description: `Switched to ${newTheme === "harborlight" ? "Horizon" : "Neon"} theme`,
     });
-  }, [currentTheme, toast]);
+  }, [currentTheme, toast, updatePreferences]);
 
   // Avoid flashing onboarding while loading profile
   if (isProfileLoading) {
@@ -547,7 +623,12 @@ function LeadEternityDashboardContent() {
         <div className="harborlight-topbar-inner flex items-center px-6 py-5">
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-3">
-              <Bot className="harborlight-logo-icon h-10 w-10" aria-hidden="true" />
+              <img
+                src="/thebeeai-logo.webp"
+                alt="Genni"
+                className="h-10 w-10 object-contain theme-aware-logo"
+                aria-hidden="true"
+              />
               <div>
                 <h1 className="text-2xl font-display font-semibold tracking-tight text-foreground">
                   Genni
@@ -681,14 +762,9 @@ function LeadEternityDashboardContent() {
                 userName={user?.name || profile?.contactInfo?.name || undefined}
                 businessName={profile?.companyName ?? null}
                 planId={normalizedPlan}
-                credits={userCredits}
                 leadStats={leadStatsSummary}
-                emailCount={pipelineEmails.length}
                 searches={searches ?? []}
-                usageSummary={usageSummary}
-                pipelineStage={state.currentStage}
                 hasCompletedProfile={hasCompletedOnboarding}
-                hasNewEmails={hasNewEmails}
                 isAdmin={isAdmin}
               />
             </div>
@@ -758,6 +834,8 @@ function LeadEternityDashboardContent() {
                 onNavigate={handleOverviewNavigate}
                 onUpgradePlan={handleUpgradePlan}
                 onPurchaseCredits={handlePurchaseCredits}
+                purchasedCredits={purchasedCredits}
+                subscriptionCredits={subscriptionCredits}
               />
             </div>
           )}

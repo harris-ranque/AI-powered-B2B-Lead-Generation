@@ -329,3 +329,50 @@ export const updateDiscoveryMetadataInternal = internalMutation({
     return { success: true };
   },
 });
+
+/**
+ * Log an API error to the apiErrorLogs table for user visibility
+ * Used when external API calls fail with user-actionable errors
+ */
+export const logApiError = internalMutation({
+  args: {
+    userId: v.id("users"),
+    searchId: v.optional(v.id("searches")),
+    leadId: v.optional(v.id("leads")),
+    errorCode: v.string(),
+    provider: v.string(),
+    category: v.string(),
+    severity: v.string(),
+    userMessage: v.string(),
+    technicalMessage: v.optional(v.string()),
+    originalStatus: v.optional(v.number()),
+    operationType: v.optional(v.string()),
+    correlationId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    // Default to 7-day retention
+    const retentionDays = 7;
+    const expiresAt = now + retentionDays * 24 * 60 * 60 * 1000;
+
+    const logId = await ctx.db.insert("apiErrorLogs", {
+      userId: args.userId,
+      searchId: args.searchId,
+      leadId: args.leadId,
+      errorCode: args.errorCode,
+      provider: args.provider,
+      category: args.category,
+      severity: args.severity,
+      userMessage: args.userMessage,
+      technicalMessage: args.technicalMessage,
+      originalStatus: args.originalStatus,
+      operationType: args.operationType,
+      correlationId: args.correlationId,
+      resolved: false,
+      createdAt: now,
+      expiresAt,
+    });
+
+    return { logId, success: true };
+  },
+});

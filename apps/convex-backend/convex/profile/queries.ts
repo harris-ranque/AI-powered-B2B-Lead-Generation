@@ -3,6 +3,10 @@ import { v } from "convex/values";
 import { getCurrentUser } from "../auth";
 import { ERROR_CODES } from "../lib/constants";
 import { createError } from "../lib/helpers";
+import {
+  calculateProfileCompleteness,
+  validateProfileData as validateProfileDataPure,
+} from "../lib/profileLogic";
 
 // Get current user's business profile
 export const getCurrentProfile = query({
@@ -46,69 +50,11 @@ export const getProfileCompleteness = query({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
 
-    if (!profile) {
-      return {
-        isComplete: false,
-        completionPercentage: 0,
-        missingFields: [
-          "companyName",
-          "industry",
-          "valueProposition",
-          "services",
-          "targetMarkets",
-          "keyDifferentiators",
-          "contactInfo",
-        ],
-      };
-    }
-
-    const requiredFields = [
-      "companyName",
-      "industry",
-      "valueProposition",
-      "services",
-      "targetMarkets",
-      "keyDifferentiators",
-      "contactInfo",
-    ];
-
-    const missingFields = [];
-    let completedFields = 0;
-
-    // Check required fields
-    if (!profile.companyName?.trim()) missingFields.push("companyName");
-    else completedFields++;
-
-    if (!profile.industry?.trim()) missingFields.push("industry");
-    else completedFields++;
-
-    if (!profile.valueProposition?.trim())
-      missingFields.push("valueProposition");
-    else completedFields++;
-
-    if (!profile.services?.length) missingFields.push("services");
-    else completedFields++;
-
-    if (!profile.targetMarkets?.length) missingFields.push("targetMarkets");
-    else completedFields++;
-
-    if (!profile.keyDifferentiators?.length)
-      missingFields.push("keyDifferentiators");
-    else completedFields++;
-
-    // Check contact info (at least email should be provided)
-    if (!profile.contactInfo?.email?.trim()) missingFields.push("contactInfo");
-    else completedFields++;
-
-    const completionPercentage = Math.round(
-      (completedFields / requiredFields.length) * 100,
-    );
-    const isComplete = missingFields.length === 0;
+    // Use extracted pure function for completeness calculation
+    const completeness = calculateProfileCompleteness(profile);
 
     return {
-      isComplete,
-      completionPercentage,
-      missingFields,
+      ...completeness,
       profile,
     };
   },
@@ -322,54 +268,8 @@ export const validateProfileData = query({
     keyDifferentiators: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    const errors = [];
-
-    // Validate company name
-    if (!args.companyName.trim()) {
-      errors.push("Company name is required");
-    } else if (args.companyName.length > 100) {
-      errors.push("Company name must be less than 100 characters");
-    }
-
-    // Validate industry
-    if (!args.industry.trim()) {
-      errors.push("Industry is required");
-    }
-
-    // Validate value proposition
-    if (!args.valueProposition.trim()) {
-      errors.push("Value proposition is required");
-    } else if (args.valueProposition.length < 50) {
-      errors.push("Value proposition should be at least 50 characters");
-    } else if (args.valueProposition.length > 500) {
-      errors.push("Value proposition must be less than 500 characters");
-    }
-
-    // Validate services
-    if (args.services.length === 0) {
-      errors.push("At least one service is required");
-    } else if (args.services.length > 20) {
-      errors.push("Maximum 20 services allowed");
-    }
-
-    // Validate target markets
-    if (args.targetMarkets.length === 0) {
-      errors.push("At least one target market is required");
-    } else if (args.targetMarkets.length > 15) {
-      errors.push("Maximum 15 target markets allowed");
-    }
-
-    // Validate key differentiators
-    if (args.keyDifferentiators.length === 0) {
-      errors.push("At least one key differentiator is required");
-    } else if (args.keyDifferentiators.length > 10) {
-      errors.push("Maximum 10 key differentiators allowed");
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-    };
+    // Use extracted pure function for validation
+    return validateProfileDataPure(args);
   },
 });
 

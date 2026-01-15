@@ -49,6 +49,30 @@ export interface ValidationResult {
   errors: string[];
   warnings: string[];
   estimatedCost?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CSVImportStats {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  skippedRows: number;
+  leadsWithEmail: number;
+  leadsNeedingEnrichment: number;
+  estimatedCost: number;
+  actualCost: number;
+  errorReport?: Array<{
+    rowNumber: number;
+    companyName?: string;
+    errors: string[];
+    warnings?: string[];
+    rawData?: Record<string, string>;
+  }>;
+}
+
+export interface CSVFetchResult {
+  leads: Lead[];
+  stats: CSVImportStats;
 }
 
 export interface LeadSource {
@@ -57,7 +81,7 @@ export interface LeadSource {
   description: string;
   icon: string;
   validate: (params: SourceParams) => ValidationResult;
-  fetch: (params: SourceParams) => Promise<Lead[]>;
+  fetch: (params: SourceParams) => Promise<Lead[] | CSVFetchResult>;
   supportsEnrichment: boolean;
   supportsAI: boolean;
 }

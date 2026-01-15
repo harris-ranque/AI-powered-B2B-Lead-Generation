@@ -10,45 +10,11 @@ import {
 } from "./utils";
 import { getMissingKeysBeforeOperationError } from "../lib/errorMessages";
 import { captureAnalyticsEvent } from "../lib/analytics";
-
-const DEFAULT_TARGET_ROLES = ["CEO", "Founder", "Owner"] as const;
-const MAX_TARGET_ROLES = 3;
-
-function sanitizeRolesInput(roles?: string[] | null): string[] {
-  if (!roles || roles.length === 0) {
-    return [...DEFAULT_TARGET_ROLES];
-  }
-
-  const normalized = roles
-    .map((role) => role.trim())
-    .filter((role) => role.length > 0)
-    .map((role) =>
-      role
-        .split(/\s+/)
-        .map((word) =>
-          word.length > 0
-            ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-            : "",
-        )
-        .join(" "),
-    );
-
-  const deduped: string[] = [];
-  for (const role of normalized) {
-    if (!deduped.includes(role)) {
-      deduped.push(role);
-    }
-    if (deduped.length >= MAX_TARGET_ROLES) {
-      break;
-    }
-  }
-
-  if (deduped.length === 0) {
-    return [...DEFAULT_TARGET_ROLES];
-  }
-
-  return deduped.slice(0, MAX_TARGET_ROLES);
-}
+import {
+  sanitizeRoles,
+  validateEnterpriseKeys,
+} from "../lib/searchLogic";
+import { createConvexError, ERROR_CODES } from "../lib/errorHandling";
 
 // Create a new search
 export const createSearch = mutation({
@@ -77,7 +43,11 @@ export const createSearch = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
-      throw new Error("Authentication required");
+      throw createConvexError("authentication", "Authentication required", {
+        code: ERROR_CODES.UNAUTHORIZED,
+        severity: "high",
+        retryable: false,
+      });
     }
 
     return await withSubscriptionCheck(
@@ -91,13 +61,16 @@ export const createSearch = mutation({
           args.parameters.maxResults,
         );
         if (!validation.valid) {
-          throw new Error(validation.reason || "Invalid search parameters");
+          throw createConvexError("validation", validation.reason || "Invalid search parameters", {
+            code: ERROR_CODES.VALIDATION_FAILED,
+            severity: "medium",
+            details: { maxResults: args.parameters.maxResults },
+            retryable: false,
+          });
         }
 
-        // Use adjusted max leads if necessary
-        const sanitizedRoles = sanitizeRolesInput(
-          args.parameters.roles,
-        );
+        // Use adjusted max leads if necessary (using extracted pure function)
+        const sanitizedRoles = sanitizeRoles(args.parameters.roles);
 
         const adjustedParameters = {
           ...args.parameters,
@@ -109,7 +82,7 @@ export const createSearch = mutation({
 
         // NOTE: Plan-based restrictions removed - all users can create searches (limited only by credits)
 
-        // Validate enterprise users have required API keys
+        // Validate enterprise users have required API keys (using extracted pure function)
         if (user.plan === "enterprise") {
           const apiKeys = await ctx.db
             .query("userApiKeys")
@@ -118,40 +91,22 @@ export const createSearch = mutation({
             .filter((q) => q.eq(q.field("validated"), true))
             .collect();
 
-          const hasOpenAI = apiKeys.some((key) => key.provider === "openai");
-          const hasGooglePlaces = apiKeys.some(
-            (key) => key.provider === "google_places",
-          );
-          const hasLegacyGoogleMaps = apiKeys.some(
-            (key) => key.provider === "google_maps",
-          );
-          const hasFindyMail = apiKeys.some((key) => key.provider === "findymail");
-          const hasTavily = apiKeys.some((key) => key.provider === "tavily");
-          const hasPerplexity = apiKeys.some((key) => key.provider === "perplexity");
+          const keyValidation = validateEnterpriseKeys(apiKeys);
 
-          const missingKeys: string[] = [];
-          if (!hasOpenAI) missingKeys.push("OpenAI");
-          if (!hasGooglePlaces && !hasLegacyGoogleMaps) {
-            missingKeys.push("Google Places");
-          }
-          if (!hasFindyMail) missingKeys.push("FindyMail");
-          if (!hasTavily) missingKeys.push("Tavily");
-          if (!hasPerplexity) missingKeys.push("Perplexity");
-
-          if (!hasGooglePlaces && hasLegacyGoogleMaps) {
+          if (keyValidation.hasLegacyGoogleMaps) {
             console.warn(
               `BYOK: Enterprise user ${user._id} has legacy google_maps key only; instruct them to re-save as google_places`,
             );
           }
 
-          if (missingKeys.length > 0) {
+          if (!keyValidation.isValid) {
             captureAnalyticsEvent(user._id, "search_creation_blocked", {
               reason: "missing_byok_keys",
-              missingProviders: missingKeys,
+              missingProviders: keyValidation.missingKeys,
               maxResults: args.parameters.maxResults,
             });
             throw new Error(
-              getMissingKeysBeforeOperationError("a search", missingKeys)
+              getMissingKeysBeforeOperationError("a search", keyValidation.missingKeys)
             );
           }
         }
@@ -238,7 +193,11 @@ export const createSearchCompleted = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
-      throw new Error("Authentication required");
+      throw createConvexError("authentication", "Authentication required", {
+        code: ERROR_CODES.UNAUTHORIZED,
+        severity: "high",
+        retryable: false,
+      });
     }
 
     const searchId = await withSubscriptionCheck(
@@ -252,13 +211,16 @@ export const createSearchCompleted = mutation({
           args.parameters.maxResults,
         );
         if (!validation.valid) {
-          throw new Error(validation.reason || "Invalid search parameters");
+          throw createConvexError("validation", validation.reason || "Invalid search parameters", {
+            code: ERROR_CODES.VALIDATION_FAILED,
+            severity: "medium",
+            details: { maxResults: args.parameters.maxResults },
+            retryable: false,
+          });
         }
 
-        // Use adjusted max leads if necessary
-        const sanitizedRoles = sanitizeRolesInput(
-          args.parameters.roles,
-        );
+        // Use adjusted max leads if necessary (using extracted pure function)
+        const sanitizedRoles = sanitizeRoles(args.parameters.roles);
 
         const adjustedParameters = {
           ...args.parameters,
@@ -270,7 +232,7 @@ export const createSearchCompleted = mutation({
 
         // NOTE: Plan-based restrictions removed - all users can create searches (limited only by credits)
 
-        // Validate enterprise users have required API keys
+        // Validate enterprise users have required API keys (using extracted pure function)
         if (user.plan === "enterprise") {
           const apiKeys = await ctx.db
             .query("userApiKeys")
@@ -279,35 +241,17 @@ export const createSearchCompleted = mutation({
             .filter((q) => q.eq(q.field("validated"), true))
             .collect();
 
-          const hasOpenAI = apiKeys.some((key) => key.provider === "openai");
-          const hasGooglePlaces = apiKeys.some(
-            (key) => key.provider === "google_places",
-          );
-          const hasLegacyGoogleMaps = apiKeys.some(
-            (key) => key.provider === "google_maps",
-          );
-          const hasFindyMail = apiKeys.some((key) => key.provider === "findymail");
-          const hasTavily = apiKeys.some((key) => key.provider === "tavily");
-          const hasPerplexity = apiKeys.some((key) => key.provider === "perplexity");
+          const keyValidation = validateEnterpriseKeys(apiKeys);
 
-          const missingKeys: string[] = [];
-          if (!hasOpenAI) missingKeys.push("OpenAI");
-          if (!hasGooglePlaces && !hasLegacyGoogleMaps) {
-            missingKeys.push("Google Places");
-          }
-          if (!hasFindyMail) missingKeys.push("FindyMail");
-          if (!hasTavily) missingKeys.push("Tavily");
-          if (!hasPerplexity) missingKeys.push("Perplexity");
-
-          if (!hasGooglePlaces && hasLegacyGoogleMaps) {
+          if (keyValidation.hasLegacyGoogleMaps) {
             console.warn(
               `BYOK: Enterprise user ${user._id} has legacy google_maps key only; instruct them to re-save as google_places`,
             );
           }
 
-          if (missingKeys.length > 0) {
+          if (!keyValidation.isValid) {
             throw new Error(
-              getMissingKeysBeforeOperationError("a search", missingKeys)
+              getMissingKeysBeforeOperationError("a search", keyValidation.missingKeys)
             );
           }
         }
@@ -382,7 +326,12 @@ export const createSearchCompleted = mutation({
           const { updatedAt: _unused, ...patchWithoutTimestamp } = failurePatch as typeof failurePatch & { updatedAt?: number };
           await ctx.db.patch(searchId, patchWithoutTimestamp);
         }
-        throw new Error("Lead generation is currently paused by administrator");
+        throw createConvexError("system", "Lead generation is currently paused by administrator", {
+          code: ERROR_CODES.SERVICE_UNAVAILABLE,
+          severity: "high",
+          details: { searchId },
+          retryable: true,
+        });
       }
 
       // Schedule the Google Maps search action
@@ -416,7 +365,12 @@ export const updateSearchStatus = mutation({
     // Verify user owns the search
     const search = await ctx.db.get(args.searchId);
     if (!search || search.userId !== user._id) {
-      throw new Error("Search not found or access denied");
+      throw createConvexError("authorization", "Search not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { searchId: args.searchId },
+        retryable: false,
+      });
     }
 
     const now = Date.now();
@@ -471,7 +425,12 @@ export const updateSearchProgress = mutation({
     // Verify user owns the search
     const search = await ctx.db.get(args.searchId);
     if (!search || search.userId !== user._id) {
-      throw new Error("Search not found or access denied");
+      throw createConvexError("authorization", "Search not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { searchId: args.searchId },
+        retryable: false,
+      });
     }
 
     const now = Date.now();
@@ -511,12 +470,22 @@ export const cancelSearch = mutation({
     // Verify user owns the search
     const search = await ctx.db.get(args.searchId);
     if (!search || search.userId !== user._id) {
-      throw new Error("Search not found or access denied");
+      throw createConvexError("authorization", "Search not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { searchId: args.searchId },
+        retryable: false,
+      });
     }
 
     // Only allow cancelling if not completed
     if (search.status === "completed") {
-      throw new Error("Cannot cancel completed search");
+      throw createConvexError("business_logic", "Cannot cancel completed search", {
+        code: ERROR_CODES.INVALID_STATE,
+        severity: "low",
+        details: { searchId: args.searchId, status: search.status },
+        retryable: false,
+      });
     }
 
     const now = Date.now();
@@ -574,7 +543,12 @@ export const deleteSearch = mutation({
     // Verify user owns the search
     const search = await ctx.db.get(args.searchId);
     if (!search || search.userId !== user._id) {
-      throw new Error("Search not found or access denied");
+      throw createConvexError("authorization", "Search not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { searchId: args.searchId },
+        retryable: false,
+      });
     }
 
     // Get all leads associated with this search

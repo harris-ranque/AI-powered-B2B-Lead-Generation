@@ -9,7 +9,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.runnables import RunnableConfig
 from ..utils.logger import setup_logger
-from ..utils.analytics import capture_event, capture_error
+from ..utils.analytics import capture_event, capture_error, create_llm_callback_handler
 from .state import EmailGenerationState
 from .nodes.business_intelligence_agent import business_intelligence_agent_node
 from .nodes.email_generation_agent import email_generation_agent_node
@@ -192,6 +192,19 @@ async def execute_email_generation(
     }
     capture_event("workflow_execution_started", analytics_context)
 
+    # Create PostHog LLM callback handler for automatic LLM analytics
+    llm_callback = create_llm_callback_handler(
+        distinct_id=user_id,  # Convex user_id for cost attribution
+        trace_id=request_id,  # Groups all LLM calls for this email generation
+        properties={
+            "request_id": request_id,
+            "lead_id": getattr(lead, "id", None),
+            "lead_company": getattr(lead, "company_name", None),
+            "workflow": "email_generation",
+            "using_user_keys": bool(provider_keys),
+        }
+    )
+
     # Use cached workflow (compile once, reuse for all requests)
     global _cached_workflow
     if _cached_workflow is None or checkpointer is not None:
@@ -218,6 +231,8 @@ async def execute_email_generation(
         "quality_gates_passed": {},
         "provider_keys": provider_keys,
         "user_id": user_id,
+        # PostHog LLM analytics callback (passed to all agent nodes)
+        "llm_callback": llm_callback,
         # New fields for 3-agent architecture
         "business_intelligence": {},
         "primary_email": None,
@@ -329,10 +344,23 @@ async def execute_with_streaming(
         Progress updates from 3-agent workflow execution
     """
     logger.info(f"Executing 3-agent workflow with streaming for request {request_id}")
-    
+
+    # Create PostHog LLM callback handler for automatic LLM analytics
+    llm_callback = create_llm_callback_handler(
+        distinct_id=user_id,
+        trace_id=request_id,
+        properties={
+            "request_id": request_id,
+            "lead_id": getattr(lead, "id", None),
+            "lead_company": getattr(lead, "company_name", None),
+            "workflow": "email_generation_streaming",
+            "using_user_keys": bool(provider_keys),
+        }
+    )
+
     # Create workflow
     workflow = create_email_generation_workflow(checkpointer)
-    
+
     # Prepare initial state for 3-agent workflow
     initial_state = {
         "request_id": request_id,
@@ -347,6 +375,8 @@ async def execute_with_streaming(
         "confidence_scores": {},
         "quality_gates_passed": {},
         "provider_keys": provider_keys,
+        # PostHog LLM analytics callback (passed to all agent nodes)
+        "llm_callback": llm_callback,
         "business_intelligence": {},
         "primary_email": None,
         "follow_up_sequence": None,

@@ -7,15 +7,47 @@ import {
 } from "./types";
 import { mapWithConcurrency } from "../../utils/async";
 import { parseRetryAfter, sleep, withJitter } from "../../utils/http";
+import {
+  classifyFindyMailError,
+  shouldBlockPipeline,
+  type ApiError,
+} from "../../lib/apiErrors";
 
 const FINDYMAIL_BASE_URL = "https://app.findymail.com/api";
+const FINDYMAIL_TIMEOUT_MS = 50_000;
+
+function createTimeoutController(timeoutMs: number) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timeout),
+  };
+}
 
 const DEFAULT_ROLES = ["ceo", "founder", "owner"] as const;
 const MAX_ROLES = 3;
 
-function sanitizeRoles(roles?: string[] | null): string[] {
+/**
+ * Sanitize and normalize roles for FindyMail API
+ * FindyMail API only supports a maximum of 3 roles per request
+ *
+ * @param roles - Array of role strings to sanitize
+ * @returns Object containing sanitized roles and any truncation warning
+ */
+interface SanitizedRolesResult {
+  roles: string[];
+  truncated: boolean;
+  originalCount: number;
+}
+
+function sanitizeRoles(roles?: string[] | null): SanitizedRolesResult {
   if (!roles || roles.length === 0) {
-    return [...DEFAULT_ROLES];
+    return {
+      roles: [...DEFAULT_ROLES],
+      truncated: false,
+      originalCount: 0,
+    };
   }
 
   const normalized = roles
@@ -27,20 +59,36 @@ function sanitizeRoles(roles?: string[] | null): string[] {
     if (!deduped.includes(role)) {
       deduped.push(role);
     }
-    if (deduped.length >= MAX_ROLES) {
-      break;
-    }
+  }
+
+  const originalCount = deduped.length;
+  const truncated = originalCount > MAX_ROLES;
+
+  if (truncated) {
+    console.warn(
+      `[FindyMail] ⚠️ Role truncation: Requested ${originalCount} roles but FindyMail API only supports ${MAX_ROLES}. ` +
+      `Using: [${deduped.slice(0, MAX_ROLES).join(", ")}]. ` +
+      `Truncated: [${deduped.slice(MAX_ROLES).join(", ")}]`
+    );
   }
 
   if (deduped.length === 0) {
-    return [...DEFAULT_ROLES];
+    return {
+      roles: [...DEFAULT_ROLES],
+      truncated: false,
+      originalCount: 0,
+    };
   }
 
-  return deduped.slice(0, MAX_ROLES);
+  return {
+    roles: deduped.slice(0, MAX_ROLES),
+    truncated,
+    originalCount,
+  };
 }
 
 function resolveRoles(options?: EnrichmentOptions): string[] {
-  return sanitizeRoles(options?.roles);
+  return sanitizeRoles(options?.roles).roles;
 }
 
 export class FindyMailProvider implements EnrichmentProviderInterface {
@@ -93,6 +141,19 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
             const enrichmentResult = await this.enrichSingle(domain, options);
             return { domain, result: enrichmentResult };
           } catch (error: any) {
+            // Check if this is a classified API error that should block the pipeline
+            const apiError = error?.apiError as ApiError | undefined;
+            if (apiError && shouldBlockPipeline(apiError)) {
+              // This is a user-actionable error (auth failed, credits exhausted)
+              // Don't retry - propagate the error for pipeline handling
+              console.error(`[FindyMail] Pipeline-blocking error for ${domain}:`, {
+                errorCode: apiError.errorCode,
+                category: apiError.category,
+                userMessage: apiError.userMessage,
+              });
+              return { domain, result: null, apiError };
+            }
+
             // Only retry on transient errors (rate limits, gateway timeouts, network errors)
             const isRateLimitError = error?.message?.includes("429") || error?.message?.includes("Too Many Requests");
             const isGatewayError = error?.message?.includes("504") || error?.message?.includes("Gateway");
@@ -129,9 +190,35 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
 
       const batchResults = await Promise.all(batchPromises);
 
-      // Collect results
-      for (const { domain, result: enrichmentResult } of batchResults) {
+      // Collect results and check for pipeline-blocking errors
+      let pipelineBlockingError: ApiError | undefined;
+      for (const batchResult of batchResults) {
+        const { domain, result: enrichmentResult, apiError } = batchResult as {
+          domain: string;
+          result: EnrichmentResult | null;
+          apiError?: ApiError;
+        };
         result[domain] = enrichmentResult;
+
+        // Capture first pipeline-blocking error
+        if (apiError && !pipelineBlockingError && shouldBlockPipeline(apiError)) {
+          pipelineBlockingError = apiError;
+        }
+      }
+
+      // If we encountered a pipeline-blocking error, stop processing and return
+      if (pipelineBlockingError) {
+        console.error(`[FindyMail] Pipeline-blocking error detected, stopping batch processing:`, {
+          errorCode: pipelineBlockingError.errorCode,
+          category: pipelineBlockingError.category,
+          userMessage: pipelineBlockingError.userMessage,
+          processedBatches: batchIndex + 1,
+          totalBatches: batches.length,
+        });
+
+        // Add apiError to the result object for upstream handling
+        (result as any).__apiError = pipelineBlockingError;
+        return result;
       }
 
       // Add delay between batches to avoid rate limiting (except for last batch)
@@ -155,31 +242,60 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
     options?: EnrichmentOptions,
   ): Promise<EnrichmentResult | null> {
     console.log(`[FindyMail] Enriching domain: ${domain}`);
-
-    const response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        domain: domain,
-        roles: resolveRoles(options),
-        limit: 1, // Get top contact per domain
-      }),
-    });
+    const timeout = createTimeoutController(FINDYMAIL_TIMEOUT_MS);
+    let response: Response;
+    try {
+      response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          domain: domain,
+          roles: resolveRoles(options),
+          limit: 1, // Get top contact per domain
+        }),
+        signal: timeout.signal,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error(
+          `FindyMail request timed out after ${FINDYMAIL_TIMEOUT_MS}ms`,
+        );
+      }
+      throw error;
+    } finally {
+      timeout.clear();
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
+      let errorBody: any;
+      try {
+        errorBody = JSON.parse(errorText);
+      } catch {
+        errorBody = errorText;
+      }
+
+      // Classify the error for proper handling
+      const apiError = classifyFindyMailError(response.status, errorBody);
+
       console.error(`[FindyMail] API error for ${domain}:`, {
         status: response.status,
         statusText: response.statusText,
-        error: errorText,
+        errorCode: apiError.errorCode,
+        category: apiError.category,
+        userMessage: apiError.userMessage,
+        retryable: apiError.retryable,
       });
-      // Throw error to allow retry logic to handle it
-      throw new Error(
+
+      // For user-actionable errors (auth failed, credits exhausted), attach the ApiError
+      const error = new Error(
         `FindyMail API error: ${response.status} ${response.statusText}`
-      );
+      ) as Error & { apiError?: ApiError };
+      error.apiError = apiError;
+      throw error;
     }
 
     try {
@@ -435,6 +551,173 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
       return 0;
     }
   }
+
+  /**
+   * Comprehensive health check for FindyMail API
+   * Checks authentication, credits, and API availability
+   *
+   * @returns Health check result with detailed status
+   */
+  async healthCheck(apiKey: string): Promise<FindyMailHealthCheckResult> {
+    const startTime = Date.now();
+
+    try {
+      // Test 1: Check credits endpoint (validates auth + API availability)
+      const creditsResponse = await fetch(`${FINDYMAIL_BASE_URL}/credits`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        signal: AbortSignal.timeout(10000), // 10 second timeout
+      });
+
+      const responseTime = Date.now() - startTime;
+
+      if (creditsResponse.status === 401) {
+        return {
+          healthy: false,
+          status: "auth_failed",
+          message: "FindyMail API key is invalid or expired",
+          responseTimeMs: responseTime,
+          timestamp: Date.now(),
+        };
+      }
+
+      if (creditsResponse.status === 402) {
+        const data = await creditsResponse.json().catch(() => ({}));
+        return {
+          healthy: false,
+          status: "credits_exhausted",
+          message: "FindyMail account has no remaining credits",
+          credits: 0,
+          responseTimeMs: responseTime,
+          timestamp: Date.now(),
+        };
+      }
+
+      if (creditsResponse.status === 423) {
+        return {
+          healthy: false,
+          status: "subscription_paused",
+          message: "FindyMail subscription is paused. Please reactivate your subscription.",
+          responseTimeMs: responseTime,
+          timestamp: Date.now(),
+        };
+      }
+
+      if (creditsResponse.status === 429) {
+        return {
+          healthy: true,
+          status: "rate_limited",
+          message: "FindyMail API is available but currently rate limited",
+          responseTimeMs: responseTime,
+          timestamp: Date.now(),
+        };
+      }
+
+      if (!creditsResponse.ok) {
+        return {
+          healthy: false,
+          status: "api_error",
+          message: `FindyMail API returned status ${creditsResponse.status}`,
+          responseTimeMs: responseTime,
+          timestamp: Date.now(),
+        };
+      }
+
+      // Parse credits response
+      const creditsData = await creditsResponse.json() as { credits?: number };
+      const credits = creditsData.credits ?? 0;
+
+      // Determine health status based on credits
+      if (credits === 0) {
+        return {
+          healthy: false,
+          status: "credits_exhausted",
+          message: "FindyMail account has no remaining credits",
+          credits: 0,
+          responseTimeMs: responseTime,
+          timestamp: Date.now(),
+        };
+      }
+
+      if (credits < 10) {
+        return {
+          healthy: true,
+          status: "low_credits",
+          message: `FindyMail API is healthy but credits are low (${credits} remaining)`,
+          credits,
+          responseTimeMs: responseTime,
+          timestamp: Date.now(),
+        };
+      }
+
+      // Full health
+      return {
+        healthy: true,
+        status: "healthy",
+        message: `FindyMail API is fully operational`,
+        credits,
+        responseTimeMs: responseTime,
+        timestamp: Date.now(),
+      };
+
+    } catch (error) {
+      const responseTime = Date.now() - startTime;
+
+      if (error instanceof Error) {
+        if (error.name === "AbortError" || error.name === "TimeoutError") {
+          return {
+            healthy: false,
+            status: "timeout",
+            message: "FindyMail API health check timed out (>10s)",
+            responseTimeMs: responseTime,
+            timestamp: Date.now(),
+          };
+        }
+
+        if (error.message.includes("fetch") || error.message.includes("network")) {
+          return {
+            healthy: false,
+            status: "network_error",
+            message: `Network error connecting to FindyMail API: ${error.message}`,
+            responseTimeMs: responseTime,
+            timestamp: Date.now(),
+          };
+        }
+      }
+
+      return {
+        healthy: false,
+        status: "unknown_error",
+        message: `FindyMail health check failed: ${error instanceof Error ? error.message : String(error)}`,
+        responseTimeMs: responseTime,
+        timestamp: Date.now(),
+      };
+    }
+  }
+}
+
+/**
+ * Health check result interface
+ */
+export interface FindyMailHealthCheckResult {
+  healthy: boolean;
+  status:
+    | "healthy"
+    | "low_credits"
+    | "credits_exhausted"
+    | "auth_failed"
+    | "subscription_paused"
+    | "rate_limited"
+    | "api_error"
+    | "timeout"
+    | "network_error"
+    | "unknown_error";
+  message: string;
+  credits?: number;
+  responseTimeMs: number;
+  timestamp: number;
 }
 
 type DomainContact = { name?: string; email: string; verified: boolean };
@@ -598,10 +881,15 @@ interface DomainRequestOptions {
   baseDelayMs: number;
 }
 
+interface FetchDomainResult {
+  contacts: DomainContact[];
+  apiError?: ApiError;
+}
+
 async function fetchDomainContacts(
   domain: string,
   { apiKey, roles, maxRetries, baseDelayMs }: DomainRequestOptions,
-): Promise<DomainContact[]> {
+): Promise<FetchDomainResult> {
   const maxDelayMs = 15_000;
   const startedAt = Date.now();
   let attempt = 0;
@@ -610,18 +898,25 @@ async function fetchDomainContacts(
     attempt += 1;
     const attemptStartedAt = Date.now();
     try {
-      const response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          domain,
-          roles,
-          limit: 5,
-        }),
-      });
+      const timeout = createTimeoutController(FINDYMAIL_TIMEOUT_MS);
+      let response: Response;
+      try {
+        response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            domain,
+            roles,
+            limit: 5,
+          }),
+          signal: timeout.signal,
+        });
+      } finally {
+        timeout.clear();
+      }
 
       const elapsed = Date.now() - attemptStartedAt;
       console.info(
@@ -629,6 +924,19 @@ async function fetchDomainContacts(
       );
 
       if (response.status === 429 || response.status === 504) {
+        // Classify the error to check if it's a persistent rate limit (credits exhausted)
+        const errorBody = await response.text().catch(() => "");
+        const apiError = classifyFindyMailError(response.status, errorBody);
+
+        // If this is a pipeline-blocking error (credits exhausted), don't retry
+        if (shouldBlockPipeline(apiError)) {
+          console.error(
+            `[FindyMail] domain=${domain} pipeline-blocking error:`,
+            { errorCode: apiError.errorCode, category: apiError.category }
+          );
+          return { contacts: [], apiError };
+        }
+
         if (attempt >= maxRetries) {
           console.warn(
             `[FindyMail] domain=${domain} exhausted retries after ${attempt} attempts (status ${response.status})`,
@@ -645,15 +953,25 @@ async function fetchDomainContacts(
       }
 
       if (!response.ok) {
+        const body = await response.text();
+        const apiError = classifyFindyMailError(response.status, body);
+
+        // Check if this is a user-actionable error that should block the pipeline
+        if (shouldBlockPipeline(apiError)) {
+          console.error(
+            `[FindyMail] domain=${domain} pipeline-blocking error ${response.status}:`,
+            { errorCode: apiError.errorCode, category: apiError.category, userMessage: apiError.userMessage }
+          );
+          return { contacts: [], apiError };
+        }
+
         if (response.status >= 400 && response.status < 500) {
-          const body = await response.text();
           console.warn(
             `[FindyMail] domain=${domain} non-retriable error ${response.status}: ${body.slice(0, 200)}`,
           );
           break;
         }
         if (attempt >= maxRetries) {
-          const body = await response.text();
           console.error(
             `[FindyMail] domain=${domain} failed after ${attempt} attempts: ${body.slice(0, 200)}`,
           );
@@ -674,8 +992,23 @@ async function fetchDomainContacts(
       console.info(
         `[FindyMail] domain=${domain} resolved ${contacts.length} verified contacts in ${totalElapsed}ms`,
       );
-      return contacts;
+      return { contacts };
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        const timeoutError = new Error(
+          `FindyMail request timed out after ${FINDYMAIL_TIMEOUT_MS}ms`,
+        );
+        if (attempt >= maxRetries) {
+          console.error(`[FindyMail] domain=${domain} network error:`, timeoutError);
+          break;
+        }
+        const delayMs = Math.min(maxDelayMs, withJitter(baseDelayMs * 2 ** (attempt - 1)));
+        console.warn(
+          `[FindyMail] domain=${domain} attempt ${attempt} failed (${timeoutError.message}), retrying in ${delayMs}ms`,
+        );
+        await sleep(delayMs);
+        continue;
+      }
       if (attempt >= maxRetries) {
         console.error(`[FindyMail] domain=${domain} network error:`, error);
         break;
@@ -688,14 +1021,19 @@ async function fetchDomainContacts(
     }
   }
 
-  return [];
+  return { contacts: [] };
+}
+
+export interface ResolveDomainsResult {
+  results: Map<string, { name?: string; email: string }[]>;
+  apiError?: ApiError;
 }
 
 export async function resolveDomainsWithFindyMail(
   domains: string[],
   roles: string[],
   options: DomainResolveOptions = {},
-): Promise<Map<string, { name?: string; email: string }[]>> {
+): Promise<ResolveDomainsResult> {
   const apiKey = options.apiKey ?? process.env.FINDYMAIL_API_KEY;
   if (!apiKey) {
     throw new Error("FINDYMAIL_API_KEY environment variable is not configured");
@@ -707,30 +1045,59 @@ export async function resolveDomainsWithFindyMail(
 
   const results = new Map<string, { name?: string; email: string }[]>();
   if (uniqueDomains.length === 0) {
-    return results;
+    return { results };
   }
 
   const concurrency = Math.min(options.concurrency ?? 5, 5);
   const maxRetries = options.maxRetries ?? 5;
   const baseDelayMs = options.baseDelayMs ?? 800;
-  const sanitizedRoles = sanitizeRoles(roles);
+  const sanitizedRoles = sanitizeRoles(roles).roles;
 
-  await mapWithConcurrency(uniqueDomains, concurrency, async (domain) => {
-    const contacts = await fetchDomainContacts(domain, {
-      apiKey,
-      roles: sanitizedRoles,
-      maxRetries,
-      baseDelayMs,
-    });
-    if (contacts.length > 0) {
-      results.set(
-        domain,
-        contacts.map(({ email, name }) => ({ email, name })),
-      );
-    } else {
-      results.set(domain, []);
+  let pipelineBlockingError: ApiError | undefined;
+
+  // Process domains with early exit on pipeline-blocking errors
+  for (let i = 0; i < uniqueDomains.length; i += concurrency) {
+    // Check if we already have a pipeline-blocking error
+    if (pipelineBlockingError) {
+      break;
     }
-  });
 
-  return results;
+    const batch = uniqueDomains.slice(i, i + concurrency);
+    const batchResults = await Promise.all(
+      batch.map(async (domain) => {
+        const { contacts, apiError } = await fetchDomainContacts(domain, {
+          apiKey,
+          roles: sanitizedRoles,
+          maxRetries,
+          baseDelayMs,
+        });
+        return { domain, contacts, apiError };
+      })
+    );
+
+    for (const { domain, contacts, apiError } of batchResults) {
+      if (contacts.length > 0) {
+        results.set(
+          domain,
+          contacts.map(({ email, name }) => ({ email, name })),
+        );
+      } else {
+        results.set(domain, []);
+      }
+
+      // Capture first pipeline-blocking error
+      if (apiError && !pipelineBlockingError && shouldBlockPipeline(apiError)) {
+        pipelineBlockingError = apiError;
+        console.error(`[FindyMail] Pipeline-blocking error detected in resolveDomainsWithFindyMail:`, {
+          errorCode: apiError.errorCode,
+          category: apiError.category,
+          userMessage: apiError.userMessage,
+          processedDomains: results.size,
+          totalDomains: uniqueDomains.length,
+        });
+      }
+    }
+  }
+
+  return { results, apiError: pipelineBlockingError };
 }

@@ -60,7 +60,7 @@ export function useAdminDashboard() {
   return {
     metrics,
     systemHealth,
-    isLoading: metrics === undefined,
+    isLoading: metrics === undefined || systemHealth === undefined,
   };
 }
 
@@ -114,7 +114,7 @@ export function useAdminAnalytics() {
     analytics,
     revenueStats,
     usageStats,
-    isLoading: analytics === undefined,
+    isLoading: analytics === undefined || revenueStats === undefined || usageStats === undefined,
   };
 }
 

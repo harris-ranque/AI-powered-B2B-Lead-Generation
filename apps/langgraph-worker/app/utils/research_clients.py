@@ -22,7 +22,13 @@ from ..utils.config import get_settings
 from ..utils.logger import setup_logger
 from ..utils.tavily_tool import TavilySearchTool, TavilySearchResult
 from ..utils.data_validation import BaseDataValidator, DataValidationResult
-from ..utils.analytics import capture_event, capture_error
+from ..utils.analytics import (
+    capture_event,
+    capture_error,
+    track_tavily_call,
+    track_perplexity_sonar_call,
+    track_perplexity_deep_research_call,
+)
 from ..utils.perplexity_rate_limiter import create_perplexity_rate_limiter, PerplexityRateLimiter
 from ..utils.perplexity_retry import (
     perplexity_request_with_retry,
@@ -31,6 +37,19 @@ from ..utils.perplexity_retry import (
     RateLimitExhaustedError,
     PerplexityAPIError,
     RetryConfig,
+)
+# New adaptive rate limiting system
+from ..utils.rate_limiting import (
+    rate_limited_request,
+    Provider,
+    CircuitBreakerOpenError,
+)
+from ..utils.api_errors import (
+    classify_perplexity_error,
+    StandardizedApiError,
+    should_block_pipeline,
+    API_ERROR_CODES,
+    ApiErrorCategory,
 )
 from ..config import PERPLEXITY_RATE_LIMIT_CONFIG
 
@@ -66,6 +85,7 @@ class ResearchResult(BaseModel):
     # Metadata
     raw_data: Dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
+    api_error: Optional[Dict[str, Any]] = None  # Standardized API error for frontend handling
     escalation_reason: Optional[str] = None
     final_tier_used: str = "basic"  # Tracks final research tier: "basic" (Tavily), "pro" (Sonar Pro), "deep" (Deep Research)
 
@@ -155,12 +175,27 @@ class TavilyClient:
         try:
             # CRITICAL: Use advanced search depth for query-relevant content chunks
             # Advanced search provides content closely aligned with query vs generic summaries
-            tavily_result: TavilySearchResult = await self.tavily_tool.search_async(
-                query=query,
-                search_depth="advanced",  # Changed from "basic" for 2x better quality
-                include_domains=business_domains,  # Focus on business sources
-            )
-            
+            async with track_tavily_call(
+                company_name=company_name,
+                request_id=None,  # Will be set by caller if available
+                domain=domain,
+                max_results=max_results,
+                search_depth="advanced",
+            ) as tracker:
+                tavily_result: TavilySearchResult = await self.tavily_tool.search_async(
+                    query=query,
+                    search_depth="advanced",  # Changed from "basic" for 2x better quality
+                    include_domains=business_domains,  # Focus on business sources
+                )
+
+                # Set result metrics for PostHog tracking
+                tracker.set_result(
+                    success=tavily_result.error is None,
+                    total_results=tavily_result.total_results,
+                    has_answer=bool(tavily_result.answer),
+                    response_time_ms=tavily_result.response_time * 1000,
+                )
+
             # Convert TavilySearchResult to ResearchResult format
             return self._convert_tavily_to_research_result(
                 company_name, tavily_result
@@ -449,9 +484,11 @@ class PerplexityClient:
         Returns:
             ResearchResult with comprehensive business intelligence
 
-        Rate Limiting:
-            - Acquires rate limit slot for sonar-pro model (50 RPM default)
-            - Waits if rate limit reached before making API call
+        Rate Limiting (NEW ADAPTIVE SYSTEM):
+            - Uses adaptive rate limiter that learns actual API tier from 429s
+            - Request queue prevents thundering herd
+            - Per-API-key bucket isolation for BYOK support
+            - Circuit breaker protection against cascading failures
 
         Retry Logic:
             - Retries on 429, 5xx errors with exponential backoff
@@ -497,8 +534,8 @@ class PerplexityClient:
             "Content-Type": "application/json"
         }
 
-        async def make_request() -> dict:
-            """Inner function for retry wrapper."""
+        async def make_api_call() -> dict:
+            """Execute the actual API call."""
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
                 async with session.post(
                     f"{self.base_url}/chat/completions",
@@ -512,57 +549,96 @@ class PerplexityClient:
                     )
 
         try:
-            # Acquire rate limit slot for sonar-pro (waits if at capacity)
-            async with self.rate_limiter.acquire("sonar-pro") as ctx:
-                if ctx.wait_time > 0:
-                    logger.info(
-                        f"[RateLimit] Waited {ctx.wait_time:.2f}s for sonar-pro slot before researching {company_name}"
-                    )
+            # Use NEW adaptive rate limiting system with request queue
+            # This replaces the old sliding window rate limiter
+            async with track_perplexity_sonar_call(
+                company_name=company_name,
+                request_id=None,  # Will be set by caller if available
+                domain=domain,
+                location=location,
+                rate_limit_wait_time=0,  # Will be tracked by new system
+            ) as tracker:
+                # Execute with adaptive rate limiting + request queue
+                data = await rate_limited_request(
+                    Provider.PERPLEXITY,
+                    make_api_call,
+                    model="sonar-pro",
+                    api_key=self.api_key,
+                    correlation_id=f"sonar_pro:{company_name}",
+                    timeout=self.timeout + 30,  # Allow extra time for queue wait
+                )
 
-                # Execute request with retry logic
-                data = await perplexity_request_with_retry(
-                    make_request,
-                    config=self.retry_config,
-                    operation_name=f"sonar_pro_research:{company_name}"
+                # Set result metrics for PostHog tracking
+                choices = data.get("choices", [])
+                content = choices[0].get("message", {}).get("content", "") if choices else ""
+                citations = data.get("citations", [])
+                tracker.set_result(
+                    success=True,
+                    word_count=len(content.split()) if content else 0,
+                    citation_count=len(citations),
+                    has_content=bool(content),
                 )
 
             response_time = time.time() - start_time
             return self._process_perplexity_response(company_name, data, response_time)
 
-        except RateLimitExhaustedError as e:
-            logger.error(f"Rate limit exhausted for sonar-pro research on {company_name}: {e}")
+        except CircuitBreakerOpenError as e:
+            logger.error(f"Circuit breaker open for Perplexity (sonar-pro) researching {company_name}: {e}")
+            api_error = classify_perplexity_error(429, f"Circuit breaker open: {str(e)}")
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
-                error=f"Rate limit exhausted after {e.total_attempts} attempts ({e.total_wait_time:.1f}s wait)"
+                error=f"Rate limit circuit breaker open - too many consecutive 429s",
+                api_error=api_error.to_dict()
+            )
+        except RateLimitExhaustedError as e:
+            logger.error(f"Rate limit exhausted for sonar-pro research on {company_name}: {e}")
+            # Classify as persistent rate limit exceeded (not transient)
+            api_error = classify_perplexity_error(429, f"Rate limit exhausted after {e.total_attempts} attempts")
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.PERPLEXITY,
+                confidence_score=0.2,
+                response_time=time.time() - start_time,
+                error=f"Rate limit exhausted after {e.total_attempts} attempts ({e.total_wait_time:.1f}s wait)",
+                api_error=api_error.to_dict()
             )
         except PerplexityAPIError as e:
             logger.error(f"Perplexity API error for {company_name}: {e.status_code} - {e.message}")
+            # Classify the error for proper frontend handling
+            api_error = classify_perplexity_error(e.status_code, e.message)
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
-                error=f"Perplexity API error {e.status_code}: {e.message[:200]}"
+                error=f"Perplexity API error {e.status_code}: {e.message[:200]}",
+                api_error=api_error.to_dict()
             )
         except asyncio.TimeoutError:
+            # Classify timeout error
+            api_error = classify_perplexity_error(408, "Request timed out")
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
-                error="Perplexity research timeout"
+                error="Perplexity research timeout",
+                api_error=api_error.to_dict()
             )
         except Exception as e:
             logger.error(f"Perplexity research error for {company_name}: {str(e)}")
+            # Classify as unknown error
+            api_error = classify_perplexity_error(500, str(e))
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
-                error=f"Perplexity error: {str(e)}"
+                error=f"Perplexity error: {str(e)}",
+                api_error=api_error.to_dict()
             )
     
     def _build_comprehensive_query(self, company_name: str, domain: str, location: str, context: str) -> str:
@@ -658,10 +734,11 @@ class PerplexityClient:
         Returns:
             ResearchResult with exhaustive business intelligence
 
-        Rate Limiting (CRITICAL - Deep Research has strict limits):
-            - Acquires rate limit slot for sonar-deep-research model (4 RPM default)
-            - Perplexity Tier 0 limit is 5 RPM, we use 4 RPM for safety margin
-            - Waits if rate limit reached - may wait 15+ seconds between requests
+        Rate Limiting (NEW ADAPTIVE SYSTEM - Deep Research has strict limits):
+            - Uses adaptive rate limiter that learns actual API tier from 429s
+            - Starts at 5 RPM (Tier 0 limit) with conservative approach
+            - Request queue serializes requests to prevent thundering herd
+            - Circuit breaker protects against cascading failures
 
         Retry Logic:
             - Retries on 429, 5xx errors with exponential backoff
@@ -713,8 +790,8 @@ class PerplexityClient:
         # Longer timeout for deep research (60 seconds vs 20 seconds)
         deep_research_timeout = 60.0
 
-        async def make_request() -> dict:
-            """Inner function for retry wrapper."""
+        async def make_api_call() -> dict:
+            """Execute the actual API call."""
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=deep_research_timeout)) as session:
                 async with session.post(
                     f"{self.base_url}/chat/completions",
@@ -728,19 +805,36 @@ class PerplexityClient:
                     )
 
         try:
-            # Acquire rate limit slot for sonar-deep-research (CRITICAL - only 4 RPM!)
-            # This may wait 15+ seconds if at capacity
-            async with self.rate_limiter.acquire("sonar-deep-research") as ctx:
-                if ctx.wait_time > 0:
-                    logger.info(
-                        f"[RateLimit] Waited {ctx.wait_time:.2f}s for deep-research slot before researching {company_name}"
-                    )
+            # Use NEW adaptive rate limiting system with request queue
+            # This replaces the old sliding window rate limiter
+            async with track_perplexity_deep_research_call(
+                company_name=company_name,
+                request_id=None,  # Will be set by caller if available
+                domain=domain,
+                location=location,
+                rate_limit_wait_time=0,  # Will be tracked by new system
+            ) as tracker:
+                # Execute with adaptive rate limiting + request queue
+                # Deep research has very strict limits (5 RPM at Tier 0)
+                data = await rate_limited_request(
+                    Provider.PERPLEXITY,
+                    make_api_call,
+                    model="sonar-deep-research",
+                    api_key=self.api_key,
+                    correlation_id=f"deep_research:{company_name}",
+                    timeout=deep_research_timeout + 60,  # Allow extra time for queue wait
+                    priority=0,  # Lower priority than sonar-pro
+                )
 
-                # Execute request with retry logic
-                data = await perplexity_request_with_retry(
-                    make_request,
-                    config=self.retry_config,
-                    operation_name=f"deep_research:{company_name}"
+                # Set result metrics for PostHog tracking
+                choices = data.get("choices", [])
+                content = choices[0].get("message", {}).get("content", "") if choices else ""
+                citations = data.get("citations", [])
+                tracker.set_result(
+                    success=True,
+                    word_count=len(content.split()) if content else 0,
+                    citation_count=len(citations),
+                    has_content=bool(content),
                 )
 
             response_time = time.time() - start_time
@@ -748,6 +842,18 @@ class PerplexityClient:
             result.final_tier_used = "deep"
             return result
 
+        except CircuitBreakerOpenError as e:
+            logger.error(f"Circuit breaker open for Perplexity (deep-research) researching {company_name}: {e}")
+            api_error = classify_perplexity_error(429, f"Circuit breaker open: {str(e)}")
+            return ResearchResult(
+                query=company_name,
+                tier=ResearchTier.PERPLEXITY,
+                confidence_score=0.2,
+                response_time=time.time() - start_time,
+                error=f"Rate limit circuit breaker open - too many consecutive 429s",
+                api_error=api_error.to_dict(),
+                final_tier_used="deep_failed"
+            )
         except RateLimitExhaustedError as e:
             # GRACEFUL DEGRADATION: Return error result with flag
             # ResearchOrchestrator will fall back to Sonar Pro results
@@ -755,41 +861,53 @@ class PerplexityClient:
                 f"Deep research rate limit exhausted for {company_name} after {e.total_attempts} attempts, "
                 f"total wait: {e.total_wait_time:.1f}s - graceful degradation will use Sonar Pro results"
             )
+            # Classify as persistent rate limit exceeded
+            api_error = classify_perplexity_error(429, f"Deep research rate limit exhausted after {e.total_attempts} attempts")
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.3,  # Low confidence for failed deep research
                 response_time=time.time() - start_time,
                 error=f"Deep research rate limited after {e.total_attempts} retries",
+                api_error=api_error.to_dict(),
                 final_tier_used="deep_failed"  # Flag for graceful degradation
             )
         except PerplexityAPIError as e:
             logger.error(f"Deep research API error for {company_name}: {e.status_code} - {e.message}")
+            # Classify the error for proper frontend handling
+            api_error = classify_perplexity_error(e.status_code, e.message)
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
                 error=f"Deep research API error {e.status_code}: {e.message[:200]}",
+                api_error=api_error.to_dict(),
                 final_tier_used="deep_failed"
             )
         except asyncio.TimeoutError:
+            # Classify timeout error
+            api_error = classify_perplexity_error(408, "Deep research timeout (60s)")
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
                 error="Deep research timeout (60s)",
+                api_error=api_error.to_dict(),
                 final_tier_used="deep_failed"
             )
         except Exception as e:
             logger.error(f"Deep research error for {company_name}: {str(e)}")
+            # Classify as unknown error
+            api_error = classify_perplexity_error(500, str(e))
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
                 response_time=time.time() - start_time,
                 error=f"Deep research error: {str(e)}",
+                api_error=api_error.to_dict(),
                 final_tier_used="deep_failed"
             )
 
@@ -841,7 +959,22 @@ class PerplexityClient:
                 "comprehensive_report": content,
                 "citations": citations,
                 "word_count": len(content.split()) if content else 0,
-                "extracted_data": structured_data
+                # Flatten extracted data to match Tavily's structure for downstream compatibility
+                "recent_news": structured_data.get("recent_news", []),
+                "competitor_mentions": [],  # Perplexity doesn't extract these directly
+                "quantifiable_metrics": [],  # Perplexity doesn't extract these directly
+                "pain_points": [],  # Perplexity doesn't extract these directly
+                "industry_benchmarks": [],  # Perplexity doesn't extract these directly
+                "technology_stack": [],  # Perplexity doesn't extract these directly
+                "extracted_data": structured_data,  # Keep original for backward compatibility
+                "data_completeness": {
+                    "has_recent_news": len(structured_data.get("recent_news", [])) > 0,
+                    "has_competitors": False,
+                    "has_metrics": False,
+                    "has_pain_points": False,
+                    "has_benchmarks": False,
+                    "completeness_score": 0.2 if len(structured_data.get("recent_news", [])) > 0 else 0.0
+                }
             }
         )
 

@@ -1,233 +1,19 @@
+/**
+ * Billing Mutations
+ *
+ * Core billing mutations for subscription and credits management.
+ * Checkout flows are handled via billing/fastspring.ts actions.
+ */
+
 import { mutation, action } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 import { api } from "../_generated/api";
-import Stripe from "stripe";
 
-// Create Stripe checkout session
-export const createCheckoutSession = action({
-  args: {
-    priceId: v.string(),
-    planId: v.string(),
-    billingCycle: v.union(v.literal("monthly"), v.literal("yearly")),
-    successUrl: v.optional(v.string()),
-    cancelUrl: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    "use node";
-    const user = await requireAuth(ctx);
-
-    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-    if (!stripeSecretKey) {
-      throw new Error("Stripe secret key not configured");
-    }
-
-    // Ensure success/cancel URLs are properly set
-    const appUrl = process.env.APP_URL;
-    if (!args.successUrl && !appUrl) {
-      throw new Error(
-        "Missing successUrl and APP_URL; cannot construct redirect URLs",
-      );
-    }
-
-    try {
-      const stripe = new Stripe(stripeSecretKey);
-      const session = await stripe.checkout.sessions.create({
-        mode: "subscription",
-        payment_method_types: ["card"],
-        line_items: [{ price: args.priceId, quantity: 1 }],
-        success_url:
-          args.successUrl ||
-          `${appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: args.cancelUrl || `${appUrl}/pricing`,
-        customer: user.stripeCustomerId,
-        customer_email: user.stripeCustomerId ? undefined : user.email,
-        metadata: {
-          userId: user._id,
-          planId: args.planId,
-          billingCycle: args.billingCycle,
-        },
-        subscription_data: {
-          metadata: {
-            userId: user._id,
-            planId: args.planId,
-          },
-        },
-      });
-
-      return {
-        sessionId: session.id,
-        url: session.url!,
-      };
-    } catch (error) {
-      console.error("Error creating Stripe checkout session:", error);
-      throw new Error("Failed to create checkout session");
-    }
-  },
-});
-
-// Create Stripe checkout session for one-time credit purchase
-export const purchaseCredits = action({
-  args: {
-    credits: v.number(),
-    successUrl: v.optional(v.string()),
-    cancelUrl: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    "use node";
-    const user = await requireAuth(ctx);
-
-    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-    if (!stripeSecretKey) {
-      throw new Error("Stripe secret key not configured");
-    }
-
-    // Load admin-configured credit packs
-    const config = await ctx.runQuery(
-      api.admin.queries.getSystemConfiguration,
-      {},
-    );
-    const packs = (config?.creditPacks || []).filter(
-      (p: { active: boolean }) => p.active,
-    );
-    if (packs.length === 0) {
-      throw new Error("No active credit packs configured");
-    }
-    const requested = args.credits;
-    const pack = packs.find(
-      (p: { credits: number }) => p.credits === requested,
-    );
-    if (!pack) {
-      throw new Error("Invalid credits pack selection");
-    }
-
-    // Ensure success/cancel URLs are properly set
-    const appUrl = process.env.APP_URL;
-    if (!args.successUrl && !appUrl) {
-      throw new Error(
-        "Missing successUrl and APP_URL; cannot construct redirect URLs",
-      );
-    }
-
-    try {
-      const stripe = new Stripe(stripeSecretKey);
-      const useStripePriceId = !!pack.stripePriceId;
-      const lineItem: Stripe.Checkout.SessionCreateParams.LineItem =
-        useStripePriceId
-          ? { price: pack.stripePriceId!, quantity: 1 }
-          : {
-              price_data: {
-                currency: "usd",
-                unit_amount: pack.priceCents,
-                product_data: {
-                  name: "Genni Credits Pack",
-                  description: `${requested} credits`,
-                },
-              },
-              quantity: 1,
-            };
-
-      const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        payment_method_types: ["card"],
-        line_items: [lineItem],
-        success_url:
-          args.successUrl ||
-          `${appUrl}/dashboard?credits_purchased=true&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: args.cancelUrl || `${appUrl}/dashboard`,
-        customer: user.stripeCustomerId,
-        customer_email: user.stripeCustomerId ? undefined : user.email,
-        metadata: {
-          userId: user._id,
-          type: "credits_purchase",
-          credits: String(requested),
-        },
-      });
-
-      return {
-        sessionId: session.id,
-        url: session.url!,
-      };
-    } catch (error) {
-      console.error("Error creating Stripe credits checkout:", error);
-      throw new Error("Failed to create credits checkout session");
-    }
-  },
-});
-
-// Create Stripe customer portal session
-export const createPortalSession = action({
-  args: {
-    returnUrl: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    "use node";
-    const user = await requireAuth(ctx);
-
-    if (!user.stripeCustomerId) {
-      throw new Error("No Stripe customer ID found for user");
-    }
-
-    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-    if (!stripeSecretKey) {
-      throw new Error("Stripe secret key not configured");
-    }
-
-    try {
-      const stripe = new Stripe(stripeSecretKey);
-      const session = await stripe.billingPortal.sessions.create({
-        customer: user.stripeCustomerId,
-        return_url: args.returnUrl || `${process.env.APP_URL}/billing`,
-      });
-
-      return { url: session.url };
-    } catch (error) {
-      console.error("Error creating Stripe portal session:", error);
-      throw new Error("Failed to create portal session");
-    }
-  },
-});
-
-// Create Stripe customer if doesn't exist
-export const createStripeCustomer = action({
-  args: {},
-  handler: async (ctx, args) => {
-    "use node";
-    const user = await requireAuth(ctx);
-
-    if (user.stripeCustomerId) {
-      return { customerId: user.stripeCustomerId };
-    }
-
-    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-    if (!stripeSecretKey) {
-      throw new Error("Stripe secret key not configured");
-    }
-
-    try {
-      const stripe = new Stripe(stripeSecretKey);
-      const customer = await stripe.customers.create({
-        email: user.email,
-        name: user.name || undefined,
-        metadata: { userId: user._id },
-      });
-
-      // Update user with Stripe customer ID
-      await ctx.runMutation(api.users.mutations.updateStripeCustomerId, {
-        customerId: customer.id,
-      });
-
-      return {
-        customerId: customer.id,
-      };
-    } catch (error) {
-      console.error("Error creating Stripe customer:", error);
-      throw new Error("Failed to create Stripe customer");
-    }
-  },
-});
-
-// Get current subscription status
+/**
+ * Get current subscription status
+ * Returns the user's plan, billing info, and usage stats
+ */
 export const getSubscriptionStatus = mutation({
   args: {},
   handler: async (ctx, args) => {
@@ -236,14 +22,15 @@ export const getSubscriptionStatus = mutation({
     // Get billing record
     const billing = await ctx.db
       .query("billing")
-      .filter((q) => q.eq(q.field("userId"), user._id))
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
 
     // Get current usage
     const usage = await ctx.db
       .query("usageTracking")
-      .filter((q) => q.eq(q.field("userId"), user._id))
-      .filter((q) => q.eq(q.field("isCurrentPeriod"), true))
+      .withIndex("by_user_current", (q) =>
+        q.eq("userId", user._id).eq("isCurrentPeriod", true)
+      )
       .unique();
 
     return {
@@ -252,43 +39,159 @@ export const getSubscriptionStatus = mutation({
       usage,
       hasActiveSubscription: !!billing && billing.status === "active",
       isTrialing: billing?.isTrialing || false,
+      cancelAtPeriodEnd: billing?.cancelAtPeriodEnd || false,
+      currentPeriodEnd: billing?.currentPeriodEnd,
     };
   },
 });
 
-// Cancel subscription at period end
+/**
+ * Cancel subscription
+ * Uses FastSpring API via fastspring.ts actions
+ *
+ * @param immediately - If true, cancels immediately. If false, cancels at period end.
+ */
 export const cancelSubscription = action({
   args: {
-    cancelAtPeriodEnd: v.boolean(),
+    immediately: v.optional(v.boolean()),
   },
-  handler: async (ctx, args) => {
-    "use node";
+  handler: async (ctx, args): Promise<{ success: boolean; message?: string }> => {
     const user = await requireAuth(ctx);
 
-    if (!user.stripeSubscriptionId) {
+    if (!user.fastspringSubscriptionId) {
       throw new Error("No active subscription found");
     }
 
-    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-    if (!stripeSecretKey) {
-      throw new Error("Stripe secret key not configured");
+    // Call FastSpring management action
+    const result: { success: boolean; message?: string } = await ctx.runAction(
+      api.billing.fastspring.manageSubscription,
+      {
+        action: args.immediately ? "cancel_immediately" : "cancel",
+      }
+    );
+
+    return result;
+  },
+});
+
+/**
+ * Reactivate a cancelled subscription
+ * Subscription must be in cancelled (but not yet deactivated) state
+ */
+export const reactivateSubscription = action({
+  args: {},
+  handler: async (ctx): Promise<{ success: boolean; message?: string }> => {
+    const user = await requireAuth(ctx);
+
+    if (!user.fastspringSubscriptionId) {
+      throw new Error("No subscription found to reactivate");
     }
 
-    try {
-      const stripe = new Stripe(stripeSecretKey);
-      const subscription = await stripe.subscriptions.update(
-        user.stripeSubscriptionId,
-        { cancel_at_period_end: args.cancelAtPeriodEnd },
-      );
+    // Call FastSpring management action
+    const result: { success: boolean; message?: string } = await ctx.runAction(
+      api.billing.fastspring.manageSubscription,
+      {
+        action: "reactivate",
+      }
+    );
 
-      return {
-        cancelAtPeriodEnd: (subscription as any).cancel_at_period_end,
-        currentPeriodEnd:
-          ((subscription as any).current_period_end || 0) * 1000,
-      };
-    } catch (error) {
-      console.error("Error updating subscription:", error);
-      throw new Error("Failed to update subscription");
-    }
+    return result;
+  },
+});
+
+/**
+ * Get billing portal URL
+ * Returns a pre-authenticated URL to the FastSpring account management portal
+ * where users can update payment methods, view invoices, etc.
+ */
+export const getBillingPortalUrl = action({
+  args: {},
+  handler: async (ctx): Promise<{ url: string } | { error: string }> => {
+    // Delegate to FastSpring action
+    const result: { url: string } | { error: string } = await ctx.runAction(
+      api.billing.fastspring.getManagementUrl,
+      {}
+    );
+    return result;
+  },
+});
+
+/**
+ * Get subscription details from payment provider
+ * Returns detailed subscription information including next charge date
+ */
+export const getSubscriptionDetails = action({
+  args: {},
+  handler: async (ctx): Promise<Record<string, unknown> | null> => {
+    // Delegate to FastSpring action
+    const result: Record<string, unknown> | null = await ctx.runAction(
+      api.billing.fastspring.getSubscriptionDetails,
+      {}
+    );
+    return result;
+  },
+});
+
+/**
+ * Create subscription checkout
+ * Generates secure checkout data for FastSpring popup
+ */
+export const createSubscriptionCheckout = action({
+  args: {
+    planId: v.string(),
+    billingCycle: v.union(v.literal("monthly"), v.literal("yearly")),
+  },
+  handler: async (ctx, args): Promise<{ securePayload: string; secureKey: string }> => {
+    // Delegate to FastSpring action
+    const result: { securePayload: string; secureKey: string } = await ctx.runAction(
+      api.billing.fastspring.createSubscriptionCheckout,
+      {
+        planId: args.planId,
+        billingCycle: args.billingCycle,
+      }
+    );
+    return result;
+  },
+});
+
+/**
+ * Create credits checkout
+ * Generates secure checkout data for FastSpring popup
+ */
+export const createCreditsCheckout = action({
+  args: {
+    credits: v.number(),
+  },
+  handler: async (ctx, args): Promise<{ securePayload: string; secureKey: string }> => {
+    // Delegate to FastSpring action
+    const result: { securePayload: string; secureKey: string } = await ctx.runAction(
+      api.billing.fastspring.createCreditsCheckout,
+      {
+        credits: args.credits,
+      }
+    );
+    return result;
+  },
+});
+
+/**
+ * Validate completed order
+ * Called after FastSpring checkout completion to verify the order
+ */
+export const validateOrder = action({
+  args: {
+    orderId: v.string(),
+    orderReference: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ valid: boolean; credits?: number; plan?: string }> => {
+    // Delegate to FastSpring action
+    const result: { valid: boolean; credits?: number; plan?: string } = await ctx.runAction(
+      api.billing.fastspring.validateOrder,
+      {
+        orderId: args.orderId,
+        orderReference: args.orderReference,
+      }
+    );
+    return result;
   },
 });

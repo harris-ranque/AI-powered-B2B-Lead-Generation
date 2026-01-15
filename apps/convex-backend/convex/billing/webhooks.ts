@@ -1,36 +1,59 @@
-import { internalMutation } from "../_generated/server";
-import { internal } from "../_generated/api";
+/**
+ * FastSpring Webhook Handlers
+ *
+ * Handles all FastSpring webhook events including:
+ * - order.completed (one-time purchases and subscription activations)
+ * - subscription.activated (new subscriptions)
+ * - subscription.charge.completed (recurring payments)
+ * - subscription.updated (plan changes, prorations)
+ * - subscription.canceled (cancellation initiated)
+ * - subscription.deactivated (subscription ended)
+ */
+
+import { internalMutation, mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { createOperationLogger } from "../lib/logger";
 import { Doc, Id } from "../_generated/dataModel";
 import { DatabaseReader } from "../_generated/server";
 
-// Helper: robust plan resolution using planConfigurations mapping; falls back to heuristic
-async function resolvePlanFromPriceId(
+// Helper: resolve plan from FastSpring product path
+async function resolvePlanFromProductPath(
   db: DatabaseReader,
-  priceId?: string,
+  productPath?: string
 ): Promise<{
   plan: "starter" | "professional" | "business" | "enterprise";
   billingCycle?: "monthly" | "yearly";
 }> {
-  if (!priceId) return { plan: "starter" };
+  if (!productPath) return { plan: "starter" };
+
   try {
     const plans = await db.query("planConfigurations").collect();
     for (const cfg of plans) {
-      if (cfg.stripePriceIdMonthly === priceId) {
+      if (cfg.fastspringProductPathMonthly === productPath) {
         return { plan: cfg.planId as any, billingCycle: "monthly" };
       }
-      if (cfg.stripePriceIdYearly === priceId) {
+      if (cfg.fastspringProductPathYearly === productPath) {
         return { plan: cfg.planId as any, billingCycle: "yearly" };
       }
     }
-  } catch {}
-  // Fallback heuristic
-  const lower = priceId.toLowerCase();
-  if (lower.includes("enterprise")) return { plan: "enterprise" };
-  if (lower.includes("business")) return { plan: "business" };
+  } catch (e) {
+    console.error("Error resolving plan from product path:", e);
+  }
+
+  // Fallback heuristic based on product path naming
+  const lower = productPath.toLowerCase();
+  const isYearly = lower.includes("yearly") || lower.includes("annual");
+
+  if (lower.includes("enterprise"))
+    return { plan: "enterprise", billingCycle: isYearly ? "yearly" : "monthly" };
+  if (lower.includes("business"))
+    return { plan: "business", billingCycle: isYearly ? "yearly" : "monthly" };
   if (lower.includes("professional") || lower.includes("pro"))
-    return { plan: "professional" };
+    return {
+      plan: "professional",
+      billingCycle: isYearly ? "yearly" : "monthly",
+    };
+
   return { plan: "starter" };
 }
 
@@ -70,7 +93,7 @@ function getPlanLimits(plan: string) {
         apiAccess: true,
         requiresOwnApiKeys: true,
       };
-    default: // starter
+    default: // starter/free
       return {
         monthlySearches: 10,
         maxLeadsPerSearch: 25,
@@ -84,101 +107,214 @@ function getPlanLimits(plan: string) {
   }
 }
 
-// Handle Stripe checkout session completed
-export const handleCheckoutCompleted = internalMutation({
+// Map credits from product path
+function getCreditsFromProductPath(productPath: string): number {
+  const lower = productPath.toLowerCase();
+  if (lower.includes("credits-100")) return 100;
+  if (lower.includes("credits-550")) return 550;
+  if (lower.includes("credits-1150")) return 1150;
+  if (lower.includes("credits-3000")) return 3000;
+  // Try to extract number from path like "credits-500"
+  const match = lower.match(/credits-(\d+)/);
+  if (match && match[1]) return parseInt(match[1], 10);
+  return 0;
+}
+
+/**
+ * Log subscription event - public mutation for use by fastspring actions
+ */
+export const logSubscriptionEvent = mutation({
   args: {
-    sessionId: v.string(),
-    customerId: v.string(),
-    subscriptionId: v.optional(v.string()),
-    mode: v.string(),
-    metadata: v.any(),
+    userId: v.id("users"),
+    eventType: v.string(),
+    fastspringSubscriptionId: v.optional(v.string()),
+    fastspringAccountId: v.optional(v.string()),
+    fastspringOrderId: v.optional(v.string()),
+    oldPlan: v.optional(v.string()),
+    newPlan: v.optional(v.string()),
+    amount: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    await ctx.db.insert("subscriptionEvents", {
+      userId: args.userId,
+      fastspringSubscriptionId: args.fastspringSubscriptionId,
+      fastspringAccountId: args.fastspringAccountId,
+      fastspringOrderId: args.fastspringOrderId,
+      eventType: args.eventType as any,
+      oldPlan: args.oldPlan,
+      newPlan: args.newPlan,
+      amount: args.amount,
+      currency: args.currency,
+      metadata: args.metadata,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Handle FastSpring order.completed event
+ * Processes both one-time credit purchases and subscription orders
+ */
+export const handleOrderCompleted = internalMutation({
+  args: {
+    orderId: v.string(),
+    orderReference: v.string(),
+    accountId: v.string(),
+    accountEmail: v.string(),
+    total: v.number(),
+    currency: v.string(),
+    items: v.array(
+      v.object({
+        product: v.string(),
+        quantity: v.number(),
+        price: v.number(),
+        subscription: v.optional(v.string()),
+      })
+    ),
+    tags: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const logger = createOperationLogger.webhook("system", "order_completed");
+    const timer = logger.start(`Processing order: ${args.orderId}`);
+
     try {
-      console.log(`Processing checkout completion: ${args.sessionId}`);
+      // Find user by tags.userId or by email
+      let user: Doc<"users"> | null = null;
 
-      // Find user by customer ID first
-      let user: Doc<"users"> | null = await ctx.db
-        .query("users")
-        .filter((q) => q.eq(q.field("stripeCustomerId"), args.customerId))
-        .unique();
-
-      // If not found, try metadata.userId
-      if (!user && args.metadata?.userId) {
+      if (args.tags?.userId) {
         try {
-          user = await ctx.db.get(args.metadata.userId as Id<"users">);
-        } catch {}
+          user = await ctx.db.get(args.tags.userId as Id<"users">);
+        } catch (e) {
+          console.error("Error fetching user by ID:", e);
+        }
       }
 
       if (!user) {
-        console.error(`User not found for checkout session: ${args.sessionId}`);
+        user = await ctx.db
+          .query("users")
+          .withIndex("by_email", (q) => q.eq("email", args.accountEmail))
+          .unique();
+      }
+
+      if (!user) {
+        // Try by FastSpring account ID
+        user = await ctx.db
+          .query("users")
+          .filter((q) => q.eq(q.field("fastspringAccountId"), args.accountId))
+          .unique();
+      }
+
+      if (!user) {
+        logger.error(`User not found for order: ${args.orderId}`, {
+          orderId: args.orderId,
+          accountEmail: args.accountEmail,
+        });
         return { success: false, error: "User not found" };
       }
 
-      // Ensure user has stripeCustomerId and subscription linkage
-      const u0 = user as Doc<"users">;
-      const patches: Partial<Doc<"users">> = {};
-      if (!u0.stripeCustomerId && args.customerId)
-        patches.stripeCustomerId = args.customerId;
-      if (!u0.stripeSubscriptionId && args.subscriptionId)
-        patches.stripeSubscriptionId = args.subscriptionId;
-      if (Object.keys(patches).length > 0) {
-        await ctx.db.patch(u0._id, { ...patches, updatedAt: Date.now() });
+      // Update user with FastSpring account ID if not set
+      if (!user.fastspringAccountId) {
+        await ctx.db.patch(user._id, {
+          fastspringAccountId: args.accountId,
+          updatedAt: Date.now(),
+        });
       }
 
-      // If this was a credits purchase (one-time payment), credit the account idempotently
-      const md = args.metadata as
-        | { type?: string; credits?: unknown }
-        | undefined;
-      if (args.mode === "payment" && md?.type === "credits_purchase") {
-        const creditsToAdd = parseInt(String(md?.credits ?? 0), 10);
-        if (!isFinite(creditsToAdd) || creditsToAdd <= 0) {
-          console.error(
-            "Invalid credits in metadata for session",
-            args.sessionId,
-          );
-        } else {
-          // Idempotency: if a transaction with this sessionId already exists, skip
+      // Process each item in the order
+      for (const item of args.items) {
+        // Check if this is a credit purchase
+        if (
+          item.product.toLowerCase().includes("credits") ||
+          args.tags?.type === "credits_purchase"
+        ) {
+          // Idempotency check: skip if transaction with this orderId already exists
           const existingTx = await ctx.db
             .query("creditTransactions")
-            .withIndex("by_user", (q) => q.eq("userId", u0._id))
-            .filter((q) => q.eq(q.field("stripePaymentId"), args.sessionId))
+            .withIndex("by_user", (q) => q.eq("userId", user!._id))
+            .filter((q) => q.eq(q.field("fastspringOrderId"), args.orderId))
             .first();
 
-          if (!existingTx) {
-            const newBalance = (u0.credits || 0) + creditsToAdd;
-            await ctx.db.patch(u0._id, {
+          if (existingTx) {
+            logger.debug(`Order ${args.orderId} already processed, skipping`, {
+              orderId: args.orderId,
+            });
+            continue;
+          }
+
+          // Determine credits to add
+          const creditsFromTags =
+            args.tags?.credits !== undefined
+              ? parseInt(String(args.tags.credits), 10)
+              : 0;
+          const creditsFromProduct = getCreditsFromProductPath(item.product);
+          const creditsToAdd =
+            (creditsFromTags || creditsFromProduct) * item.quantity;
+
+          if (creditsToAdd > 0) {
+            const newBalance = (user.credits || 0) + creditsToAdd;
+
+            await ctx.db.patch(user._id, {
               credits: newBalance,
               updatedAt: Date.now(),
             });
 
             await ctx.db.insert("creditTransactions", {
-              userId: u0._id,
+              userId: user._id,
               type: "purchase",
               amount: creditsToAdd,
-              description: `Credits purchase via Checkout ${args.sessionId}`,
-              relatedEntity: { type: "stripe_checkout", id: args.sessionId },
-              stripePaymentId: args.sessionId,
+              description: `Credits purchase: ${creditsToAdd} credits (Order ${args.orderReference})`,
+              relatedEntity: { type: "fastspring_order", id: args.orderId },
+              fastspringOrderId: args.orderId,
+              fastspringOrderReference: args.orderReference,
               balanceAfter: newBalance,
               createdAt: Date.now(),
             });
+
+            logger.complete(
+              timer,
+              `Added ${creditsToAdd} credits to user ${user._id}`,
+              {
+                userId: user._id,
+                orderId: args.orderId,
+                credits: creditsToAdd,
+              }
+            );
           }
         }
-      } else {
-        // Log subscription checkout completions as events
-        await ctx.db.insert("subscriptionEvents", {
-          userId: u0._id,
-          stripeCustomerId: args.customerId,
-          stripeSubscriptionId: args.subscriptionId,
-          eventType: "subscription_created",
-          metadata: { sessionId: args.sessionId, mode: args.mode },
-          createdAt: Date.now(),
-        });
+
+        // If item has a subscription ID, update user with it
+        if (item.subscription && !user.fastspringSubscriptionId) {
+          await ctx.db.patch(user._id, {
+            fastspringSubscriptionId: item.subscription,
+            updatedAt: Date.now(),
+          });
+        }
       }
+
+      // Log the order event
+      await ctx.db.insert("subscriptionEvents", {
+        userId: user._id,
+        fastspringAccountId: args.accountId,
+        fastspringOrderId: args.orderId,
+        eventType: "subscription_created",
+        amount: Math.round(args.total * 100), // Convert to cents
+        currency: args.currency,
+        metadata: {
+          orderReference: args.orderReference,
+          items: args.items.map((i) => i.product),
+        },
+        createdAt: Date.now(),
+      });
 
       return { success: true };
     } catch (error) {
-      console.error("Error handling checkout completed:", error);
+      logger.failure(
+        timer,
+        error as Error,
+        `Error handling order completed: ${args.orderId}`
+      );
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -187,141 +323,149 @@ export const handleCheckoutCompleted = internalMutation({
   },
 });
 
-// Handle Stripe subscription created
-export const handleSubscriptionCreated = internalMutation({
+/**
+ * Handle FastSpring subscription.activated event
+ * Called when a new subscription becomes active
+ */
+export const handleSubscriptionActivated = internalMutation({
   args: {
     subscriptionId: v.string(),
-    customerId: v.string(),
-    status: v.string(),
-    priceId: v.optional(v.string()),
-    currentPeriodStart: v.number(),
-    currentPeriodEnd: v.number(),
-    trialStart: v.optional(v.number()),
-    trialEnd: v.optional(v.number()),
-    // Optional extras when present
-    metadata: v.optional(v.any()),
-    interval: v.optional(v.union(v.literal("month"), v.literal("year"))),
+    accountId: v.string(),
+    accountEmail: v.string(),
+    product: v.string(),
+    state: v.string(),
+    nextChargeDate: v.optional(v.number()),
+    price: v.number(),
+    currency: v.string(),
+    intervalUnit: v.optional(v.string()),
+    intervalLength: v.optional(v.number()),
+    tags: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     const logger = createOperationLogger.webhook(
       "system",
-      "subscription_created",
+      "subscription_activated"
     );
     const timer = logger.start(
-      `Creating subscription for customer: ${args.customerId}`,
+      `Activating subscription: ${args.subscriptionId}`
     );
+
     try {
-      console.log(`Creating subscription: ${args.subscriptionId}`);
+      // Find user
+      let user: Doc<"users"> | null = null;
 
-      // Find user by customer ID
-      let user: Doc<"users"> | null = await ctx.db
-        .query("users")
-        .filter((q) => q.eq(q.field("stripeCustomerId"), args.customerId))
-        .unique();
-
-      if (!user && args.metadata?.userId) {
-        user = await ctx.db
-          .get(args.metadata.userId as Id<"users">)
-          .catch(() => null as any);
+      if (args.tags?.userId) {
+        try {
+          user = await ctx.db.get(args.tags.userId as Id<"users">);
+        } catch (e) {
+          console.error("Error fetching user by ID:", e);
+        }
       }
 
       if (!user) {
-        console.error(`User not found for customer: ${args.customerId}`);
+        user = await ctx.db
+          .query("users")
+          .withIndex("by_email", (q) => q.eq("email", args.accountEmail))
+          .unique();
+      }
+
+      if (!user) {
+        user = await ctx.db
+          .query("users")
+          .filter((q) => q.eq(q.field("fastspringAccountId"), args.accountId))
+          .unique();
+      }
+
+      if (!user) {
+        logger.error(
+          `User not found for subscription activation: ${args.subscriptionId}`,
+          {
+            subscriptionId: args.subscriptionId,
+            accountEmail: args.accountEmail,
+          }
+        );
         return { success: false, error: "User not found" };
       }
-      const u = user as Doc<"users">;
 
-      // Determine plan and billing cycle from price ID
-      const { plan, billingCycle } = await resolvePlanFromPriceId(
+      // Resolve plan from product path
+      const { plan, billingCycle } = await resolvePlanFromProductPath(
         ctx.db,
-        args.priceId || "",
+        args.product
       );
       const planLimits = getPlanLimits(plan);
 
-      // Determine subscription status
-      let subscriptionStatus: any = "active";
-      const isTrialing = !!args.trialStart && !!args.trialEnd;
+      // Determine billing cycle from interval if not resolved
+      const resolvedBillingCycle =
+        billingCycle ||
+        (args.intervalUnit === "year" ||
+        (args.intervalUnit === "month" && args.intervalLength === 12)
+          ? "yearly"
+          : "monthly");
 
-      if (isTrialing) {
-        subscriptionStatus = "trialing";
-      } else if (
-        args.status === "incomplete" ||
-        args.status === "incomplete_expired"
-      ) {
-        subscriptionStatus = args.status;
-      }
+      // Calculate current period dates
+      const now = Date.now();
+      const periodLengthMs =
+        resolvedBillingCycle === "yearly"
+          ? 365 * 24 * 60 * 60 * 1000
+          : 30 * 24 * 60 * 60 * 1000;
+      const currentPeriodEnd = args.nextChargeDate
+        ? args.nextChargeDate * 1000
+        : now + periodLengthMs;
 
       // Create or update billing record
       const existingBilling = await ctx.db
         .query("billing")
-        .withIndex("by_user", (q) => q.eq("userId", u._id))
+        .withIndex("by_user", (q) => q.eq("userId", user!._id))
         .unique();
 
+      const billingData = {
+        fastspringAccountId: args.accountId,
+        fastspringSubscriptionId: args.subscriptionId,
+        fastspringProductPath: args.product,
+        plan: plan,
+        status: "active" as const,
+        billingCycle: resolvedBillingCycle,
+        amount: args.price,
+        currency: args.currency,
+        currentPeriodStart: now,
+        currentPeriodEnd,
+        isTrialing: false,
+        cancelAtPeriodEnd: false,
+        planLimits,
+        updatedAt: now,
+      };
+
       if (existingBilling) {
-        await ctx.db.patch(existingBilling._id, {
-          stripeSubscriptionId: args.subscriptionId,
-          stripePriceId: args.priceId,
-          plan: plan,
-          status: subscriptionStatus,
-          currentPeriodStart: args.currentPeriodStart,
-          currentPeriodEnd: args.currentPeriodEnd,
-          trialStart: args.trialStart,
-          trialEnd: args.trialEnd,
-          isTrialing,
-          billingCycle:
-            billingCycle === "yearly" || args.interval === "year"
-              ? "yearly"
-              : "monthly",
-          planLimits,
-          updatedAt: Date.now(),
-        });
+        await ctx.db.patch(existingBilling._id, billingData);
       } else {
         await ctx.db.insert("billing", {
-          userId: u._id,
-          stripeCustomerId: args.customerId,
-          stripeSubscriptionId: args.subscriptionId,
-          stripePriceId: args.priceId,
-          plan: plan,
-          billingCycle:
-            billingCycle === "yearly" || args.interval === "year"
-              ? "yearly"
-              : "monthly",
-          amount: 0, // Will be updated from invoice
-          currency: "usd",
-          status: subscriptionStatus,
-          currentPeriodStart: args.currentPeriodStart,
-          currentPeriodEnd: args.currentPeriodEnd,
-          trialStart: args.trialStart,
-          trialEnd: args.trialEnd,
-          isTrialing,
-          cancelAtPeriodEnd: false,
-          planLimits,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
+          userId: user._id,
+          ...billingData,
+          createdAt: now,
         });
       }
 
-      // Update user plan
-      await ctx.db.patch(u._id, {
-        plan: plan,
-        stripeSubscriptionId: args.subscriptionId,
-        stripeCustomerId: u.stripeCustomerId || args.customerId,
-        updatedAt: Date.now(),
+      // Update user
+      await ctx.db.patch(user._id, {
+        plan,
+        fastspringAccountId: args.accountId,
+        fastspringSubscriptionId: args.subscriptionId,
+        updatedAt: now,
       });
 
-      // Create usage tracking record for the current period
+      // Create usage tracking for new period
       const existingUsage = await ctx.db
         .query("usageTracking")
-        .withIndex("by_user_current", (q) => 
-          q.eq("userId", u._id).eq("isCurrentPeriod", true)
+        .withIndex("by_user_current", (q) =>
+          q.eq("userId", user!._id).eq("isCurrentPeriod", true)
         )
         .unique();
 
       if (!existingUsage) {
         await ctx.db.insert("usageTracking", {
-          userId: u._id,
-          billingPeriodStart: args.currentPeriodStart,
-          billingPeriodEnd: args.currentPeriodEnd,
+          userId: user._id,
+          billingPeriodStart: now,
+          billingPeriodEnd: currentPeriodEnd,
           searchesUsed: 0,
           leadsEnriched: 0,
           emailsGenerated: 0,
@@ -329,41 +473,39 @@ export const handleSubscriptionCreated = internalMutation({
           apiCallsMade: 0,
           creditsUsed: 0,
           isCurrentPeriod: true,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
+          createdAt: now,
+          updatedAt: now,
         });
       }
 
-      // Log the event
+      // Log event
       await ctx.db.insert("subscriptionEvents", {
-        userId: u._id,
-        stripeCustomerId: args.customerId,
-        stripeSubscriptionId: args.subscriptionId,
+        userId: user._id,
+        fastspringAccountId: args.accountId,
+        fastspringSubscriptionId: args.subscriptionId,
         eventType: "subscription_created",
         newPlan: plan,
-        createdAt: Date.now(),
+        amount: Math.round(args.price * 100),
+        currency: args.currency,
+        createdAt: now,
       });
 
       logger.complete(
         timer,
-        `Subscription created for user ${u._id}: ${plan} plan`,
+        `Subscription activated for user ${user._id}: ${plan}`,
         {
-          userId: u._id,
+          userId: user._id,
           subscriptionId: args.subscriptionId,
           plan,
-          isTrialing,
-        },
+        }
       );
+
       return { success: true, plan };
     } catch (error) {
       logger.failure(
         timer,
         error as Error,
-        "Error handling subscription created",
-        {
-          subscriptionId: args.subscriptionId,
-          customerId: args.customerId,
-        },
+        `Error handling subscription activated: ${args.subscriptionId}`
       );
       return {
         success: false,
@@ -373,129 +515,96 @@ export const handleSubscriptionCreated = internalMutation({
   },
 });
 
-// Handle Stripe subscription updated
-export const handleSubscriptionUpdated = internalMutation({
+/**
+ * Handle FastSpring subscription.charge.completed event
+ * Called when a recurring payment is successful
+ */
+export const handleSubscriptionChargeCompleted = internalMutation({
   args: {
     subscriptionId: v.string(),
-    customerId: v.string(),
-    status: v.string(),
-    priceId: v.optional(v.string()),
-    currentPeriodStart: v.number(),
-    currentPeriodEnd: v.number(),
-    cancelAtPeriodEnd: v.boolean(),
-    cancelAt: v.optional(v.number()),
-    canceledAt: v.optional(v.number()),
-    metadata: v.optional(v.any()),
-    interval: v.optional(v.union(v.literal("month"), v.literal("year"))),
+    accountId: v.string(),
+    orderId: v.string(),
+    orderReference: v.string(),
+    product: v.string(),
+    price: v.number(),
+    currency: v.string(),
+    nextChargeDate: v.optional(v.number()),
+    tags: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     const logger = createOperationLogger.webhook(
       "system",
-      "subscription_updated",
+      "subscription_charge_completed"
     );
-    const timer = logger.start(`Updating subscription: ${args.subscriptionId}`);
+    const timer = logger.start(
+      `Processing subscription charge: ${args.subscriptionId}`
+    );
 
     try {
       // Find user by subscription ID
-      let user: Doc<"users"> | null = await ctx.db
+      const user = await ctx.db
         .query("users")
         .filter((q) =>
-          q.eq(q.field("stripeSubscriptionId"), args.subscriptionId),
+          q.eq(q.field("fastspringSubscriptionId"), args.subscriptionId)
         )
         .unique();
-
-      if (!user && args.metadata?.userId) {
-        user = await ctx.db
-          .get(args.metadata.userId as Id<"users">)
-          .catch(() => null as any);
-      }
 
       if (!user) {
         logger.error(
-          `User not found for subscription: ${args.subscriptionId}`,
+          `User not found for subscription charge: ${args.subscriptionId}`,
           {
             subscriptionId: args.subscriptionId,
-          },
+          }
         );
         return { success: false, error: "User not found" };
       }
-      const u2 = user as Doc<"users">;
 
-      // Get existing billing record
-      const billing = await ctx.db
-        .query("billing")
-        .withIndex("by_user", (q) => q.eq("userId", u2._id))
-        .unique();
-
-      if (!billing) {
-        logger.error(`Billing record not found for user: ${user._id}`, {
-          userId: user._id,
-          subscriptionId: args.subscriptionId,
-        });
-        return { success: false, error: "Billing record not found" };
-      }
-
-      logger.debug("Found user and billing record for subscription update", {
-        userId: u2._id,
-        subscriptionId: args.subscriptionId,
-      });
-
-      const oldPlan = billing.plan;
-      const { plan: newPlan, billingCycle } = await resolvePlanFromPriceId(
-        ctx.db,
-        args.priceId || "",
-      );
-      const planLimits = getPlanLimits(newPlan);
+      const now = Date.now();
 
       // Update billing record
-      await ctx.db.patch(billing._id, {
-        status: args.status as any,
-        stripePriceId: args.priceId,
-        plan: newPlan,
-        currentPeriodStart: args.currentPeriodStart,
-        currentPeriodEnd: args.currentPeriodEnd,
-        cancelAtPeriodEnd: args.cancelAtPeriodEnd,
-        cancelAt: args.cancelAt,
-        canceledAt: args.canceledAt,
-        billingCycle:
-          billingCycle === "yearly" || args.interval === "year"
-            ? "yearly"
-            : billing.billingCycle || "monthly",
-        planLimits,
-        updatedAt: Date.now(),
-      });
-
-      // Update user plan if changed
-      if (oldPlan !== newPlan) {
-        await ctx.db.patch(u2._id, {
-          plan: newPlan,
-          updatedAt: Date.now(),
-        });
-      }
-
-      // Update usage tracking period if period changed
-      const currentUsage = await ctx.db
-        .query("usageTracking")
-        .withIndex("by_user_current", (q) => 
-          q.eq("userId", u2._id).eq("isCurrentPeriod", true)
-        )
+      const billing = await ctx.db
+        .query("billing")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
         .unique();
 
-      if (
-        currentUsage &&
-        currentUsage.billingPeriodEnd !== args.currentPeriodEnd
-      ) {
-        // Mark current period as not current
-        await ctx.db.patch(currentUsage._id, {
-          isCurrentPeriod: false,
-          updatedAt: Date.now(),
+      if (billing) {
+        const periodLengthMs =
+          billing.billingCycle === "yearly"
+            ? 365 * 24 * 60 * 60 * 1000
+            : 30 * 24 * 60 * 60 * 1000;
+        const newPeriodEnd = args.nextChargeDate
+          ? args.nextChargeDate * 1000
+          : now + periodLengthMs;
+
+        await ctx.db.patch(billing._id, {
+          lastInvoiceDate: now,
+          amount: args.price,
+          currentPeriodStart: now,
+          currentPeriodEnd: newPeriodEnd,
+          status: "active",
+          updatedAt: now,
         });
 
-        // Create new current period
+        // Roll over usage tracking
+        const currentUsage = await ctx.db
+          .query("usageTracking")
+          .withIndex("by_user_current", (q) =>
+            q.eq("userId", user._id).eq("isCurrentPeriod", true)
+          )
+          .unique();
+
+        if (currentUsage) {
+          await ctx.db.patch(currentUsage._id, {
+            isCurrentPeriod: false,
+            updatedAt: now,
+          });
+        }
+
+        // Create new usage tracking period
         await ctx.db.insert("usageTracking", {
-          userId: u2._id,
-          billingPeriodStart: args.currentPeriodStart,
-          billingPeriodEnd: args.currentPeriodEnd,
+          userId: user._id,
+          billingPeriodStart: now,
+          billingPeriodEnd: newPeriodEnd,
           searchesUsed: 0,
           leadsEnriched: 0,
           emailsGenerated: 0,
@@ -503,43 +612,40 @@ export const handleSubscriptionUpdated = internalMutation({
           apiCallsMade: 0,
           creditsUsed: 0,
           isCurrentPeriod: true,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
+          createdAt: now,
+          updatedAt: now,
         });
       }
 
-      // Log the event
+      // Log event
       await ctx.db.insert("subscriptionEvents", {
-        userId: u2._id,
-        stripeCustomerId: args.customerId,
-        stripeSubscriptionId: args.subscriptionId,
-        eventType:
-          oldPlan !== newPlan ? "plan_changed" : "subscription_updated",
-        oldPlan,
-        newPlan,
-        createdAt: Date.now(),
+        userId: user._id,
+        fastspringAccountId: args.accountId,
+        fastspringSubscriptionId: args.subscriptionId,
+        fastspringOrderId: args.orderId,
+        eventType: "payment_succeeded",
+        amount: Math.round(args.price * 100),
+        currency: args.currency,
+        metadata: { orderReference: args.orderReference },
+        createdAt: now,
       });
 
       logger.complete(
         timer,
-        `Subscription updated for user ${u2._id}: ${oldPlan} -> ${newPlan}`,
+        `Subscription charge processed for user ${user._id}`,
         {
-          userId: u2._id,
+          userId: user._id,
           subscriptionId: args.subscriptionId,
-          oldPlan,
-          newPlan,
-        },
+          amount: args.price,
+        }
       );
-      return { success: true, oldPlan, newPlan };
+
+      return { success: true };
     } catch (error) {
       logger.failure(
         timer,
         error as Error,
-        `Error handling subscription updated: ${args.subscriptionId}`,
-        {
-          subscriptionId: args.subscriptionId,
-          customerId: args.customerId,
-        },
+        `Error handling subscription charge: ${args.subscriptionId}`
       );
       return {
         success: false,
@@ -549,38 +655,290 @@ export const handleSubscriptionUpdated = internalMutation({
   },
 });
 
-// Handle Stripe subscription deleted
-export const handleSubscriptionDeleted = internalMutation({
+/**
+ * Handle FastSpring subscription.updated event
+ * Called when a subscription is modified (plan change, proration, etc.)
+ */
+export const handleSubscriptionUpdated = internalMutation({
   args: {
     subscriptionId: v.string(),
-    customerId: v.string(),
+    accountId: v.string(),
+    product: v.string(),
+    state: v.string(),
+    price: v.number(),
+    currency: v.string(),
+    nextChargeDate: v.optional(v.number()),
+    intervalUnit: v.optional(v.string()),
+    intervalLength: v.optional(v.number()),
+    tags: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    try {
-      console.log(`Deleting subscription: ${args.subscriptionId}`);
+    const logger = createOperationLogger.webhook(
+      "system",
+      "subscription_updated"
+    );
+    const timer = logger.start(`Updating subscription: ${args.subscriptionId}`);
 
+    try {
       // Find user by subscription ID
       const user = await ctx.db
         .query("users")
         .filter((q) =>
-          q.eq(q.field("stripeSubscriptionId"), args.subscriptionId),
+          q.eq(q.field("fastspringSubscriptionId"), args.subscriptionId)
         )
         .unique();
 
       if (!user) {
-        console.error(
-          `User not found for subscription: ${args.subscriptionId}`,
+        logger.error(
+          `User not found for subscription update: ${args.subscriptionId}`,
+          {
+            subscriptionId: args.subscriptionId,
+          }
+        );
+        return { success: false, error: "User not found" };
+      }
+
+      // Get billing record
+      const billing = await ctx.db
+        .query("billing")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .unique();
+
+      if (!billing) {
+        logger.error(`Billing record not found for user: ${user._id}`, {
+          userId: user._id,
+        });
+        return { success: false, error: "Billing record not found" };
+      }
+
+      const oldPlan = billing.plan;
+      const { plan: newPlan, billingCycle } = await resolvePlanFromProductPath(
+        ctx.db,
+        args.product
+      );
+      const planLimits = getPlanLimits(newPlan);
+      const now = Date.now();
+
+      // Map FastSpring state to our status
+      let status: typeof billing.status = "active";
+      if (args.state === "canceled") status = "cancelled";
+      else if (args.state === "deactivated") status = "cancelled";
+      else if (args.state === "trial") status = "trialing";
+
+      // Calculate period end
+      const periodLengthMs =
+        billingCycle === "yearly"
+          ? 365 * 24 * 60 * 60 * 1000
+          : 30 * 24 * 60 * 60 * 1000;
+      const currentPeriodEnd = args.nextChargeDate
+        ? args.nextChargeDate * 1000
+        : now + periodLengthMs;
+
+      // Update billing
+      await ctx.db.patch(billing._id, {
+        fastspringProductPath: args.product,
+        plan: newPlan,
+        status,
+        amount: args.price,
+        currency: args.currency,
+        currentPeriodEnd,
+        billingCycle: billingCycle || billing.billingCycle,
+        planLimits,
+        updatedAt: now,
+      });
+
+      // Update user plan if changed
+      if (oldPlan !== newPlan) {
+        await ctx.db.patch(user._id, {
+          plan: newPlan,
+          updatedAt: now,
+        });
+      }
+
+      // Log event
+      await ctx.db.insert("subscriptionEvents", {
+        userId: user._id,
+        fastspringAccountId: args.accountId,
+        fastspringSubscriptionId: args.subscriptionId,
+        eventType: oldPlan !== newPlan ? "plan_changed" : "subscription_updated",
+        oldPlan,
+        newPlan,
+        amount: Math.round(args.price * 100),
+        currency: args.currency,
+        createdAt: now,
+      });
+
+      logger.complete(
+        timer,
+        `Subscription updated for user ${user._id}: ${oldPlan} -> ${newPlan}`,
+        {
+          userId: user._id,
+          subscriptionId: args.subscriptionId,
+          oldPlan,
+          newPlan,
+        }
+      );
+
+      return { success: true, oldPlan, newPlan };
+    } catch (error) {
+      logger.failure(
+        timer,
+        error as Error,
+        `Error handling subscription update: ${args.subscriptionId}`
+      );
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  },
+});
+
+/**
+ * Handle FastSpring subscription.canceled event
+ * Called when subscription cancellation is initiated (will cancel at period end)
+ */
+export const handleSubscriptionCanceled = internalMutation({
+  args: {
+    subscriptionId: v.string(),
+    accountId: v.string(),
+    product: v.string(),
+    canceledDate: v.optional(v.number()),
+    deactivationDate: v.optional(v.number()),
+    tags: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const logger = createOperationLogger.webhook(
+      "system",
+      "subscription_canceled"
+    );
+    const timer = logger.start(
+      `Processing subscription cancellation: ${args.subscriptionId}`
+    );
+
+    try {
+      // Find user by subscription ID
+      const user = await ctx.db
+        .query("users")
+        .filter((q) =>
+          q.eq(q.field("fastspringSubscriptionId"), args.subscriptionId)
+        )
+        .unique();
+
+      if (!user) {
+        logger.error(
+          `User not found for subscription cancellation: ${args.subscriptionId}`,
+          {
+            subscriptionId: args.subscriptionId,
+          }
+        );
+        return { success: false, error: "User not found" };
+      }
+
+      const now = Date.now();
+
+      // Update billing record
+      const billing = await ctx.db
+        .query("billing")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .unique();
+
+      if (billing) {
+        await ctx.db.patch(billing._id, {
+          cancelAtPeriodEnd: true,
+          cancelAt: args.deactivationDate
+            ? args.deactivationDate * 1000
+            : undefined,
+          canceledAt: args.canceledDate ? args.canceledDate * 1000 : now,
+          updatedAt: now,
+        });
+      }
+
+      // Log event
+      await ctx.db.insert("subscriptionEvents", {
+        userId: user._id,
+        fastspringAccountId: args.accountId,
+        fastspringSubscriptionId: args.subscriptionId,
+        eventType: "subscription_cancelled",
+        oldPlan: user.plan,
+        metadata: {
+          canceledDate: args.canceledDate,
+          deactivationDate: args.deactivationDate,
+        },
+        createdAt: now,
+      });
+
+      logger.complete(
+        timer,
+        `Subscription cancellation processed for user ${user._id}`,
+        {
+          userId: user._id,
+          subscriptionId: args.subscriptionId,
+        }
+      );
+
+      return { success: true };
+    } catch (error) {
+      logger.failure(
+        timer,
+        error as Error,
+        `Error handling subscription cancellation: ${args.subscriptionId}`
+      );
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  },
+});
+
+/**
+ * Handle FastSpring subscription.deactivated event
+ * Called when subscription is fully terminated (end of cancellation period)
+ */
+export const handleSubscriptionDeactivated = internalMutation({
+  args: {
+    subscriptionId: v.string(),
+    accountId: v.string(),
+    product: v.string(),
+    tags: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const logger = createOperationLogger.webhook(
+      "system",
+      "subscription_deactivated"
+    );
+    const timer = logger.start(
+      `Deactivating subscription: ${args.subscriptionId}`
+    );
+
+    try {
+      // Find user by subscription ID
+      const user = await ctx.db
+        .query("users")
+        .filter((q) =>
+          q.eq(q.field("fastspringSubscriptionId"), args.subscriptionId)
+        )
+        .unique();
+
+      if (!user) {
+        logger.error(
+          `User not found for subscription deactivation: ${args.subscriptionId}`,
+          {
+            subscriptionId: args.subscriptionId,
+          }
         );
         return { success: false, error: "User not found" };
       }
 
       const oldPlan = user.plan;
+      const now = Date.now();
 
-      // Downgrade user to starter plan
+      // Downgrade user to starter/free plan
       await ctx.db.patch(user._id, {
         plan: "starter",
-        stripeSubscriptionId: undefined,
-        updatedAt: Date.now(),
+        fastspringSubscriptionId: undefined,
+        updatedAt: now,
       });
 
       // Update billing record
@@ -593,31 +951,39 @@ export const handleSubscriptionDeleted = internalMutation({
         await ctx.db.patch(billing._id, {
           status: "cancelled",
           plan: "starter",
-          canceledAt: Date.now(),
+          fastspringSubscriptionId: undefined,
           planLimits: getPlanLimits("starter"),
-          updatedAt: Date.now(),
+          updatedAt: now,
         });
       }
 
-      // Log the event
+      // Log event
       await ctx.db.insert("subscriptionEvents", {
         userId: user._id,
-        stripeCustomerId: args.customerId,
-        stripeSubscriptionId: args.subscriptionId,
+        fastspringAccountId: args.accountId,
+        fastspringSubscriptionId: args.subscriptionId,
         eventType: "subscription_cancelled",
         oldPlan,
         newPlan: "starter",
-        createdAt: Date.now(),
+        createdAt: now,
       });
 
-      console.log(
-        `Subscription cancelled for user ${user._id}: ${oldPlan} -> starter`,
+      logger.complete(
+        timer,
+        `Subscription deactivated for user ${user._id}: ${oldPlan} -> starter`,
+        {
+          userId: user._id,
+          subscriptionId: args.subscriptionId,
+          oldPlan,
+        }
       );
+
       return { success: true, oldPlan, newPlan: "starter" };
     } catch (error) {
-      console.error(
-        `Error handling subscription deleted: ${args.subscriptionId}`,
-        error,
+      logger.failure(
+        timer,
+        error as Error,
+        `Error handling subscription deactivation: ${args.subscriptionId}`
       );
       return {
         success: false,
@@ -627,133 +993,92 @@ export const handleSubscriptionDeleted = internalMutation({
   },
 });
 
-// Handle Stripe payment succeeded (invoice)
-export const handlePaymentSucceeded = internalMutation({
+/**
+ * Handle FastSpring subscription.charge.failed event
+ * Called when a recurring payment fails
+ */
+export const handleSubscriptionChargeFailed = internalMutation({
   args: {
-    invoiceId: v.string(),
-    subscriptionId: v.optional(v.string()),
-    customerId: v.string(),
-    amount: v.number(),
-    currency: v.string(),
-    paidAt: v.optional(v.number()),
+    subscriptionId: v.string(),
+    accountId: v.string(),
+    product: v.string(),
+    reason: v.optional(v.string()),
+    retryDate: v.optional(v.number()),
+    tags: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    try {
-      console.log(`Payment succeeded for invoice: ${args.invoiceId}`);
+    const logger = createOperationLogger.webhook(
+      "system",
+      "subscription_charge_failed"
+    );
+    const timer = logger.start(
+      `Processing failed charge: ${args.subscriptionId}`
+    );
 
-      // Find user by customer ID
+    try {
+      // Find user by subscription ID
       const user = await ctx.db
         .query("users")
-        .filter((q) => q.eq(q.field("stripeCustomerId"), args.customerId))
+        .filter((q) =>
+          q.eq(q.field("fastspringSubscriptionId"), args.subscriptionId)
+        )
         .unique();
 
       if (!user) {
-        console.error(`User not found for customer: ${args.customerId}`);
+        logger.error(
+          `User not found for failed charge: ${args.subscriptionId}`,
+          {
+            subscriptionId: args.subscriptionId,
+          }
+        );
         return { success: false, error: "User not found" };
       }
 
-      // Update billing record with payment info
+      const now = Date.now();
+
+      // Update billing status to past_due if no retry scheduled
       const billing = await ctx.db
         .query("billing")
         .withIndex("by_user", (q) => q.eq("userId", user._id))
         .unique();
 
-      if (billing) {
-        await ctx.db.patch(billing._id, {
-          lastInvoiceDate: args.paidAt || Date.now(),
-          amount: args.amount / 100, // Convert from cents to dollars
-          currency: args.currency,
-          updatedAt: Date.now(),
-        });
-      }
-
-      // Log the event
-      await ctx.db.insert("subscriptionEvents", {
-        userId: user._id,
-        stripeCustomerId: args.customerId,
-        stripeSubscriptionId: args.subscriptionId,
-        eventType: "payment_succeeded",
-        amount: args.amount,
-        currency: args.currency,
-        metadata: { invoiceId: args.invoiceId },
-        createdAt: Date.now(),
-      });
-
-      console.log(
-        `Payment successful for user ${user._id}: $${(args.amount / 100).toFixed(2)}`,
-      );
-      return { success: true };
-    } catch (error) {
-      console.error("Error handling payment succeeded:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
-  },
-});
-
-// Handle Stripe payment failed (invoice)
-export const handlePaymentFailed = internalMutation({
-  args: {
-    invoiceId: v.string(),
-    subscriptionId: v.optional(v.string()),
-    customerId: v.string(),
-    amount: v.number(),
-    currency: v.string(),
-    attemptCount: v.number(),
-    nextPaymentAttempt: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    try {
-      console.log(`Payment failed for invoice: ${args.invoiceId}`);
-
-      // Find user by customer ID
-      const user = await ctx.db
-        .query("users")
-        .filter((q) => q.eq(q.field("stripeCustomerId"), args.customerId))
-        .unique();
-
-      if (!user) {
-        console.error(`User not found for customer: ${args.customerId}`);
-        return { success: false, error: "User not found" };
-      }
-
-      // Update billing record status if multiple failures
-      const billing = await ctx.db
-        .query("billing")
-        .withIndex("by_user", (q) => q.eq("userId", user._id))
-        .unique();
-
-      if (billing && args.attemptCount >= 3) {
+      if (billing && !args.retryDate) {
         await ctx.db.patch(billing._id, {
           status: "past_due",
-          updatedAt: Date.now(),
+          updatedAt: now,
         });
       }
 
-      // Log the event
+      // Log event
       await ctx.db.insert("subscriptionEvents", {
         userId: user._id,
-        stripeCustomerId: args.customerId,
-        stripeSubscriptionId: args.subscriptionId,
+        fastspringAccountId: args.accountId,
+        fastspringSubscriptionId: args.subscriptionId,
         eventType: "payment_failed",
-        amount: args.amount,
-        currency: args.currency,
         metadata: {
-          invoiceId: args.invoiceId,
-          attemptCount: args.attemptCount,
-          nextPaymentAttempt: args.nextPaymentAttempt,
+          reason: args.reason,
+          retryDate: args.retryDate,
         },
-        createdAt: Date.now(),
+        createdAt: now,
       });
 
-      console.log(
-        `Payment failed for user ${user._id}: attempt ${args.attemptCount}`,
+      logger.complete(
+        timer,
+        `Failed charge recorded for user ${user._id}`,
+        {
+          userId: user._id,
+          subscriptionId: args.subscriptionId,
+          reason: args.reason,
+        }
       );
+
       return { success: true };
     } catch (error) {
-      console.error("Error handling payment failed:", error);
+      logger.failure(
+        timer,
+        error as Error,
+        `Error handling failed charge: ${args.subscriptionId}`
+      );
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",

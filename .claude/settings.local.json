@@ -32,7 +32,17 @@
       "Bash(npx convex:*)",
       "WebFetch(domain:developers.google.com)",
       "Bash(git show:*)",
-      "WebFetch(domain:www.perplexity.ai)"
+      "WebFetch(domain:www.perplexity.ai)",
+      "WebFetch(domain:www.convex.dev)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(npx vite build)",
+      "WebFetch(domain:app.findymail.com)",
+      "WebFetch(domain:docs.findymail.com)",
+      "WebFetch(domain:www.findymail.com)",
+      "WebFetch(domain:dlthub.com)",
+      "Bash(npx eslint:*)",
+      "Bash(echo:*)"
     ],
     "deny": [],
     "ask": []

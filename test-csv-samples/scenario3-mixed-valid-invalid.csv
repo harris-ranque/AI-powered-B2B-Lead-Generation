@@ -1,0 +1,7 @@
+company_name,domain,contact_email,phone,website,industry
+Acme Corp,acme.com,john@acme.com,(555) 123-4567,https://acme.com,Software
+,techstart.io,,(555) 234-5678,https://techstart.io,Technology
+Missing Domain Company,,jane@example.com,(555) 345-6789,,Consulting
+Valid Company,validcompany.com,contact@validcompany.com,(555) 456-7890,https://validcompany.com,Healthcare
+Invalid Row,,,,,
+Another Valid,anothervalid.io,,,https://anothervalid.io,Marketing

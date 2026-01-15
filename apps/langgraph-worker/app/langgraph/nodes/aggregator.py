@@ -146,7 +146,10 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
                 deep_research_reason=state.get("deep_research_reason"),
                 additional_credits_used=0,
                 missing_data_points=state.get("missing_data_points", []),
-                data_completeness_score=0.0
+                data_completeness_score=0.0,
+                # Lead tier classification
+                lead_tier=state.get("lead_tier", "A"),
+                lead_tier_reason=state.get("lead_tier_reason"),
             )
 
             capture_event(
@@ -328,7 +331,10 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
             deep_research_reason=state.get("deep_research_reason"),
             additional_credits_used=max(0, state.get("research_credit_cost", 0) - __import__('app.config', fromlist=['CREDIT_COSTS']).CREDIT_COSTS['AI_ANALYSIS']),  # Subtract base AI_ANALYSIS cost
             missing_data_points=state.get("missing_data_points", []),
-            data_completeness_score=state.get("base_data_validation_score", 1.0)
+            data_completeness_score=state.get("base_data_validation_score", 1.0),
+            # Lead tier classification
+            lead_tier=state.get("lead_tier", "A"),
+            lead_tier_reason=state.get("lead_tier_reason"),
         )
         
         execution_time = time.time() - perf_start
@@ -425,7 +431,10 @@ async def aggregator_node(state: EmailGenerationState) -> Dict[str, Any]:
             deep_research_reason=state.get("deep_research_reason"),
             additional_credits_used=max(0, state.get("research_credit_cost", 0) - __import__('app.config', fromlist=['CREDIT_COSTS']).CREDIT_COSTS['AI_ANALYSIS']),
             missing_data_points=state.get("missing_data_points", []),
-            data_completeness_score=state.get("base_data_validation_score", 0.0)  # Zero on error
+            data_completeness_score=state.get("base_data_validation_score", 0.0),  # Zero on error
+            # Lead tier classification
+            lead_tier=state.get("lead_tier", "A"),
+            lead_tier_reason=state.get("lead_tier_reason"),
         )
 
         return {

@@ -20,6 +20,9 @@ import { getSingleProviderError } from "../lib/errorMessages";
 // Import enrichment types
 import { EnrichmentBatchResult, EnrichmentOptions } from "./enrichment/types";
 
+// Import Workpool for batch enrichment
+import { enrichmentPool, generateBatchId } from "./workpool";
+
 type LangGraphResponse = {
   status: string;
   result?: {
@@ -415,47 +418,51 @@ export const enrichLeads: any = action({
           userPlan: user.plan,
           enrichmentProvider: providerType,
           apiKeySource: user.plan === "enterprise" && userApiKey ? "user_provided" : "system",
-          maxConcurrency: 5,
-          architecture: "workpool_controlled",
-          estimatedDuration: `${Math.ceil((leads.length * 4) / 5 / 60)} minutes`, // ~4s per lead, 5 concurrent
+          maxConcurrency: 25, // Workpool handles global parallelism
+          perApiKeyConcurrency: 5, // Semaphore handles per-key limiting
+          architecture: "workpool_hybrid",
+          estimatedDuration: `${Math.ceil((leads.length * 4) / 25 / 60)} minutes`, // ~4s per lead, 25 concurrent max
         },
       );
 
       // ========================================================================
-      // SCHEDULED ACTIONS WITH STAGGERED DELAYS (Rate-Limited Enrichment)
+      // WORKPOOL BATCH ENRICHMENT (Enterprise-Grade Queue Management)
       // ========================================================================
-      // Schedule all leads with 200ms delays between each to limit concurrency
-      // ~5 concurrent at any time (FindyMail's limit)
-      // Each lead gets inline fallback support (FindyMail → IcyPeas)
-      // No timeout issues - each lead has its own 10-minute action timeout
+      // Workpool provides:
+      // - maxParallelism: 25 - Supports ~5 concurrent users with their own API keys
+      // - Automatic retry with exponential backoff (5 attempts, 2s/4s/8s/16s/32s)
+      // - Built-in completion tracking via onComplete handler
+      // - Race-safe phase transition (no duplicate analysis triggers)
+      //
+      // Semaphore still handles per-API-key rate limiting (5 concurrent per key)
       // ========================================================================
+
+      // Generate unique batch ID for tracking
+      const batchId = generateBatchId(args.searchId);
 
       logWithCorrelation(
         "info",
         correlation,
-        "🚀 Scheduling All Leads for Async Enrichment (Staggered)",
+        "🚀 Enqueueing Leads to Workpool for Enrichment",
         {
           totalLeads: leads.length,
-          approximateConcurrency: 5,
-          architecture: "scheduled_actions_staggered",
-          staggerDelay: "200ms per lead",
-          estimatedDuration: `${Math.ceil((leads.length * 4) / 5 / 60)} minutes`,
-          inlineFallback: true,
-          note: "200ms stagger approximates 5 concurrent limit",
+          batchId,
+          architecture: "workpool_with_semaphore",
+          globalMaxParallelism: 25,
+          perApiKeyLimit: 5,
+          retryConfig: "5 attempts with exponential backoff (2s base)",
+          estimatedDuration: `${Math.ceil((leads.length * 4) / 25 / 60)} minutes`,
         },
       );
 
-      let scheduledCount = 0;
-      let schedulingErrors = 0;
-
-      // Schedule all leads with staggered delays (fire-and-forget)
-      for (let i = 0; i < leads.length; i++) {
-        const lead = leads[i];
-        try {
-          // Schedule with 200ms delay per lead to limit concurrency
-          await ctx.scheduler.runAfter(
-            i * 200, // 200ms stagger between leads
-            (internal as any)["leads/asyncEnrichment"].enrichSingleLead,
+      // Enqueue all leads to Workpool using Promise.all for parallel enqueueing
+      // Each lead gets its own onComplete handler for progress tracking
+      let workIds: string[] = [];
+      try {
+        const enqueuePromises = leads.map(async (lead: any) => {
+          const workId = await enrichmentPool.enqueueAction(
+            ctx,
+            internal.leads.asyncEnrichment.enrichSingleLeadWorkpool,
             {
               leadId: lead._id,
               searchId: args.searchId,
@@ -463,90 +470,111 @@ export const enrichLeads: any = action({
               roles: requestedRoles,
               userApiKey,
             },
-          );
-
-          scheduledCount++;
-        } catch (error) {
-          schedulingErrors++;
-          console.error(`Failed to schedule lead ${lead._id} for enrichment:`, error);
-
-          // Mark lead as failed immediately
-          await ctx.runMutation(
-            internal.leads.internal.updateEnrichmentStatus,
             {
-              leadId: lead._id,
-              status: "failed",
-              error: error instanceof Error ? error.message : "Scheduling failed",
-            },
+              // Context passed to onComplete handler for tracking
+              context: {
+                searchId: args.searchId,
+                userId: search.userId,
+                leadId: lead._id,
+                batchId,
+              },
+              onComplete: internal.leads.workpool.onEnrichmentComplete,
+            }
           );
-        }
+          return String(workId);
+        });
+
+        workIds = await Promise.all(enqueuePromises);
+      } catch (error) {
+        logWithCorrelation(
+          "error",
+          correlation,
+          "❌ Failed to enqueue leads to Workpool",
+          { batchId, error: error instanceof Error ? error.message : "Unknown error" },
+          error as Error,
+        );
+        throw error;
       }
 
+      // Initialize batch tracker in database
+      await ctx.runMutation(internal.leads.workpool.initEnrichmentBatch, {
+        batchId,
+        searchId: args.searchId,
+        userId: search.userId,
+        totalLeads: leads.length,
+        workIds: workIds.map(id => String(id)),
+      });
 
       const performanceData = endPerformanceTracking(performanceTracker);
 
       logWithCorrelation(
         "info",
         correlation,
-        "🎉 PHASE 2 SCHEDULING COMPLETE: All Leads Scheduled with Staggered Delays",
+        "🎉 PHASE 2 SCHEDULING COMPLETE: All Leads Enqueued to Workpool",
         {
           totalLeads: leads.length,
-          scheduledCount,
-          schedulingErrors,
-          schedulingSuccessRate: (scheduledCount / leads.length) * 100,
-          architecture: "scheduled_actions_staggered",
-          staggerDelay: "200ms",
-          approximateConcurrency: 5,
-          estimatedCompletionTime: `${Math.ceil((leads.length * 4) / 5 / 60)} minutes`,
+          enqueuedCount: workIds.length,
+          batchId,
+          architecture: "workpool_hybrid",
+          globalParallelism: 25,
+          perApiKeyLimit: 5,
+          retryConfig: "exponential backoff (2s, 4s, 8s, 16s, 32s)",
+          estimatedCompletionTime: `${Math.ceil((leads.length * 4) / 25 / 60)} minutes`,
           schedulingDurationMs: performanceData?.duration || 0,
           nextPhase: "ai_analysis_after_enrichment",
-          note: "Enrichment will complete asynchronously via scheduled actions",
+          note: "Workpool onComplete handler will trigger analysis when all leads done",
         },
       );
 
-      // Broadcast initial progress (leads scheduled, processing will happen async)
+      // Broadcast initial progress (leads enqueued, processing will happen async)
       await ctx.runMutation(
         internal.realtime.broadcaster.broadcastPipelineUpdate,
         {
           userId: search.userId,
           searchId: args.searchId,
           stage: "enrichment",
-          progress: 0, // 0% enriched (scheduled but not complete yet)
-          message: `Scheduled ${scheduledCount} leads for enrichment`,
+          progress: 0, // 0% enriched (enqueued but not complete yet)
+          message: `Enqueued ${workIds.length} leads for enrichment via Workpool`,
           data: {
             progress: {
               discovered: leads.length,
               enriched: 0, // None complete yet
               analyzed: 0,
-              scheduled: scheduledCount,
+              enqueued: workIds.length,
               total: leads.length,
+            },
+            workpoolBatch: {
+              batchId,
+              workIds: workIds.length,
             },
           },
         },
       );
 
       // NOTE: We do NOT call analyzeLeads here because enrichment hasn't finished yet!
-      // Each enrichment action will check if ALL enrichment is complete
-      // The LAST enrichment action to finish will automatically trigger analyzeLeads
+      // The Workpool onComplete handler (onEnrichmentComplete) will trigger analysis
+      // when all leads are complete - race-safe with atomic batch tracking
 
       logWithCorrelation(
         "info",
         correlation,
-        "ℹ️  AI Analysis will trigger automatically when all enrichment completes",
+        "ℹ️  AI Analysis will trigger automatically via Workpool onComplete",
         {
-          scheduledLeads: scheduledCount,
-          note: "Last enrichment action to complete will trigger analysis phase",
+          enqueuedLeads: workIds.length,
+          batchId,
+          note: "Workpool tracks completion and triggers analysis when all leads done",
         },
       );
 
       return {
         success: true,
-        message: `Scheduled ${scheduledCount}/${leads.length} leads for async enrichment`,
-        scheduledCount,
-        schedulingErrors,
+        message: `Enqueued ${workIds.length}/${leads.length} leads via Workpool`,
+        enqueuedCount: workIds.length,
+        batchId,
         totalLeads: leads.length,
         enrichmentProvider: providerType,
-        note: "Enrichment will complete asynchronously via scheduled actions",
+        architecture: "workpool_hybrid",
+        note: "Enrichment will complete asynchronously via Workpool with automatic retry",
       };
     } catch (error) {
       const performanceData = endPerformanceTracking(performanceTracker);
@@ -575,6 +603,143 @@ export const enrichLeads: any = action({
 
       throw error;
     }
+  },
+});
+
+/**
+ * Resume enrichment from checkpoint
+ *
+ * Called when user wants to resume enrichment after a pipeline-blocking error
+ * (credits exhausted, subscription paused) has been resolved.
+ *
+ * Flow:
+ * 1. Check if resumable checkpoint exists
+ * 2. Get checkpoint status for logging
+ * 3. Clear the checkpoint
+ * 4. Trigger enrichment for remaining leads (unprocessed)
+ */
+export const resumeEnrichment: any = action({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    // Create correlation context
+    const correlation = createCorrelationContext(
+      OPERATION_TYPES.LEAD_ENRICHMENT,
+      "system",
+      {
+        searchId: args.searchId,
+        metadata: {
+          stage: "resume_enrichment",
+        },
+      },
+    );
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "🔄 Attempting to resume enrichment from checkpoint",
+      { searchId: args.searchId },
+    );
+
+    // Get search info
+    const search = await ctx.runQuery(
+      internal.search.internal.getSearchInternal,
+      { searchId: args.searchId },
+    );
+
+    if (!search) {
+      throw new Error("Search not found");
+    }
+
+    // Check for resumable checkpoint
+    const checkpointStatus = await ctx.runQuery(
+      internal.leads.enrichment.checkpoint.getCheckpoint,
+      { searchId: args.searchId },
+    );
+
+    if (!checkpointStatus) {
+      logWithCorrelation(
+        "warn",
+        correlation,
+        "⚠️ No checkpoint found - starting fresh enrichment",
+        { searchId: args.searchId },
+      );
+
+      // No checkpoint, just trigger normal enrichment
+      await ctx.scheduler.runAfter(
+        0,
+        (internal as any)["leads/actions"].enrichLeads,
+        { searchId: args.searchId }
+      );
+
+      return {
+        success: true,
+        resumed: false,
+        message: "No checkpoint found - started fresh enrichment",
+      };
+    }
+
+    if (!checkpointStatus.resumable) {
+      throw new Error(
+        `Checkpoint is not resumable: ${checkpointStatus.errorMessage || "Unknown reason"}`
+      );
+    }
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "📋 Found resumable checkpoint",
+      {
+        searchId: args.searchId,
+        lastProcessedIndex: checkpointStatus.lastProcessedIndex,
+        totalLeads: checkpointStatus.totalLeads,
+        enrichedCount: checkpointStatus.enrichedCount,
+        noContactsCount: checkpointStatus.noContactsCount,
+        failedCount: checkpointStatus.failedCount,
+        remainingLeads: checkpointStatus.totalLeads - checkpointStatus.lastProcessedIndex - 1,
+        errorCode: checkpointStatus.errorCode,
+      },
+    );
+
+    // Clear the checkpoint since we're resuming
+    await ctx.runMutation(
+      internal.leads.enrichment.checkpoint.clearCheckpoint,
+      { searchId: args.searchId },
+    );
+
+    logWithCorrelation(
+      "info",
+      correlation,
+      "✅ Checkpoint cleared - triggering enrichment for remaining leads",
+      { searchId: args.searchId },
+    );
+
+    // Trigger enrichment for remaining leads
+    // The enrichLeads action will naturally only process unprocessed (pending) leads
+    await ctx.scheduler.runAfter(
+      0,
+      (internal as any)["leads/actions"].enrichLeads,
+      { searchId: args.searchId }
+    );
+
+    return {
+      success: true,
+      resumed: true,
+      message: "Enrichment resumed from checkpoint",
+      previousProgress: {
+        lastProcessedIndex: checkpointStatus.lastProcessedIndex,
+        totalLeads: checkpointStatus.totalLeads,
+        enrichedCount: checkpointStatus.enrichedCount,
+        noContactsCount: checkpointStatus.noContactsCount,
+        failedCount: checkpointStatus.failedCount,
+        remainingLeads: checkpointStatus.totalLeads - checkpointStatus.lastProcessedIndex - 1,
+      },
+      previousError: {
+        code: checkpointStatus.errorCode,
+        message: checkpointStatus.errorMessage,
+      },
+    };
   },
 });
 

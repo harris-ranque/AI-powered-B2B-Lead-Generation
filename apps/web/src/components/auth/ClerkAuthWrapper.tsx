@@ -24,7 +24,7 @@ export function ClerkAuthWrapper({
   if (mode === "signup") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-md" data-testid="sign-up-button">
           <SignUp
             redirectUrl={redirectUrl || "/app"}
             signInUrl="/signin"
@@ -112,7 +112,7 @@ export function ClerkAuthWrapper({
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-md" data-testid="sign-in-button">
         <SignIn
           redirectUrl={redirectUrl || "/app"}
           signUpUrl="/signup"
@@ -155,16 +155,18 @@ export function ClerkAuthWrapper({
 
 export function ClerkUserButton() {
   return (
-    <UserButton
-      appearance={{
-        elements: {
-          avatarBox: "w-8 h-8",
-          userButtonPopoverCard: "shadow-md border",
-          userButtonPopoverActionButton: "hover:bg-accent",
-        },
-      }}
-      showName={false}
-      afterSignOutUrl="/signin"
-    />
+    <div data-testid="user-menu">
+      <UserButton
+        appearance={{
+          elements: {
+            avatarBox: "w-8 h-8",
+            userButtonPopoverCard: "shadow-md border",
+            userButtonPopoverActionButton: "hover:bg-accent",
+          },
+        }}
+        showName={false}
+        afterSignOutUrl="/signin"
+      />
+    </div>
   );
 }

@@ -1,0 +1,6 @@
+company_name,domain,contact_email,notes,description
+Test Company,testcompany.com,test@testcompany.com,Normal notes here,Regular description
+Injection Test 1,injection1.com,test@injection1.com,=1+1,Should be sanitized
+Injection Test 2,injection2.com,test@injection2.com,+cmd|'/c calc'!A1,Formula attack attempt
+Injection Test 3,injection3.com,test@injection3.com,-2+3,Another formula test
+Safe Company,safecompany.com,safe@safecompany.com,@mention style,Tab character test

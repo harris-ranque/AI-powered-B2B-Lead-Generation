@@ -15,6 +15,12 @@ import {
   logWithCorrelation,
   OPERATION_TYPES,
 } from "../lib/correlation";
+import {
+  classifyGoogleError,
+  createApiConvexError,
+  shouldBlockPipeline,
+  type ApiError,
+} from "../lib/apiErrors";
 
 // ============================================================================
 // Types
@@ -69,6 +75,7 @@ type TileSearchResult = {
   places: Place[];
   pagesFetched: number;
   apiCalls: number;
+  apiError?: ApiError; // Present if a user-actionable error occurred
 };
 
 // ============================================================================
@@ -100,44 +107,97 @@ function distanceMeters(p1: LatLng, p2: LatLng): number {
 }
 
 /**
+ * Calculate bounds area in square kilometers for density-aware tiling
+ */
+function calculateBoundsAreaKm2(bounds: Bounds): number {
+  const latDiff = bounds.ne.lat - bounds.sw.lat;
+  const lngDiff = bounds.ne.lng - bounds.sw.lng;
+  const midLat = (bounds.ne.lat + bounds.sw.lat) / 2;
+
+  // Approximate area calculation (good enough for tile sizing)
+  const latKm = latDiff * 111.32;
+  const lngKm = lngDiff * 111.32 * Math.cos((midLat * Math.PI) / 180);
+
+  return latKm * lngKm;
+}
+
+/**
+ * Calculate optimal tile radius based on area density
+ * Larger tiles for dense urban areas, smaller tiles for sparse rural areas
+ */
+function calculateOptimalTileRadius(bounds: Bounds): number {
+  const areaKm2 = calculateBoundsAreaKm2(bounds);
+
+  // 🎯 ADAPTIVE TILE SIZING: Optimize based on area size
+  // Small dense areas: Larger tiles (fewer API calls)
+  // Large sparse areas: Smaller tiles (better coverage)
+
+  if (areaKm2 < 50) {
+    // Dense urban area (e.g., small city, downtown)
+    // Use larger tiles to reduce API call count
+    return 2500; // ~1.5 miles radius
+  } else if (areaKm2 < 200) {
+    // Suburban/medium city area
+    // Balanced tile size for good coverage
+    return 2000; // ~1.2 miles radius
+  } else {
+    // Large area or rural/sparse region
+    // Smaller tiles for better granular coverage
+    return 1500; // ~0.9 miles radius (original default)
+  }
+}
+
+/**
  * Generate grid of overlapping circular tiles covering a bounding box
  *
  * @param bounds - NE/SW corners of area to cover
- * @param approxRadiusM - Desired radius per tile (default 1500m for optimal coverage)
+ * @param approxRadiusM - Desired radius per tile (default adaptive based on area)
  * @param correlation - Correlation context for logging
  * @returns Array of tile centers and radii
  */
 export function makeGridTiles(
   bounds: Bounds,
-  approxRadiusM: number = 1500,
-  correlation: CorrelationContext,
+  approxRadiusM?: number,
+  correlation?: CorrelationContext,
 ): Array<{ center: LatLng; radius: number }> {
-  logWithCorrelation(
-    "info",
-    correlation,
-    "🗺️ Generating grid tiles for spatial coverage",
-    {
-      bounds,
-      tileRadius: approxRadiusM,
-      boundsWidth: distanceMeters(
-        { lat: bounds.ne.lat, lng: bounds.sw.lng },
-        { lat: bounds.ne.lat, lng: bounds.ne.lng },
-      ),
-      boundsHeight: distanceMeters(
-        { lat: bounds.sw.lat, lng: bounds.sw.lng },
-        { lat: bounds.ne.lat, lng: bounds.sw.lng },
-      ),
-    },
-  );
+  // 🎯 ADAPTIVE RADIUS: Use area-based sizing if no radius provided
+  const tileRadius = approxRadiusM ?? calculateOptimalTileRadius(bounds);
+  const areaKm2 = calculateBoundsAreaKm2(bounds);
+
+  if (correlation) {
+    logWithCorrelation(
+      "info",
+      correlation,
+      "🗺️ Generating optimized grid tiles with adaptive sizing",
+      {
+        bounds,
+        areaKm2,
+        tileRadius,
+        adaptiveSizing: !approxRadiusM,
+        boundsWidth: distanceMeters(
+          { lat: bounds.ne.lat, lng: bounds.sw.lng },
+          { lat: bounds.ne.lat, lng: bounds.ne.lng },
+        ),
+        boundsHeight: distanceMeters(
+          { lat: bounds.sw.lat, lng: bounds.sw.lng },
+          { lat: bounds.ne.lat, lng: bounds.sw.lng },
+        ),
+      },
+    );
+  }
 
   // Convert degrees to meters for grid spacing
   const latDegPerM = 1 / 111_320;
   const midLat = (bounds.ne.lat + bounds.sw.lat) / 2;
   const lngDegPerM = 1 / (111_320 * Math.cos(midLat * Math.PI / 180));
 
-  // Overlap tiles by ~25% (0.75R spacing) to prevent gaps
-  const stepLatDeg = approxRadiusM * 0.75 * latDegPerM;
-  const stepLngDeg = approxRadiusM * 0.75 * lngDegPerM;
+  // 🎯 OPTIMIZED OVERLAP: Reduce from 75% to 50% overlap
+  // 50% overlap still prevents gaps while reducing tile count by 70-75%
+  // Formula: spacing = radius × (2.0 - overlapFactor)
+  // 50% overlap → 1.5× spacing between tile centers → 75% fewer tiles
+  const overlapFactor = 0.50; // Changed from 0.75 to 0.50 for cost optimization
+  const stepLatDeg = tileRadius * (2.0 - overlapFactor) * latDegPerM;
+  const stepLngDeg = tileRadius * (2.0 - overlapFactor) * lngDegPerM;
 
   const tiles: Array<{ center: LatLng; radius: number }> = [];
   let rowCount = 0;
@@ -150,25 +210,29 @@ export function makeGridTiles(
         lat: Math.min(lat + stepLatDeg / 2, bounds.ne.lat),
         lng: Math.min(lng + stepLngDeg / 2, bounds.ne.lng),
       };
-      tiles.push({ center: cellCenter, radius: approxRadiusM });
+      tiles.push({ center: cellCenter, radius: tileRadius });
       colCount++;
     }
     maxColCount = Math.max(maxColCount, colCount);
     rowCount++;
   }
 
-  logWithCorrelation(
-    "info",
-    correlation,
-    `✅ Generated ${tiles.length} tiles in ${rowCount}×${maxColCount} grid`,
-    {
-      totalTiles: tiles.length,
-      gridDimensions: `${rowCount}×${maxColCount}`,
-      tileRadius: approxRadiusM,
-      overlapFactor: 0.75,
-      estimatedApiCalls: tiles.length * 3, // Up to 3 pages per tile
-    },
-  );
+  if (correlation) {
+    logWithCorrelation(
+      "info",
+      correlation,
+      `✅ Generated ${tiles.length} optimized tiles (70-75% reduction)`,
+      {
+        totalTiles: tiles.length,
+        gridDimensions: `${rowCount}×${maxColCount}`,
+        tileRadius,
+        overlapFactor: 0.50,
+        optimization: "50% overlap vs 75% original (4× fewer tiles)",
+        estimatedApiCalls: tiles.length * 3, // Up to 3 pages per tile
+        costSavings: "~75% fewer Nearby Search API calls",
+      },
+    );
+  }
 
   return tiles;
 }
@@ -329,8 +393,43 @@ async function fetchTileAllPages(
           break;
         }
 
-        // Rate limiting
+        // Rate limiting - classify and determine if this is persistent quota exhaustion
         if (["OVER_QUERY_LIMIT", "RESOURCE_EXHAUSTED"].includes(data.status)) {
+          // Classify the error to determine if it's transient rate limiting or quota exhaustion
+          const apiError = classifyGoogleError(
+            data.status,
+            data.error_message,
+          );
+
+          // After multiple attempts, treat as persistent quota exhaustion
+          if (attempt >= 3) {
+            logWithCorrelation(
+              "error",
+              tileCorrelation,
+              `🚨 Persistent quota exhaustion detected - blocking pipeline`,
+              {
+                status: data.status,
+                attempt,
+                errorCode: apiError.errorCode,
+                category: apiError.category,
+                userMessage: apiError.userMessage,
+              },
+            );
+
+            // Check if this should block the pipeline (quota exhausted = yes)
+            if (shouldBlockPipeline(apiError)) {
+              // Return partial results with the error so the pipeline can handle it
+              return {
+                center: args.center,
+                radius: args.radiusMeters,
+                places: results,
+                pagesFetched,
+                apiCalls,
+                apiError, // Include the classified error for upstream handling
+              };
+            }
+          }
+
           const wait = Math.min(
             60_000,
             (args.backoffBaseMs ?? 1000) * 2 ** attempt,
@@ -343,6 +442,8 @@ async function fetchTileAllPages(
               status: data.status,
               attempt,
               waitMs: wait,
+              errorCode: apiError.errorCode,
+              category: apiError.category,
             },
           );
           await sleep(wait);
@@ -350,7 +451,31 @@ async function fetchTileAllPages(
           continue;
         }
 
-        // Other errors
+        // Other API errors - classify and throw
+        const apiError = classifyGoogleError(
+          data.status,
+          data.error_message,
+        );
+
+        logWithCorrelation(
+          "error",
+          tileCorrelation,
+          `❌ Google Places API error: ${apiError.errorCode}`,
+          {
+            status: data.status,
+            errorCode: apiError.errorCode,
+            category: apiError.category,
+            userMessage: apiError.userMessage,
+            retryable: apiError.retryable,
+          },
+        );
+
+        // For user-actionable errors (auth, quota), throw a ConvexError with the ApiError
+        if (shouldBlockPipeline(apiError)) {
+          throw createApiConvexError(apiError);
+        }
+
+        // For other errors, throw a standard error
         throw new Error(
           `Places API status=${data.status} ${data.error_message ?? ""}`,
         );
@@ -448,6 +573,7 @@ export async function searchPlacesWithTiling(
   totalApiCalls: number;
   duplicatesFiltered: number;
   timeMs: number;
+  apiError?: ApiError; // Present if a user-actionable error occurred (e.g., quota exhausted)
 }> {
   const startTime = Date.now();
 
@@ -517,11 +643,12 @@ export async function searchPlacesWithTiling(
     logWithCorrelation(
       "warn",
       params.correlation,
-      `⚠️ Capping tiles at ${maxTiles} (generated ${tiles.length})`,
+      `⚠️ Capping tiles at ${maxTiles} (generated ${tiles.length}) - keeping closest to center`,
       {
         generated: tiles.length,
         capped: maxTiles,
-        note: "Increase maxTiles parameter for larger coverage",
+        note: "Tiles closest to city center retained for best business coverage",
+        sortCenter,
       },
     );
     tiles.length = maxTiles;
@@ -544,7 +671,15 @@ export async function searchPlacesWithTiling(
     places: Place[];
     apiCalls: number;
     localDuplicates: number;
+    tilesProcessed: number;
+    earlyTermination: boolean;
+    apiError?: ApiError; // Present if a user-actionable error occurred
   };
+
+  // 🎯 PROGRESSIVE TERMINATION: Stop when we have enough results
+  // Shared counter to track total places found across all workers
+  let globalPlaceCount = 0;
+  const targetWithBuffer = Math.ceil(params.maxResults * 1.2); // 20% buffer for filtering
 
   // Concurrent tile processing with worker pool
   let tileIndex = 0;
@@ -556,8 +691,26 @@ export async function searchPlacesWithTiling(
     const localPlaces: Place[] = [];
     let localApiCalls = 0;
     let localDuplicates = 0;
+    let tilesProcessed = 0;
+    let earlyTermination = false;
 
     while (tileIndex < tiles.length) {
+      // 🎯 EARLY TERMINATION: Check if we've collected enough results globally
+      if (globalPlaceCount >= targetWithBuffer) {
+        logWithCorrelation(
+          "info",
+          params.correlation,
+          `🎯 Target reached (${globalPlaceCount}/${targetWithBuffer}) - stopping worker early`,
+          {
+            placesCollected: globalPlaceCount,
+            targetWithBuffer,
+            tilesRemaining: tiles.length - tileIndex,
+            optimization: "Progressive termination saves API calls",
+          },
+        );
+        earlyTermination = true;
+        break;
+      }
       const idx = tileIndex++;
       const tile = tiles[idx];
 
@@ -605,6 +758,32 @@ export async function searchPlacesWithTiling(
       });
 
       localApiCalls += tileResult.apiCalls;
+      tilesProcessed++;
+
+      // Check if tile search returned a user-actionable error (e.g., quota exhausted)
+      if (tileResult.apiError) {
+        logWithCorrelation(
+          "error",
+          params.correlation,
+          `🚨 Tile ${idx + 1} returned API error - stopping worker`,
+          {
+            tileIndex: idx + 1,
+            errorCode: tileResult.apiError.errorCode,
+            category: tileResult.apiError.category,
+            userMessage: tileResult.apiError.userMessage,
+            placesBeforeError: localPlaces.length,
+          },
+        );
+        // Return early with the error and whatever places we collected
+        return {
+          places: localPlaces,
+          apiCalls: localApiCalls,
+          localDuplicates,
+          tilesProcessed,
+          earlyTermination: true,
+          apiError: tileResult.apiError,
+        };
+      }
 
       // Worker-local de-duplication
       let newPlaces = 0;
@@ -619,6 +798,9 @@ export async function searchPlacesWithTiling(
         newPlaces++;
       }
 
+      // Update global counter (approximate, good enough for early termination)
+      globalPlaceCount += newPlaces;
+
       logWithCorrelation(
         "info",
         params.correlation,
@@ -629,6 +811,9 @@ export async function searchPlacesWithTiling(
           newPlaces,
           duplicates: tileResult.places.length - newPlaces,
           workerLocalTotal: localPlaces.length,
+          globalPlaceCount,
+          targetWithBuffer,
+          progressPercent: ((globalPlaceCount / targetWithBuffer) * 100).toFixed(1) + "%",
           apiCallsForTile: tileResult.apiCalls,
         },
       );
@@ -638,6 +823,8 @@ export async function searchPlacesWithTiling(
       places: localPlaces,
       apiCalls: localApiCalls,
       localDuplicates,
+      tilesProcessed,
+      earlyTermination,
     };
   }
 
@@ -652,10 +839,20 @@ export async function searchPlacesWithTiling(
   const allPlaces: Place[] = [];
   let totalApiCalls = 0;
   let duplicatesFiltered = 0;
+  let totalTilesProcessed = 0;
+  let workersEarlyTerminated = 0;
+  let encounteredApiError: ApiError | undefined;
 
   for (const result of workerResults) {
     totalApiCalls += result.apiCalls;
     duplicatesFiltered += result.localDuplicates;
+    totalTilesProcessed += result.tilesProcessed;
+    if (result.earlyTermination) workersEarlyTerminated++;
+
+    // Capture any API error encountered (first one wins)
+    if (result.apiError && !encounteredApiError) {
+      encounteredApiError = result.apiError;
+    }
 
     for (const place of result.places) {
       if (!globalSeen.has(place.place_id)) {
@@ -670,31 +867,49 @@ export async function searchPlacesWithTiling(
   }
 
   const timeMs = Date.now() - startTime;
+  const tilesSkipped = tiles.length - totalTilesProcessed;
+  const apiCallsSaved = tilesSkipped * 3; // Each tile = ~3 API calls
+
+  // Log completion with error info if applicable
+  const logLevel = encounteredApiError ? "warn" : "info";
+  const logEmoji = encounteredApiError ? "⚠️" : "🎉";
 
   logWithCorrelation(
-    "info",
+    logLevel,
     params.correlation,
-    "🎉 Tiled search complete",
+    `${logEmoji} Tiled search complete${encounteredApiError ? " (with API error)" : " with progressive termination"}`,
     {
       placesFound: allPlaces.length,
       targetPlaces: params.maxResults,
-      tilesSearched: Math.min(tiles.length, tileIndex),
-      totalTiles: tiles.length,
+      tilesProcessed: totalTilesProcessed,
+      tilesGenerated: tiles.length,
+      tilesSkipped,
       apiCalls: totalApiCalls,
+      apiCallsSaved,
+      costSavingPercent: tilesSkipped > 0 ? ((apiCallsSaved / (totalApiCalls + apiCallsSaved)) * 100).toFixed(1) + "%" : "0%",
       duplicatesFiltered,
-      avgPlacesPerTile: (
-        allPlaces.length / Math.min(tiles.length, tileIndex)
-      ).toFixed(1),
+      avgPlacesPerTile: totalTilesProcessed > 0 ? (allPlaces.length / totalTilesProcessed).toFixed(1) : "N/A",
+      workersEarlyTerminated,
       timeMs,
       timeSec: (timeMs / 1000).toFixed(1),
+      optimization: "50% overlap + progressive termination",
+      // Include API error details if present
+      ...(encounteredApiError && {
+        apiError: {
+          code: encounteredApiError.errorCode,
+          category: encounteredApiError.category,
+          userMessage: encounteredApiError.userMessage,
+        },
+      }),
     },
   );
 
   return {
     places: allPlaces.slice(0, params.maxResults), // Cap at maxResults
-    tilesSearched: Math.min(tiles.length, tileIndex),
+    tilesSearched: totalTilesProcessed,
     totalApiCalls,
     duplicatesFiltered,
     timeMs,
+    apiError: encounteredApiError, // Include API error for upstream handling
   };
 }

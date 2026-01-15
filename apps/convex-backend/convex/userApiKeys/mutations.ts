@@ -11,20 +11,30 @@ export const SUPPORTED_PROVIDERS = [
   // Legacy enrichment providers remain for backwards compatibility
   "google_maps",
   "findymail",
-  "icypeas",
   "apify",
+  // Email sending platform
+  "instantly",
 ] as const;
 
 export const providerValidator = v.union(
   ...SUPPORTED_PROVIDERS.map((provider) => v.literal(provider)),
 );
 
-export function ensureUserCanManageKeys(plan: string) {
+// Providers that are available to ALL users regardless of plan
+// Exported for use in queries.ts to maintain consistency
+export const UNIVERSAL_ACCESS_PROVIDERS = new Set(["instantly"]);
+
+export function ensureUserCanManageKeys(plan: string, provider?: string) {
   if (!plan) {
     throw new Error("User plan missing for API key operation");
   }
 
-  // Only enterprise plans support BYOK key management.
+  // Allow universal access providers for all plans
+  if (provider && UNIVERSAL_ACCESS_PROVIDERS.has(provider)) {
+    return; // All users can manage these providers
+  }
+
+  // Only enterprise plans support BYOK key management for other providers
   const allowedPlans = new Set(["enterprise"]);
   if (!allowedPlans.has(plan)) {
     throw new Error("API key management is not enabled for this plan");
@@ -41,7 +51,6 @@ export const deleteApiKey = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    ensureUserCanManageKeys(user.plan);
 
     const apiKey = await ctx.db.get(args.keyId);
 
@@ -52,6 +61,9 @@ export const deleteApiKey = mutation({
     if (apiKey.userId !== user._id) {
       throw new Error("Not authorized to delete this API key");
     }
+
+    // Check plan permissions (pass provider for universal access check)
+    ensureUserCanManageKeys(user.plan, apiKey.provider);
 
     // Log deletion before deleting the key
     await ctx.scheduler.runAfter(0, internal.userApiKeys.internal.logApiKeyAccess, {
@@ -76,7 +88,6 @@ export const toggleApiKey = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    ensureUserCanManageKeys(user.plan);
 
     const apiKey = await ctx.db.get(args.keyId);
 
@@ -87,6 +98,9 @@ export const toggleApiKey = mutation({
     if (apiKey.userId !== user._id) {
       throw new Error("Not authorized to modify this API key");
     }
+
+    // Check plan permissions (pass provider for universal access check)
+    ensureUserCanManageKeys(user.plan, apiKey.provider);
 
     await ctx.db.patch(args.keyId, {
       isActive: args.isActive,

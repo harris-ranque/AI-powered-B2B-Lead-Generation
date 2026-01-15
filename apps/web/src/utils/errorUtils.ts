@@ -1,10 +1,33 @@
+import {
+  type ApiError,
+  extractApiError as extractApiErrorFromShared,
+  isApiError,
+} from "@genni/shared-types";
+
 export interface NormalizedError {
   message: string;
   code?: string;
   statusCode?: number;
+  /** Structured API error if available */
+  apiError?: ApiError;
 }
 
 const FALLBACK_MESSAGE = "Something went wrong. Please try again.";
+
+/**
+ * Re-export extractApiError from shared-types for convenience
+ */
+export const extractApiError = extractApiErrorFromShared;
+
+/**
+ * Re-export isApiError type guard
+ */
+export { isApiError };
+
+/**
+ * Re-export ApiError type
+ */
+export type { ApiError };
 
 const coerceRecord = (
   value: unknown,
@@ -61,6 +84,16 @@ export function normalizeError(
   };
 
   if (!error) {
+    return normalized;
+  }
+
+  // First, try to extract structured ApiError
+  const apiError = extractApiErrorFromShared(error);
+  if (apiError) {
+    normalized.apiError = apiError;
+    normalized.message = apiError.userMessage;
+    normalized.code = apiError.errorCode;
+    normalized.statusCode = apiError.originalStatus;
     return normalized;
   }
 

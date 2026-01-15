@@ -8,7 +8,6 @@ import {
   TrendingUp,
   CreditCard,
   AlertCircle,
-  Download,
   RefreshCw,
 } from "lucide-react";
 import { useConvex, useQuery } from "convex/react";
@@ -374,7 +373,7 @@ function AdminBillingDashboardComponent() {
                   Total Credits Issued
                 </span>
                 <span className="font-medium">
-                  {formatCurrency(costAnalytics?.totalCreditsIssued || 0)}
+                  {(costAnalytics?.totalCreditsIssued || 0).toLocaleString()} credits
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -382,7 +381,7 @@ function AdminBillingDashboardComponent() {
                   Total Credits Used
                 </span>
                 <span className="font-medium">
-                  {formatCurrency(costAnalytics?.totalCreditsUsed || 0)}
+                  {(costAnalytics?.totalCreditsUsed || 0).toLocaleString()} credits
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -398,32 +397,6 @@ function AdminBillingDashboardComponent() {
         </CardContent>
       </Card>
 
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Admin Actions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-4 flex-wrap">
-            <Button variant="outline">
-              <Users className="h-4 w-4 mr-2" />
-              Manage Subscriptions
-            </Button>
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              Export Revenue Data
-            </Button>
-            <Button variant="outline">
-              <CreditCard className="h-4 w-4 mr-2" />
-              Credit Management
-            </Button>
-            <Button variant="outline">
-              <AlertCircle className="h-4 w-4 mr-2" />
-              Failed Payments
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

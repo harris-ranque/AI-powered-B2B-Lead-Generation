@@ -13,20 +13,15 @@ import {
   ArrowRight,
   BarChart3,
   Building2,
-  CheckCircle,
-  CreditCard,
   Mail,
   PlayCircle,
   Search,
   Sparkles,
-  Target,
   TrendingUp,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { Search } from "@/lib/types";
-import type { PipelineStage } from "@/pipeline/types";
-import { SubscriptionStatusCard } from "@/components/SubscriptionStatusCard";
-import { UsageMetersCard } from "@/components/UsageMetersCard";
+import { PlanStatusCard } from "@/components/PlanStatusCard";
 import { DashboardHelpWidget } from "@/components/DashboardHelpWidget";
 import { cn } from "@/lib/utils";
 
@@ -47,15 +42,6 @@ export interface LeadStatsSummary {
   thisWeek?: number;
 }
 
-export interface UsageSummary {
-  currentPeriodUsage: number;
-  totalCreditsUsed: number;
-  searchesThisMonth: number;
-  leadsGenerated: number;
-  emailsGenerated: number;
-  avgCostPerLead: number;
-}
-
 interface DashboardOverviewProps {
   onNavigate: (tab: DashboardTabName) => void;
   userName?: string;
@@ -65,39 +51,10 @@ interface DashboardOverviewProps {
   leadStats?: LeadStatsSummary | null;
   emailCount: number;
   searches?: Search[] | null;
-  usageSummary: UsageSummary;
-  pipelineStage?: PipelineStage;
   hasCompletedProfile: boolean;
-  hasNewEmails: boolean;
   isAdmin?: boolean;
 }
 
-const pipelineStageCopy: Record<PipelineStage, { title: string; helper: string }> = {
-  source_selection: {
-    title: "Choose your data source",
-    helper: "Pick a lead source to kick off a new search.",
-  },
-  lead_discovery: {
-    title: "Discovering fresh leads",
-    helper: "We’re gathering prospects that match your filters.",
-  },
-  enrichment: {
-    title: "Finding contact details",
-    helper: "Discovering contact information for your leads.",
-  },
-  ai_analysis: {
-    title: "Analyzing ideal matches",
-    helper: "AI is prioritizing the leads that fit best.",
-  },
-  email_generation: {
-    title: "Drafting personalized outreach",
-    helper: "AI emails are being composed for each high intent lead.",
-  },
-  review_export: {
-    title: "Ready for review",
-    helper: "Preview emails and export leads when you’re satisfied.",
-  },
-};
 
 function formatPlan(planId: string): { label: string; badgeVariant: "default" | "secondary" } {
   switch (planId) {
@@ -119,14 +76,9 @@ export function DashboardOverview({
   userName,
   businessName,
   planId,
-  credits,
   leadStats,
-  emailCount,
   searches,
-  usageSummary,
-  pipelineStage,
   hasCompletedProfile,
-  hasNewEmails,
   isAdmin,
 }: DashboardOverviewProps) {
   const recentSearches = useMemo(() => {
@@ -150,10 +102,6 @@ export function DashboardOverview({
       }));
   }, [searches]);
 
-  const activeSearchCount = useMemo(() => {
-    return (searches ?? []).filter((search) => search.status === "in_progress").length;
-  }, [searches]);
-
   const planMeta = formatPlan(planId);
   const greetingName = userName || businessName || "there";
 
@@ -171,15 +119,6 @@ export function DashboardOverview({
       icon: Sparkles,
     },
     {
-      label: "Credits available",
-      value: credits.toLocaleString(),
-      sublabel:
-        usageSummary.currentPeriodUsage > 0
-          ? `${usageSummary.currentPeriodUsage} used this cycle`
-          : `${credits.toLocaleString()} remaining`,
-      icon: CreditCard,
-    },
-    {
       label: "Highly targeted emails created",
       value: targetedEmailsCount > 0 ? targetedEmailsCount.toLocaleString() : "0",
       sublabel: targetedEmailsCount > 0 ? `${targetedEmailsCount} personalized email${targetedEmailsCount !== 1 ? 's' : ''} ready` : "No emails generated yet",
@@ -187,10 +126,9 @@ export function DashboardOverview({
     },
   ];
 
-  const pipelineCopy = pipelineStage ? pipelineStageCopy[pipelineStage] : null;
-
   return (
-    <div className="space-y-8" data-testid="dashboard-overview">
+    <div className="space-y-6" data-testid="dashboard-overview">
+      {/* Header */}
       <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-sm text-muted-foreground">Welcome back</p>
@@ -216,30 +154,30 @@ export function DashboardOverview({
         </div>
       </header>
 
-      <section>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {stats.map((stat) => {
-            const Icon = stat.icon;
-            return (
-              <Card key={stat.label} className="h-full border-border/70 bg-gradient-to-br from-card via-card to-card/80">
-                <CardHeader className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base font-semibold">{stat.label}</CardTitle>
-                    <span className="rounded-full bg-primary/10 p-2 text-primary">
-                      <Icon className="h-5 w-5" />
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold tracking-tight">{stat.value}</p>
-                    <p className="text-sm text-muted-foreground">{stat.sublabel}</p>
-                  </div>
-                </CardHeader>
-              </Card>
-            );
-          })}
-        </div>
+      {/* Stats Row */}
+      <section className="grid gap-4 sm:grid-cols-2">
+        {stats.map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <Card key={stat.label} className="border-border/70 bg-gradient-to-br from-card via-card to-card/80">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base font-medium">{stat.label}</CardTitle>
+                  <span className="rounded-full bg-primary/10 p-2 text-primary">
+                    <Icon className="h-5 w-5" />
+                  </span>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold tracking-tight">{stat.value}</p>
+                  <p className="text-sm text-muted-foreground">{stat.sublabel}</p>
+                </div>
+              </CardHeader>
+            </Card>
+          );
+        })}
       </section>
 
+      {/* Workspaces + Recent Activity */}
       <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <Card className="border-border/70">
           <CardHeader className="pb-3">
@@ -316,46 +254,46 @@ export function DashboardOverview({
         </Card>
 
         <Card className="border-border/70">
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg font-semibold">
               <Search className="h-5 w-5" />
               Recent activity
             </CardTitle>
             <CardDescription>A snapshot of your latest searches and outcomes.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3">
             {recentSearches.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground" data-testid="no-results-message">
                 No searches yet. Launch the pipeline to discover your next opportunities.
               </div>
             ) : (
               recentSearches.map((search) => (
-                <div key={search.id} className="rounded-lg border border-border/60 p-4">
+                <div key={search.id} className="rounded-lg border border-border/60 p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="font-medium text-foreground">{search.name}</p>
+                      <p className="font-medium text-foreground text-sm">{search.name}</p>
                       <p className="text-xs text-muted-foreground">
                         {formatDistanceToNow(search.createdAt, { addSuffix: true })}
                       </p>
                     </div>
-                    <Badge variant="outline" className="capitalize">
+                    <Badge variant="outline" className="capitalize text-xs">
                       {search.status.replace(/_/g, " ")}
                     </Badge>
                   </div>
-                  <Separator className="my-3" />
+                  <Separator className="my-2" />
                   <div className="flex items-center justify-between text-sm text-muted-foreground">
-                    <span>
-                      <TrendingUp className="mr-2 inline h-4 w-4 text-primary" />
+                    <span className="text-xs">
+                      <TrendingUp className="mr-1.5 inline h-3.5 w-3.5 text-primary" />
                       {search.totalFound.toLocaleString()} leads found
                     </span>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="gap-1"
+                      className="gap-1 h-7 text-xs"
                       onClick={() => onNavigate("search-history")}
                     >
                       View details
-                      <ArrowRight className="h-4 w-4" />
+                      <ArrowRight className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>
@@ -365,105 +303,9 @@ export function DashboardOverview({
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
-        <Card className="border-border/70">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-              <Target className="h-5 w-5" />
-              Pipeline progress
-            </CardTitle>
-            <CardDescription>
-              {pipelineCopy
-                ? pipelineCopy.helper
-                : "Move through each stage to take a lead from discovery to outreach."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-lg border border-border/60 bg-muted/30 p-4">
-              <p className="text-sm font-semibold text-muted-foreground">Current stage</p>
-              <p className="mt-1 text-lg font-semibold text-foreground">
-                {pipelineCopy ? pipelineCopy.title : "Ready to start"}
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {pipelineCopy
-                  ? pipelineCopy.helper
-                  : "Set up a search to begin discovering new leads tailored to your business."}
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-lg border border-border/60 p-3">
-                <p className="text-xs text-muted-foreground">Leads with verified contact info</p>
-                <p className="text-2xl font-semibold">
-                  {(leadStats?.withEmails ?? 0).toLocaleString()}
-                </p>
-              </div>
-              <div className="rounded-lg border border-border/60 p-3">
-                <p className="text-xs text-muted-foreground">Average cost per lead</p>
-                <p className="text-2xl font-semibold">
-                  {usageSummary.avgCostPerLead > 0
-                    ? `$${usageSummary.avgCostPerLead.toFixed(2)}`
-                    : "Optimizing"}
-                </p>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              className="w-full justify-between"
-              onClick={() => onNavigate("performance")}
-            >
-              Explore full analytics
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </CardContent>
-        </Card>
-
-        <div className="space-y-4">
-          <SubscriptionStatusCard />
-          <UsageMetersCard />
-        </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-        <Card className="border-border/70">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-              <CheckCircle className="h-5 w-5" />
-              Next best actions
-            </CardTitle>
-            <CardDescription>Guided suggestions to keep momentum.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="rounded-lg border border-border/60 p-4">
-              <p className="text-sm font-semibold text-foreground">Launch the pipeline</p>
-              <p className="text-sm text-muted-foreground">
-                Set your filters or duplicate a previous search to discover fresh leads in seconds.
-              </p>
-              <Button
-                size="sm"
-                className="mt-3"
-                onClick={() => onNavigate("pipeline")}
-              >
-                Start a new search
-              </Button>
-            </div>
-            <div className="rounded-lg border border-border/60 p-4">
-              <p className="text-sm font-semibold text-foreground">Review AI emails</p>
-              <p className="text-sm text-muted-foreground">
-                {hasNewEmails
-                  ? "Personalized outreach is ready to send. Review and export when you're ready."
-                  : "Generate tailored outreach directly from the pipeline to accelerate follow-up."}
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-3"
-                onClick={() => onNavigate("search-history")}
-              >
-                View history & exports
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Plan Card + Help */}
+      <section className="grid gap-4 lg:grid-cols-2">
+        <PlanStatusCard />
 
         <Card className="border-border/70">
           <CardHeader className="pb-3">
@@ -473,7 +315,7 @@ export function DashboardOverview({
             </CardTitle>
             <CardDescription>Explore tips, tutorials, and concierge support.</CardDescription>
           </CardHeader>
-          <CardContent className="p-4">
+          <CardContent>
             <DashboardHelpWidget />
           </CardContent>
         </Card>

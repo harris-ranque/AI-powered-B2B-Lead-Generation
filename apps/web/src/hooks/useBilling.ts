@@ -1,4 +1,4 @@
-import { useMutation, useAction, useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { api } from "@genni/convex-types";
 
 export function useBilling() {
@@ -11,19 +11,27 @@ export function useBilling() {
   // We intentionally avoid subscribing to those Convex queries here to
   // prevent redundant live queries that spam the Convex logs.
 
-  const purchaseCredits = useAction(api.billing.mutations.purchaseCredits);
-  const createCheckoutSession = useAction(
-    api.billing.mutations.createCheckoutSession,
-  );
+  // FastSpring-based actions
   const cancelSubscription = useAction(api.billing.mutations.cancelSubscription);
+  const reactivateSubscription = useAction(api.billing.mutations.reactivateSubscription);
+  const getBillingPortalUrl = useAction(api.billing.mutations.getBillingPortalUrl);
+  const getSubscriptionDetails = useAction(api.billing.mutations.getSubscriptionDetails);
+
+  // For checkout, use the useFastSpring hook instead which handles the popup flow
+  // These are available for direct API calls if needed
+  const createSubscriptionCheckout = useAction(api.billing.mutations.createSubscriptionCheckout);
+  const createCreditsCheckout = useAction(api.billing.mutations.createCreditsCheckout);
 
   return {
     billing,
     usage,
     transactions,
-    purchaseCredits,
-    createCheckoutSession,
     cancelSubscription,
+    reactivateSubscription,
+    getBillingPortalUrl,
+    getSubscriptionDetails,
+    createSubscriptionCheckout,
+    createCreditsCheckout,
     isLoading: billing === undefined,
   };
 }

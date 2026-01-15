@@ -10,7 +10,7 @@ export default defineSchema({
   // Users table - Authentication and basic user info
   users: defineTable({
     // Clerk integration fields
-    clerkId: v.string(), // Clerk user ID for syncing
+    clerkId: v.optional(v.string()), // Clerk user ID for syncing (optional for admin-created subscription users)
     email: v.string(),
     name: v.optional(v.string()),
     avatar: v.optional(v.string()),
@@ -21,8 +21,11 @@ export default defineSchema({
       v.literal("professional"),
       v.literal("business"),
       v.literal("enterprise"),
+      v.literal("custom"), // Custom subscription created by admin
     ),
     credits: v.number(),
+    // Subscription credits (separate from purchased credits, use-it-or-lose-it monthly)
+    subscriptionCredits: v.optional(v.number()),
     role: v.union(v.literal("user"), v.literal("admin")),
     isActive: v.boolean(),
     // Per-user processing pause (admin-controlled)
@@ -30,9 +33,11 @@ export default defineSchema({
     pauseReason: v.optional(v.string()),
     pausedAt: v.optional(v.number()),
     pausedBy: v.optional(v.id("users")),
+    // FastSpring integration fields (legacy)
+    fastspringAccountId: v.optional(v.string()),
+    fastspringSubscriptionId: v.optional(v.string()),
     // Stripe integration fields
     stripeCustomerId: v.optional(v.string()),
-    stripeSubscriptionId: v.optional(v.string()),
     preferences: v.optional(
       v.object({
         emailNotifications: v.boolean(),
@@ -54,7 +59,8 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_plan", ["plan"])
     .index("by_role", ["role"])
-    .index("by_created", ["createdAt"]),
+    .index("by_created", ["createdAt"])
+    .index("by_stripe_customer", ["stripeCustomerId"]),
 
   // Business Profiles - Company information for AI personalization
   businessProfiles: defineTable({
@@ -201,6 +207,34 @@ export default defineSchema({
     ),
     researchCompletedAt: v.optional(v.number()),
 
+    // Admin controls for enrichment pause/resume
+    enrichmentPaused: v.optional(v.boolean()),
+    pausedBy: v.optional(v.id("users")),
+    pausedAt: v.optional(v.number()),
+
+    // Enrichment checkpoint tracking (for pipeline-blocking error recovery)
+    enrichmentCheckpoint: v.optional(
+      v.object({
+        // Last successfully processed lead index
+        lastProcessedIndex: v.number(),
+        // Total leads at time of checkpoint
+        totalLeads: v.number(),
+        // Leads successfully enriched before error
+        enrichedCount: v.number(),
+        // Leads with no contacts found
+        noContactsCount: v.number(),
+        // Leads that failed
+        failedCount: v.number(),
+        // Error that caused checkpoint
+        errorCode: v.optional(v.string()),
+        errorMessage: v.optional(v.string()),
+        // Timestamp of checkpoint
+        checkpointedAt: v.number(),
+        // Whether this checkpoint can be resumed
+        resumable: v.boolean(),
+      }),
+    ),
+
     // Discovery diagnostics & dedup metrics
     initialSearchRadius: v.optional(v.number()), // In meters
     finalSearchRadius: v.optional(v.number()),   // In meters
@@ -258,6 +292,61 @@ export default defineSchema({
     .index("by_user_place", ["userId", "placeId"])
     .index("by_user_email", ["userId", "email"]),
 
+  // CSV Imports - Track uploaded CSV files and import results
+  csvImports: defineTable({
+    userId: v.id("users"),
+    searchId: v.id("searches"),
+
+    // File metadata
+    fileName: v.string(),
+    fileSize: v.number(), // in bytes
+
+    // Import statistics
+    totalRows: v.number(),
+    validRows: v.number(),
+    invalidRows: v.number(),
+    skippedRows: v.number(), // Rows with missing required data
+
+    // Cost breakdown
+    estimatedCost: v.number(),
+    actualCost: v.optional(v.number()), // After processing
+    leadsWithEmail: v.number(), // 1 credit each (skip enrichment)
+    leadsNeedingEnrichment: v.number(), // 2 credits each
+
+    // Processing status
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("partial_success"),
+    ),
+
+    // Error tracking
+    errorReport: v.optional(
+      v.array(
+        v.object({
+          rowNumber: v.number(),
+          companyName: v.optional(v.string()),
+          errors: v.array(v.string()),
+          warnings: v.optional(v.array(v.string())),
+          rawData: v.optional(v.any()),
+        }),
+      ),
+    ),
+
+    // Column mapping used (csvColumn -> leadField)
+    columnMapping: v.optional(v.record(v.string(), v.string())),
+
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_search", ["searchId"])
+    .index("by_status", ["status"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_created", ["createdAt"]),
+
   // Leads - Individual business leads with enrichment data
   leads: defineTable({
     searchId: v.id("searches"),
@@ -272,6 +361,15 @@ export default defineSchema({
     reviewCount: v.optional(v.number()),
     category: v.optional(v.string()),
     placeId: v.string(),
+
+    // Data source tracking
+    dataSource: v.optional(
+      v.union(
+        v.literal("google_maps"),
+        v.literal("csv_upload"),
+        v.literal("manual")
+      )
+    ),
 
     // Location data
     location: v.object({
@@ -290,11 +388,17 @@ export default defineSchema({
       v.literal("in_progress"),
       v.literal("completed"),
       v.literal("completed_fallback"),
+      v.literal("no_contacts_found"), // API succeeded but no discoverable contacts
       v.literal("failed"),
     ),
 
     // Enrichment provider used
-    enrichmentProvider: v.optional(v.union(v.literal("findymail"), v.literal("icypeas"))),
+    enrichmentProvider: v.optional(
+      v.union(
+        v.literal("findymail"),
+        v.literal("csv_import") // CSV imports with existing emails
+      )
+    ),
 
     // Contact information from enrichment provider
     contactInfo: v.optional(
@@ -415,6 +519,16 @@ export default defineSchema({
       ),
     ),
 
+    // Enrichment retry tracking (circuit breaker support)
+    enrichmentAttempts: v.optional(v.number()),
+    enrichmentRateLimitRetries: v.optional(v.number()), // Tracks rate-limit-specific retries
+    lastEnrichmentAttempt: v.optional(v.number()),
+    enrichmentError: v.optional(v.string()),
+
+    // Enrichment timing (for stuck detection and monitoring)
+    enrichmentStartedAt: v.optional(v.number()),    // When enrichment began
+    enrichmentCompletedAt: v.optional(v.number()),  // When enrichment finished
+
     // Analysis retry tracking
     analysisAttempts: v.optional(v.number()),
     lastAnalysisAttempt: v.optional(v.number()),
@@ -468,6 +582,10 @@ export default defineSchema({
       ),
     ),
 
+    // Lead quality tier classification (based on research data availability)
+    leadTier: v.optional(v.union(v.literal("A"), v.literal("B"))),
+    leadTierReason: v.optional(v.string()),
+
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -475,10 +593,12 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_status", ["status"])
     .index("by_place_id", ["placeId"])
+    .index("by_lead_tier", ["leadTier"])
     .index("by_user_place", ["userId", "placeId"]) // User-level deduplication (across all searches)
     .index("by_search_place", ["searchId", "placeId"]) // Per-search deduplication (for spatial tiling)
     .index("by_user_address", ["userId", "address"]) // User-level address deduplication
     .index("by_enrichment_status", ["enrichmentStatus"])
+    .index("by_enrichment_status_time", ["enrichmentStatus", "enrichmentStartedAt"]) // For stuck detection
     .index("by_analysis_status", ["analysisStatus"])
     .index("by_analysis_scheduled", ["analysisScheduledAt"])
     .index("by_search_analysis_status", ["searchId", "analysisStatus"]),
@@ -534,9 +654,11 @@ export default defineSchema({
   // Billing - Enhanced subscription and payment tracking
   billing: defineTable({
     userId: v.id("users"),
-    stripeCustomerId: v.optional(v.string()),
-    stripeSubscriptionId: v.optional(v.string()),
-    stripePriceId: v.optional(v.string()),
+    // FastSpring integration fields
+    fastspringAccountId: v.optional(v.string()),
+    fastspringSubscriptionId: v.optional(v.string()),
+    fastspringProductPath: v.optional(v.string()),
+    fastspringOrderId: v.optional(v.string()),
 
     // Enhanced plan details
     plan: v.union(
@@ -596,15 +718,15 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
-    .index("by_stripe_customer", ["stripeCustomerId"])
-    .index("by_stripe_subscription", ["stripeSubscriptionId"])
-    .index("by_stripe_price", ["stripePriceId"])
+    .index("by_fastspring_account", ["fastspringAccountId"])
+    .index("by_fastspring_subscription", ["fastspringSubscriptionId"])
+    .index("by_fastspring_product", ["fastspringProductPath"])
     .index("by_plan", ["plan"])
     .index("by_status", ["status"])
     .index("by_trial", ["isTrialing"])
     .index("by_period_end", ["currentPeriodEnd"])
     // Compound indexes for billing webhooks optimization
-    .index("by_stripe_customer_status", ["stripeCustomerId", "status"]),
+    .index("by_fastspring_account_status", ["fastspringAccountId", "status"]),
 
   // Credit Transactions - Credit purchases and usage
   creditTransactions: defineTable({
@@ -624,7 +746,9 @@ export default defineSchema({
         id: v.string(),
       }),
     ),
-    stripePaymentId: v.optional(v.string()),
+    // FastSpring order reference for purchases
+    fastspringOrderId: v.optional(v.string()),
+    fastspringOrderReference: v.optional(v.string()),
     parentTransactionId: v.optional(v.id("creditTransactions")),
     balanceAfter: v.number(),
     createdAt: v.number(),
@@ -799,7 +923,7 @@ export default defineSchema({
           priceCents: v.number(),
           bonus: v.optional(v.number()),
           active: v.boolean(),
-          stripePriceId: v.optional(v.string()),
+          fastspringProductPath: v.optional(v.string()),
         }),
       ),
     ),
@@ -1191,7 +1315,7 @@ export default defineSchema({
 
   // Enrichment cache for all providers (replaces findymailDomainCache)
   enrichmentCache: defineTable({
-    provider: v.union(v.literal("findymail"), v.literal("icypeas")),
+    provider: v.literal("findymail"),
     domain: v.string(),
     searchId: v.id("searches"),
     enrichmentData: v.any(), // Flexible storage for different provider response formats
@@ -1202,28 +1326,6 @@ export default defineSchema({
     .index("by_search", ["searchId"])
     .index("by_expires", ["expiresAt"])
     .index("by_provider", ["provider"]),
-
-  // IcyPeas async search tracking
-  icypeasSearchCache: defineTable({
-    searchId: v.string(), // IcyPeas search ID
-    internalSearchId: v.id("searches"), // Our internal search ID
-    domains: v.array(v.string()), // Domains being searched
-    status: v.union(
-      v.literal("NONE"),
-      v.literal("SCHEDULED"),
-      v.literal("IN_PROGRESS"),
-      v.literal("DEBITED"),
-      v.literal("COMPLETED"),
-      v.literal("FAILED")
-    ),
-    results: v.optional(v.any()), // Store results when complete
-    createdAt: v.number(),
-    expiresAt: v.number(),
-  })
-    .index("by_search_id", ["searchId"])
-    .index("by_internal_search", ["internalSearchId"])
-    .index("by_status", ["status"])
-    .index("by_expires", ["expiresAt"]),
 
   // System Control State - Emergency admin controls for lead generation
   systemControlState: defineTable({
@@ -1251,8 +1353,9 @@ export default defineSchema({
       // Legacy enrichment providers still supported for backwards compatibility
       v.literal("google_maps"),
       v.literal("findymail"),
-      v.literal("icypeas"),
       v.literal("apify"),
+      // Email sending platform
+      v.literal("instantly"),
     ),
     keyName: v.string(), // User-friendly name for the key
     encryptedKey: v.string(), // Encrypted API key
@@ -1353,7 +1456,6 @@ export default defineSchema({
       v.object({
         googleMaps: v.number(),
         findymail: v.number(),
-        icypeas: v.number(),
         openai: v.number(),
         apify: v.number(),
       }),
@@ -1376,8 +1478,10 @@ export default defineSchema({
   // Subscription Events - Track important subscription lifecycle events
   subscriptionEvents: defineTable({
     userId: v.id("users"),
-    stripeSubscriptionId: v.optional(v.string()),
-    stripeCustomerId: v.optional(v.string()),
+    // FastSpring integration fields
+    fastspringSubscriptionId: v.optional(v.string()),
+    fastspringAccountId: v.optional(v.string()),
+    fastspringOrderId: v.optional(v.string()),
 
     eventType: v.union(
       v.literal("subscription_created"),
@@ -1401,12 +1505,12 @@ export default defineSchema({
 
     // Additional metadata
     metadata: v.optional(v.any()),
-    stripeEventId: v.optional(v.string()),
+    fastspringEventId: v.optional(v.string()),
 
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])
-    .index("by_subscription", ["stripeSubscriptionId"])
+    .index("by_subscription", ["fastspringSubscriptionId"])
     .index("by_event_type", ["eventType"])
     .index("by_created", ["createdAt"]),
 
@@ -1418,8 +1522,9 @@ export default defineSchema({
     // Pricing
     monthlyPrice: v.number(),
     yearlyPrice: v.number(),
-    stripePriceIdMonthly: v.optional(v.string()),
-    stripePriceIdYearly: v.optional(v.string()),
+    // FastSpring product paths
+    fastspringProductPathMonthly: v.optional(v.string()),
+    fastspringProductPathYearly: v.optional(v.string()),
 
     // Limits
     limits: v.object({
@@ -1483,4 +1588,366 @@ export default defineSchema({
     .index("by_timestamp", ["timestamp"])
     .index("by_user_and_event", ["userId", "eventType"])
     .index("by_user_and_timestamp", ["userId", "timestamp"]),
+
+  // Instantly Integration - User settings for auto-push to Instantly.ai
+  instantlySettings: defineTable({
+    userId: v.id("users"),
+    autoPushEnabled: v.boolean(),
+    defaultSenderEmail: v.optional(v.string()),
+    defaultSenderAccountId: v.optional(v.string()),
+    cachedAccounts: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          email: v.string(),
+          displayName: v.optional(v.string()),
+          status: v.optional(v.string()),
+        })
+      )
+    ),
+    cachedAccountsAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
+
+  // Instantly Campaigns - Track campaigns pushed to Instantly.ai
+  instantlyCampaigns: defineTable({
+    userId: v.id("users"),
+    searchId: v.id("searches"),
+    instantlyCampaignId: v.string(),
+    instantlyCampaignName: v.string(),
+    senderEmail: v.string(),
+    leadsCount: v.number(),
+    pushedAt: v.number(),
+    autoPushed: v.boolean(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_search", ["searchId"])
+    .index("by_user_search", ["userId", "searchId"]),
+
+  // API Error Logs - Track external API errors for debugging and analytics
+  // Retention: 7 days (cleaned up by cron job)
+  apiErrorLogs: defineTable({
+    userId: v.id("users"),
+    searchId: v.optional(v.id("searches")),
+    leadId: v.optional(v.id("leads")),
+
+    // Error identification
+    errorCode: v.string(), // e.g., "FINDYMAIL_CREDITS_EXHAUSTED"
+    provider: v.string(), // e.g., "findymail", "google_places", "perplexity"
+    category: v.string(), // e.g., "quota_exhausted", "authentication", "rate_limited"
+    severity: v.string(), // "info", "warning", "error", "critical"
+
+    // User-facing message
+    userMessage: v.string(),
+    technicalMessage: v.optional(v.string()),
+
+    // Original error data
+    originalStatus: v.optional(v.number()), // HTTP status code
+    operationType: v.optional(v.string()), // What operation failed
+
+    // Resolution tracking
+    resolved: v.boolean(),
+    resolvedAt: v.optional(v.number()),
+    resolvedBy: v.optional(
+      v.union(v.literal("retry"), v.literal("user"), v.literal("system"))
+    ),
+
+    // Tracing
+    correlationId: v.optional(v.string()),
+
+    createdAt: v.number(),
+    expiresAt: v.number(), // For 7-day retention cleanup
+  })
+    .index("by_user", ["userId"])
+    .index("by_provider", ["provider"])
+    .index("by_category", ["category"])
+    .index("by_error_code", ["errorCode"])
+    .index("by_search", ["searchId"])
+    .index("by_created", ["createdAt"])
+    .index("by_unresolved", ["resolved", "createdAt"])
+    .index("by_expires", ["expiresAt"])
+    .index("by_user_provider", ["userId", "provider"])
+    .index("by_user_category", ["userId", "category"]),
+
+  // ============================================================================
+  // STRIPE CUSTOM SUBSCRIPTIONS
+  // ============================================================================
+
+  // Stripe Customers - Maps users to Stripe customer objects
+  stripeCustomers: defineTable({
+    userId: v.id("users"),
+    stripeCustomerId: v.string(),
+    email: v.string(),
+    defaultPaymentMethodId: v.optional(v.string()),
+    defaultPaymentMethodType: v.optional(
+      v.union(v.literal("card"), v.literal("us_bank_account"))
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_stripe_customer", ["stripeCustomerId"]),
+
+  // Custom Subscriptions - Admin-created custom subscriptions per customer
+  customSubscriptions: defineTable({
+    // Customer link
+    userId: v.id("users"),
+    stripeCustomerId: v.string(),
+
+    // Stripe subscription details
+    stripeSubscriptionId: v.optional(v.string()), // Set after customer completes checkout
+    stripePriceIdAch: v.string(), // ACH price (no convenience fee)
+    stripePriceIdCard: v.string(), // Card price (includes 3% convenience fee)
+    stripeProductId: v.string(), // Genni Custom Subscription product
+
+    // Custom subscription configuration (set by admin)
+    monthlyPriceCents: v.number(), // Base price in cents (e.g., 100000 = $1000)
+    monthlyCredits: v.number(), // Credits included per month
+    allowExtraCredits: v.boolean(), // Can customer buy additional credits?
+    extraCreditPriceCents: v.optional(v.number()), // Price per extra credit pack
+    extraCreditPackSize: v.optional(v.number()), // Credits per extra pack
+
+    // Payment method tracking
+    paymentMethodType: v.optional(
+      v.union(v.literal("card"), v.literal("us_bank_account"))
+    ),
+    convenienceFeeCents: v.optional(v.number()), // Card convenience fee if applicable
+
+    // Status
+    status: v.union(
+      v.literal("pending_checkout"), // Admin created, awaiting customer payment
+      v.literal("active"),
+      v.literal("past_due"),
+      v.literal("cancelled"),
+      v.literal("paused")
+    ),
+    // Checkout URLs (dual pricing - ACH vs Card with 3% fee)
+    checkoutUrl: v.optional(v.string()), // Legacy: single checkout URL (deprecated)
+    checkoutUrlAch: v.optional(v.string()), // ACH checkout URL (lower price)
+    checkoutUrlCard: v.optional(v.string()), // Card checkout URL (includes 3% fee)
+    checkoutSessionId: v.optional(v.string()), // Legacy: single session ID (deprecated)
+    checkoutSessionIdAch: v.optional(v.string()), // ACH session ID
+    checkoutSessionIdCard: v.optional(v.string()), // Card session ID
+    checkoutExpiresAt: v.optional(v.number()),
+
+    // Billing period
+    currentPeriodStart: v.optional(v.number()),
+    currentPeriodEnd: v.optional(v.number()),
+    creditsAllocatedAt: v.optional(v.number()), // Last credit allocation
+
+    // Admin notes
+    adminNotes: v.optional(v.string()),
+    createdBy: v.id("users"), // Admin who created
+
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_stripe_subscription", ["stripeSubscriptionId"])
+    .index("by_stripe_customer", ["stripeCustomerId"])
+    .index("by_checkout_session", ["checkoutSessionId"])
+    .index("by_status", ["status"])
+    .index("by_created_by", ["createdBy"]),
+
+  // Subscription Credit Allocations - Monthly credit allocations (use-it-or-lose-it)
+  subscriptionCreditAllocations: defineTable({
+    userId: v.id("users"),
+    subscriptionId: v.id("customSubscriptions"),
+
+    // Period info
+    periodStart: v.number(),
+    periodEnd: v.number(),
+
+    // Credits
+    creditsAllocated: v.number(),
+    creditsUsed: v.number(),
+    creditsExpired: v.number(), // Set when period ends
+
+    // Status
+    status: v.union(
+      v.literal("active"),
+      v.literal("expired")
+    ),
+
+    expiredAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_subscription", ["subscriptionId"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_period_end", ["periodEnd"]),
+
+  // Extra Credit Purchases - Self-service credit purchases by customers
+  extraCreditPurchases: defineTable({
+    userId: v.id("users"),
+    subscriptionId: v.id("customSubscriptions"),
+
+    // Stripe payment
+    stripePaymentIntentId: v.optional(v.string()),
+    stripeCheckoutSessionId: v.optional(v.string()),
+
+    // Purchase details
+    creditsPurchased: v.number(),
+    basePriceCents: v.number(),
+    convenienceFeeCents: v.number(), // 3% for cards, 0 for ACH
+    totalPriceCents: v.number(),
+    paymentMethodType: v.union(v.literal("card"), v.literal("us_bank_account")),
+
+    // Status
+    status: v.union(
+      v.literal("pending"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("refunded")
+    ),
+
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_subscription", ["subscriptionId"])
+    .index("by_payment_intent", ["stripePaymentIntentId"])
+    .index("by_checkout_session", ["stripeCheckoutSessionId"])
+    .index("by_status", ["status"]),
+
+  // Processed Webhooks - Idempotency tracking to prevent duplicate event processing
+  processedWebhooks: defineTable({
+    eventId: v.string(), // Stripe event ID (e.g., evt_...)
+    eventType: v.string(), // Event type (e.g., checkout.session.completed)
+    processedAt: v.number(),
+    // "processing" = claimed but not yet completed (prevents race conditions)
+    result: v.union(
+      v.literal("processing"),
+      v.literal("success"),
+      v.literal("skipped"),
+      v.literal("failed")
+    ),
+    error: v.optional(v.string()),
+  })
+    .index("by_event_id", ["eventId"])
+    .index("by_event_type", ["eventType"])
+    .index("by_processed_at", ["processedAt"]),
+
+  // Enrichment API Key Semaphores - Per-API-key concurrency limiting (5 concurrent per FindyMail key)
+  // DEPRECATED: This table caused OCC failures due to single-document contention.
+  // Kept for backward compatibility during migration. Use enrichmentApiKeySlots instead.
+  enrichmentApiKeySemaphores: defineTable({
+    apiKeyHash: v.string(),        // SHA256 hash of API key (system or user-provided)
+    activeRequests: v.number(),     // Current number of active enrichment requests
+    maxConcurrency: v.number(),     // Maximum concurrent requests (always 5 for FindyMail)
+    waitingRequests: v.number(),    // Number of requests waiting for a slot
+    lastUpdated: v.number(),        // Timestamp of last update
+  })
+    .index("by_key_hash", ["apiKeyHash"])
+    .index("by_active", ["activeRequests"]),
+
+  // Enrichment API Key Slots - Distributed slot-based concurrency limiting
+  // Each API key has 5 slots (0-4). Actions claim individual slots to avoid OCC contention.
+  // This approach eliminates hot-spot contention by distributing claims across 5 documents per key.
+  enrichmentApiKeySlots: defineTable({
+    apiKeyHash: v.string(),        // SHA256 hash of API key
+    slotIndex: v.number(),          // Slot index 0-4 (5 slots per key)
+    claimedBy: v.optional(v.string()), // Lead ID or unique request ID that claimed this slot
+    claimedAt: v.optional(v.number()), // Timestamp when slot was claimed
+    expiresAt: v.optional(v.number()), // Auto-expiration for stuck claims (e.g., 10 minutes)
+  })
+    .index("by_key_hash", ["apiKeyHash"])
+    .index("by_key_and_slot", ["apiKeyHash", "slotIndex"])
+    .index("by_expires", ["expiresAt"]),
+
+  // Enrichment Slot Queue - Queue for leads waiting for an API key slot
+  // When all 5 slots are in use, leads are queued here instead of failing
+  // When a slot is released, the next queued lead is automatically triggered
+  enrichmentSlotQueue: defineTable({
+    apiKeyHash: v.string(),           // SHA256 hash of API key (for queue partitioning)
+    leadId: v.id("leads"),            // Lead waiting to be enriched
+    searchId: v.id("searches"),       // Associated search
+    userId: v.id("users"),            // User who owns the lead
+    userApiKey: v.string(),           // User's FindyMail API key (needed for re-triggering)
+    correlationId: v.optional(v.string()), // Correlation ID for logging
+    queuedAt: v.number(),             // When the lead was queued
+    priority: v.number(),             // Priority (lower = higher priority, default 0)
+    status: v.union(
+      v.literal("pending"),           // Waiting for a slot
+      v.literal("processing"),        // Slot acquired, being processed
+      v.literal("completed"),         // Successfully processed
+      v.literal("cancelled")          // Cancelled (search stopped, etc.)
+    ),
+    processedAt: v.optional(v.number()), // When processing started
+  })
+    .index("by_api_key_status", ["apiKeyHash", "status", "queuedAt"])
+    .index("by_lead", ["leadId"])
+    .index("by_search", ["searchId", "status"])
+    .index("by_status_queued", ["status", "queuedAt"]),
+
+  // Enrichment Batches - Tracks Workpool enrichment batches for progress and completion
+  // Used by the Workpool onComplete handler to track when all leads are enriched
+  enrichmentBatches: defineTable({
+    batchId: v.string(),              // Unique batch identifier
+    searchId: v.id("searches"),       // Associated search
+    userId: v.id("users"),            // User who initiated the search
+    totalLeads: v.number(),           // Total leads in this batch
+    completedLeads: v.number(),       // Leads that have finished (success or fail)
+    successfulLeads: v.number(),      // Leads that enriched successfully
+    failedLeads: v.number(),          // Leads that failed enrichment
+    workIds: v.array(v.string()),     // Workpool work IDs for cancellation
+    status: v.union(
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    startedAt: v.number(),            // When the batch started
+    completedAt: v.optional(v.number()), // When the batch completed
+  })
+    .index("by_batch_id", ["batchId"])
+    .index("by_search", ["searchId"])
+    .index("by_status", ["status"]),
+
+  // ============================================================================
+  // FAILED OPERATIONS - Dead Letter Queue for Pipeline Recovery
+  // ============================================================================
+  // Tracks failed pipeline operations (completion handlers, phase transitions)
+  // for automatic retry with exponential backoff
+  failedOperations: defineTable({
+    // Operation identification
+    operationType: v.union(
+      v.literal("enrichment_completion"),
+      v.literal("analysis_trigger"),
+      v.literal("batch_finalization"),
+      v.literal("slot_release")
+    ),
+
+    // Reference IDs
+    searchId: v.id("searches"),
+    leadId: v.optional(v.id("leads")),
+
+    // Error context
+    error: v.string(),
+    errorCode: v.optional(v.string()),
+    context: v.optional(v.any()), // Serialized operation context (batchId, workId, etc.)
+
+    // Retry tracking
+    retryCount: v.number(),
+    maxRetries: v.number(),
+    lastAttemptAt: v.number(),
+    nextRetryAt: v.optional(v.number()),
+
+    // Status
+    status: v.union(
+      v.literal("pending"),   // Ready for retry
+      v.literal("retrying"),  // Currently being retried
+      v.literal("resolved"),  // Successfully recovered
+      v.literal("exhausted")  // Max retries exceeded
+    ),
+    resolvedAt: v.optional(v.number()),
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status", ["status"])
+    .index("by_search", ["searchId", "status"])
+    .index("by_operation_type", ["operationType", "status"])
+    .index("by_next_retry", ["status", "nextRetryAt"]),
 });

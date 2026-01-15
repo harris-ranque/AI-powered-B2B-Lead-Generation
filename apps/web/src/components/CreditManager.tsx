@@ -18,9 +18,10 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useBilling } from "@/hooks/useBilling";
-import { getStripePriceId, type PlanType } from "@/lib/pricing-config";
-import { useRuntimeConfig } from "@/lib/runtime-config";
+import { useFastSpring } from "@/hooks/useFastSpring";
+import { useRuntimeConfig, type PlanType } from "@/lib/runtime-config";
 import { useUser, useUserCredits } from "@/hooks/useUser";
+import { useAnalytics } from "@/hooks/useAnalytics";
 
 interface PricingPlan {
   id: PlanType;
@@ -64,13 +65,36 @@ export function CreditManager({
   const [isProcessing, setIsProcessing] = useState(false);
 
   const { toast } = useToast();
+  const analytics = useAnalytics();
 
   // Real Convex hooks
   const { user } = useUser();
   const { credits, isLoading: creditsLoading } = useUserCredits();
-  const { billing, usage, createCheckoutSession, purchaseCredits, updatePlan } =
-    useBilling();
+  const { billing, usage } = useBilling();
   const { config: runtimeConfig } = useRuntimeConfig();
+
+  // FastSpring checkout hook
+  const {
+    startSubscriptionCheckout,
+    startCreditsCheckout,
+    isLoading: checkoutLoading,
+  } = useFastSpring({
+    autoLoad: true,
+    onOrderComplete: (order) => {
+      // Track successful purchase
+      analytics.trackCreditPurchaseCompleted({
+        amount: order.items?.[0]?.quantity || 0,
+        price: order.total || 0,
+        payment_method: "fastspring",
+        new_balance: (currentCredits || 0) + (order.items?.[0]?.quantity || 0),
+      });
+
+      toast({
+        title: "Payment successful!",
+        description: "Your purchase has been processed.",
+      });
+    },
+  });
 
   const normalizePlan = (plan: string | undefined): PlanType => {
     const validPlans: PlanType[] = [
@@ -78,6 +102,7 @@ export function CreditManager({
       "professional",
       "business",
       "enterprise",
+      "custom",
     ];
     return validPlans.includes((plan as PlanType) || "")
       ? (plan as PlanType)
@@ -204,31 +229,21 @@ export function CreditManager({
   const handleUpgrade = async (planId: PlanType) => {
     if (planId === currentPlan) return;
 
+    // Starter is free (no purchase needed), Enterprise is contact sales only
+    if (planId === "starter" || planId === "enterprise") {
+      if (onUpgrade) {
+        onUpgrade(planId);
+      }
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
-      // For now default to monthly billing in this UI
-      const billingCycle: "monthly" | "yearly" = "monthly";
-      const priceId = getStripePriceId(planId, billingCycle === "yearly");
+      // Open FastSpring popup checkout for subscription
+      await startSubscriptionCheckout(planId, "monthly");
 
-      // Create Stripe checkout session for plan upgrade
-      const result = await createCheckoutSession({
-        priceId,
-        planId,
-        billingCycle,
-        successUrl: `${window.location.origin}/dashboard?upgraded=true`,
-        cancelUrl: `${window.location.origin}/dashboard`,
-      });
-
-      if (result.url) {
-        toast({
-          title: "Redirecting to Stripe",
-          description: "Redirecting to secure payment...",
-        });
-        window.location.href = result.url;
-      }
-
-      // Fallback to callback if provided
+      // Callback for parent component if provided
       if (onUpgrade) {
         onUpgrade(planId);
       }
@@ -248,30 +263,34 @@ export function CreditManager({
     setIsProcessing(true);
 
     try {
-      // Create Stripe checkout session for credit purchase (one-time)
-      const pack = creditPacks.find((p) => p.amount + p.bonus === amount);
+      // Find the matching credit pack to get base credits (without bonus)
+      const pack = visiblePacks.find((p) => p.amount + p.bonus === amount);
       if (!pack) throw new Error("Invalid credit pack");
 
-      const result = await purchaseCredits({
-        credits: amount,
-        successUrl: `${window.location.origin}/dashboard?credits_purchased=true`,
-        cancelUrl: `${window.location.origin}/dashboard`,
+      // Track purchase initiated
+      analytics.trackCreditPurchaseInitiated({
+        amount: pack.amount + pack.bonus,
+        price: pack.price,
+        payment_method: "fastspring",
       });
 
-      if (result.url) {
-        toast({
-          title: "Redirecting to Stripe",
-          description: `Purchasing ${amount} credits...`,
-        });
-        window.location.href = result.url;
-      }
+      // Open FastSpring popup checkout for credit purchase
+      // Pass the base credit amount (FastSpring product is configured by base amount)
+      await startCreditsCheckout(pack.amount);
 
-      // Fallback to callback if provided
+      // Callback for parent component if provided
       if (onPurchaseCredits) {
         onPurchaseCredits(amount);
       }
     } catch (error) {
       console.error("Credit purchase failed:", error);
+
+      // Track purchase failed
+      analytics.trackCreditPurchaseFailed({
+        amount,
+        error_message: error instanceof Error ? error.message : "Unknown error",
+      });
+
       toast({
         title: "Purchase Failed",
         description: "Failed to start purchase process. Please try again.",
@@ -334,7 +353,7 @@ export function CreditManager({
               <CreditCard className="h-5 w-5 text-primary" />
               <span className="text-sm font-medium">Available Credits</span>
             </div>
-            <div className="text-3xl font-bold text-primary">
+            <div className="text-3xl font-bold text-primary" data-testid="credit-balance">
               {currentCredits}
             </div>
           </div>
@@ -418,7 +437,7 @@ export function CreditManager({
       </Card>
 
       {/* Quick Credit Purchase */}
-      {currentPlan !== "enterprise" && (
+      {currentPlan !== "enterprise" && currentPlan !== "custom" && (
         <Card className="p-6">
           <h3 className="text-lg font-semibold mb-4">
             Purchase Additional Credits
@@ -428,6 +447,8 @@ export function CreditManager({
             {visiblePacks.map((pack, index) => (
               <div
                 key={index}
+                data-testid="credit-package"
+                data-credit-amount={`credit-amount-${pack.amount + pack.bonus}`}
                 className={`border rounded-lg p-4 cursor-pointer transition-colors ${
                   selectedCreditPack === index
                     ? "border-primary bg-primary/5"
@@ -459,14 +480,15 @@ export function CreditManager({
 
           {selectedCreditPack !== null && (
             <Button
+              data-testid="buy-credits-button"
               className="w-full mt-4"
-              disabled={isProcessing}
+              disabled={isProcessing || checkoutLoading}
               onClick={() => {
                 const pack = visiblePacks[selectedCreditPack];
                 handlePurchaseCredits(pack.amount + pack.bonus);
               }}
             >
-              {isProcessing ? (
+              {isProcessing || checkoutLoading ? (
                 <>
                   <Clock className="h-4 w-4 mr-2 animate-spin" />
                   Processing...
@@ -486,7 +508,7 @@ export function CreditManager({
       )}
 
       {/* Plan Upgrade */}
-      {currentPlan !== "enterprise" && (
+      {currentPlan !== "enterprise" && currentPlan !== "custom" && (
         <Card className="p-6">
           <h3 className="text-lg font-semibold mb-4">Upgrade Your Plan</h3>
 
@@ -541,10 +563,10 @@ export function CreditManager({
                         ? "default"
                         : "outline"
                   }
-                  disabled={plan.currentPlan || isProcessing}
+                  disabled={plan.currentPlan || isProcessing || checkoutLoading}
                   onClick={() => !plan.currentPlan && handleUpgrade(plan.id)}
                 >
-                  {isProcessing ? (
+                  {isProcessing || checkoutLoading ? (
                     <>
                       <Clock className="h-4 w-4 mr-2 animate-spin" />
                       Processing...

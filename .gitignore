@@ -134,6 +134,12 @@ bun.lockb
 apps/crewai-worker/.env
 apps/crewai-worker/logs/
 
-# Web app specific  
+# Web app specific
 apps/web/.env.local
 apps/web/.env.production.local
+
+# Secrets and credentials (API keys, certificates, etc.)
+.secrets/
+*.pem
+*.key
+credentials.json

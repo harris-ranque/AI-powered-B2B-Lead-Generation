@@ -25,8 +25,7 @@ import {
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { ErrorBoundaryWrapper } from "@/components/ErrorBoundary";
-import { formatPrice } from "@/lib/pricing-config";
-import { useRuntimeConfig } from "@/lib/runtime-config";
+import { useRuntimeConfig, formatPrice } from "@/lib/runtime-config";
 
 export default function LandingPage() {
   const { config: runtimeConfig } = useRuntimeConfig();

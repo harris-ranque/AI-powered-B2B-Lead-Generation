@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { useAuth as useClerkAuth } from "@clerk/clerk-react";
+import { useQuery } from "convex/react";
+import { api } from "@genni/convex-types";
 import type { Doc } from "@genni/convex-types/dataModel";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,16 +26,33 @@ import {
   Zap,
   BarChart3,
   Crown,
+  Send,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PushToInstantlyButton } from "./instantly/PushToInstantlyButton";
+
+const ITEMS_PER_PAGE = 20;
 
 export function LeadSearchHistory() {
-  const { searches, isLoading } = useSearches();
+  const [currentPage, setCurrentPage] = useState(1);
+  const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+
+  const { searches, isLoading } = useSearches({
+    limit: ITEMS_PER_PAGE,
+    offset,
+  });
   const { user } = useAuth();
   const { getToken: getClerkToken } = useClerkAuth();
   const { toast } = useToast();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [expandedSearchId, setExpandedSearchId] = useState<string | null>(null);
+
+  // Check if Instantly is configured
+  const userApiKeys = useQuery(api.userApiKeys.queries.getUserApiKeys);
+  const instantlyKey = userApiKeys?.find((key) => key.provider === "instantly");
+  const isInstantlyConfigured = instantlyKey?.validated ?? false;
 
   const items = useMemo<Doc<"searches">[]>(() => searches ?? [], [searches]);
 
@@ -169,9 +188,9 @@ export function LeadSearchHistory() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="search-history">
       {items.length === 0 ? (
-        <Card className="p-6 text-sm text-muted-foreground">
+        <Card className="p-6 text-sm text-muted-foreground" data-testid="no-results-message">
           No searches yet. Run a new lead search to see history here.
         </Card>
       ) : (
@@ -202,7 +221,7 @@ export function LeadSearchHistory() {
             (s.duplicatesFilteredPlaceId || 0);
 
           return (
-            <Card key={String(s._id)} className="overflow-hidden">
+            <Card key={String(s._id)} className="overflow-hidden" data-testid="search-history-item">
               {/* Tier 1: Always Visible */}
               <div className="p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -267,7 +286,7 @@ export function LeadSearchHistory() {
                       <div className="flex items-start gap-2 text-muted-foreground">
                         <BarChart3 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
                         <div className="flex flex-col gap-0.5">
-                          <span className="font-medium text-foreground">
+                          <span className="font-medium text-foreground" data-testid="results-count">
                             {s.results?.totalFound ?? 0} leads found
                           </span>
                           <span>
@@ -300,7 +319,7 @@ export function LeadSearchHistory() {
                       )}
 
                       {duration && (
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5" data-testid="total-duration">
                           <Clock className="h-3.5 w-3.5" />
                           <span>{duration}</span>
                         </div>
@@ -331,7 +350,9 @@ export function LeadSearchHistory() {
 
                   {/* Action Buttons */}
                   <div className="flex items-center gap-2 flex-shrink-0">
+                    {/* Export CSV Button */}
                     <Button
+                      data-testid="export-csv-button"
                       size="sm"
                       variant="outline"
                       onClick={() => startCsvDownload(String(s._id))}
@@ -353,6 +374,29 @@ export function LeadSearchHistory() {
                         </>
                       )}
                     </Button>
+
+                    {/* Push to Instantly - Show disabled button if not configured */}
+                    {isInstantlyConfigured ? (
+                      <PushToInstantlyButton
+                        searchId={s._id}
+                        searchName={s.name}
+                        status={s.status}
+                        totalLeads={s.results?.totalFound ?? 0}
+                        analyzedCount={s.results?.analyzedCount ?? 0}
+                        enrichedCount={s.results?.enrichedCount ?? 0}
+                      />
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled
+                        className="gap-2 opacity-50"
+                        title="Configure Instantly API key in Settings"
+                      >
+                        <Send className="h-4 w-4" />
+                        Push to Instantly
+                      </Button>
+                    )}
 
                     <Button
                       size="sm"
@@ -690,6 +734,93 @@ export function LeadSearchHistory() {
             </Card>
           );
         })
+      )}
+
+      {/* Pagination Controls */}
+      {items.length > 0 && (
+        <div className="flex items-center justify-between mt-6 pt-4 border-t">
+          <div className="text-sm text-muted-foreground">
+            Page {currentPage} • Showing {items.length} {items.length === 1 ? 'search' : 'searches'}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="gap-1"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Previous
+            </Button>
+
+            <div className="flex items-center gap-1">
+              {currentPage > 2 && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCurrentPage(1)}
+                  >
+                    1
+                  </Button>
+                  {currentPage > 3 && (
+                    <span className="px-2 text-muted-foreground">...</span>
+                  )}
+                </>
+              )}
+
+              {currentPage > 1 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                >
+                  {currentPage - 1}
+                </Button>
+              )}
+
+              <Button
+                variant="default"
+                size="sm"
+                disabled
+              >
+                {currentPage}
+              </Button>
+
+              {items.length === ITEMS_PER_PAGE && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCurrentPage(currentPage + 1)}
+                  >
+                    {currentPage + 1}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCurrentPage(currentPage + 2)}
+                  >
+                    {currentPage + 2}
+                  </Button>
+                </>
+              )}
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(p => p + 1)}
+              disabled={items.length < ITEMS_PER_PAGE}
+              className="gap-1"
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );

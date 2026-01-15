@@ -56,8 +56,11 @@ import { useSearches } from "@/hooks/useSearches";
 import type { Id } from "@genni/convex-types/dataModel";
 import { cn } from "@/lib/utils";
 import { toStandardCase } from "@/utils/string";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@genni/convex-types";
+import { useAuth } from "@/hooks/useAuth";
+import { usePostHogTracking } from "@/hooks/usePostHog";
+import type { EnrichmentBroadcastData } from "@/types/enrichment";
 
 interface SearchProgressTrackerProps {
   searchId: Id<"searches">;
@@ -119,10 +122,33 @@ export function SearchProgressTracker({
     currentStage,
   } = useSearchBroadcasts(searchId);
 
+  // Get enrichment progress for detailed status breakdown
+  const enrichmentProgress = useQuery(
+    api.leads.queries.getEnrichmentProgress,
+    search ? { searchId } : "skip"
+  );
+
+  // Get current user for admin controls
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
+  // PostHog tracking hook
+  const {
+    trackEnrichmentBatchStarted,
+    trackEnrichmentMilestone,
+    trackEnrichmentPauseToggle,
+  } = usePostHogTracking();
+
+  // Admin pause/resume mutations
+  const pauseEnrichment = useMutation(api.admin.mutations.pauseSearchEnrichment);
+  const resumeEnrichment = useMutation(api.admin.mutations.resumeSearchEnrichment);
+
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [isPausing, setIsPausing] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
 
   if (!search) {
     return (
@@ -217,20 +243,20 @@ export function SearchProgressTracker({
   const timelineStages: TimelineStage[] = [
     {
       id: "discovery",
-      label: "Find Leads",
+      label: "Find Businesses",
       icon: Search,
       count: discoveredCount,
     },
     {
       id: "enrichment",
-      label: "Get Contacts",
+      label: "Get Email Addresses",
       icon: Mail,
       count: enrichedCount,
-      tooltip: "Finding email contacts for each lead",
+      tooltip: "Finding decision-maker emails for each business",
     },
     {
       id: "analysis",
-      label: "Create Emails",
+      label: "Write Emails",
       icon: analysisStageIcon,
       count: analyzedCount,
       tooltip:
@@ -240,11 +266,11 @@ export function SearchProgressTracker({
             ? `${researchSources} research sources analyzed`
             : search.researchTier && search.researchTier !== "error"
               ? `${researchTierDisplay.label} research with AI personalization`
-              : "AI-powered email personalization",
+              : "AI writes personalized emails for each contact",
     },
     {
       id: "completion",
-      label: "Ready",
+      label: "Download Results",
       icon: CheckCircle,
       count: search.results?.totalFound ?? (search.status === "completed" ? totalCount : undefined),
     },
@@ -255,17 +281,17 @@ export function SearchProgressTracker({
 
   const metrics = [
     {
-      label: "Found",
+      label: "Businesses",
       value: discoveredCount,
       stageIndex: STAGE_ORDER.indexOf("discovery"),
     },
     {
-      label: "Contacts",
+      label: "Checked",
       value: enrichedCount,
       stageIndex: STAGE_ORDER.indexOf("enrichment"),
     },
     {
-      label: "Created",
+      label: "Personalized",
       value: analyzedCount,
       stageIndex: STAGE_ORDER.indexOf("analysis"),
     },
@@ -309,6 +335,52 @@ export function SearchProgressTracker({
 
   const handleViewResults = () => {
     window.location.hash = "#lead-history";
+  };
+
+  const handlePauseEnrichment = async () => {
+    if (!search) return;
+    try {
+      setIsPausing(true);
+      await pauseEnrichment({ searchId });
+
+      // Track pause action in PostHog
+      if (user?._id) {
+        trackEnrichmentPauseToggle({
+          searchId,
+          action: "pause",
+          userId: user._id,
+          totalLeads: totalCount,
+          completedLeads: enrichedCount,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to pause enrichment:", error);
+    } finally {
+      setIsPausing(false);
+    }
+  };
+
+  const handleResumeEnrichment = async () => {
+    if (!search) return;
+    try {
+      setIsResuming(true);
+      await resumeEnrichment({ searchId });
+
+      // Track resume action in PostHog
+      if (user?._id) {
+        trackEnrichmentPauseToggle({
+          searchId,
+          action: "resume",
+          userId: user._id,
+          totalLeads: totalCount,
+          completedLeads: enrichedCount,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to resume enrichment:", error);
+    } finally {
+      setIsResuming(false);
+    }
   };
 
   if (compact) {
@@ -383,7 +455,7 @@ export function SearchProgressTracker({
                 <CardTitle className="text-base font-semibold">
                   {formattedSearchName || "Lead pipeline"}
                 </CardTitle>
-                <Badge variant={statusBadgeVariant}>{search.status.replace(/_/g, " ")}</Badge>
+                <Badge data-testid="search-status" data-status={search.status} variant={statusBadgeVariant}>{search.status.replace(/_/g, " ")}</Badge>
                 {search.researchTier && (
                   <span className="flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
                     {researchTierDisplay.icon && (
@@ -498,6 +570,9 @@ export function SearchProgressTracker({
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <div
+                              data-testid="pipeline-stage"
+                              data-stage-name={stage.id}
+                              data-stage-status={isComplete ? "completed" : isActive ? "in_progress" : "pending"}
                               className={cn(
                                 "flex h-11 w-11 items-center justify-center rounded-full border transition-all",
                                 isComplete
@@ -522,7 +597,15 @@ export function SearchProgressTracker({
                       </TooltipProvider>
                       <div className="text-center text-xs">
                         <div className="font-medium text-foreground">{stage.label}</div>
-                        <div className="text-muted-foreground">
+                        <div
+                          className="text-muted-foreground"
+                          data-testid={
+                            stage.id === "discovery" ? "leads-discovered-count" :
+                            stage.id === "enrichment" ? "leads-enriched-count" :
+                            stage.id === "analysis" ? "leads-analyzed-count" :
+                            undefined
+                          }
+                        >
                           {typeof stage.count === "number" ? `${stage.count} leads` : "–"}
                         </div>
                       </div>
@@ -544,6 +627,153 @@ export function SearchProgressTracker({
               </div>
             </div>
           </section>
+
+          {latestUpdate?.data && typeof latestUpdate.data === "object" && "workpool" in latestUpdate.data && (
+            <section className="space-y-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Workpool Metrics
+              </h3>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                <div className="rounded-lg border border-border/60 bg-background/80 p-3">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Max Parallel</p>
+                  <p className="text-lg font-semibold text-foreground">
+                    {(latestUpdate.data as EnrichmentBroadcastData).workpool?.maxParallelism || 0}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/60 bg-background/80 p-3">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Per-Key Limit</p>
+                  <p className="text-lg font-semibold text-foreground">
+                    {(latestUpdate.data as EnrichmentBroadcastData).workpool?.perApiKeyConcurrency || 0}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/60 bg-background/80 p-3">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Est. Time</p>
+                  <p className="text-lg font-semibold text-foreground">
+                    ~{(latestUpdate.data as EnrichmentBroadcastData).workpool?.estimatedMinutes || 0}m
+                  </p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {enrichmentProgress && (search.status === "in_progress" || search.status === "processing") && (
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  Enrichment Status
+                </h3>
+                {enrichmentProgress.isPaused && (
+                  <Badge variant="outline" className="text-[10px] uppercase">
+                    ⏸️ Paused
+                  </Badge>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+                <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wide text-muted-foreground">Pending</span>
+                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                      {enrichmentProgress.pending}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="rounded-md border border-border/60 bg-blue-50/50 px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wide text-blue-700">In Progress</span>
+                    <Badge variant="default" className="h-5 bg-blue-600 px-1.5 text-[10px]">
+                      {enrichmentProgress.inProgress}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="rounded-md border border-border/60 bg-emerald-50/50 px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wide text-emerald-700">Completed</span>
+                    <Badge variant="default" className="h-5 bg-emerald-600 px-1.5 text-[10px]">
+                      {enrichmentProgress.completed}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="rounded-md border border-border/60 bg-red-50/50 px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wide text-red-700">Failed</span>
+                    <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
+                      {enrichmentProgress.failed}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="rounded-md border border-border/60 bg-background/80 px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wide text-muted-foreground">Progress</span>
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-bold">
+                      {enrichmentProgress.percentComplete}%
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {isAdmin && search && (search.status === "in_progress" || search.status === "processing") && (
+            <section className="rounded-lg border border-amber-200 bg-amber-50/50 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-amber-600" />
+                  <div>
+                    <h3 className="text-sm font-semibold text-amber-900">Admin Controls</h3>
+                    <p className="text-xs text-amber-700">
+                      {search.enrichmentPaused ? "Enrichment is paused" : "Control enrichment flow"}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {!search.enrichmentPaused ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePauseEnrichment}
+                      disabled={isPausing}
+                      className="gap-2 border-amber-300 bg-white hover:bg-amber-50"
+                    >
+                      {isPausing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Pausing...
+                        </>
+                      ) : (
+                        <>
+                          ⏸️ Pause
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleResumeEnrichment}
+                      disabled={isResuming}
+                      className="gap-2 border-emerald-300 bg-white hover:bg-emerald-50"
+                    >
+                      {isResuming ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Resuming...
+                        </>
+                      ) : (
+                        <>
+                          ▶️ Resume
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {search.pausedBy && search.pausedAt && (
+                <div className="mt-3 text-xs text-amber-700">
+                  Paused {new Date(search.pausedAt).toLocaleString()}
+                </div>
+              )}
+            </section>
+          )}
 
           <section className="rounded-lg border border-dashed border-border/60 bg-background/80 p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -578,9 +808,9 @@ export function SearchProgressTracker({
                   .filter(([key]) => ["discovered", "enriched", "analyzed", "total"].includes(key))
                   .map(([key, value]) => {
                     const labelMap: Record<string, string> = {
-                      discovered: "Found",
-                      enriched: "Contacts",
-                      analyzed: "Created",
+                      discovered: "Businesses",
+                      enriched: "Checked",
+                      analyzed: "Personalized",
                       total: "Total",
                     };
                     const displayLabel = labelMap[key] || key;
@@ -735,7 +965,7 @@ export function SearchProgressTracker({
                 </div>
                 <div className="space-y-1">
                   <span className="text-xs uppercase tracking-wide text-muted-foreground">Completed</span>
-                  <p className="font-medium text-foreground">
+                  <p className="font-medium text-foreground" data-testid="completed-at">
                     {search.completedAt ? new Date(search.completedAt).toLocaleString() : "In progress"}
                   </p>
                 </div>

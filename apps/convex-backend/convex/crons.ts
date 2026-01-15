@@ -4,33 +4,74 @@ import { internal } from "./_generated/api";
 const crons = cronJobs();
 
 // ============================================================================
-// ASYNC LEAD ANALYSIS MONITORING (Every 5 minutes)
+// LEAD HEALTH MONITORING (Every 5 minutes)
 // ============================================================================
-// Monitor stuck/timeout leads and trigger completion checks
+// Combined monitoring for all lead-related health checks:
+// - Stuck lead analysis detection and recovery
+// - Stuck enrichment detection and recovery
+// - Scheduled actions health verification
 crons.interval(
-  "monitor-stuck-lead-analysis",
-  { minutes: 5 }, // Run every 5 minutes
-  (internal as any)["leads/monitoring"].monitorStuckLeads,
+  "monitor-lead-health",
+  { minutes: 5 },
+  (internal as any)["leads/monitoring"].monitorLeadHealth,
 );
 
 // ============================================================================
-// SCHEDULED ACTIONS HEALTH CHECK (Every 15 minutes)
+// SEARCH HEALTH MONITORING (Every 5 minutes)
 // ============================================================================
-// Verify scheduled actions are executing properly
+// Combined monitoring for all search-related health checks:
+// - Pending search completion checks
+// - Stuck search recovery
+// Respects checkpoint pauses (won't interfere with user-action-required states)
 crons.interval(
-  "check-scheduled-actions-health",
-  { minutes: 15 }, // Run every 15 minutes
-  (internal as any)["leads/monitoring"].checkScheduledActionsHealth,
+  "monitor-search-health",
+  { minutes: 5 },
+  (internal as any)["search/monitoring"].monitorSearchHealth,
 );
 
 // ============================================================================
-// SEARCH COMPLETION CHECKING (Every 3 minutes)
+// API KEY SEMAPHORE SLOT CLEANUP (Every 5 minutes)
 // ============================================================================
-// Check if any searches with all leads processed need completion
+// Clean up expired slots from the distributed semaphore system
+// Slots auto-expire after 10 minutes, this cron ensures cleanup of stuck slots
 crons.interval(
-  "check-search-completion",
-  { minutes: 3 },
-  (internal as any)["search/monitoring"].checkPendingCompletions,
+  "cleanup-expired-semaphore-slots",
+  { minutes: 5 },
+  internal.apiKeySemaphore.semaphore.cleanupExpiredSlots,
+);
+
+// ============================================================================
+// FINDYMAIL API HEALTH CHECK (Every 30 minutes)
+// ============================================================================
+// Proactively check FindyMail API health and alert on issues
+// Checks: authentication, credits, rate limits, API availability
+crons.interval(
+  "findymail-health-check",
+  { minutes: 30 },
+  (internal as any)["leads/enrichment/healthCheck"].checkFindyMailHealth,
+);
+
+// ============================================================================
+// DEAD LETTER QUEUE PROCESSOR (Every 2 minutes)
+// ============================================================================
+// Processes failed pipeline operations (completion handlers, phase transitions)
+// - Retries failed operations with exponential backoff
+// - Marks exhausted operations after 5 attempts
+crons.interval(
+  "process-dead-letter-queue",
+  { minutes: 2 },
+  (internal as any)["leads/deadLetterProcessor"].processDeadLetterQueue,
+);
+
+// ============================================================================
+// DLQ CLEANUP (Daily)
+// ============================================================================
+// Cleans up old resolved operations from the dead letter queue
+// Keeps last 7 days of resolved operations for auditing
+crons.interval(
+  "cleanup-resolved-dlq-operations",
+  { hours: 24 },
+  internal.leads.deadLetterQueue.cleanupResolvedOperations,
 );
 
 export default crons;

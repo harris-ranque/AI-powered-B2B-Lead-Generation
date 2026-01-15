@@ -6,6 +6,10 @@ import { createLogger, timeOperation } from "@/utils/logger";
 
 const logger = createLogger("useStatusBroadcasts");
 
+// Helper to check if an ID is a temporary optimistic ID (not yet persisted to Convex)
+const isTempId = (id: string | undefined): boolean =>
+  typeof id === "string" && id.startsWith("temp_");
+
 export type BroadcastPriority = "low" | "normal" | "high" | "urgent" | "critical";
 
 export interface StatusBroadcast {
@@ -119,14 +123,17 @@ export function useSearchBroadcastsBase(
   searchId: Id<"searches"> | undefined,
   statusBroadcasts: UseStatusBroadcastsResult,
 ) {
+  // Skip queries for temp IDs to avoid validation errors
+  const validSearchId = searchId && !isTempId(searchId);
+
   const searchBroadcasts = useQuery(
     api.realtime.queries.getSearchBroadcasts,
-    searchId ? { searchId, limit: 50 } : "skip",
+    validSearchId ? { searchId, limit: 50 } : "skip",
   );
 
   const latestPipelineStatus = useQuery(
     api.realtime.queries.getSearchPipelineStatus,
-    searchId ? { searchId } : "skip",
+    validSearchId ? { searchId } : "skip",
   );
 
   const sortedBroadcasts = (searchBroadcasts || []).sort(

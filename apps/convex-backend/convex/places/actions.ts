@@ -19,6 +19,10 @@ import { fetchWithRetry } from "../utils/http";
 import { resolveDomainsWithFindyMail } from "../leads/enrichment/findymail";
 import { Doc } from "../_generated/dataModel";
 import { getSingleProviderError } from "../lib/errorMessages";
+import {
+  createApiConvexError,
+  shouldBlockPipeline,
+} from "../lib/apiErrors";
 
 const MAX_AUTOCOMPLETE_RADIUS_METERS = 50000;
 
@@ -554,10 +558,24 @@ export const enrichBatch: any = action({
         new Set(candidates.map((candidate) => candidate.domain)),
       );
       if (uniqueDomains.length > 0) {
-        domainResults = await resolveDomainsWithFindyMail(uniqueDomains, roles, {
+        const resolveResult = await resolveDomainsWithFindyMail(uniqueDomains, roles, {
           apiKey: findyMailApiKey,
           concurrency: FINDYMAIL_CONCURRENCY,
         });
+        domainResults = resolveResult.results;
+
+        // Check if FindyMail encountered a pipeline-blocking error (auth failed, credits exhausted)
+        if (resolveResult.apiError && shouldBlockPipeline(resolveResult.apiError)) {
+          console.error("[enrichBatch] FindyMail pipeline-blocking error:", {
+            errorCode: resolveResult.apiError.errorCode,
+            category: resolveResult.apiError.category,
+            userMessage: resolveResult.apiError.userMessage,
+            processedDomains: domainResults.size,
+            totalDomains: uniqueDomains.length,
+          });
+          // Throw structured error for frontend handling
+          throw createApiConvexError(resolveResult.apiError);
+        }
       }
 
       let promoted = 0;

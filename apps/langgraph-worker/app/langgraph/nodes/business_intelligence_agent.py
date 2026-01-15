@@ -16,7 +16,7 @@ from ...utils.research_clients import (
     ResearchTier,
     ClientRegistry,
 )
-from ...utils.data_validation import BaseDataValidator
+from ...utils.data_validation import BaseDataValidator, determine_lead_tier
 from ...utils.analytics import capture_event, capture_error
 from ...models.lead_models import AgentResult, CompetitorInsight
 from ..state import EmailGenerationState
@@ -219,6 +219,10 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
     provider_key_map = provider_keys or {}
     using_user_keys = provider_keys is not None
     registry = ClientRegistry.get_instance()
+
+    # Extract PostHog LLM callback for analytics
+    llm_callback = state.get("llm_callback")
+    callbacks = [llm_callback] if llm_callback else []
     analytics_context = {
         "request_id": request_id,
         "lead_id": getattr(lead, "id", None),
@@ -282,6 +286,16 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
             logger.warning(f"Research quality concern for {lead.company_name}: "
                           f"Relevance={relevance_score:.2f}, Issues={len(relevance_warnings)}")
 
+        # Determine lead tier based on research quality
+        # A-tier: Rich research (validation >= 0.6, confidence >= 0.6, missing <= 1)
+        # B-tier: Minimal research (still usable, not penalized in email generation)
+        lead_tier, lead_tier_reason = determine_lead_tier(
+            validation_score=validation_result.validation_score,
+            confidence_score=research_result.confidence_score,
+            missing_data_points=len(validation_result.missing_data_points),
+        )
+        logger.info(f"Lead tier classification for {lead.company_name}: {lead_tier} ({lead_tier_reason})")
+
         # Calculate credit cost (base cost + deep research cost if used)
         from ...config import CREDIT_COSTS
         base_credit_cost = CREDIT_COSTS['AI_ANALYSIS']
@@ -304,6 +318,8 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
                 "validation_score": validation_result.validation_score,
                 "missing_data_points": validation_result.missing_data_points,
                 "credit_cost": total_credit_cost,
+                "lead_tier": lead_tier,
+                "lead_tier_reason": lead_tier_reason,
             },
         )
         
@@ -479,8 +495,8 @@ CRITICAL REQUIREMENTS:
                 for comp in research_result.competitors[:3]
             ]
         
-        # Execute comprehensive analysis
-        intelligence: BusinessIntelligence = await llm.ainvoke(prompt.format_messages(
+        # Execute comprehensive analysis with PostHog LLM analytics
+        messages = prompt.format_messages(
             # Lead information
             company_name=lead.company_name,
             contact_name=lead.contact_name or "Unknown",
@@ -492,7 +508,7 @@ CRITICAL REQUIREMENTS:
             description=getattr(lead, 'description', '') or "Not provided",
             technologies=", ".join(getattr(lead, 'technologies', [])) or "Not specified",
             revenue=getattr(lead, 'revenue', '') or "Not specified",
-            
+
             # Research results
             research_tier=research_result.tier.value,
             confidence_score=research_result.confidence_score,
@@ -503,7 +519,7 @@ CRITICAL REQUIREMENTS:
             recent_news="; ".join(research_result.raw_data.get('recent_news', [])) or "No recent news",
             research_time=research_result.response_time,
             sources_analyzed=research_result.sources_analyzed,
-            
+
             # Our business profile
             our_company=business_profile.company_name,
             our_industry=business_profile.industry,
@@ -511,7 +527,11 @@ CRITICAL REQUIREMENTS:
             our_services=", ".join(business_profile.services),
             our_targets=", ".join(business_profile.target_markets),
             our_differentiators=", ".join(business_profile.key_differentiators)
-        ))
+        )
+        intelligence: BusinessIntelligence = await llm.ainvoke(
+            messages,
+            config={"callbacks": callbacks}  # PostHog captures tokens, cost, latency
+        )
         
         analysis_time = time.time() - analysis_start
         total_time = time.time() - start_time
@@ -625,7 +645,10 @@ CRITICAL REQUIREMENTS:
             "base_data_validation_score": validation_result.validation_score,
             "research_tier": research_result.final_tier_used,  # "basic", "pro", or "deep"
             "escalation_reason": research_result.escalation_reason,
-            "company_data": company_data  # Structured company data for Convex storage
+            "company_data": company_data,  # Structured company data for Convex storage
+            # Lead tier classification for B-tier handling
+            "lead_tier": lead_tier,  # "A" or "B"
+            "lead_tier_reason": lead_tier_reason,  # Explanation for tier classification
         }
         
     except Exception as e:

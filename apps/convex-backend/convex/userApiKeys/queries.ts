@@ -2,9 +2,9 @@ import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 import {
-  ensureUserCanManageKeys,
   providerValidator,
   SUPPORTED_PROVIDERS,
+  UNIVERSAL_ACCESS_PROVIDERS, // Shared with mutations.ts to prevent duplication
 } from "./mutations";
 
 // Required providers for enterprise BYOK (Bring Your Own Keys)
@@ -22,20 +22,22 @@ export const getUserApiKeys = query({
   args: {},
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-
-    try {
-      ensureUserCanManageKeys(user.plan);
-    } catch (error) {
-      return [];
-    }
+    const isEnterprise = user.plan === "enterprise";
 
     const apiKeys = await ctx.db
       .query("userApiKeys")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
 
+    // Filter keys based on plan:
+    // - Enterprise users see all keys
+    // - Other users only see keys for universal access providers (e.g., Instantly)
+    const filteredKeys = isEnterprise
+      ? apiKeys
+      : apiKeys.filter((key) => UNIVERSAL_ACCESS_PROVIDERS.has(key.provider));
+
     // Return keys without the actual encrypted key for security
-    return apiKeys.map((key) => ({
+    return filteredKeys.map((key) => ({
       _id: key._id,
       provider: key.provider,
       keyName: key.keyName,
@@ -56,35 +58,32 @@ export const getApiKeyStatus = query({
   args: {},
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
+    const isEnterprise = user.plan === "enterprise";
+    const requiresApiKeys = isEnterprise;
 
-    let requiresApiKeys = false;
-
-    try {
-      ensureUserCanManageKeys(user.plan);
-      requiresApiKeys = user.plan === "enterprise";
-    } catch (error) {
-      return {
-        requiresApiKeys: false,
-        configuredProviders: [],
-        missingProviders: [],
-        missingRequiredProviders: [],
-        hasRequiredKeys: true,
-        totalUsage: 0,
-        validKeys: 0,
-        totalKeys: 0,
-      };
-    }
-
-    const apiKeys = await ctx.db
+    const allApiKeys = await ctx.db
       .query("userApiKeys")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .filter((q) => q.eq(q.field("isActive"), true))
       .collect();
 
+    // Filter keys based on plan for status display:
+    // - Enterprise users see all keys
+    // - Other users only see keys for universal access providers
+    const apiKeys = isEnterprise
+      ? allApiKeys
+      : allApiKeys.filter((key) => UNIVERSAL_ACCESS_PROVIDERS.has(key.provider));
+
     const configuredProviders = apiKeys
       .filter((key) => key.validated)
       .map((key) => key.provider);
-    const missingProviders = SUPPORTED_PROVIDERS.filter(
+
+    // For enterprise users, show all missing providers
+    // For other users, only show missing universal access providers
+    const relevantProviders = isEnterprise
+      ? SUPPORTED_PROVIDERS
+      : SUPPORTED_PROVIDERS.filter((p) => UNIVERSAL_ACCESS_PROVIDERS.has(p));
+    const missingProviders = relevantProviders.filter(
       (provider) => !configuredProviders.includes(provider),
     );
 
@@ -104,8 +103,8 @@ export const getApiKeyStatus = query({
     return {
       requiresApiKeys,
       configuredProviders,
-      missingProviders, // All missing providers (for info/display)
-      missingRequiredProviders, // Only required providers that are missing
+      missingProviders, // Missing providers relevant to user's plan
+      missingRequiredProviders, // Only required providers that are missing (enterprise only)
       hasRequiredKeys, // True if all required keys are configured
       totalUsage,
       validKeys: apiKeys.filter((key) => key.validated).length,
@@ -121,10 +120,11 @@ export const hasApiKeyForService = query({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
+    const isEnterprise = user.plan === "enterprise";
+    const isUniversalProvider = UNIVERSAL_ACCESS_PROVIDERS.has(args.provider);
 
-    try {
-      ensureUserCanManageKeys(user.plan);
-    } catch (error) {
+    // If user is not enterprise and the provider is not universal, they don't manage keys
+    if (!isEnterprise && !isUniversalProvider) {
       return { hasKey: true, managed: false };
     }
 
@@ -141,7 +141,7 @@ export const hasApiKeyForService = query({
 
     return {
       hasKey: !!apiKey,
-      managed: false,
+      managed: true,
       lastValidated: apiKey?.validatedAt,
       usageCount: apiKey?.usageCount || 0,
     };

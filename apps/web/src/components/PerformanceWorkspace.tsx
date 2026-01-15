@@ -31,8 +31,7 @@ import { PipelineProgressProvider } from "@/contexts/PipelineProgressContext";
 import { PipelineProgressPanel } from "@/components/PipelineProgressPanel";
 import { featureFlags } from "@/lib/featureFlags";
 import { UsageWarnings } from "@/components/SubscriptionGuard";
-import { SubscriptionStatusCard } from "@/components/SubscriptionStatusCard";
-import { UsageMetersCard } from "@/components/UsageMetersCard";
+import { PlanStatusCard } from "@/components/PlanStatusCard";
 import { CreditManager } from "@/components/CreditManager";
 import { withErrorBoundary } from "@/utils/errorHandling";
 import { createLogger } from "@/utils/logger";
@@ -47,7 +46,7 @@ import type {
   LeadStatsSummary,
   UsageSummary,
 } from "@/components/DashboardOverview";
-import type { PlanType } from "@/lib/pricing-config";
+import type { PlanType } from "@/lib/runtime-config";
 
 const performanceLogger = createLogger("PerformanceWorkspace");
 
@@ -67,6 +66,8 @@ interface PerformanceWorkspaceProps {
   onNavigate: (tab: DashboardTabName) => void;
   onUpgradePlan: (planId: string) => void;
   onPurchaseCredits: (amount: number) => void;
+  purchasedCredits?: number;
+  subscriptionCredits?: number;
 }
 
 function PerformanceWorkspaceComponent({
@@ -79,6 +80,8 @@ function PerformanceWorkspaceComponent({
   onNavigate,
   onUpgradePlan,
   onPurchaseCredits,
+  purchasedCredits = 0,
+  subscriptionCredits = 0,
 }: PerformanceWorkspaceProps) {
   const [componentError, setComponentError] = useState<string | null>(null);
   const {
@@ -469,6 +472,18 @@ function PerformanceWorkspaceComponent({
                 <p className="mt-2 text-xs text-muted-foreground">
                   You've used {creditUsagePercentage}% of the credits you've purchased to date.
                 </p>
+                {subscriptionCredits > 0 && (
+                  <div className="mt-3 space-y-1 rounded-lg border border-border/50 bg-muted/30 p-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Subscription credits</span>
+                      <span className="font-medium">{subscriptionCredits.toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Purchased credits</span>
+                      <span className="font-medium">{purchasedCredits.toLocaleString()}</span>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="rounded-lg border border-border/60 p-4 text-sm text-muted-foreground">
                 <p>
@@ -488,8 +503,7 @@ function PerformanceWorkspaceComponent({
               <CardDescription>Your current plan and usage at a glance.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <SubscriptionStatusCard />
-              <UsageMetersCard />
+              <PlanStatusCard />
             </CardContent>
           </Card>
 

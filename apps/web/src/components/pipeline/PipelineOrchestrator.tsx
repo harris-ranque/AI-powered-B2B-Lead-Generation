@@ -51,6 +51,7 @@ import { ToastAction } from "@/components/ui/toast";
 import { PipelineProgressProvider } from "@/contexts/PipelineProgressContext";
 import { PipelineProgressPanel } from "@/components/PipelineProgressPanel";
 import { featureFlags } from "@/lib/featureFlags";
+import { useAnalytics } from "@/hooks/useAnalytics";
 
 interface PipelineOrchestratorProps {
   userCredits: number;
@@ -73,6 +74,7 @@ export function PipelineOrchestrator({
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   const lastCompletedSearchIdRef = useRef<string | null>(null);
   const { toast } = useToast();
+  const analytics = useAnalytics();
 
   // Get search data and real-time updates
   const { search } = useSearch(state.searchId || undefined);
@@ -204,7 +206,7 @@ export function PipelineOrchestrator({
         label: "Standard Research",
         icon: Search,
         badgeClass:
-          "border border-cyan-500/40 bg-cyan-500/10 text-cyan-200",
+          "border border-cyan-300 bg-cyan-50 text-cyan-700 dark:border-cyan-500/40 dark:bg-cyan-500/10 dark:text-cyan-200",
         description: "Fast business context (2-3s)",
       };
     case "perplexity":
@@ -212,7 +214,7 @@ export function PipelineOrchestrator({
         label: "Deep Research",
         icon: Zap,
         badgeClass:
-          "border border-amber-500/40 bg-amber-500/10 text-amber-200",
+          "border border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200",
         description: "Comprehensive report (8-12s)",
       };
       default:
@@ -234,6 +236,15 @@ export function PipelineOrchestrator({
       }
 
       lastCompletedSearchIdRef.current = activeSearchId;
+
+      // Track search completion in analytics
+      analytics.trackSearchCompleted({
+        search_id: activeSearchId,
+        total_leads: totalFound,
+        enriched_count: enrichedCount,
+        research_tier: search?.researchTier,
+      });
+
       // Show completion dialog instead of toast - no auto-forwarding
       setShowCompletionDialog(true);
       return;
@@ -253,6 +264,14 @@ export function PipelineOrchestrator({
 
     try {
       await cancelSearch({ searchId: activeSearchId });
+
+      // Track search cancellation in analytics
+      analytics.trackSearchCancelled({
+        search_id: activeSearchId,
+        total_leads: totalFound,
+        enriched_count: enrichedCount,
+      });
+
       toast({
         title: "Search cancelled",
         description: "The search has been stopped successfully.",
@@ -265,7 +284,7 @@ export function PipelineOrchestrator({
         variant: "destructive",
       });
     }
-  }, [activeSearchId, cancelSearch, toast]);
+  }, [activeSearchId, cancelSearch, toast, analytics, totalFound, enrichedCount]);
 
   const unifiedPanelActions = useMemo(() => {
     if (isSearchCompleted) {
@@ -400,10 +419,10 @@ export function PipelineOrchestrator({
     <>
       {/* Search Completion Dialog */}
       <Dialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
-        <DialogContent className="sm:max-w-md border border-slate-800/60 bg-slate-950/90 shadow-[0_24px_72px_-32px_rgba(0,255,204,0.35)]">
+        <DialogContent className="sm:max-w-md border border-border bg-card shadow-[0_24px_48px_-24px_hsl(var(--shadow-glow))]">
           <DialogHeader>
             <div className="flex items-center gap-3 mb-2">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-emerald-500/50 bg-emerald-500/15 text-emerald-200 shadow-[0_0_22px_rgba(0,255,132,0.25)]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary shadow-[0_8px_16px_-8px_hsl(var(--primary-glow))]">
                 <CheckCircle className="h-6 w-6" />
               </div>
               <DialogTitle className="text-2xl">Search Complete!</DialogTitle>
@@ -415,19 +434,19 @@ export function PipelineOrchestrator({
                     Great news! We found and processed your leads.
                   </p>
                   <div className="grid grid-cols-3 gap-3 pt-3">
-                    <div className="flex flex-col items-center justify-center rounded-lg border-2 border-emerald-500/50 bg-emerald-500/10 p-3">
-                      <div className="text-2xl font-bold text-emerald-100">{totalFound}</div>
-                      <div className="text-xs font-medium text-emerald-200/80">Found</div>
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-primary/40 bg-primary/5 p-3 transition-all hover:border-primary/60 hover:bg-primary/10">
+                      <div className="text-2xl font-bold text-foreground">{totalFound}</div>
+                      <div className="text-xs font-medium text-muted-foreground">Found</div>
                     </div>
-                    <div className="flex flex-col items-center justify-center rounded-lg border-2 border-cyan-500/50 bg-cyan-500/10 p-3">
-                      <div className="text-2xl font-bold text-cyan-100">{enrichedCount}</div>
-                      <div className="text-xs font-medium text-cyan-200/80">Contacts Found</div>
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-accent/40 bg-accent/5 p-3 transition-all hover:border-accent/60 hover:bg-accent/10">
+                      <div className="text-2xl font-bold text-foreground">{enrichedCount}</div>
+                      <div className="text-xs font-medium text-muted-foreground">Contacts Found</div>
                     </div>
-                    <div className="flex flex-col items-center justify-center rounded-lg border-2 border-purple-500/50 bg-purple-500/10 p-3">
-                      <div className="text-2xl font-bold text-purple-100">
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-ring/40 bg-ring/5 p-3 transition-all hover:border-ring/60 hover:bg-ring/10">
+                      <div className="text-2xl font-bold text-foreground">
                         {search?.results?.analyzedCount || 0}
                       </div>
-                      <div className="text-xs font-medium text-purple-200/80">Analyzed</div>
+                      <div className="text-xs font-medium text-muted-foreground">Analyzed</div>
                     </div>
                   </div>
                 </div>
@@ -444,14 +463,14 @@ export function PipelineOrchestrator({
                 resetPipeline();
                 setIsPipelineCollapsed(false);
               }}
-              className="border-2 border-orange-500/50 bg-orange-500/10 text-orange-100 hover:border-orange-500/70 hover:bg-orange-500/20"
+              className="border border-border hover:bg-secondary"
             >
               <RotateCcw className="h-4 w-4 mr-2" />
               Start New Search
             </Button>
             <Button
               onClick={openLeadHistory}
-              className="gap-2 border-2 bg-gradient-to-r from-blue-500/20 to-pink-500/20 border-blue-500/50 text-blue-100 hover:from-blue-500/30 hover:to-pink-500/30"
+              className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_8px_16px_-8px_hsl(var(--primary-glow))]"
             >
               <FileText className="h-4 w-4" />
               View Results
@@ -503,7 +522,7 @@ export function PipelineOrchestrator({
       {systemStatus?.leadGenerationPaused && (
         <Alert
           variant="destructive"
-          className="border border-red-500/50 bg-red-500/10 text-red-200"
+          className="border border-red-300 bg-red-50 text-red-900 dark:border-red-500/50 dark:bg-red-500/10 dark:text-red-200"
         >
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
@@ -529,7 +548,7 @@ export function PipelineOrchestrator({
       {systemConfiguration?.orchestrationSettings?.langGraphHealth?.status === "unavailable" && (
         <Alert
           variant="destructive"
-          className="border border-red-500/50 bg-red-500/10 text-red-200"
+          className="border border-red-300 bg-red-50 text-red-900 dark:border-red-500/50 dark:bg-red-500/10 dark:text-red-200"
         >
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
@@ -551,17 +570,17 @@ export function PipelineOrchestrator({
       )}
 
       {systemConfiguration?.orchestrationSettings?.langGraphHealth?.status === "degraded" && (
-        <Alert className="border border-amber-500/50 bg-amber-500/10 text-amber-200">
-          <AlertTriangle className="h-4 w-4 text-amber-200" />
+        <Alert className="border border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-200">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-200" />
           <AlertDescription>
             <div className="space-y-1">
-              <div className="font-semibold text-amber-100">
+              <div className="font-semibold text-amber-900 dark:text-amber-100">
                 AI Analysis Service Degraded
               </div>
-              <div className="text-sm text-amber-100/80">
+              <div className="text-sm text-amber-800 dark:text-amber-100/80">
                 The LangGraph worker is experiencing issues. AI analysis may be slower than usual or encounter errors.
               </div>
-              <div className="mt-1 text-xs text-amber-100/70">
+              <div className="mt-1 text-xs text-amber-700 dark:text-amber-100/70">
                 {systemConfiguration.orchestrationSettings.langGraphHealth.consecutiveFailures} consecutive failures detected
               </div>
             </div>

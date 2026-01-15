@@ -7,8 +7,16 @@ import type { Search } from "@/lib/types";
 
 const logger = createLogger("useSearches");
 
-export function useSearchesBase() {
-  const searches = useQuery(api.search.queries.getUserSearches);
+export interface UseSearchesOptions {
+  limit?: number;
+  offset?: number;
+}
+
+export function useSearchesBase(options?: UseSearchesOptions) {
+  const searches = useQuery(api.search.queries.getUserSearches, {
+    limit: options?.limit,
+    offset: options?.offset,
+  });
 
   const createSearchMutation = useMutation(
     api.search.mutations.createSearchCompleted,
@@ -80,6 +88,8 @@ export function useSearchesBase() {
       const result = await timeOperation("createSearch", () => createSearchMutation(...args));
       return result;
     } catch (error) {
+      const errorObj = error instanceof Error ? error : new Error(String(error));
+      logger.error("Failed to create search", { parameters: args[0] }, errorObj);
       updateOptimisticSearches((prev) => prev.filter((s) => s._id !== tempId));
       throw error;
     }
@@ -150,6 +160,8 @@ export function useSearchesBase() {
     try {
       return await timeOperation("cancelSearch", () => cancelSearchMutation(...args));
     } catch (error) {
+      const errorObj = error instanceof Error ? error : new Error(String(error));
+      logger.error("Failed to cancel search", { searchId }, errorObj);
       updateOptimisticSearches((prev) =>
         prev.map((search) =>
           search._id === searchId
@@ -173,6 +185,8 @@ export function useSearchesBase() {
     try {
       return await timeOperation("deleteSearch", () => deleteSearchMutation(...args));
     } catch (error) {
+      const errorObj = error instanceof Error ? error : new Error(String(error));
+      logger.error("Failed to delete search", { searchId }, errorObj);
       updateOptimisticSearches(originalSearches);
       throw error;
     }
@@ -204,6 +218,8 @@ export function useSearchesBase() {
         );
         return result;
       } catch (error) {
+        const errorObj = error instanceof Error ? error : new Error(String(error));
+        logger.error("Failed to duplicate search", { searchId }, errorObj);
         updateOptimisticSearches((prev) => prev.filter((s) => s._id !== tempId));
         throw error;
       }
@@ -228,15 +244,20 @@ export function useSearchesBase() {
 
 export type UseSearchesResult = ReturnType<typeof useSearchesBase>;
 
+// Helper to check if an ID is a temporary optimistic ID (not yet persisted to Convex)
+const isTempId = (id: string | undefined): boolean =>
+  typeof id === "string" && id.startsWith("temp_");
+
 export function useSearchBase(searchId: Id<"searches"> | undefined) {
+  // Skip query for temp IDs to avoid validation errors
   const search = useQuery(
     api.search.queries.getSearch,
-    searchId ? { searchId } : "skip",
+    searchId && !isTempId(searchId) ? { searchId } : "skip",
   );
 
   return {
     search,
-    isLoading: search === undefined && searchId !== undefined,
+    isLoading: search === undefined && searchId !== undefined && !isTempId(searchId),
   };
 }
 

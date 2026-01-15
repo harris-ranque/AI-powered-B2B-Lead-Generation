@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ConvexProvider } from "@/components/providers/ConvexProvider";
+import { AuthAnalyticsProvider } from "@/components/providers/AuthAnalyticsProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { GlobalErrorBoundary } from "@/components/GlobalErrorBoundary";
 import { AppThemeEffect } from "@/components/AppThemeEffect";
@@ -29,6 +30,9 @@ import { GenniApp } from "@/components/GenniApp";
 import { AdminDashboard } from "@/components/AdminDashboard";
 import AdminDocs from "@/components/docs/AdminDocs";
 
+// Subscription Pages
+import SubscriptionSuccess from "./pages/SubscriptionSuccess";
+
 // Other Pages
 import NotFound from "./pages/NotFound";
 
@@ -38,9 +42,10 @@ const App = () => (
   <GlobalErrorBoundary>
     <ErrorBoundary>
       <ConvexProvider>
-        <AppThemeEffect />
-        <QueryClientProvider client={queryClient}>
-          <TooltipProvider>
+        <AuthAnalyticsProvider>
+          <AppThemeEffect />
+          <QueryClientProvider client={queryClient}>
+            <TooltipProvider>
             <Toaster />
             <Sonner />
             <BrowserRouter>
@@ -88,6 +93,15 @@ const App = () => (
                       </ErrorBoundary>
                     }
                   />
+                  {/* Subscription Routes */}
+                  <Route
+                    path="/subscription/success"
+                    element={
+                      <ProtectedRoute>
+                        <SubscriptionSuccess />
+                      </ProtectedRoute>
+                    }
+                  />
                   {/* Admin Routes */}
                   <Route
                     path="/admin"
@@ -114,8 +128,9 @@ const App = () => (
                 </Routes>
               </ErrorBoundary>
             </BrowserRouter>
-          </TooltipProvider>
-        </QueryClientProvider>
+            </TooltipProvider>
+          </QueryClientProvider>
+        </AuthAnalyticsProvider>
       </ConvexProvider>
     </ErrorBoundary>
   </GlobalErrorBoundary>

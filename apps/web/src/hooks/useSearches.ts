@@ -7,6 +7,7 @@ import {
   type UseSearchesResult,
   type UseSearchResult,
   type UseGoogleMapsSearchResult,
+  type UseSearchesOptions,
 } from "./base/useSearchesBase";
 
 export {
@@ -18,11 +19,12 @@ export type {
   UseSearchesResult,
   UseSearchResult,
   UseGoogleMapsSearchResult,
+  UseSearchesOptions,
 } from "./base/useSearchesBase";
 
-export function useSearches(): UseSearchesResult {
+export function useSearches(options?: UseSearchesOptions): UseSearchesResult {
   const context = useUserDataMaybe();
-  const fallbackSearches = useSearchesBase();
+  const fallbackSearches = useSearchesBase(options);
   return context?.searches ?? fallbackSearches;
 }
 

@@ -522,6 +522,11 @@ All colors MUST be HSL.
     transform: scale(1.05);
   }
 
+  /* Invert white logo on light theme for visibility */
+  :root[data-app-theme="harborlight"] .theme-aware-logo {
+    filter: invert(1);
+  }
+
   :root[data-app-theme="harborlight"] .ai-activity-badge {
     position: relative;
     display: inline-flex;

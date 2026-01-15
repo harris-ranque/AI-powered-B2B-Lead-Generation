@@ -180,8 +180,9 @@ export const getPlanCatalog = query({
         planName: p.planName,
         monthlyPrice: p.monthlyPrice,
         yearlyPrice: p.yearlyPrice,
-        stripePriceIdMonthly: p.stripePriceIdMonthly,
-        stripePriceIdYearly: p.stripePriceIdYearly,
+        // FastSpring product paths for checkout
+        fastspringProductPathMonthly: p.fastspringProductPathMonthly,
+        fastspringProductPathYearly: p.fastspringProductPathYearly,
         limits: p.limits,
         features: p.features,
       }));
@@ -284,15 +285,90 @@ export const getSubscriptionStatus = query({
       throw new Error("Authentication required");
     }
 
-    // For now, return basic subscription info based on user plan
-    // This can be extended to integrate with Stripe subscription data
+    // Return subscription info based on user plan
+    // Full subscription details come from FastSpring via the billing table
     const plan = user.plan || "starter";
 
     return {
       plan: plan,
       hasActiveSubscription: plan !== "starter",
-      isTrialing: false, // This would come from Stripe data
-      billing: null, // This would contain Stripe subscription details
+      isTrialing: false, // FastSpring webhook updates this
+      billing: null, // FastSpring subscription details
+    };
+  },
+});
+
+// Get custom subscription dashboard data - unified view for custom subscription users
+export const getCustomSubscriptionDashboard = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    // Check for custom subscription
+    const customSubscription = await ctx.db
+      .query("customSubscriptions")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("status"), "active"),
+          q.eq(q.field("status"), "pending_checkout"),
+          q.eq(q.field("status"), "past_due")
+        )
+      )
+      .first();
+
+    if (!customSubscription) {
+      return {
+        hasCustomSubscription: false,
+        subscription: null,
+        currentAllocation: null,
+        creditUsagePercent: 0,
+      };
+    }
+
+    // Get current active credit allocation
+    const currentAllocation = await ctx.db
+      .query("subscriptionCreditAllocations")
+      .withIndex("by_user_status", (q) =>
+        q.eq("userId", user._id).eq("status", "active")
+      )
+      .first();
+
+    // Calculate credits and usage
+    const creditsAllocated = currentAllocation?.creditsAllocated ?? customSubscription.monthlyCredits;
+    const creditsUsed = currentAllocation?.creditsUsed ?? 0;
+    const creditsRemaining = creditsAllocated - creditsUsed;
+    const creditUsagePercent = creditsAllocated > 0
+      ? Math.round((creditsUsed / creditsAllocated) * 100)
+      : 0;
+
+    // Calculate days remaining until next allocation
+    const now = Date.now();
+    const periodEnd = currentAllocation?.periodEnd ?? customSubscription.currentPeriodEnd ?? now;
+    const daysRemaining = Math.max(0, Math.ceil((periodEnd - now) / (1000 * 60 * 60 * 24)));
+
+    return {
+      hasCustomSubscription: true,
+      subscription: {
+        status: customSubscription.status,
+        monthlyCredits: customSubscription.monthlyCredits,
+        monthlyPriceCents: customSubscription.monthlyPriceCents,
+        paymentMethodType: customSubscription.paymentMethodType,
+        convenienceFeeCents: customSubscription.convenienceFeeCents,
+        currentPeriodStart: customSubscription.currentPeriodStart,
+        currentPeriodEnd: customSubscription.currentPeriodEnd,
+      },
+      currentAllocation: {
+        creditsAllocated,
+        creditsUsed,
+        creditsRemaining,
+        periodEnd,
+        daysRemaining,
+      },
+      creditUsagePercent,
     };
   },
 });

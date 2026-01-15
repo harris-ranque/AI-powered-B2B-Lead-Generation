@@ -18,6 +18,13 @@ from ..state import EmailGenerationState
 logger = setup_logger(__name__)
 settings = get_settings()
 
+# Tier-based approval thresholds
+# B-tier leads have lower thresholds since they have less research data for personalization
+APPROVAL_THRESHOLDS = {
+    "A": 0.60,  # Standard threshold for rich research
+    "B": 0.50,  # Lower threshold for B-tier (less personalization expected)
+}
+
 class QualityAssessment(BaseModel):
     """Comprehensive quality assessment for generated email"""
     # Overall quality scores
@@ -82,7 +89,18 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
     using_user_keys = provider_keys is not None
     registry = ClientRegistry.get_instance()
 
-    logger.info(f"Starting quality assurance for {lead.company_name}")
+    # Extract PostHog LLM callback for analytics
+    llm_callback = state.get("llm_callback")
+    callbacks = [llm_callback] if llm_callback else []
+
+    # Get lead tier for tier-aware approval thresholds
+    lead_tier = state.get("lead_tier", "A")  # Default to A if not set
+    lead_tier_reason = state.get("lead_tier_reason", "")
+    approval_threshold = APPROVAL_THRESHOLDS.get(lead_tier, 0.60)
+
+    logger.info(f"Starting quality assurance for {lead.company_name} (Tier: {lead_tier}, Threshold: {approval_threshold})")
+    if lead_tier == "B":
+        logger.info(f"B-tier lead detected: {lead_tier_reason} - using lower approval threshold")
     logger.warning("⚠️ QA AGENT IN TEMPORARY MODE: Research quality validation DISABLED - only checking grammar/guidelines")
     analytics_context = {
         "request_id": state.get("request_id"),
@@ -90,6 +108,9 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         "company_name": lead.company_name,
         "user_id": state.get("user_id"),
         "user_tier": state.get("user_tier", "free"),
+        "lead_tier": lead_tier,
+        "lead_tier_reason": lead_tier_reason,
+        "approval_threshold": approval_threshold,
         "using_user_keys": using_user_keys,
         "provider_keys_supplied": sorted(provider_key_map.keys()) if using_user_keys else [],
         "has_primary_email": primary_email is not None,
@@ -251,11 +272,21 @@ CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
    - For sequences: ALL emails MUST have identical signature format
 
 Quality Scoring Standards (RESEARCH VALIDATION TEMPORARILY DISABLED):
-- Overall Quality: ≥0.60 = Approved, 0.35-0.60 = Needs_Improvement, <0.35 = Rejected
+- A-Tier Leads (rich research): ≥0.60 = Approved, 0.35-0.60 = Needs_Improvement, <0.35 = Rejected
+- B-Tier Leads (minimal research): ≥0.50 = Approved, 0.35-0.50 = Needs_Improvement, <0.35 = Rejected
+- Current lead tier: {lead_tier}
 - NO HYPHENS violation = Auto-deduct 0.3 from overall score minimum
 - Length over 165 words = Auto-deduct 0.2 from overall score
 - Missing articles/pronouns = Deduct 0.1 per occurrence (up to 0.3 total)
 - Research quality issues = Flag in suggestions but DO NOT reject or deduct points
+
+B-TIER LEAD SPECIAL INSTRUCTIONS (if lead_tier is "B"):
+- DO NOT penalize for lack of deep personalization
+- DO NOT penalize for missing research-specific elements
+- DO NOT penalize for using generic competitor references
+- DO NOT penalize for lack of specific metrics/numbers
+- Focus validation ONLY on: grammar, structure, professional tone, signature
+- Missing research elements are EXPECTED for B-tier and should NOT be flagged as issues
 
 Assessment Criteria (all 0-1 scale, FOCUS ON GRAMMAR/GUIDELINES ONLY):
 1. Personalization Score: Give generous scores (0.7+ baseline), note research issues but don't penalize
@@ -399,14 +430,17 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
             """)
         ])
         
-        # Execute quality assessment
+        # Execute quality assessment with PostHog LLM analytics
         try:
-            quality_assessment: QualityAssessment = await llm.ainvoke(prompt.format_messages(
+            messages = prompt.format_messages(
                 # Prospect context
                 company_name=lead.company_name,
                 contact_name=lead.contact_name or "Unknown",
                 title=lead.title or "Professional",
                 industry=getattr(lead, 'industry', '') or "Not specified",
+
+                # Lead tier for tier-aware scoring
+                lead_tier=lead_tier,
 
                 # Business intelligence
                 pain_points="; ".join(pain_points[:5]) if pain_points else "No pain points identified",
@@ -418,7 +452,11 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
                 email_subject=email_subject,
                 email_body=email_body,
                 declared_personalization="; ".join(email_personalization) if email_personalization else "No personalization declared"
-            ))
+            )
+            quality_assessment: QualityAssessment = await llm.ainvoke(
+                messages,
+                config={"callbacks": callbacks}  # PostHog captures tokens, cost, latency
+            )
 
             # Debug logging for QA assessment results
             logger.info(f"QA Assessment scores for {lead.company_name}: "
@@ -523,10 +561,23 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
             )
 
         execution_time = time.time() - start_time
-        
-        # Determine final approval status based on scores
-        approval_status = quality_assessment.approval_status
+
+        # Determine final approval status based on tier-aware thresholds
+        # B-tier leads use a lower threshold (0.50) since they have less research data
         overall_score = quality_assessment.overall_quality_score
+
+        # Re-evaluate approval status using tier-based thresholds
+        if overall_score >= approval_threshold:
+            approval_status = "Approved"
+        elif overall_score >= 0.35:
+            approval_status = "Needs_Improvement"
+        else:
+            approval_status = "Rejected"
+
+        # Log tier-aware approval decision
+        if lead_tier == "B" and approval_status == "Approved" and overall_score < 0.60:
+            logger.info(f"B-tier lead {lead.company_name} approved with score {overall_score:.2f} "
+                       f"(below standard 0.60 threshold, using B-tier threshold {approval_threshold})")
         
         # Create comprehensive agent result
         agent_result = AgentResult(
@@ -589,8 +640,9 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
                 },
             )
         else:  # Rejected
-            logger.error(f"Email REJECTED for {lead.company_name}: Score={overall_score:.2f}, "
-                        f"Major issues found")
+            # Use WARNING not ERROR - rejection is business logic, not a system error
+            logger.warning(f"Email REJECTED for {lead.company_name}: Score={overall_score:.2f}, "
+                          f"Major issues found (Quality Gate - Expected Behavior)")
             capture_event(
                 "qa_agent_rejected",
                 {

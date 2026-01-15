@@ -2,15 +2,36 @@ import '@testing-library/jest-dom'
 import { vi } from 'vitest'
 import React from 'react'
 
-// Mock pricing config
-vi.mock('../lib/pricing-config', () => ({
-  PRICING_CONFIG: {
-    starter: { monthly: 99, yearly: 990 },
-    professional: { monthly: 199, yearly: 1990 },
-    business: { monthly: 399, yearly: 3990 },
-    enterprise: { monthly: 999, yearly: 9990 }
+// Mock runtime config - the single source of truth for pricing
+const mockPlanCatalog = [
+  { planId: 'starter', planName: 'Starter', monthlyPrice: 0, yearlyPrice: 0 },
+  { planId: 'professional', planName: 'Professional', monthlyPrice: 49, yearlyPrice: 39 },
+  { planId: 'business', planName: 'Business', monthlyPrice: 99, yearlyPrice: 79 },
+  { planId: 'enterprise', planName: 'Enterprise', monthlyPrice: 0, yearlyPrice: 0 }
+]
+
+vi.mock('../lib/runtime-config', async () => {
+  const actual = await vi.importActual('../lib/runtime-config')
+  return {
+    ...actual,
+    getRuntimeConfigSync: () => ({
+      version: 1,
+      creditPacks: [],
+      planCatalog: mockPlanCatalog,
+      creditCosts: null
+    }),
+    useRuntimeConfig: () => ({
+      config: {
+        version: 1,
+        creditPacks: [],
+        planCatalog: mockPlanCatalog,
+        creditCosts: null
+      },
+      loading: false,
+      error: null
+    })
   }
-}))
+})
 
 // Mock Clerk authentication
 vi.mock('@clerk/clerk-react', () => ({

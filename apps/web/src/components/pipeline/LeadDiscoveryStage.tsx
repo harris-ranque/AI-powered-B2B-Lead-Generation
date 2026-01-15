@@ -25,7 +25,7 @@ import { SourceRegistry } from "@/pipeline/sources/SourceRegistry";
 import { FileUploadArea } from "./FileUploadArea";
 import { EstimatedCostCard } from "./EstimatedCostCard";
 import { useSearches, useGoogleMapsSearch } from "@/hooks/useSearches";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@genni/convex-types";
 import {
   Search,
@@ -60,6 +60,9 @@ import { toStandardCase } from "@/utils/string";
 import { EnterpriseApiKeyBlocker } from "./EnterpriseApiKeyBlocker";
 import { createLogger } from "@/utils/logger";
 import { normalizeError } from "@/utils/errorUtils";
+import { useAnalytics } from "@/hooks/useAnalytics";
+import { useApiError, type ApiError } from "@/hooks/useApiError";
+import { ApiErrorAlert } from "@/components/errors/ApiErrorAlert";
 
 interface LeadDiscoveryStageProps {
   userCredits: number;
@@ -112,9 +115,13 @@ export function LeadDiscoveryStage({
   const { createSearch } = useSearches();
   const { searchGoogleMaps } = useGoogleMapsSearch();
   const { toast } = useToast();
+  const analytics = useAnalytics();
+  const { handleApiError, clearError, isUserActionable, navigateToAction } = useApiError();
+  const createSearchFromCSV = useMutation(api.leads.mutations.createSearchFromCSV);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [showApiKeyBlocker, setShowApiKeyBlocker] = useState(false);
   const [stageError, setStageError] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<ApiError | null>(null);
 
   // Fetch user preferences for de-duplication settings
   const userPreferences = useQuery(api.users.queries.getUserPreferences);
@@ -308,13 +315,13 @@ export function LeadDiscoveryStage({
   const isStartDisabled =
     !validation.isValid ||
     state.isProcessing ||
-    (!isEnterprise && estimatedCost > userCredits) ||
-    state.selectedSource === "csv_upload";
+    (!isEnterprise && estimatedCost > userCredits);
 
   const handleStartDiscovery = async () => {
     if (!validation.isValid) return;
 
     setStageError(null);
+    setApiError(null);
     setProcessing(true);
 
     try {
@@ -371,6 +378,16 @@ export function LeadDiscoveryStage({
           setSearchId(searchResult.searchId);
           markStageComplete("lead_discovery");
 
+          // Track search creation in analytics
+          analytics.trackSearchCreated({
+            search_id: searchResult.searchId,
+            source: 'google_maps',
+            keywords: formattedIndustry,
+            location: formattedLocation,
+            radius: radius[0],
+            total_leads: leadsCount[0],
+          });
+
           toast({
             title: "Search Started",
             description: `Discovering ${leadsCount[0]} leads in ${formattedLocation}...`,
@@ -382,17 +399,52 @@ export function LeadDiscoveryStage({
           }, 1000);
         }
       } else if (state.selectedSource === "csv_upload" && uploadFile) {
-        // Handle CSV upload
-        const leads = await selectedSource!.fetch({
+        // Handle CSV upload - now returns { leads, stats } directly
+        const fetchResult = await selectedSource!.fetch({
           file: uploadFile,
           columns: columnMapping,
         });
+
+        // Type guard: CSV upload returns CSVFetchResult, not Lead[]
+        if (!('stats' in fetchResult)) {
+          throw new Error("Invalid CSV fetch result");
+        }
+
+        const { leads, stats } = fetchResult;
+
+        // Call backend mutation to create search and insert leads
+        const result = await createSearchFromCSV({
+          fileName: uploadFile.name,
+          fileSize: uploadFile.size,
+          columnMapping,
+          leads: leads.map((lead) => ({
+            businessName: lead.businessName,
+            address: lead.address,
+            placeId: lead.placeId,
+            location: lead.location,
+            phone: lead.phone ?? undefined, // Convert null to undefined for Convex
+            website: lead.website ?? undefined, // Convert null to undefined for Convex
+            category: lead.category ?? undefined, // Convert null to undefined for Convex
+            dataSource: lead.dataSource,
+            enrichmentStatus: lead.enrichmentStatus,
+            contactInfo: lead.contactInfo,
+            costEstimate: lead.raw_data?.costEstimate || {
+              cost: 2,
+              reason: "Default cost",
+              skipEnrichment: false,
+            },
+          })),
+          statistics: stats,
+        });
+
+        // Store search ID for pipeline
+        setSearchId(result.searchId);
         setLeads(leads);
         markStageComplete("lead_discovery");
 
         toast({
-          title: "Leads Imported",
-          description: `Successfully imported ${leads.length} leads from CSV.`,
+          title: "Leads Imported Successfully",
+          description: `Imported ${leads.length} leads (${stats.estimatedCost} credits deducted).`,
         });
 
         setTimeout(() => {
@@ -416,18 +468,42 @@ export function LeadDiscoveryStage({
         },
         errorInstance,
       );
-      setStageError(normalizedError.message);
-      toast({
-        title: "Discovery Failed",
-        description: normalizedError.message,
-        variant: "destructive",
-      });
 
-      if (
-        isEnterprise &&
-        normalizedError.message.toLowerCase().includes("api key")
-      ) {
-        setShowApiKeyBlocker(true);
+      // Check if we have a structured API error
+      if (normalizedError.apiError) {
+        setApiError(normalizedError.apiError);
+        setStageError(null);
+
+        // Track structured error in analytics
+        analytics.trackSearchFailed({
+          search_id: state.searchId,
+          source: state.selectedSource as 'google_maps' | 'manual',
+        });
+
+        // Show API key blocker for authentication errors on enterprise
+        if (
+          isEnterprise &&
+          (normalizedError.apiError.category === "authentication" ||
+            normalizedError.apiError.category === "authorization")
+        ) {
+          setShowApiKeyBlocker(true);
+        }
+      } else {
+        // Fall back to generic error handling
+        setStageError(normalizedError.message);
+        setApiError(null);
+        toast({
+          title: "Discovery Failed",
+          description: normalizedError.message,
+          variant: "destructive",
+        });
+
+        if (
+          isEnterprise &&
+          normalizedError.message.toLowerCase().includes("api key")
+        ) {
+          setShowApiKeyBlocker(true);
+        }
       }
     } finally {
       setProcessing(false);
@@ -478,7 +554,25 @@ export function LeadDiscoveryStage({
         <p className="text-muted-foreground">{selectedSource.description}</p>
       </div>
 
-      {stageError && (
+      {/* Structured API Error Display */}
+      {apiError && (
+        <ApiErrorAlert
+          error={apiError}
+          onDismiss={() => setApiError(null)}
+          onRetry={() => {
+            setApiError(null);
+            handleStartDiscovery();
+          }}
+          onAction={(action) => {
+            if (action === "check_api_key") {
+              onNavigateToSettings?.();
+            }
+          }}
+        />
+      )}
+
+      {/* Generic Error Display (fallback) */}
+      {stageError && !apiError && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -595,6 +689,7 @@ export function LeadDiscoveryStage({
                     {radius[0] === 1 ? "" : "s"}
                   </Label>
                   <Slider
+                    data-testid="radius-input"
                     value={radius}
                     onValueChange={setRadius}
                     max={MAX_RADIUS_MILES}
@@ -840,7 +935,16 @@ export function LeadDiscoveryStage({
 
                     <p className="text-xs text-muted-foreground mt-2">
                       These settings will apply to this search. You can set defaults in your{" "}
-                      <a href="/settings" className="text-primary hover:underline">account settings</a>.
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onNavigateToSettings?.();
+                        }}
+                        className="text-primary hover:underline cursor-pointer bg-transparent border-none p-0 inline"
+                      >
+                        account settings
+                      </button>.
                     </p>
                   </CollapsibleContent>
                 </Collapsible>
@@ -849,14 +953,12 @@ export function LeadDiscoveryStage({
               )}
 
               {state.selectedSource === "csv_upload" && (
-                <Alert className="border border-amber-500/40 bg-amber-500/10 text-amber-200">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>
-                    CSV Upload is temporarily disabled while we roll out
-                    improved authentication for file-based imports. Please use
-                    Google Maps discovery for now.
-                  </AlertDescription>
-                </Alert>
+                <FileUploadArea
+                  onFileSelect={setUploadFile}
+                  onColumnMapping={setColumnMapping}
+                  selectedFile={uploadFile}
+                  columnMapping={columnMapping}
+                />
               )}
             </CardContent>
           </Card>
@@ -867,7 +969,7 @@ export function LeadDiscoveryStage({
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
-              className="mt-4 flex gap-2 rounded-xl border border-red-500/50 bg-red-500/10 p-3 text-red-200"
+              className="mt-4 flex gap-2 rounded-xl border border-red-300 bg-red-50 p-3 text-red-800 dark:border-red-500/50 dark:bg-red-500/10 dark:text-red-200"
             >
               <AlertTriangle className="h-4 w-4 shrink-0" />
               <div>
@@ -882,7 +984,7 @@ export function LeadDiscoveryStage({
           )}
 
           {warningsToShow.length > 0 && (
-            <Alert className="border border-amber-500/40 bg-amber-500/10 text-amber-200">
+            <Alert className="border border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
                 <div className="space-y-1">
@@ -908,10 +1010,10 @@ export function LeadDiscoveryStage({
             <div className="card-glass p-4 md:p-5">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="space-y-1 text-left">
-                  <h4 className="text-base font-semibold text-white">
+                  <h4 className="text-base font-semibold text-foreground">
                     Ready to discover new leads?
                   </h4>
-                  <p className="text-sm text-slate-300">
+                  <p className="text-sm text-muted-foreground">
                     Kick off this search and we&apos;ll start finding contacts immediately. Results will flow into your workspace as they are found.
                   </p>
                 </div>

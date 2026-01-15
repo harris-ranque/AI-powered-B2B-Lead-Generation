@@ -1,0 +1,4 @@
+company_name,domain,contact_name,contact_email,contact_title,phone,address,city,state,country,postal_code,website,industry,description
+Acme Corp,acme.com,John Smith,john@acme.com,CEO,(555) 123-4567,123 Main St,San Francisco,CA,USA,94102,https://acme.com,Software,Enterprise SaaS platform
+TechVentures Inc,techventures.io,Jane Doe,jane@techventures.io,CTO,+1-555-234-5678,456 Oak Ave Suite 200,Austin,TX,USA,78701,https://techventures.io,Technology,AI consulting and development
+Local Bakery,localbakery.com,Mike Johnson,mike@localbakery.com,Owner,(555) 345-6789,789 Elm St,Portland,OR,USA,97201,https://localbakery.com,Food & Beverage,Artisan bakery and cafe

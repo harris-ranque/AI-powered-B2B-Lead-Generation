@@ -1,14 +1,15 @@
 import { FindyMailProvider } from "./findymail";
-import { IcyPeasProvider } from "./icypeas";
 import {
   EnrichmentProvider,
   EnrichmentProviderInterface,
   EnrichmentResult,
   EnrichmentBatchResult,
+  EnrichmentBatchResultWithError,
   EnrichmentOptions,
 } from "./types";
+import { type ApiError, shouldBlockPipeline } from "../../lib/apiErrors";
 
-export type EnrichmentProviderType = "findymail" | "icypeas";
+export type EnrichmentProviderType = "findymail";
 
 /**
  * Factory class for creating and managing enrichment providers
@@ -21,34 +22,14 @@ export class EnrichmentProviderFactory {
     providerType: EnrichmentProviderType,
     apiKey: string
   ): EnrichmentProviderInterface {
-    switch (providerType) {
-      case "icypeas":
-        return new IcyPeasProvider(apiKey);
-      case "findymail":
-        return new FindyMailProvider(apiKey);
-      default:
-        // Default to FindyMail for backward compatibility
-        return new FindyMailProvider(apiKey);
-    }
+    // Only FindyMail is supported
+    return new FindyMailProvider(apiKey);
   }
 
   /**
-   * Get the configured provider type from environment
-   * Default: FindyMail (ICypeas is disabled due to issues)
+   * Get the configured provider type
    */
   static getConfiguredProvider(): EnrichmentProviderType {
-    const provider = process.env.ENRICHMENT_PROVIDER?.toLowerCase();
-
-    // NOTE: ICypeas is currently disabled due to API issues
-    // Always use FindyMail for domain-only searches
-    if (provider === "icypeas") {
-      console.warn(
-        "[EnrichmentProvider] ICypeas is currently disabled. Falling back to FindyMail."
-      );
-      return "findymail";
-    }
-
-    // Default to FindyMail (works with domain-only searches)
     return "findymail";
   }
 
@@ -64,15 +45,7 @@ export class EnrichmentProviderFactory {
       return userApiKey;
     }
 
-    // Otherwise use system API keys
-    switch (providerType) {
-      case "icypeas":
-        return process.env.ICYPEAS_API_KEY || "";
-      case "findymail":
-        return process.env.FINDYMAIL_API_KEY || "";
-      default:
-        return process.env.FINDYMAIL_API_KEY || "";
-    }
+    return process.env.FINDYMAIL_API_KEY || "";
   }
 
   /**
@@ -116,11 +89,12 @@ export class EnrichmentService {
 
   /**
    * Enrich multiple domains
+   * @returns Wrapper object with results and optional apiError for pipeline-blocking errors
    */
   async enrichBatch(
     domains: string[],
     options?: EnrichmentOptions,
-  ): Promise<EnrichmentBatchResult> {
+  ): Promise<EnrichmentBatchResultWithError> {
     try {
       console.log(
         `Enriching ${domains.length} domains using ${this.providerType}`
@@ -134,12 +108,34 @@ export class EnrichmentService {
         `Enrichment complete: ${successCount}/${domains.length} successful`
       );
 
-      return result;
-    } catch (error) {
+      // Check for pipeline-blocking errors attached by the provider
+      const providerApiError = (result as any).__apiError as ApiError | undefined;
+      if (providerApiError && shouldBlockPipeline(providerApiError)) {
+        console.error(
+          `[EnrichmentService] Pipeline-blocking error from ${this.providerType}:`,
+          {
+            errorCode: providerApiError.errorCode,
+            category: providerApiError.category,
+            userMessage: providerApiError.userMessage,
+          }
+        );
+        // Return results with the error
+        return { results: result, apiError: providerApiError };
+      }
+
+      return { results: result };
+    } catch (error: any) {
       console.error(
         `Enrichment failed with ${this.providerType}:`,
         error
       );
+
+      // Check if the error has an attached apiError (from enrichSingle classification)
+      const apiError = error?.apiError as ApiError | undefined;
+      if (apiError && shouldBlockPipeline(apiError)) {
+        // Re-throw with the apiError for upstream handling
+        throw error;
+      }
 
       // Could implement fallback to alternative provider here
       throw error;
@@ -148,21 +144,23 @@ export class EnrichmentService {
 
   /**
    * Enrich a single domain
+   *
+   * IMPORTANT: This method now RETHROWS errors to enable retry logic upstream.
+   * - Pipeline-blocking errors (auth, credits, subscription) will stop retries
+   * - Transient errors (rate limits, server errors, timeouts) will be retried
+   *
+   * @throws Error with apiError property for classified API errors
    */
   async enrichSingle(
     domain: string,
     options?: EnrichmentOptions,
   ): Promise<EnrichmentResult | null> {
-    try {
-      console.log(`Enriching domain ${domain} using ${this.providerType}`);
-      return await this.provider.enrichSingle(domain, options);
-    } catch (error) {
-      console.error(
-        `Single enrichment failed for ${domain} with ${this.providerType}:`,
-        error
-      );
-      return null;
-    }
+    console.log(`Enriching domain ${domain} using ${this.providerType}`);
+
+    // Let errors propagate for retry logic - don't catch here
+    // The caller (tryProvider) handles retries for transient errors
+    // and stops immediately for pipeline-blocking errors
+    return await this.provider.enrichSingle(domain, options);
   }
 
   /**

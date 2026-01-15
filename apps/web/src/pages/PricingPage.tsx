@@ -24,8 +24,12 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState } from "react";
-import { formatPrice, type PlanType } from "@/lib/pricing-config";
-import { useRuntimeConfig } from "@/lib/runtime-config";
+import {
+  useRuntimeConfig,
+  formatPrice,
+  getPlanPrice,
+  type PlanType,
+} from "@/lib/runtime-config";
 
 interface PricingPlan {
   id: PlanType;
@@ -353,7 +357,7 @@ export default function PricingPage() {
                     </div>
                     {isAnnual && getPrice(plan) > 0 && getSavings(plan) > 0 && (
                       <p className="text-sm text-muted-foreground mt-1">
-                        ${getPlanPrice(plan.id, false)}/month billed annually
+                        ${getPlanPrice(runtimeConfig?.planCatalog || [], plan.id, false)}/month billed annually
                         (Save {getSavings(plan)}%)
                       </p>
                     )}

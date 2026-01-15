@@ -51,9 +51,13 @@ export const updateEnrichmentStatus = internalMutation({
       v.literal("in_progress"),
       v.literal("completed"),
       v.literal("completed_fallback"),
+      v.literal("no_contacts_found"), // API succeeded but no discoverable contacts
       v.literal("failed"),
     ),
     error: v.optional(v.string()),
+    // New timestamp fields for stuck detection monitoring
+    enrichmentStartedAt: v.optional(v.number()),
+    enrichmentCompletedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const updateData: any = {
@@ -61,8 +65,31 @@ export const updateEnrichmentStatus = internalMutation({
       updatedAt: Date.now(),
     };
 
+    // Track enrichment start time for stuck detection
+    if (args.enrichmentStartedAt !== undefined) {
+      updateData.enrichmentStartedAt = args.enrichmentStartedAt;
+    }
+
+    // Track enrichment completion time
+    if (args.enrichmentCompletedAt !== undefined) {
+      updateData.enrichmentCompletedAt = args.enrichmentCompletedAt;
+    }
+
+    // Auto-set completion time when transitioning to terminal states
+    if (
+      args.status === "completed" ||
+      args.status === "completed_fallback" ||
+      args.status === "no_contacts_found" ||
+      args.status === "failed"
+    ) {
+      if (!args.enrichmentCompletedAt) {
+        updateData.enrichmentCompletedAt = Date.now();
+      }
+    }
+
     // Clear contactInfo for failed enrichments to prevent false positives in UI
-    if (args.status === "failed" || args.status === "completed_fallback") {
+    // Note: no_contacts_found keeps the lead but without contact info
+    if (args.status === "failed" || args.status === "completed_fallback" || args.status === "no_contacts_found") {
       updateData.contactInfo = {
         emails: [],
         contacts: [],
@@ -87,6 +114,23 @@ export const deleteLead = internalMutation({
     const lead = await ctx.db.get(args.leadId);
     if (!lead) {
       return { success: false, reason: "Lead not found" };
+    }
+
+    // Update search progress metrics before deleting
+    const search = await ctx.db.get(lead.searchId);
+    if (search && search.progress) {
+      // Decrement the discovered count since we're removing a lead
+      const newDiscovered = Math.max(0, (search.progress.discovered || 0) - 1);
+
+      await ctx.db.patch(search._id, {
+        progress: {
+          ...search.progress,
+          discovered: newDiscovered,
+          // Update total to match actual lead count
+          total: newDiscovered,
+        },
+        updatedAt: Date.now(),
+      });
     }
 
     // Delete the lead from database
@@ -195,7 +239,7 @@ export const updateLeadEnrichment = internalMutation({
       v.literal("completed_fallback"),
       v.literal("failed"),
     ),
-    enrichmentProvider: v.optional(v.union(v.literal("findymail"), v.literal("icypeas"))),
+    enrichmentProvider: v.optional(v.literal("findymail")),
   },
   handler: async (ctx, args) => {
     const updateData: any = {
@@ -943,9 +987,11 @@ export const tryTriggerAnalysisPhase = internalMutation({
     }
 
     // Check if ALL enrichment is complete
+    // Note: "no_contacts_found" is also a terminal state (API succeeded but no contacts)
     const allEnrichmentComplete = allLeads.every((lead) =>
       lead.enrichmentStatus === "completed" ||
       lead.enrichmentStatus === "completed_fallback" ||
+      lead.enrichmentStatus === "no_contacts_found" ||
       lead.enrichmentStatus === "failed"
     );
 
@@ -966,6 +1012,8 @@ export const tryTriggerAnalysisPhase = internalMutation({
 
     // WE WON THE RACE! Mark all enriched leads as ready for analysis
     // This atomically claims the right to trigger analysis
+    // Note: Only analyze leads WITH emails (completed/completed_fallback)
+    // Leads with "no_contacts_found" are skipped since there's nothing to analyze
     const leadsToAnalyze = allLeads.filter(
       (lead) =>
         lead.enrichmentStatus === "completed" ||
@@ -982,5 +1030,76 @@ export const tryTriggerAnalysisPhase = internalMutation({
     }
 
     return true; // Caller should now trigger analyzeLeads
+  },
+});
+
+// Internal mutation to update enrichment provider
+export const updateEnrichmentProvider = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+    provider: v.union(
+      v.literal("findymail"),
+      v.literal("csv_import")
+    ),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.leadId, {
+      enrichmentProvider: args.provider,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Get search enrichment status for DLQ processor
+ * Returns summary of lead enrichment states and whether analysis can be triggered
+ */
+export const getSearchEnrichmentStatus = internalQuery({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      return null;
+    }
+
+    const leads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    const totalLeads = leads.length;
+    const statusCounts = {
+      pending: 0,
+      in_progress: 0,
+      completed: 0,
+      completed_fallback: 0,
+      no_contacts_found: 0,
+      failed: 0,
+    };
+
+    for (const lead of leads) {
+      const status = lead.enrichmentStatus ?? "pending";
+      if (status in statusCounts) {
+        statusCounts[status as keyof typeof statusCounts]++;
+      }
+    }
+
+    const enrichedCount =
+      statusCounts.completed +
+      statusCounts.completed_fallback +
+      statusCounts.no_contacts_found +
+      statusCounts.failed;
+
+    const allLeadsEnriched = enrichedCount === totalLeads && totalLeads > 0;
+
+    return {
+      status: search.status,
+      totalLeads,
+      enrichedCount,
+      statusCounts,
+      allLeadsEnriched,
+    };
   },
 });

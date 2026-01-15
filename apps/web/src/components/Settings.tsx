@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ProviderKeyManager } from "@/components/settings/ProviderKeyManager";
+import { InstantlySettings } from "@/components/settings/InstantlySettings";
 import {
   Tooltip,
   TooltipContent,
@@ -348,8 +349,10 @@ export function Settings() {
       <div className="flex-1 p-8 overflow-y-auto">
         <div className="max-w-4xl">
           <ProviderKeyManager plan={userData?.plan} />
+          {/* Instantly Integration Settings - Available to all users */}
+          <InstantlySettings />
           {/* Account Settings */}
-          <Card className="p-6 bg-card border-border mb-6">
+          <Card className="p-6 bg-card border-border mb-6" data-testid="user-profile">
             <div className="flex items-center gap-3 mb-6">
               <User className="h-5 w-5 text-primary" />
               <h3 className="text-lg font-semibold text-foreground">

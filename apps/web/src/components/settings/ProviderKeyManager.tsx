@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@genni/convex-types";
+import { createLogger } from "@/utils/logger";
 import {
   Card,
   CardContent,
@@ -13,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
+
+const logger = createLogger("ProviderKeyManager");
 
 const PROVIDERS = [
   {
@@ -45,6 +48,7 @@ const PROVIDERS = [
     description: "Required for deep research and business intelligence.",
     required: true,
   },
+  // Instantly is managed via InstantlySettings component (available to all users)
   // Commented out - can be reactivated later if needed
   // {
   //   id: "google_maps" as const,
@@ -184,8 +188,9 @@ export function ProviderKeyManager({ plan }: ProviderKeyManagerProps) {
         toast.error(result.error || "API key validation failed.");
       }
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unable to validate API key. Please try again.";
+      const errorObj = error instanceof Error ? error : new Error(String(error));
+      logger.error("API key validation failed", { provider }, errorObj);
+      const message = errorObj.message || "Unable to validate API key. Please try again.";
       toast.error(message);
     } finally {
       setValidating(null);

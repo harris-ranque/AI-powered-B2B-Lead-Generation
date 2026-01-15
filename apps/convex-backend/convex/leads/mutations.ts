@@ -1,6 +1,7 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
+import { createConvexError, ERROR_CODES } from "../lib/errorHandling";
 
 // Create a new lead
 export const createLead = mutation({
@@ -29,13 +30,22 @@ export const createLead = mutation({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      throw createConvexError("authentication", "Authentication required", {
+        code: ERROR_CODES.UNAUTHORIZED,
+        severity: "high",
+        retryable: false,
+      });
     }
 
     // Verify search belongs to user
     const search = await ctx.db.get(args.searchId);
     if (!search || search.userId !== user._id) {
-      throw new Error("Search not found or access denied");
+      throw createConvexError("authorization", "Search not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { searchId: args.searchId },
+        retryable: false,
+      });
     }
 
     // FIRST: Check for duplicate within THIS search (for spatial tiling deduplication)
@@ -58,9 +68,16 @@ export const createLead = mutation({
         preventedAt: Date.now(),
       });
 
-      throw new Error(
-        `This location is already in this search. Cannot create duplicate tile.`
-      );
+      throw createConvexError("business_logic", "This location is already in this search. Cannot create duplicate tile.", {
+        code: ERROR_CODES.DUPLICATE_RECORD,
+        severity: "low",
+        details: {
+          searchId: args.searchId,
+          placeId: args.leadData.placeId,
+          businessName: args.leadData.businessName,
+        },
+        retryable: false,
+      });
     }
 
     // SECOND: Check for duplicate at USER level (across all searches)
@@ -83,9 +100,17 @@ export const createLead = mutation({
         preventedAt: Date.now(),
       });
 
-      throw new Error(
-        `Lead with this location already exists in another search (${duplicateAcrossSearches.searchId}). Cannot create duplicate.`
-      );
+      throw createConvexError("business_logic", "Lead with this location already exists in another search. Cannot create duplicate.", {
+        code: ERROR_CODES.DUPLICATE_RECORD,
+        severity: "low",
+        details: {
+          searchId: args.searchId,
+          placeId: args.leadData.placeId,
+          businessName: args.leadData.businessName,
+          existingSearchId: duplicateAcrossSearches.searchId,
+        },
+        retryable: false,
+      });
     }
 
     // Atomic insert with race condition protection
@@ -137,9 +162,17 @@ export const createLead = mutation({
           preventedAt: Date.now(),
         });
 
-        throw new Error(
-          `Lead with this location already exists. Duplicate prevented by race condition protection.`
-        );
+        throw createConvexError("business_logic", "Lead with this location already exists. Duplicate prevented by race condition protection.", {
+          code: ERROR_CODES.DUPLICATE_RECORD,
+          severity: "low",
+          details: {
+            searchId: args.searchId,
+            placeId: args.leadData.placeId,
+            businessName: args.leadData.businessName,
+            detectedBy: "race_condition_protection",
+          },
+          retryable: false,
+        });
       }
 
       // If not a duplicate issue, re-throw the error
@@ -173,7 +206,12 @@ export const updateLead = mutation({
     // Verify user owns the lead
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.userId !== user._id) {
-      throw new Error("Lead not found or access denied");
+      throw createConvexError("authorization", "Lead not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { leadId: args.leadId },
+        retryable: false,
+      });
     }
 
     await ctx.db.patch(args.leadId, {
@@ -204,7 +242,12 @@ export const updateLeadStatus = mutation({
     // Verify user owns the lead
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.userId !== user._id) {
-      throw new Error("Lead not found or access denied");
+      throw createConvexError("authorization", "Lead not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { leadId: args.leadId },
+        retryable: false,
+      });
     }
 
     await ctx.db.patch(args.leadId, {
@@ -228,7 +271,12 @@ export const addLeadNotes = mutation({
     // Verify user owns the lead
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.userId !== user._id) {
-      throw new Error("Lead not found or access denied");
+      throw createConvexError("authorization", "Lead not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { leadId: args.leadId },
+        retryable: false,
+      });
     }
 
     const currentNotes = lead.notes || "";
@@ -258,11 +306,339 @@ export const deleteLead = mutation({
     // Verify user owns the lead
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.userId !== user._id) {
-      throw new Error("Lead not found or access denied");
+      throw createConvexError("authorization", "Lead not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { leadId: args.leadId },
+        retryable: false,
+      });
     }
 
     await ctx.db.delete(args.leadId);
 
     return { success: true };
+  },
+});
+
+/**
+ * Track CSV Import
+ *
+ * Records CSV import metadata for analytics, debugging, and user history.
+ * Called after CSV parsing completes (success or partial success).
+ */
+export const trackCSVImport = mutation({
+  args: {
+    searchId: v.id("searches"),
+    fileName: v.string(),
+    fileSize: v.number(),
+    totalRows: v.number(),
+    validRows: v.number(),
+    invalidRows: v.number(),
+    skippedRows: v.number(),
+    estimatedCost: v.number(),
+    leadsWithEmail: v.number(),
+    leadsNeedingEnrichment: v.number(),
+    errorReport: v.optional(
+      v.array(
+        v.object({
+          rowNumber: v.number(),
+          companyName: v.optional(v.string()),
+          errors: v.array(v.string()),
+          warnings: v.optional(v.array(v.string())),
+          rawData: v.optional(v.any()),
+        })
+      )
+    ),
+    columnMapping: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw createConvexError("authentication", "Authentication required", {
+        code: ERROR_CODES.UNAUTHORIZED,
+        severity: "high",
+        retryable: false,
+      });
+    }
+
+    // Verify search belongs to user
+    const search = await ctx.db.get(args.searchId);
+    if (!search || search.userId !== user._id) {
+      throw createConvexError("authorization", "Search not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        details: { searchId: args.searchId },
+        retryable: false,
+      });
+    }
+
+    // Create CSV import record
+    const importId = await ctx.db.insert("csvImports", {
+      userId: user._id,
+      searchId: args.searchId,
+      fileName: args.fileName,
+      fileSize: args.fileSize,
+      totalRows: args.totalRows,
+      validRows: args.validRows,
+      invalidRows: args.invalidRows,
+      skippedRows: args.skippedRows,
+      estimatedCost: args.estimatedCost,
+      actualCost: undefined, // Will be updated after processing
+      leadsWithEmail: args.leadsWithEmail,
+      leadsNeedingEnrichment: args.leadsNeedingEnrichment,
+      status: args.invalidRows === 0 ? "completed" : "partial_success",
+      errorReport: args.errorReport,
+      columnMapping: args.columnMapping,
+      createdAt: Date.now(),
+      completedAt: Date.now(),
+    });
+
+    console.log(`CSV Import tracked: ${importId} (${args.validRows}/${args.totalRows} valid rows)`);
+
+    return {
+      success: true,
+      importId,
+      status: args.invalidRows === 0 ? "completed" : "partial_success",
+    };
+  },
+});
+
+/**
+ * Create Search and Batch Insert CSV Leads
+ *
+ * Creates a search record and batch inserts all leads from CSV upload.
+ * Handles credit deduction and sets up leads for enrichment/analysis pipeline.
+ */
+export const createSearchFromCSV = mutation({
+  args: {
+    fileName: v.string(),
+    fileSize: v.number(),
+    columnMapping: v.record(v.string(), v.string()),
+    leads: v.array(
+      v.object({
+        businessName: v.string(),
+        address: v.string(),
+        placeId: v.string(),
+        location: v.object({
+          lat: v.number(),
+          lng: v.number(),
+          formattedAddress: v.string(),
+          city: v.optional(v.string()),
+          state: v.optional(v.string()),
+          country: v.optional(v.string()),
+          postalCode: v.optional(v.string()),
+        }),
+        phone: v.optional(v.string()),
+        website: v.optional(v.string()),
+        category: v.optional(v.string()),
+        dataSource: v.optional(
+          v.union(
+            v.literal("google_maps"),
+            v.literal("csv_upload"),
+            v.literal("manual")
+          )
+        ),
+        enrichmentStatus: v.string(),
+        contactInfo: v.optional(
+          v.object({
+            emails: v.array(
+              v.object({
+                email: v.string(),
+                type: v.string(),
+                confidence: v.number(),
+              })
+            ),
+            contacts: v.array(
+              v.object({
+                name: v.string(),
+                title: v.optional(v.string()),
+                email: v.optional(v.string()),
+                linkedin: v.optional(v.string()),
+                confidence: v.number(),
+              })
+            ),
+            socialProfiles: v.optional(
+              v.object({
+                linkedin: v.optional(v.string()),
+                twitter: v.optional(v.string()),
+                facebook: v.optional(v.string()),
+              })
+            ),
+          })
+        ),
+        costEstimate: v.object({
+          cost: v.number(),
+          reason: v.string(),
+          skipEnrichment: v.boolean(),
+        }),
+      })
+    ),
+    statistics: v.object({
+      totalRows: v.number(),
+      validRows: v.number(),
+      invalidRows: v.number(),
+      skippedRows: v.number(),
+      leadsWithEmail: v.number(),
+      leadsNeedingEnrichment: v.number(),
+      estimatedCost: v.number(),
+      actualCost: v.number(),
+      errorReport: v.optional(v.any()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw createConvexError("authentication", "Authentication required", {
+        code: ERROR_CODES.UNAUTHORIZED,
+        severity: "high",
+        retryable: false,
+      });
+    }
+
+    const now = Date.now();
+
+    // Check and deduct credits FIRST (fail fast if insufficient)
+    const creditCost = args.statistics.estimatedCost;
+    const currentBalance = user.credits || 0;
+
+    // Skip credit check for enterprise users (handled by deductCredits)
+    if (currentBalance < creditCost && user.plan !== "enterprise") {
+      throw createConvexError("business_logic", `Insufficient credits. Need ${creditCost} credits, have ${currentBalance}.`, {
+        code: ERROR_CODES.INSUFFICIENT_CREDITS,
+        severity: "medium",
+        details: {
+          required: creditCost,
+          available: currentBalance,
+          plan: user.plan,
+        },
+        retryable: false,
+      });
+    }
+
+    // Create search record
+    const searchId = await ctx.db.insert("searches", {
+      userId: user._id,
+      name: `CSV Import: ${args.fileName}`,
+      status: "processing",
+      parameters: {
+        location: "CSV Upload",
+        locationPlaceId: undefined,
+        radius: 0,
+        keywords: [],
+        maxResults: args.leads.length,
+      },
+      progress: {
+        discovered: args.leads.length,
+        enriched: 0,
+        analyzed: 0,
+        total: args.leads.length,
+      },
+      results: {
+        totalFound: args.leads.length,
+        enrichedCount: 0,
+        analyzedCount: 0,
+      },
+      creditsUsed: creditCost,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Deduct credits for the import
+    await ctx.db.patch(user._id, {
+      credits: (user.credits || 0) - creditCost,
+    });
+
+    // Log credit transaction
+    await ctx.db.insert("creditTransactions", {
+      userId: user._id,
+      amount: -creditCost,
+      type: "usage",
+      description: `CSV Import: ${args.fileName} (${args.leads.length} leads)`,
+      relatedEntity: {
+        type: "search",
+        id: searchId,
+      },
+      balanceAfter: currentBalance - creditCost,
+      createdAt: now,
+    });
+
+    console.log(
+      `Credits deducted: ${creditCost} for CSV import (user: ${user._id}, search: ${searchId})`
+    );
+
+    // Batch insert all leads
+    const leadIds: string[] = [];
+    for (const leadData of args.leads) {
+      const leadId = await ctx.db.insert("leads", {
+        searchId,
+        userId: user._id,
+        businessName: leadData.businessName,
+        address: leadData.address,
+        placeId: leadData.placeId,
+        location: leadData.location,
+        phone: leadData.phone,
+        website: leadData.website,
+        rating: undefined,
+        reviewCount: undefined,
+        category: leadData.category,
+        dataSource: leadData.dataSource || "csv_upload",
+        enrichmentStatus: leadData.enrichmentStatus as any,
+        enrichmentProvider: leadData.costEstimate.skipEnrichment ? "csv_import" : undefined,
+        contactInfo: leadData.contactInfo,
+        aiAnalysis: undefined,
+        status: "new",
+        tags: [],
+        notes: "",
+        createdAt: now,
+        updatedAt: now,
+      });
+      leadIds.push(leadId);
+    }
+
+    // Track CSV import
+    const importId = await ctx.db.insert("csvImports", {
+      userId: user._id,
+      searchId,
+      fileName: args.fileName,
+      fileSize: args.fileSize,
+      totalRows: args.statistics.totalRows,
+      validRows: args.statistics.validRows,
+      invalidRows: args.statistics.invalidRows,
+      skippedRows: args.statistics.skippedRows,
+      estimatedCost: args.statistics.estimatedCost,
+      actualCost: args.statistics.actualCost,
+      leadsWithEmail: args.statistics.leadsWithEmail,
+      leadsNeedingEnrichment: args.statistics.leadsNeedingEnrichment,
+      status: args.statistics.invalidRows === 0 ? "completed" : "partial_success",
+      errorReport: args.statistics.errorReport,
+      columnMapping: args.columnMapping,
+      createdAt: now,
+      completedAt: now,
+    });
+
+    console.log(
+      `CSV Import complete: ${searchId} (${args.leads.length} leads, ${args.statistics.estimatedCost} credits)`
+    );
+
+    // Schedule the enrichment/analysis pipeline to process the imported leads
+    // This follows the same flow as Google Maps searches:
+    // enrichLeads -> (if needed) enrich pending leads -> analyzeLeads -> completeSearch
+    await ctx.scheduler.runAfter(
+      500, // Small delay to ensure all leads are committed
+      "leads/actions:enrichLeads" as any,
+      { searchId }
+    );
+
+    console.log(
+      `Pipeline scheduled for CSV import: ${searchId} (enrichLeads -> analyzeLeads)`
+    );
+
+    return {
+      success: true,
+      searchId,
+      importId,
+      leadIds,
+      statistics: args.statistics,
+    };
   },
 });
