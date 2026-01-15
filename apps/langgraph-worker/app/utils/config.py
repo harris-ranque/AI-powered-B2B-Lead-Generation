@@ -151,12 +151,17 @@ class Settings(BaseSettings):
     quality_assurance_model: str = os.getenv("QUALITY_ASSURANCE_MODEL", "")
 
     # Token limits optimized for GPT-5-mini (max 128K output)
+    # IMPORTANT: Reasoning models (o1, gpt-5) use completion tokens for BOTH reasoning AND output
+    # If max_completion_tokens is too low, all tokens go to reasoning with none left for output
+    # This causes LengthFinishReasonError - the model cannot produce structured output
+
     # Business Intelligence: Complex structured output (14 fields) needs higher budget
-    business_intelligence_max_tokens: int = int(os.getenv("BUSINESS_INTELLIGENCE_MAX_TOKENS", "5000") or "5000")
+    # Reasoning models need 16K+ to allow for reasoning overhead + structured output
+    business_intelligence_max_tokens: int = int(os.getenv("BUSINESS_INTELLIGENCE_MAX_TOKENS", "16000") or "16000")
     # Email Generation: Email content + follow-up sequences
-    email_generation_max_tokens: int = int(os.getenv("EMAIL_GENERATION_MAX_TOKENS", "3000") or "3000")
+    email_generation_max_tokens: int = int(os.getenv("EMAIL_GENERATION_MAX_TOKENS", "8000") or "8000")
     # Quality Assurance: Scoring, validation, and feedback
-    quality_assurance_max_tokens: int = int(os.getenv("QUALITY_ASSURANCE_MAX_TOKENS", "1500") or "1500")
+    quality_assurance_max_tokens: int = int(os.getenv("QUALITY_ASSURANCE_MAX_TOKENS", "4000") or "4000")
 
     @property
     def temperature(self) -> float:

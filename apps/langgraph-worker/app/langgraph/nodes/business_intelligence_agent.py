@@ -8,6 +8,7 @@ import asyncio
 from typing import Dict, Any, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field, ConfigDict
+from openai import LengthFinishReasonError
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
 from ...utils.research_clients import (
@@ -528,10 +529,69 @@ CRITICAL REQUIREMENTS:
             our_targets=", ".join(business_profile.target_markets),
             our_differentiators=", ".join(business_profile.key_differentiators)
         )
-        intelligence: BusinessIntelligence = await llm.ainvoke(
-            messages,
-            config={"callbacks": callbacks}  # PostHog captures tokens, cost, latency
-        )
+
+        # Retry loop for LengthFinishReasonError
+        # Reasoning models (o1, gpt-5) can exhaust token budget on reasoning alone
+        # On retry, we double the token budget to allow room for structured output
+        max_retries = 2
+        current_token_budget = bi_token_budget
+        intelligence: Optional[BusinessIntelligence] = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                if attempt > 0:
+                    # Rebuild LLM with increased token budget on retry
+                    logger.warning(f"Retry attempt {attempt}: Increasing token budget from {bi_token_budget} to {current_token_budget}")
+                    if is_reasoning_model:
+                        llm = registry.get_openai_client(
+                            api_key=openai_api_key,
+                            model=bi_model,
+                            temperature=0.3,
+                            max_completion_tokens=current_token_budget,
+                            reasoning_effort=reasoning_level,
+                            require_user_key=using_user_keys,
+                        ).with_structured_output(BusinessIntelligence)
+                    else:
+                        llm = registry.get_openai_client(
+                            api_key=openai_api_key,
+                            model=bi_model,
+                            temperature=0.3,
+                            max_completion_tokens=current_token_budget,
+                            require_user_key=using_user_keys,
+                        ).with_structured_output(BusinessIntelligence)
+
+                intelligence = await llm.ainvoke(
+                    messages,
+                    config={"callbacks": callbacks}  # PostHog captures tokens, cost, latency
+                )
+                break  # Success - exit retry loop
+
+            except LengthFinishReasonError as e:
+                if attempt < max_retries:
+                    # Double token budget for next attempt
+                    current_token_budget = current_token_budget * 2
+                    logger.warning(
+                        f"LengthFinishReasonError: Model exhausted {bi_token_budget} tokens on reasoning. "
+                        f"Retrying with {current_token_budget} tokens. "
+                        f"Lead: {lead.company_name}, Attempt: {attempt + 1}/{max_retries + 1}"
+                    )
+                    capture_event("bi_agent_token_limit_retry", {
+                        **analytics_context,
+                        "attempt": attempt + 1,
+                        "previous_budget": current_token_budget // 2,
+                        "new_budget": current_token_budget,
+                        "error_message": str(e),
+                    })
+                else:
+                    # Exhausted retries - re-raise for outer exception handler
+                    logger.error(
+                        f"LengthFinishReasonError: Exhausted all retries ({max_retries + 1} attempts). "
+                        f"Final budget: {current_token_budget}. Lead: {lead.company_name}"
+                    )
+                    raise
+
+        if intelligence is None:
+            raise RuntimeError("Business intelligence analysis failed without raising an exception")
         
         analysis_time = time.time() - analysis_start
         total_time = time.time() - start_time
