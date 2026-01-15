@@ -286,7 +286,7 @@ export function SearchProgressTracker({
       stageIndex: STAGE_ORDER.indexOf("discovery"),
     },
     {
-      label: "Emails",
+      label: "Checked",
       value: enrichedCount,
       stageIndex: STAGE_ORDER.indexOf("enrichment"),
     },
@@ -809,7 +809,7 @@ export function SearchProgressTracker({
                   .map(([key, value]) => {
                     const labelMap: Record<string, string> = {
                       discovered: "Businesses",
-                      enriched: "Emails",
+                      enriched: "Checked",
                       analyzed: "Personalized",
                       total: "Total",
                     };
