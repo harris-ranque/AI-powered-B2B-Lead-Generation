@@ -33,6 +33,7 @@ export const getUserById = query({
 });
 
 // Get user stats for dashboard
+// OPTIMIZED: Aggregates from searches table instead of loading all leads
 export const getUserStats = query({
   args: {},
   handler: async (ctx) => {
@@ -41,15 +42,9 @@ export const getUserStats = query({
       throw new Error("Authentication required");
     }
 
-    // Get search count
+    // Get all searches (much lighter than leads - no heavy aiAnalysis data)
     const searches = await ctx.db
       .query("searches")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .collect();
-
-    // Get lead count
-    const leads = await ctx.db
-      .query("leads")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
 
@@ -59,12 +54,10 @@ export const getUserStats = query({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
 
-    // Get recent searches
-    const recentSearches = await ctx.db
-      .query("searches")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .order("desc")
-      .take(5);
+    // Get recent searches (already have all searches, just slice)
+    const recentSearches = searches
+      .sort((a, b) => (b._creationTime || 0) - (a._creationTime || 0))
+      .slice(0, 5);
 
     // Calculate completion rate
     const completedSearches = searches.filter((s) => s.status === "completed");
@@ -73,19 +66,27 @@ export const getUserStats = query({
         ? (completedSearches.length / searches.length) * 100
         : 0;
 
-    // Calculate average relevance score
-    const leadsWithAnalysis = leads.filter((l) => l.aiAnalysis?.relevanceScore);
+    // Aggregate lead stats from search.results (pre-computed)
+    let totalLeads = 0;
+    let relevanceSum = 0;
+    let relevanceCount = 0;
+
+    for (const search of searches) {
+      totalLeads += search.results?.totalFound || 0;
+      const analyzedCount = search.results?.analyzedCount || 0;
+      const avgScore = search.results?.avgRelevanceScore;
+      if (avgScore && analyzedCount > 0) {
+        relevanceSum += avgScore * analyzedCount;
+        relevanceCount += analyzedCount;
+      }
+    }
+
     const avgRelevanceScore =
-      leadsWithAnalysis.length > 0
-        ? leadsWithAnalysis.reduce(
-            (sum, lead) => sum + (lead.aiAnalysis?.relevanceScore || 0),
-            0,
-          ) / leadsWithAnalysis.length
-        : 0;
+      relevanceCount > 0 ? relevanceSum / relevanceCount : 0;
 
     return {
       totalSearches: searches.length,
-      totalLeads: leads.length,
+      totalLeads,
       totalEmailSequences: emailSequences.length,
       completionRate: Math.round(completionRate),
       avgRelevanceScore: Math.round(avgRelevanceScore * 100),
@@ -93,7 +94,7 @@ export const getUserStats = query({
         _id: search._id,
         name: search.name,
         status: search.status,
-        createdAt: search.createdAt,
+        createdAt: search._creationTime,
         results: search.results,
       })),
       credits: user.credits,

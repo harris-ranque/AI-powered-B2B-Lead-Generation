@@ -402,8 +402,8 @@ export const getEnrichmentProgress = query({
 });
 
 // Get lead statistics for user
-// NOTE: Uses .collect() - for users with >8000 leads hitting 16MB limit,
-// consider implementing pre-computed stats in the user record
+// OPTIMIZED: Aggregates from searches table (much lighter than leads)
+// Searches already have pre-computed stats in progress/results fields
 export const getLeadStats = query({
   args: {},
   handler: async (ctx) => {
@@ -412,43 +412,43 @@ export const getLeadStats = query({
       throw new Error("Authentication required");
     }
 
-    // Fetch all leads for this user
-    const leads = await ctx.db
-      .query("leads")
+    // Aggregate from searches table - MUCH lighter than loading all leads
+    // Each search has pre-computed stats in results.totalFound, results.enrichedCount, etc.
+    const searches = await ctx.db
+      .query("searches")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
 
-    // Use simple counters with single pass through leads
+    // Aggregate stats from all searches
     let totalLeads = 0;
     let enrichedLeads = 0;
     let analyzedLeads = 0;
-    let qualifiedLeads = 0;
-    let contactedLeads = 0;
     let relevanceSum = 0;
     let relevanceCount = 0;
+    let thisWeekLeads = 0;
 
-    for (const lead of leads) {
-      totalLeads++;
+    const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
-      if (lead.enrichmentStatus === "completed") {
-        enrichedLeads++;
+    for (const search of searches) {
+      // Use pre-computed stats from search.results
+      const searchTotal = search.results?.totalFound || 0;
+      const searchEnriched = search.results?.enrichedCount || 0;
+      const searchAnalyzed = search.results?.analyzedCount || 0;
+      const searchAvgRelevance = search.results?.avgRelevanceScore;
+
+      totalLeads += searchTotal;
+      enrichedLeads += searchEnriched;
+      analyzedLeads += searchAnalyzed;
+
+      // Calculate weighted average for relevance score
+      if (searchAvgRelevance && searchAnalyzed > 0) {
+        relevanceSum += searchAvgRelevance * searchAnalyzed;
+        relevanceCount += searchAnalyzed;
       }
 
-      if (lead.aiAnalysis) {
-        analyzedLeads++;
-
-        if (lead.aiAnalysis.relevanceScore) {
-          relevanceSum += lead.aiAnalysis.relevanceScore;
-          relevanceCount++;
-        }
-      }
-
-      if (lead.status === "qualified") {
-        qualifiedLeads++;
-      }
-
-      if (lead.status === "contacted") {
-        contactedLeads++;
+      // Count leads created this week (use search creation time as proxy)
+      if (search._creationTime >= oneWeekAgo) {
+        thisWeekLeads += searchTotal;
       }
     }
 
@@ -456,18 +456,25 @@ export const getLeadStats = query({
       relevanceCount > 0 ? relevanceSum / relevanceCount : 0;
 
     return {
+      // Primary stats (from search aggregation)
       totalLeads,
       enrichedLeads,
       analyzedLeads,
-      qualifiedLeads,
-      contactedLeads,
+      // withEmails is same as enrichedLeads (leads with contact info)
+      withEmails: enrichedLeads,
+      // thisWeek is approximate based on search creation dates
+      thisWeek: thisWeekLeads,
+      // Rates
       enrichmentRate:
         totalLeads > 0 ? Math.round((enrichedLeads / totalLeads) * 100) : 0,
       analysisRate:
         totalLeads > 0 ? Math.round((analyzedLeads / totalLeads) * 100) : 0,
       avgRelevanceScore: Math.round(avgRelevanceScore * 100),
-      conversionRate:
-        totalLeads > 0 ? Math.round((qualifiedLeads / totalLeads) * 100) : 0,
+      // Note: qualifiedLeads/contactedLeads/conversionRate not available from search aggregation
+      // These would require scanning leads or pre-computing on status changes
+      qualifiedLeads: 0,
+      contactedLeads: 0,
+      conversionRate: 0,
     };
   },
 });
