@@ -395,41 +395,76 @@ export const getRevenueStats = query({
 });
 
 // Get usage statistics
+// NOTE: Uses paginated counting to avoid 16MB read limit
 export const getUsageStats = query({
   args: {},
   handler: async (ctx) => {
     await requireAdmin(ctx);
 
-    // Helper to count documents using async iteration (memory efficient)
-    const countDocuments = async <T>(iterable: AsyncIterable<T>) => {
+    // Paginated count helper - counts documents in batches to stay under 16MB limit
+    // Each page fetches only document IDs (minimal bytes) with a reasonable batch size
+    const PAGE_SIZE = 5000;
+
+    const countWithPagination = async (
+      tableName: "searches" | "leads" | "creditTransactions",
+      indexFilter?: { index: string; field: string; value: string }
+    ): Promise<number> => {
       let count = 0;
-      for await (const _ of iterable) {
-        count += 1;
+      let cursor: string | null = null;
+      let hasMore = true;
+
+      while (hasMore) {
+        let queryBuilder;
+
+        if (indexFilter) {
+          queryBuilder = ctx.db
+            .query(tableName)
+            .withIndex(indexFilter.index as any, (q: any) =>
+              q.eq(indexFilter.field, indexFilter.value)
+            );
+        } else {
+          queryBuilder = ctx.db.query(tableName);
+        }
+
+        const page = await queryBuilder.paginate({
+          numItems: PAGE_SIZE,
+          cursor: cursor as any
+        });
+
+        count += page.page.length;
+        cursor = page.continueCursor;
+        hasMore = !page.isDone;
       }
+
       return count;
     };
 
-    // Helper to sum transaction amounts using async iteration
-    const sumTransactionAmounts = async (
-      iterable: AsyncIterable<{ amount: number }>,
-    ) => {
+    // Sum transaction amounts with pagination
+    const sumTransactionsWithPagination = async (): Promise<number> => {
       let total = 0;
-      for await (const doc of iterable) {
-        total += doc.amount;
+      let cursor: string | null = null;
+      let hasMore = true;
+
+      while (hasMore) {
+        const page = await ctx.db
+          .query("creditTransactions")
+          .withIndex("by_type", (q) => q.eq("type", "usage"))
+          .paginate({ numItems: PAGE_SIZE, cursor: cursor as any });
+
+        for (const doc of page.page) {
+          total += doc.amount;
+        }
+        cursor = page.continueCursor;
+        hasMore = !page.isDone;
       }
+
       return total;
     };
 
-    // Execute all queries in parallel using streaming (no .collect())
-    const [totalSearches, totalLeads, totalCreditsSpent] = await Promise.all([
-      countDocuments(ctx.db.query("searches")),
-      countDocuments(ctx.db.query("leads")),
-      sumTransactionAmounts(
-        ctx.db
-          .query("creditTransactions")
-          .withIndex("by_type", (q) => q.eq("type", "usage")),
-      ),
-    ]);
+    // Execute counts sequentially to avoid parallel read limit issues
+    const totalSearches = await countWithPagination("searches");
+    const totalLeads = await countWithPagination("leads");
+    const totalCreditsSpent = await sumTransactionsWithPagination();
 
     return {
       totalSearches,

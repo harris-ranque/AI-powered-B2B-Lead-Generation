@@ -90,12 +90,9 @@ export const tryAcquireApiKeySlot = internalMutation({
       .withIndex("by_key_hash", (q: any) => q.eq("apiKeyHash", args.apiKeyHash))
       .collect();
 
-    // Sort by slot index for deterministic behavior
-    slots.sort((a: any, b: any) => a.slotIndex - b.slotIndex);
-
-    // Count active slots and find first available
+    // Identify available and claimed slots
+    const availableSlots: any[] = [];
     let activeCount = 0;
-    let availableSlot: any = null;
 
     for (const slot of slots) {
       const isExpired = slot.expiresAt && slot.expiresAt < now;
@@ -103,10 +100,17 @@ export const tryAcquireApiKeySlot = internalMutation({
 
       if (isClaimed) {
         activeCount++;
-      } else if (!availableSlot) {
-        availableSlot = slot;
+      } else {
+        availableSlots.push(slot);
       }
     }
+
+    // OPTIMIZATION: Randomly select from available slots to reduce OCC conflicts
+    // When multiple requests arrive simultaneously, they'll target different slots
+    // instead of all competing for slot 0
+    const availableSlot = availableSlots.length > 0
+      ? availableSlots[Math.floor(Math.random() * availableSlots.length)]
+      : null;
 
     // If no slot available, return failure
     if (!availableSlot) {
