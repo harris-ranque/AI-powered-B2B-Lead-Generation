@@ -2,7 +2,7 @@ import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 
-// Get leads for a search
+// Get leads for a search (FULL documents - use sparingly, prefer getLeadsListView)
 export const getLeadsBySearch = query({
   args: { searchId: v.id("searches") },
   handler: async (ctx, args) => {
@@ -24,6 +24,67 @@ export const getLeadsBySearch = query({
       .collect();
 
     return leads;
+  },
+});
+
+// Get leads for list view (LIGHTWEIGHT - only fields needed for display)
+// Use this for lead tables/lists, use getLead() for full details on click
+export const getLeadsListView = query({
+  args: {
+    searchId: v.id("searches"),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    // Verify user owns the search
+    const search = await ctx.db.get(args.searchId);
+    if (!search || search.userId !== user._id) {
+      throw new Error("Search not found or access denied");
+    }
+
+    const pageSize = Math.min(args.limit || 25, 100); // Default 25, max 100
+
+    const result = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .order("desc")
+      .paginate({
+        numItems: pageSize,
+        cursor: args.cursor as any ?? null
+      });
+
+    // Return only fields needed for list display (excludes heavy aiAnalysis)
+    const leads = result.page.map(lead => ({
+      _id: lead._id,
+      businessName: lead.businessName,
+      formattedAddress: lead.location?.formattedAddress || "",
+      phone: lead.phone || "",
+      website: lead.website || "",
+      primaryEmail: lead.contactInfo?.emails?.[0]?.email || "",
+      emailCount: lead.contactInfo?.emails?.length || 0,
+      status: lead.status,
+      enrichmentStatus: lead.enrichmentStatus,
+      enrichmentProvider: lead.enrichmentProvider,
+      // Just scores and flags, not full analysis content
+      relevanceScore: lead.aiAnalysis?.relevanceScore ?? null,
+      hasEmailSequence: !!(lead.generatedEmails?.length),
+      hasResearch: !!lead.aiAnalysis?.leadAnalysis,
+      researchTier: lead.aiAnalysis?.researchTier || null,
+      rating: lead.rating,
+      reviewCount: lead.reviewCount,
+      createdAt: lead._creationTime,
+    }));
+
+    return {
+      leads,
+      continueCursor: result.continueCursor,
+      isDone: result.isDone,
+    };
   },
 });
 
@@ -124,7 +185,7 @@ export const exportLeads = query({
   },
 });
 
-// Get user leads with pagination (OPTIMIZED)
+// Get user leads with pagination (FULL documents - use sparingly)
 export const getUserLeads = query({
   args: {
     limit: v.optional(v.number()),
@@ -156,6 +217,76 @@ export const getUserLeads = query({
     const leads = await query.order("desc").take(limit + offset);
 
     return leads.slice(offset);
+  },
+});
+
+// Get user leads for list view (LIGHTWEIGHT with cursor pagination)
+// Use this for lead tables/history, use getLead() for full details on click
+export const getUserLeadsListView = query({
+  args: {
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+    searchId: v.optional(v.id("searches")),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    const pageSize = Math.min(args.limit || 25, 100); // Default 25, max 100
+
+    let queryBuilder;
+
+    if (args.searchId) {
+      // Verify user owns the search
+      const search = await ctx.db.get(args.searchId);
+      if (!search || search.userId !== user._id) {
+        throw new Error("Search not found or access denied");
+      }
+      queryBuilder = ctx.db
+        .query("leads")
+        .withIndex("by_search", (q) => q.eq("searchId", args.searchId!));
+    } else {
+      queryBuilder = ctx.db
+        .query("leads")
+        .withIndex("by_user", (q) => q.eq("userId", user._id));
+    }
+
+    const result = await queryBuilder
+      .order("desc")
+      .paginate({
+        numItems: pageSize,
+        cursor: args.cursor as any ?? null
+      });
+
+    // Return only fields needed for list display
+    const leads = result.page.map(lead => ({
+      _id: lead._id,
+      businessName: lead.businessName,
+      formattedAddress: lead.location?.formattedAddress || "",
+      phone: lead.phone || "",
+      website: lead.website || "",
+      primaryEmail: lead.contactInfo?.emails?.[0]?.email || "",
+      emailCount: lead.contactInfo?.emails?.length || 0,
+      status: lead.status,
+      enrichmentStatus: lead.enrichmentStatus,
+      enrichmentProvider: lead.enrichmentProvider,
+      relevanceScore: lead.aiAnalysis?.relevanceScore ?? null,
+      hasEmailSequence: !!(lead.generatedEmails?.length),
+      hasResearch: !!lead.aiAnalysis?.leadAnalysis,
+      researchTier: lead.aiAnalysis?.researchTier || null,
+      rating: lead.rating,
+      reviewCount: lead.reviewCount,
+      searchId: lead.searchId,
+      createdAt: lead._creationTime,
+    }));
+
+    return {
+      leads,
+      continueCursor: result.continueCursor,
+      isDone: result.isDone,
+    };
   },
 });
 
@@ -271,6 +402,7 @@ export const getEnrichmentProgress = query({
 });
 
 // Get lead statistics for user (OPTIMIZED VERSION)
+// NOTE: Uses pagination to avoid 16MB read limit for users with many leads
 export const getLeadStats = query({
   args: {},
   handler: async (ctx) => {
@@ -279,13 +411,9 @@ export const getLeadStats = query({
       throw new Error("Authentication required");
     }
 
-    // OPTIMIZATION: Only fetch minimal fields needed for stats
-    const leads = await ctx.db
-      .query("leads")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .collect();
+    // Use pagination to avoid 16MB byte limit
+    const PAGE_SIZE = 2000;
 
-    // Use simple counters instead of arrays
     let totalLeads = 0;
     let enrichedLeads = 0;
     let analyzedLeads = 0;
@@ -294,30 +422,43 @@ export const getLeadStats = query({
     let relevanceSum = 0;
     let relevanceCount = 0;
 
-    // Single pass through leads for all calculations
-    for (const lead of leads) {
-      totalLeads++;
+    let cursor: string | null = null;
+    let hasMore = true;
 
-      if (lead.enrichmentStatus === "completed") {
-        enrichedLeads++;
-      }
+    while (hasMore) {
+      const page = await ctx.db
+        .query("leads")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .paginate({ numItems: PAGE_SIZE, cursor: cursor as any });
 
-      if (lead.aiAnalysis) {
-        analyzedLeads++;
+      // Process each lead in the current page
+      for (const lead of page.page) {
+        totalLeads++;
 
-        if (lead.aiAnalysis.relevanceScore) {
-          relevanceSum += lead.aiAnalysis.relevanceScore;
-          relevanceCount++;
+        if (lead.enrichmentStatus === "completed") {
+          enrichedLeads++;
+        }
+
+        if (lead.aiAnalysis) {
+          analyzedLeads++;
+
+          if (lead.aiAnalysis.relevanceScore) {
+            relevanceSum += lead.aiAnalysis.relevanceScore;
+            relevanceCount++;
+          }
+        }
+
+        if (lead.status === "qualified") {
+          qualifiedLeads++;
+        }
+
+        if (lead.status === "contacted") {
+          contactedLeads++;
         }
       }
 
-      if (lead.status === "qualified") {
-        qualifiedLeads++;
-      }
-
-      if (lead.status === "contacted") {
-        contactedLeads++;
-      }
+      cursor = page.continueCursor;
+      hasMore = !page.isDone;
     }
 
     const avgRelevanceScore =

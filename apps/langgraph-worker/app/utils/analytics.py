@@ -180,8 +180,7 @@ def create_llm_callback_handler(
             full_properties.update(properties)
 
         return CallbackHandler(
-            api_key=client.api_key,
-            host=client.host,
+            client=client,
             distinct_id=distinct_id or "langgraph-worker",
             trace_id=trace_id,
             properties=full_properties,
