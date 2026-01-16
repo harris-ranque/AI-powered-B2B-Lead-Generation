@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { useSearches } from "@/hooks/useSearches";
+import { useSearchesBase } from "@/hooks/base/useSearchesBase";
 import { useAuth } from "@/hooks/useAuth";
 import {
   Calendar,
@@ -39,7 +39,8 @@ export function LeadSearchHistory() {
   const [currentPage, setCurrentPage] = useState(1);
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
-  const { searches, isLoading } = useSearches({
+  // Use base hook directly to enable pagination (bypasses context which ignores pagination)
+  const { searches, isLoading } = useSearchesBase({
     limit: ITEMS_PER_PAGE,
     offset,
   });

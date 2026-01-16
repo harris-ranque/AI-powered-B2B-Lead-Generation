@@ -401,8 +401,9 @@ export const getEnrichmentProgress = query({
   },
 });
 
-// Get lead statistics for user (OPTIMIZED VERSION)
-// NOTE: Uses pagination to avoid 16MB read limit for users with many leads
+// Get lead statistics for user
+// NOTE: Uses .collect() - for users with >8000 leads hitting 16MB limit,
+// consider implementing pre-computed stats in the user record
 export const getLeadStats = query({
   args: {},
   handler: async (ctx) => {
@@ -411,9 +412,13 @@ export const getLeadStats = query({
       throw new Error("Authentication required");
     }
 
-    // Use pagination to avoid 16MB byte limit
-    const PAGE_SIZE = 2000;
+    // Fetch all leads for this user
+    const leads = await ctx.db
+      .query("leads")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
 
+    // Use simple counters with single pass through leads
     let totalLeads = 0;
     let enrichedLeads = 0;
     let analyzedLeads = 0;
@@ -422,43 +427,29 @@ export const getLeadStats = query({
     let relevanceSum = 0;
     let relevanceCount = 0;
 
-    let cursor: string | null = null;
-    let hasMore = true;
+    for (const lead of leads) {
+      totalLeads++;
 
-    while (hasMore) {
-      const page = await ctx.db
-        .query("leads")
-        .withIndex("by_user", (q) => q.eq("userId", user._id))
-        .paginate({ numItems: PAGE_SIZE, cursor: cursor as any });
+      if (lead.enrichmentStatus === "completed") {
+        enrichedLeads++;
+      }
 
-      // Process each lead in the current page
-      for (const lead of page.page) {
-        totalLeads++;
+      if (lead.aiAnalysis) {
+        analyzedLeads++;
 
-        if (lead.enrichmentStatus === "completed") {
-          enrichedLeads++;
-        }
-
-        if (lead.aiAnalysis) {
-          analyzedLeads++;
-
-          if (lead.aiAnalysis.relevanceScore) {
-            relevanceSum += lead.aiAnalysis.relevanceScore;
-            relevanceCount++;
-          }
-        }
-
-        if (lead.status === "qualified") {
-          qualifiedLeads++;
-        }
-
-        if (lead.status === "contacted") {
-          contactedLeads++;
+        if (lead.aiAnalysis.relevanceScore) {
+          relevanceSum += lead.aiAnalysis.relevanceScore;
+          relevanceCount++;
         }
       }
 
-      cursor = page.continueCursor;
-      hasMore = !page.isDone;
+      if (lead.status === "qualified") {
+        qualifiedLeads++;
+      }
+
+      if (lead.status === "contacted") {
+        contactedLeads++;
+      }
     }
 
     const avgRelevanceScore =
