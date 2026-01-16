@@ -164,14 +164,34 @@ export function useLeadBase(leadId: Id<"leads"> | undefined) {
 
 export type UseLeadResult = ReturnType<typeof useLeadBase>;
 
+// Default stats to prevent crashes when query returns undefined
+const DEFAULT_LEAD_STATS = {
+  totalLeads: 0,
+  enrichedLeads: 0,
+  analyzedLeads: 0,
+  withEmails: 0,
+  thisWeek: 0,
+  enrichmentRate: 0,
+  analysisRate: 0,
+  avgRelevanceScore: 0,
+  qualifiedLeads: 0,
+  contactedLeads: 0,
+  conversionRate: 0,
+} as const;
+
 export function useUserLeadsBase() {
   const leads = useQuery(api.leads.queries.getUserLeads);
-  const stats = useQuery(api.leads.queries.getLeadStats);
+  const rawStats = useQuery(api.leads.queries.getLeadStats);
 
   return {
     leads,
-    stats,
+    // Always provide a valid stats object with defaults for any missing fields
+    // This prevents crashes when stats is loading or has missing fields
+    stats: rawStats ? { ...DEFAULT_LEAD_STATS, ...rawStats } : DEFAULT_LEAD_STATS,
+    // Expose raw stats for components that need to check loading state
+    rawStats,
     isLoading: leads === undefined,
+    isStatsLoading: rawStats === undefined,
   };
 }
 
