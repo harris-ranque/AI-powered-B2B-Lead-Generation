@@ -172,24 +172,42 @@ export const checkEmailDuplication = internalMutation({
       return { isDuplicate: false };
     }
 
-    // Check for duplicate email across all user's leads (excluding this one)
-    const allUserLeads = await ctx.db
-      .query("leads")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
+    // Check for duplicate email across user's leads (excluding this one)
+    // Uses paginated search to avoid 16MB limit for users with many leads
+    // Only stores the duplicate lead ID to minimize memory usage
+    const MAX_LEADS_TO_CHECK = 10000;
+    const BATCH_SIZE = 1000;
+    let leadsChecked = 0;
+    let duplicateLeadId: typeof args.leadId | null = null;
+    let emailCursor: string | null = null;
+    let emailIsDone = false;
 
-    const duplicateByEmail = allUserLeads.find(existingLead => {
-      // Skip comparing with itself
-      if (existingLead._id === args.leadId) {
-        return false;
+    while (!emailIsDone && leadsChecked < MAX_LEADS_TO_CHECK && !duplicateLeadId) {
+      const result = await ctx.db
+        .query("leads")
+        .withIndex("by_user", (q) => q.eq("userId", args.userId))
+        .paginate({ numItems: BATCH_SIZE, cursor: emailCursor as any ?? null });
+
+      // Check this batch for email match - only extract necessary fields
+      for (const existingLead of result.page) {
+        // Skip comparing with itself
+        if (existingLead._id === args.leadId) {
+          continue;
+        }
+        // Check if this lead has the same email (only access contactInfo.emails)
+        const existingEmail = extractPrimaryEmail(existingLead.contactInfo);
+        if (existingEmail && existingEmail === primaryEmail) {
+          duplicateLeadId = existingLead._id; // Only store the ID, not full lead
+          break;
+        }
       }
 
-      // Check if this lead has the same email
-      const existingEmail = extractPrimaryEmail(existingLead.contactInfo);
-      return existingEmail && existingEmail === primaryEmail;
-    });
+      leadsChecked += result.page.length;
+      emailIsDone = result.isDone;
+      emailCursor = result.continueCursor;
+    }
 
-    if (duplicateByEmail) {
+    if (duplicateLeadId) {
       console.log(
         `Duplicate email detected after enrichment: ${primaryEmail} for lead ${args.leadId}, marking as duplicate`
       );
@@ -200,7 +218,7 @@ export const checkEmailDuplication = internalMutation({
         searchId: args.searchId,
         placeId: lead.placeId,
         duplicateType: "email",
-        originalLeadId: duplicateByEmail._id,
+        originalLeadId: duplicateLeadId,
         businessName: lead.businessName,
         preventedAt: Date.now(),
       });
@@ -433,21 +451,48 @@ export const createLeadInternal = internalMutation({
     // For now, we'll add a placeholder that can be used after enrichment
 
     // FIFTH: Check for duplicate address at USER level (if enabled)
+    // Uses paginated search to avoid 16MB limit for users with many leads
     if (enableAddressDedup && args.leadData.address) {
       const normalizedAddress = normalizeAddress(args.leadData.address);
 
       if (normalizedAddress) {
-        // Query all user leads and check for address match
-        const allUserLeads = await ctx.db
-          .query("leads")
-          .withIndex("by_user", (q) => q.eq("userId", args.userId))
-          .collect();
+        // Use paginated approach to avoid 16MB memory limit
+        // Check up to 10,000 recent leads in batches of 1000
+        // Only stores the duplicate lead ID to minimize memory usage
+        const MAX_LEADS_TO_CHECK = 10000;
+        const BATCH_SIZE = 1000;
+        let leadsChecked = 0;
+        let duplicateAddressLeadId: string | null = null;
+        let cursor: string | null = null;
+        let isDone = false;
 
-        const duplicateByAddress = allUserLeads.find(lead =>
-          normalizeAddress(lead.address) === normalizedAddress
-        );
+        while (!isDone && leadsChecked < MAX_LEADS_TO_CHECK && !duplicateAddressLeadId) {
+          const result = await ctx.db
+            .query("leads")
+            .withIndex("by_user", (q) => q.eq("userId", args.userId))
+            .paginate({ numItems: BATCH_SIZE, cursor: cursor as any ?? null });
 
-        if (duplicateByAddress) {
+          // Check this batch for address match - only access address field
+          for (const lead of result.page) {
+            if (normalizeAddress(lead.address) === normalizedAddress) {
+              duplicateAddressLeadId = lead._id; // Only store ID, not full lead
+              break;
+            }
+          }
+
+          leadsChecked += result.page.length;
+          isDone = result.isDone;
+          cursor = result.continueCursor;
+        }
+
+        // Log if we hit the limit without checking all leads
+        if (!isDone && leadsChecked >= MAX_LEADS_TO_CHECK && !duplicateAddressLeadId) {
+          console.log(
+            `Address dedup check: Only checked ${leadsChecked} of user's leads due to volume limit`
+          );
+        }
+
+        if (duplicateAddressLeadId) {
           console.log(
             `Duplicate address detected: "${args.leadData.address}" for user ${args.userId}, skipping`
           );
@@ -458,7 +503,7 @@ export const createLeadInternal = internalMutation({
             searchId: args.searchId,
             placeId: args.leadData.placeId,
             duplicateType: "address",
-            originalLeadId: duplicateByAddress._id,
+            originalLeadId: duplicateAddressLeadId as any,
             businessName: args.leadData.businessName,
             preventedAt: Date.now(),
           });
@@ -466,7 +511,7 @@ export const createLeadInternal = internalMutation({
           return {
             status: "skipped" as const,
             reason: "address" as const,
-            duplicateLeadId: duplicateByAddress._id,
+            duplicateLeadId: duplicateAddressLeadId as any,
           };
         }
       }
@@ -761,15 +806,28 @@ export const getEnrichedLeads = internalQuery({
   },
 });
 
-// Internal query to get all leads for a user (for exports)
+// Internal query to get leads for a user with pagination (for exports)
+// Uses pagination to avoid 16MB limit for users with many leads
 export const getUserLeadsInternal = internalQuery({
-  args: { userId: v.id("users") },
+  args: {
+    userId: v.id("users"),
+    limit: v.optional(v.number()), // Default 1000, max 5000
+    cursor: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const pageSize = Math.min(args.limit || 1000, 5000);
+
+    const result = await ctx.db
       .query("leads")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .order("desc")
-      .collect();
+      .paginate({ numItems: pageSize, cursor: args.cursor as any ?? null });
+
+    return {
+      leads: result.page,
+      cursor: result.continueCursor,
+      isDone: result.isDone,
+    };
   },
 });
 

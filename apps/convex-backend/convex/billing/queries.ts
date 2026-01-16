@@ -1,14 +1,15 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireAuth } from "../auth";
+import { requireAuth, getCurrentUser } from "../auth";
 
 // Get user credit balance
+// Returns null if not authenticated (allows query during auth hydration)
 export const getCreditBalance = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return null;
     }
 
     return {
@@ -19,12 +20,13 @@ export const getCreditBalance = query({
 });
 
 // Get user billing information
+// Returns null if not authenticated (allows query during auth hydration)
 export const getUserBilling = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return null;
     }
 
     return {

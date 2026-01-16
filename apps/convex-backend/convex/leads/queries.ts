@@ -88,30 +88,41 @@ export const getLeadsListView = query({
   },
 });
 
-// Export leads (internal function)
+// Export leads with pagination support to avoid 16MB limit
+// When searchId is provided, exports leads for that search (scoped, typically safe)
+// When no searchId, uses pagination to handle users with many leads
 export const exportLeads = query({
   args: {
     userId: v.id("users"),
     searchId: v.optional(v.id("searches")),
+    limit: v.optional(v.number()), // Default 5000 per page for exports
+    cursor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // This is an internal export function, used by other backend functions
-    let query = ctx.db
-      .query("leads")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId));
+    const pageSize = Math.min(args.limit || 5000, 5000);
 
+    let queryBuilder;
     if (args.searchId) {
-      const searchId = args.searchId;
-      query = ctx.db
+      // Scoped to specific search - use that index
+      queryBuilder = ctx.db
         .query("leads")
-        .withIndex("by_search", (q) => q.eq("searchId", searchId))
+        .withIndex("by_search", (q) => q.eq("searchId", args.searchId!))
         .filter((q) => q.eq(q.field("userId"), args.userId));
+    } else {
+      // All user leads - use user index with pagination
+      queryBuilder = ctx.db
+        .query("leads")
+        .withIndex("by_user", (q) => q.eq("userId", args.userId));
     }
 
-    const leads = await query.collect();
+    const result = await queryBuilder
+      .order("desc")
+      .paginate({ numItems: pageSize, cursor: args.cursor as any ?? null });
+
+    const leads = result.page;
 
     // Format leads for export with enhanced research data
-    return leads.map((lead) => {
+    const formattedLeads = leads.map((lead) => {
       const companyData = lead.aiAnalysis?.companyData;
       const researchTier = lead.aiAnalysis?.researchTier || "unknown";
 
@@ -182,6 +193,12 @@ export const exportLeads = query({
         updatedAt: new Date(lead.updatedAt || lead._creationTime).toISOString(),
       };
     });
+
+    return {
+      leads: formattedLeads,
+      cursor: result.continueCursor,
+      isDone: result.isDone,
+    };
   },
 });
 

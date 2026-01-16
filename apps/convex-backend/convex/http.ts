@@ -888,12 +888,32 @@ http.route({
           },
         )) as LeadDoc[];
       } else {
-        leads = (await ctx.runQuery(
-          internal.leads.internal.getUserLeadsInternal,
-          {
-            userId: resolvedUserId as Id<"users">,
-          },
-        )) as LeadDoc[];
+        // Collect all user leads with pagination to avoid 16MB limit
+        let allLeads: LeadDoc[] = [];
+        let cursor: string | undefined = undefined;
+        let isDone = false;
+
+        while (!isDone) {
+          const result = (await ctx.runQuery(
+            internal.leads.internal.getUserLeadsInternal,
+            {
+              userId: resolvedUserId as Id<"users">,
+              cursor,
+            },
+          )) as { leads: LeadDoc[]; cursor: string; isDone: boolean };
+
+          allLeads = allLeads.concat(result.leads);
+          cursor = result.cursor;
+          isDone = result.isDone;
+
+          // Safety limit: max 50,000 leads per export
+          if (allLeads.length >= 50000) {
+            console.warn(`Export truncated at 50,000 leads for user ${resolvedUserId}`);
+            break;
+          }
+        }
+
+        leads = allLeads;
       }
 
       if (!leads || leads.length === 0) {
