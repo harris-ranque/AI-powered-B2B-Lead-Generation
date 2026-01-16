@@ -171,11 +171,59 @@ export const updateHealthStatus = internalMutation({
     const now = Date.now();
 
     // Get current system configuration
-    const systemConfig = await ctx.db.query("systemConfiguration").unique();
+    let systemConfig = await ctx.db.query("systemConfiguration").unique();
 
+    // Create default system configuration if it doesn't exist
     if (!systemConfig) {
-      console.error("[HealthCheck] System configuration not found");
-      return;
+      console.log("[HealthCheck] Creating default system configuration");
+      const configId = await ctx.db.insert("systemConfiguration", {
+        creditCosts: {
+          LEAD_DISCOVERY: 1,
+          EMAIL_ENRICHMENT: 1,
+          AI_ANALYSIS: 2,
+          EMAIL_GENERATION: 3,
+          BULK_ANALYSIS: 5,
+        },
+        planLimits: {
+          free: {
+            monthlyCredits: 100,
+            maxSearches: 10,
+            maxLeadsPerSearch: 50,
+            emailGeneration: true,
+            bulkOperations: false,
+            apiAccess: false,
+          },
+          pro: {
+            monthlyCredits: 1000,
+            maxSearches: 100,
+            maxLeadsPerSearch: 500,
+            emailGeneration: true,
+            bulkOperations: true,
+            apiAccess: true,
+          },
+          enterprise: {
+            monthlyCredits: 10000,
+            maxSearches: 1000,
+            maxLeadsPerSearch: 5000,
+            emailGeneration: true,
+            bulkOperations: true,
+            apiAccess: true,
+          },
+        },
+        orchestrationSettings: {
+          leadGenerationEnabled: true,
+          maintenanceMode: false,
+          maxConcurrentSearches: 10,
+        },
+        createdAt: now,
+        updatedAt: now,
+      });
+      systemConfig = await ctx.db.get(configId);
+
+      if (!systemConfig) {
+        console.error("[HealthCheck] Failed to create system configuration");
+        return;
+      }
     }
 
     // Get current orchestration settings

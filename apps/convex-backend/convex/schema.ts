@@ -997,7 +997,7 @@ export default defineSchema({
     ),
     createdAt: v.number(),
     updatedAt: v.number(),
-    updatedBy: v.id("users"),
+    updatedBy: v.optional(v.id("users")), // Optional for system-automated creation
   }),
 
   // System Logs - Track administrative actions

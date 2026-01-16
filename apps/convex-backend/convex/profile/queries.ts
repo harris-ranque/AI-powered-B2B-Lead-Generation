@@ -9,17 +9,15 @@ import {
 } from "../lib/profileLogic";
 
 // Get current user's business profile
+// Returns null if not authenticated (allows query during auth hydration)
 export const getCurrentProfile = query({
   args: {},
   handler: async (ctx) => {
     const user = await getCurrentUser(ctx);
 
+    // Return null instead of throwing - allows query during auth token hydration
     if (!user) {
-      throw createError(
-        "Authentication required",
-        ERROR_CODES.UNAUTHORIZED,
-        401,
-      );
+      return null;
     }
 
     const profile = await ctx.db
@@ -32,17 +30,15 @@ export const getCurrentProfile = query({
 });
 
 // Check if profile is complete
+// Returns null if not authenticated (allows query during auth hydration)
 export const getProfileCompleteness = query({
   args: {},
   handler: async (ctx) => {
     const user = await getCurrentUser(ctx);
 
+    // Return null instead of throwing - allows query during auth token hydration
     if (!user) {
-      throw createError(
-        "Authentication required",
-        ERROR_CODES.UNAUTHORIZED,
-        401,
-      );
+      return null;
     }
 
     const profile = await ctx.db
