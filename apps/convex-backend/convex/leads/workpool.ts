@@ -163,7 +163,11 @@ export const onEnrichmentComplete = internalMutation({
       // In this case, DON'T count it as completed - it will be processed later from the queue
       if (result.kind === "success" && result.returnValue) {
         const returnValue = result.returnValue as any;
-        if (returnValue.reason === "queued" || returnValue.reason === "requeued") {
+        if (
+          returnValue.reason === "queued" ||
+          returnValue.reason === "requeued" ||
+          returnValue.reason === "queued_for_cron"
+        ) {
           console.log(
             `[Workpool] Lead ${leadId} queued for later processing (not counting as completed)`
           );
@@ -365,6 +369,46 @@ export const reportQueuedLeadCompletion = internalMutation({
         console.log(
           `[Workpool] No running batch found for search ${args.searchId} (lead ${args.leadId})`
         );
+
+        // CRITICAL FIX: Even if no batch found, check if all enrichment is complete
+        // This handles edge cases where batch was already completed but late leads came in
+        console.log(`[Workpool] Checking if analysis should be triggered despite no running batch...`);
+
+        const shouldTriggerAnalysis = await ctx.runMutation(
+          internal.leads.internal.tryTriggerAnalysisPhase,
+          { searchId: args.searchId }
+        );
+
+        if (shouldTriggerAnalysis) {
+          console.log(`[Workpool] ✅ Analysis triggered for search ${args.searchId} (late lead recovery)`);
+
+          try {
+            await ctx.scheduler.runAfter(
+              0,
+              (internal as any)["leads/actions"].analyzeLeads,
+              { searchId: args.searchId }
+            );
+            console.log(`[Workpool] ✅ Analysis scheduled successfully for search ${args.searchId}`);
+          } catch (scheduleError) {
+            const scheduleErrorMsg = scheduleError instanceof Error ? scheduleError.message : String(scheduleError);
+            console.error(
+              `[Workpool] ❌ Failed to schedule analysis for search ${args.searchId}: ${scheduleErrorMsg}`
+            );
+
+            await ctx.runMutation(internal.leads.deadLetterQueue.recordFailedOperation, {
+              operationType: "analysis_trigger",
+              searchId: args.searchId,
+              error: `Analysis scheduling failed (late lead recovery): ${scheduleErrorMsg}`,
+              context: { triggeredBy: "no_batch_fallback", leadId: args.leadId },
+              maxRetries: 5,
+            });
+          }
+
+          return { updated: false, reason: "no_running_batch_analysis_triggered" };
+        } else {
+          console.log(`[Workpool] Analysis not needed or already triggered for search ${args.searchId}`);
+        }
+
         return { updated: false, reason: "no_running_batch" };
       }
 

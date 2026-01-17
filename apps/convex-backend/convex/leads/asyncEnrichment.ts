@@ -377,6 +377,31 @@ export const enrichSingleLeadWorkpool = internalAction({
       );
       const searchQueuedAt = search?.createdAt || Date.now();
 
+      if (args._fromQueue) {
+        const lead = await ctx.runQuery(
+          internal.leads.internal.getLeadInternal,
+          { leadId: args.leadId },
+        );
+
+        const queuedApiKeyHash = lead?.enrichmentApiKeyHash || apiKeyHash;
+
+        await ctx.runMutation(
+          internal.leads.internal.requeueLeadForEnrichment,
+          {
+            leadId: args.leadId,
+            searchId: args.searchId,
+            apiKeyHash: queuedApiKeyHash,
+            searchQueuedAt,
+          },
+        );
+
+        return {
+          success: true,
+          skipped: true,
+          reason: "requeued",
+        };
+      }
+
       // Queue the lead - cron will process it when slots are available
       await ctx.runMutation(
         internal.leads.internal.queueLeadForEnrichment,
@@ -393,7 +418,7 @@ export const enrichSingleLeadWorkpool = internalAction({
       return {
         success: true,
         skipped: true,
-        reason: "queued_for_cron",
+        reason: "queued",
       };
     }
 

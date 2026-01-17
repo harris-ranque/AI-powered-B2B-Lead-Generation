@@ -1242,6 +1242,31 @@ export const tryTriggerAnalysisPhase = internalMutation({
       return false; // No leads to analyze
     }
 
+    const analysisStatusCounts = {
+      unset: 0,
+      pending: 0,
+      scheduled: 0,
+      processing: 0,
+      completed: 0,
+      failed: 0,
+      timeout: 0,
+      other: 0,
+    };
+
+    for (const lead of allLeads) {
+      const status = lead.analysisStatus ?? "unset";
+      if (Object.prototype.hasOwnProperty.call(analysisStatusCounts, status)) {
+        analysisStatusCounts[status as keyof typeof analysisStatusCounts] += 1;
+      } else {
+        analysisStatusCounts.other += 1;
+      }
+    }
+
+    console.log(
+      `[Analysis Trigger] Search ${args.searchId} analysis status counts`,
+      analysisStatusCounts
+    );
+
     // Check if ALL enrichment is complete
     // Note: "no_contacts_found" is also a terminal state (API succeeded but no contacts)
     const allEnrichmentComplete = allLeads.every((lead) =>
@@ -1255,26 +1280,31 @@ export const tryTriggerAnalysisPhase = internalMutation({
       return false; // Still waiting for enrichment to complete
     }
 
-    // Check if analysis was already triggered by checking for any scheduled/processing/completed leads
-    const analysisAlreadyTriggered = allLeads.some((lead) =>
-      lead.analysisStatus === "scheduled" ||
-      lead.analysisStatus === "processing" ||
-      lead.analysisStatus === "completed"
+    // Block only when analysis is actively in-flight
+    const analysisInFlight = allLeads.some((lead) =>
+      lead.analysisStatus === "scheduled" || lead.analysisStatus === "processing"
     );
 
-    if (analysisAlreadyTriggered) {
-      return false; // Analysis already triggered by another action
+    if (analysisInFlight) {
+      return false; // Analysis already in progress
     }
 
-    // WE WON THE RACE! Mark all enriched leads as ready for analysis
-    // This atomically claims the right to trigger analysis
+    // WE WON THE RACE! Mark leads that still need analysis as ready
     // Note: Only analyze leads WITH emails (completed/completed_fallback)
     // Leads with "no_contacts_found" are skipped since there's nothing to analyze
-    const leadsToAnalyze = allLeads.filter(
-      (lead) =>
-        lead.enrichmentStatus === "completed" ||
-        lead.enrichmentStatus === "completed_fallback"
-    );
+    const leadsToAnalyze = allLeads.filter((lead) => {
+      const needsAnalysis =
+        lead.analysisStatus === "pending" ||
+        lead.analysisStatus === "failed" ||
+        lead.analysisStatus === "timeout" ||
+        lead.analysisStatus === undefined;
+
+      return (
+        (lead.enrichmentStatus === "completed" ||
+          lead.enrichmentStatus === "completed_fallback") &&
+        needsAnalysis
+      );
+    });
 
     // Set analysisStatus to "pending" for all leads that should be analyzed
     // This prevents other concurrent actions from also triggering analysis
@@ -1285,7 +1315,88 @@ export const tryTriggerAnalysisPhase = internalMutation({
       });
     }
 
+    // Mark "no_contacts_found" and "failed" enrichment leads as "skipped" for analysis
+    // This provides clear UI feedback about why analysis wasn't performed
+    const leadsToSkip = allLeads.filter((lead) => {
+      const wasNotAnalyzed =
+        lead.analysisStatus === undefined ||
+        lead.analysisStatus === "pending";
+
+      return (
+        (lead.enrichmentStatus === "no_contacts_found" ||
+          lead.enrichmentStatus === "failed") &&
+        wasNotAnalyzed
+      );
+    });
+
+    for (const lead of leadsToSkip) {
+      const skipReason = lead.enrichmentStatus === "no_contacts_found"
+        ? "No email contacts found for this business"
+        : "Enrichment failed - unable to find contact information";
+
+      await ctx.db.patch(lead._id, {
+        analysisStatus: "skipped",
+        analysisError: skipReason,
+        updatedAt: Date.now(),
+      });
+    }
+
+    console.log(
+      `[Analysis Trigger] Search ${args.searchId}: ${leadsToAnalyze.length} leads pending analysis, ${leadsToSkip.length} leads skipped (no contacts)`
+    );
+
     return true; // Caller should now trigger analyzeLeads
+  },
+});
+
+/**
+ * Manual recovery: reset stuck analysis statuses for a specific search.
+ * Marks scheduled/processing leads as failed so they can be retried safely.
+ */
+export const resetStuckAnalysisForSearch = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    const leads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    if (leads.length === 0) {
+      console.log(`[Recovery] No leads found for search ${args.searchId}`);
+      return { resetCount: 0, totalLeads: 0 };
+    }
+
+    let resetCount = 0;
+
+    for (const lead of leads) {
+      if (
+        lead.analysisStatus === "scheduled" ||
+        lead.analysisStatus === "processing"
+      ) {
+        const attempts = (lead.analysisAttempts || 0) + 1;
+
+        await ctx.db.patch(lead._id, {
+          analysisStatus: "failed",
+          analysisError: "manual_reset_stuck_analysis",
+          analysisAttempts: attempts,
+          analysisScheduledAt: undefined,
+          analysisStartedAt: undefined,
+          analysisRequestId: undefined,
+          lastAnalysisAttempt: Date.now(),
+          updatedAt: Date.now(),
+        });
+
+        resetCount++;
+      }
+    }
+
+    console.log(
+      `[Recovery] Reset ${resetCount}/${leads.length} stuck analysis leads for search ${args.searchId}`
+    );
+
+    return { resetCount, totalLeads: leads.length };
   },
 });
 
@@ -1413,6 +1524,40 @@ export const queueLeadForEnrichment = internalMutation({
 
     console.log(
       `[EnrichmentQueue] Queued lead ${args.leadId} for API key ${args.apiKeyHash.substring(0, 8)}...`
+    );
+
+    return { queued: true };
+  },
+});
+
+/**
+ * Re-queue a lead that was claimed for processing but couldn't acquire a slot.
+ * This resets the lead back to "pending" and restores queue fields.
+ */
+export const requeueLeadForEnrichment = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+    searchId: v.id("searches"),
+    apiKeyHash: v.string(),
+    searchQueuedAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const lead = await ctx.db.get(args.leadId);
+    if (!lead) {
+      return { queued: false, reason: "lead_not_found" };
+    }
+
+    await ctx.db.patch(args.leadId, {
+      enrichmentStatus: "pending",
+      enrichmentQueuedAt: Date.now(),
+      enrichmentSearchQueuedAt: args.searchQueuedAt,
+      enrichmentApiKeyHash: args.apiKeyHash,
+      enrichmentStartedAt: undefined,
+      updatedAt: Date.now(),
+    });
+
+    console.log(
+      `[EnrichmentQueue] Re-queued lead ${args.leadId} for API key ${args.apiKeyHash.substring(0, 8)}...`
     );
 
     return { queued: true };

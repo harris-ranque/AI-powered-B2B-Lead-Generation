@@ -547,6 +547,7 @@ export default defineSchema({
         v.literal("completed"),
         v.literal("failed"),
         v.literal("timeout"),
+        v.literal("skipped"), // Leads with no contacts found - nothing to analyze
       ),
     ),
     analysisScheduledAt: v.optional(v.number()),

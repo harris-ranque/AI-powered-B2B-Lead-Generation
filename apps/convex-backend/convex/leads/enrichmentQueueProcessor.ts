@@ -318,25 +318,14 @@ export const processEnrichmentQueue = internalAction({
           continue;
         }
 
-        // Process leads up to available slots
-        const leadsToProcess = group.leads.slice(0, Math.min(availableSlots, MAX_LEADS_PER_TICK - totalProcessed));
+        // Process leads up to available slots (slots are claimed inside async enrichment)
+        const leadsToProcess = group.leads.slice(
+          0,
+          Math.min(availableSlots, MAX_LEADS_PER_TICK - totalProcessed)
+        );
         let processed = 0;
 
         for (const lead of leadsToProcess) {
-          // Try to acquire a slot
-          const slotResult = await ctx.runMutation(
-            internal.apiKeySemaphore.semaphore.tryAcquireApiKeySlot,
-            {
-              apiKeyHash: group.apiKeyHash,
-              claimId: lead._id,
-            }
-          );
-
-          if (!slotResult.acquired) {
-            // Slots filled up - stop processing this API key
-            break;
-          }
-
           // Claim the lead (mark as in_progress)
           const claimResult = await ctx.runMutation(
             internal.leads.enrichmentQueueProcessor.claimLeadForEnrichment,
@@ -344,15 +333,6 @@ export const processEnrichmentQueue = internalAction({
           );
 
           if (!claimResult.claimed || !claimResult.searchId || !claimResult.userId) {
-            // Lead was already claimed by another process or missing data - release slot
-            await ctx.runMutation(
-              internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
-              {
-                apiKeyHash: group.apiKeyHash,
-                claimId: lead._id,
-                slotIndex: slotResult.slotIndex,
-              }
-            );
             continue;
           }
 
