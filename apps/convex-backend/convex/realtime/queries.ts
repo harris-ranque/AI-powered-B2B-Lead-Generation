@@ -1,6 +1,6 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireAuth } from "../auth";
+import { requireAuth, getCurrentUser } from "../auth";
 
 // Real-time broadcast queries using Convex's native subscriptions
 // These replace the deprecated SSE implementation
@@ -144,12 +144,13 @@ export const getBroadcastsByType = query({
 });
 
 // Get count of unread broadcasts (using acknowledged field since read doesn't exist)
+// Returns null if not authenticated (allows query during auth hydration)
 export const getUnreadBroadcastCount = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return null;
     }
 
     const unacknowledgedBroadcasts = await ctx.db

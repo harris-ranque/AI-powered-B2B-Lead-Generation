@@ -84,6 +84,86 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Helper function to check for email duplicates using paginated queries.
+ * This avoids the Convex "multiple paginated queries" limitation in mutations.
+ *
+ * @param ctx - Action context with runQuery and runMutation
+ * @param leadId - The lead to check
+ * @param userId - The user who owns the lead
+ * @param searchId - The search the lead belongs to
+ * @returns Object indicating if duplicate was found and handled
+ */
+async function checkEmailDuplicateWithPagination(
+  ctx: {
+    runQuery: (fn: any, args: any) => Promise<any>;
+    runMutation: (fn: any, args: any) => Promise<any>;
+  },
+  leadId: string,
+  userId: string,
+  searchId: string,
+): Promise<{ isDuplicate: boolean; duplicateEmail?: string }> {
+  // Step 1: Get lead info and check if email dedup is enabled
+  const dedupInfo = await ctx.runQuery(
+    internal.leads.internal.getLeadEmailDedupInfo,
+    { leadId, userId, searchId },
+  );
+
+  if (!dedupInfo.shouldCheck || !dedupInfo.primaryEmail) {
+    return { isDuplicate: false };
+  }
+
+  const primaryEmail = dedupInfo.primaryEmail;
+
+  // Step 2: Paginate through all user leads to find duplicates
+  let cursor: string | null = null;
+  let isDone = false;
+  let duplicateLeadId: string | null = null;
+
+  while (!isDone && !duplicateLeadId) {
+    const result: {
+      found: boolean;
+      duplicateId: string | null;
+      continueCursor: string | null;
+      isDone: boolean;
+    } = await ctx.runQuery(
+      internal.leads.internal.checkEmailDuplicatePage,
+      {
+        userId,
+        email: primaryEmail,
+        excludeLeadId: leadId,
+        cursor: cursor ?? undefined,
+        batchSize: 1000,
+      },
+    );
+
+    if (result.found && result.duplicateId) {
+      duplicateLeadId = result.duplicateId;
+    } else if (result.isDone) {
+      isDone = true;
+    } else {
+      cursor = result.continueCursor;
+    }
+  }
+
+  // Step 3: If duplicate found, mark the lead
+  if (duplicateLeadId) {
+    await ctx.runMutation(
+      internal.leads.internal.markLeadAsEmailDuplicate,
+      {
+        leadId,
+        userId,
+        searchId,
+        duplicateEmail: primaryEmail,
+        duplicateLeadId,
+      },
+    );
+    return { isDuplicate: true, duplicateEmail: primaryEmail };
+  }
+
+  return { isDuplicate: false };
+}
+
+/**
  * Result from tryProvider - includes pipeline-blocking error info if applicable
  */
 interface TryProviderResult {
@@ -436,9 +516,12 @@ export const enrichSingleLeadWorkpool = internalAction({
           { leadId: args.leadId, provider: "csv_import" }
         );
 
-        await ctx.runMutation(
-          internal.leads.internal.checkEmailDuplication,
-          { leadId: args.leadId, userId: args.userId, searchId: args.searchId },
+        // Check for email duplicates using paginated queries (handles >5000 leads)
+        await checkEmailDuplicateWithPagination(
+          ctx,
+          args.leadId,
+          args.userId,
+          args.searchId,
         );
 
         // Release slot before returning
@@ -629,9 +712,12 @@ export const enrichSingleLeadWorkpool = internalAction({
           },
         );
 
-        await ctx.runMutation(
-          internal.leads.internal.checkEmailDuplication,
-          { leadId: args.leadId, userId: args.userId, searchId: args.searchId },
+        // Check for email duplicates using paginated queries (handles >5000 leads)
+        await checkEmailDuplicateWithPagination(
+          ctx,
+          args.leadId,
+          args.userId,
+          args.searchId,
         );
 
         const perfData = endPerformanceTracking(performanceTracker);
@@ -1211,14 +1297,12 @@ export const enrichSingleLead = internalAction({
           { leadId: args.leadId, provider: "csv_import" }
         );
 
-        // Check for email duplicates even for CSV imports
-        await ctx.runMutation(
-          internal.leads.internal.checkEmailDuplication,
-          {
-            leadId: args.leadId,
-            userId: args.userId,
-            searchId: args.searchId,
-          },
+        // Check for email duplicates using paginated queries (handles >5000 leads)
+        await checkEmailDuplicateWithPagination(
+          ctx,
+          args.leadId,
+          args.userId,
+          args.searchId,
         );
 
         const perfData = endPerformanceTracking(performanceTracker);
@@ -1457,14 +1541,12 @@ export const enrichSingleLead = internalAction({
           },
         );
 
-        // Check for email duplicates
-        await ctx.runMutation(
-          internal.leads.internal.checkEmailDuplication,
-          {
-            leadId: args.leadId,
-            userId: args.userId,
-            searchId: args.searchId,
-          },
+        // Check for email duplicates using paginated queries (handles >5000 leads)
+        await checkEmailDuplicateWithPagination(
+          ctx,
+          args.leadId,
+          args.userId,
+          args.searchId,
         );
 
         const perfData = endPerformanceTracking(performanceTracker);

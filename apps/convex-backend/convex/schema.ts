@@ -586,6 +586,10 @@ export default defineSchema({
     leadTier: v.optional(v.union(v.literal("A"), v.literal("B"))),
     leadTierReason: v.optional(v.string()),
 
+    // Denormalized fields for efficient deduplication lookups (O(1) vs O(n))
+    primaryEmail: v.optional(v.string()), // Extracted from contactInfo.emails[0], lowercase
+    normalizedAddress: v.optional(v.string()), // normalizeAddress(address) for consistent matching
+
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -601,7 +605,9 @@ export default defineSchema({
     .index("by_enrichment_status_time", ["enrichmentStatus", "enrichmentStartedAt"]) // For stuck detection
     .index("by_analysis_status", ["analysisStatus"])
     .index("by_analysis_scheduled", ["analysisScheduledAt"])
-    .index("by_search_analysis_status", ["searchId", "analysisStatus"]),
+    .index("by_search_analysis_status", ["searchId", "analysisStatus"])
+    .index("by_user_primary_email", ["userId", "primaryEmail"]) // O(1) email deduplication
+    .index("by_user_normalized_address", ["userId", "normalizedAddress"]), // O(1) address deduplication
 
   // Email Sequences - AI-generated personalized emails
   emailSequences: defineTable({

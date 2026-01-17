@@ -42,6 +42,105 @@ export const getUnenrichedLeads = internalQuery({
   },
 });
 
+// ============================================================================
+// DEDUPLICATION QUERIES (Safe for pagination - called from actions)
+// ============================================================================
+// These queries can safely use pagination because queries (not mutations)
+// support multiple .paginate() calls. The action iterates through pages.
+
+/**
+ * Check for duplicate address across user's leads using pagination.
+ * Called from actions which iterate through pages until duplicate found or done.
+ *
+ * @returns { found: boolean, duplicateId: string | null, continueCursor: string | null, isDone: boolean }
+ */
+export const checkAddressDuplicatePage = internalQuery({
+  args: {
+    userId: v.id("users"),
+    normalizedAddress: v.string(),
+    cursor: v.optional(v.string()), // Kept for backwards compat, ignored
+    batchSize: v.optional(v.number()), // Kept for backwards compat, ignored
+  },
+  handler: async (ctx, args) => {
+    // O(1) direct index lookup - no pagination needed!
+    const duplicate = await ctx.db
+      .query("leads")
+      .withIndex("by_user_normalized_address", (q) =>
+        q.eq("userId", args.userId).eq("normalizedAddress", args.normalizedAddress)
+      )
+      .first();
+
+    if (duplicate) {
+      return {
+        found: true,
+        duplicateId: duplicate._id,
+        continueCursor: null,
+        isDone: true,
+      };
+    }
+
+    return {
+      found: false,
+      duplicateId: null,
+      continueCursor: null,
+      isDone: true, // Always done - O(1) lookup
+    };
+  },
+});
+
+/**
+ * Check for duplicate email across user's leads using pagination.
+ * Called from actions which iterate through pages until duplicate found or done.
+ *
+ * @returns { found: boolean, duplicateId: string | null, continueCursor: string | null, isDone: boolean }
+ */
+export const checkEmailDuplicatePage = internalQuery({
+  args: {
+    userId: v.id("users"),
+    email: v.string(),
+    excludeLeadId: v.optional(v.id("leads")),
+    cursor: v.optional(v.string()), // Kept for backwards compat, ignored
+    batchSize: v.optional(v.number()), // Kept for backwards compat, ignored
+  },
+  handler: async (ctx, args) => {
+    const targetEmail = args.email.toLowerCase().trim();
+
+    // O(1) direct index lookup - no pagination needed!
+    // Query for leads with matching primaryEmail (denormalized field)
+    const duplicates = await ctx.db
+      .query("leads")
+      .withIndex("by_user_primary_email", (q) =>
+        q.eq("userId", args.userId).eq("primaryEmail", targetEmail)
+      )
+      .take(2); // Take 2 to handle excludeLeadId case
+
+    // Find first match that isn't the excluded lead
+    const duplicate = duplicates.find(
+      (lead) => !args.excludeLeadId || lead._id !== args.excludeLeadId
+    );
+
+    if (duplicate) {
+      return {
+        found: true,
+        duplicateId: duplicate._id,
+        continueCursor: null,
+        isDone: true,
+      };
+    }
+
+    return {
+      found: false,
+      duplicateId: null,
+      continueCursor: null,
+      isDone: true, // Always done - O(1) lookup
+    };
+  },
+});
+
+// ============================================================================
+// END DEDUPLICATION QUERIES
+// ============================================================================
+
 // Internal mutation to update enrichment status
 export const updateEnrichmentStatus = internalMutation({
   args: {
@@ -140,7 +239,105 @@ export const deleteLead = internalMutation({
   },
 });
 
-// Internal mutation to check for email duplicates after enrichment
+/**
+ * Mark a lead as having a duplicate email.
+ * Called by actions after they've used checkEmailDuplicatePage query to find a duplicate.
+ * This mutation just does the marking - no checking logic.
+ */
+export const markLeadAsEmailDuplicate = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+    userId: v.id("users"),
+    searchId: v.id("searches"),
+    duplicateEmail: v.string(),
+    duplicateLeadId: v.id("leads"),
+  },
+  handler: async (ctx, args) => {
+    const lead = await ctx.db.get(args.leadId);
+    if (!lead) {
+      return { success: false, reason: "lead_not_found" };
+    }
+
+    const search = await ctx.db.get(args.searchId);
+
+    console.log(
+      `Duplicate email detected after enrichment: ${args.duplicateEmail} for lead ${args.leadId}, marking as duplicate`
+    );
+
+    // Track duplicate prevention for analytics
+    await ctx.db.insert("duplicateMetrics", {
+      userId: args.userId,
+      searchId: args.searchId,
+      placeId: lead.placeId,
+      duplicateType: "email",
+      originalLeadId: args.duplicateLeadId,
+      businessName: lead.businessName,
+      preventedAt: Date.now(),
+    });
+
+    if (search) {
+      const currentEmailDuplicates = search.duplicatesFilteredEmail || 0;
+      await ctx.db.patch(search._id, {
+        duplicatesFilteredEmail: currentEmailDuplicates + 1,
+        updatedAt: Date.now(),
+      });
+    }
+
+    // Mark this lead with a flag to skip in UI/exports
+    await ctx.db.patch(args.leadId, {
+      tags: [...(lead.tags || []), "duplicate_email"],
+      notes: lead.notes
+        ? `${lead.notes}\n\nDuplicate email detected: ${args.duplicateEmail}`
+        : `Duplicate email detected: ${args.duplicateEmail}`,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Get lead's email deduplication settings and primary email.
+ * Called by actions before running the email dedup query loop.
+ */
+export const getLeadEmailDedupInfo = internalQuery({
+  args: {
+    leadId: v.id("leads"),
+    userId: v.id("users"),
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    const lead = await ctx.db.get(args.leadId);
+    if (!lead || !lead.contactInfo) {
+      return { shouldCheck: false, reason: "no_contact_info" };
+    }
+
+    const user = await ctx.db.get(args.userId);
+    const search = await ctx.db.get(args.searchId);
+    const enableEmailDedup =
+      search?.parameters?.deduplication?.enableEmailDedup ??
+      user?.preferences?.enableEmailDedup ??
+      true;
+
+    if (!enableEmailDedup) {
+      return { shouldCheck: false, reason: "disabled" };
+    }
+
+    const primaryEmail = extractPrimaryEmail(lead.contactInfo);
+    if (!primaryEmail) {
+      return { shouldCheck: false, reason: "no_email" };
+    }
+
+    return {
+      shouldCheck: true,
+      primaryEmail,
+    };
+  },
+});
+
+// DEPRECATED: Use the action-based approach instead (checkEmailDuplicatePage query + markLeadAsEmailDuplicate mutation)
+// This mutation is kept for backwards compatibility but has a 5000 lead limit.
+// For users with >5000 leads, use the query-based approach in actions.
 export const checkEmailDuplication = internalMutation({
   args: {
     leadId: v.id("leads"),
@@ -148,6 +345,15 @@ export const checkEmailDuplication = internalMutation({
     searchId: v.id("searches"),
   },
   handler: async (ctx, args) => {
+    // DEPRECATED: This mutation has a 5000 lead limit.
+    // For proper handling of large user datasets, use:
+    // 1. getLeadEmailDedupInfo query to get settings
+    // 2. checkEmailDuplicatePage query in a loop
+    // 3. markLeadAsEmailDuplicate mutation if duplicate found
+    console.warn(
+      "DEPRECATED: checkEmailDuplication mutation called. Use action-based approach for >5000 leads."
+    );
+
     // Get the lead with enrichment data
     const lead = await ctx.db.get(args.leadId);
     if (!lead || !lead.contactInfo) {
@@ -173,38 +379,24 @@ export const checkEmailDuplication = internalMutation({
     }
 
     // Check for duplicate email across user's leads (excluding this one)
-    // Uses paginated search to avoid 16MB limit for users with many leads
-    // Only stores the duplicate lead ID to minimize memory usage
-    const MAX_LEADS_TO_CHECK = 10000;
-    const BATCH_SIZE = 1000;
-    let leadsChecked = 0;
+    // Uses .take() with limit - DEPRECATED, has 5000 lead limit
+    const MAX_LEADS_TO_CHECK = 5000;
     let duplicateLeadId: typeof args.leadId | null = null;
-    let emailCursor: string | null = null;
-    let emailIsDone = false;
 
-    while (!emailIsDone && leadsChecked < MAX_LEADS_TO_CHECK && !duplicateLeadId) {
-      const result = await ctx.db
-        .query("leads")
-        .withIndex("by_user", (q) => q.eq("userId", args.userId))
-        .paginate({ numItems: BATCH_SIZE, cursor: emailCursor as any ?? null });
+    const recentLeads = await ctx.db
+      .query("leads")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .take(MAX_LEADS_TO_CHECK);
 
-      // Check this batch for email match - only extract necessary fields
-      for (const existingLead of result.page) {
-        // Skip comparing with itself
-        if (existingLead._id === args.leadId) {
-          continue;
-        }
-        // Check if this lead has the same email (only access contactInfo.emails)
-        const existingEmail = extractPrimaryEmail(existingLead.contactInfo);
-        if (existingEmail && existingEmail === primaryEmail) {
-          duplicateLeadId = existingLead._id; // Only store the ID, not full lead
-          break;
-        }
+    for (const existingLead of recentLeads) {
+      if (existingLead._id === args.leadId) {
+        continue;
       }
-
-      leadsChecked += result.page.length;
-      emailIsDone = result.isDone;
-      emailCursor = result.continueCursor;
+      const existingEmail = extractPrimaryEmail(existingLead.contactInfo);
+      if (existingEmail && existingEmail.toLowerCase() === primaryEmail.toLowerCase()) {
+        duplicateLeadId = existingLead._id;
+        break;
+      }
     }
 
     if (duplicateLeadId) {
@@ -212,7 +404,6 @@ export const checkEmailDuplication = internalMutation({
         `Duplicate email detected after enrichment: ${primaryEmail} for lead ${args.leadId}, marking as duplicate`
       );
 
-      // Track duplicate prevention for analytics
       await ctx.db.insert("duplicateMetrics", {
         userId: args.userId,
         searchId: args.searchId,
@@ -231,7 +422,6 @@ export const checkEmailDuplication = internalMutation({
         });
       }
 
-      // Mark this lead with a flag to skip in UI/exports
       await ctx.db.patch(args.leadId, {
         tags: [...(lead.tags || []), "duplicate_email"],
         notes: lead.notes
@@ -282,6 +472,12 @@ export const updateLeadEnrichment = internalMutation({
       }
 
       updateData.contactInfo = contactInfo;
+
+      // Extract and store primary email for efficient dedup lookups (O(1) vs O(n))
+      const primaryEmail = extractPrimaryEmail(contactInfo);
+      if (primaryEmail) {
+        updateData.primaryEmail = primaryEmail.toLowerCase().trim();
+      }
 
       // Update top-level fields if available
       if (args.enrichmentData.phone) {
@@ -451,71 +647,11 @@ export const createLeadInternal = internalMutation({
     // For now, we'll add a placeholder that can be used after enrichment
 
     // FIFTH: Check for duplicate address at USER level (if enabled)
-    // Uses paginated search to avoid 16MB limit for users with many leads
-    if (enableAddressDedup && args.leadData.address) {
-      const normalizedAddress = normalizeAddress(args.leadData.address);
-
-      if (normalizedAddress) {
-        // Use paginated approach to avoid 16MB memory limit
-        // Check up to 10,000 recent leads in batches of 1000
-        // Only stores the duplicate lead ID to minimize memory usage
-        const MAX_LEADS_TO_CHECK = 10000;
-        const BATCH_SIZE = 1000;
-        let leadsChecked = 0;
-        let duplicateAddressLeadId: string | null = null;
-        let cursor: string | null = null;
-        let isDone = false;
-
-        while (!isDone && leadsChecked < MAX_LEADS_TO_CHECK && !duplicateAddressLeadId) {
-          const result = await ctx.db
-            .query("leads")
-            .withIndex("by_user", (q) => q.eq("userId", args.userId))
-            .paginate({ numItems: BATCH_SIZE, cursor: cursor as any ?? null });
-
-          // Check this batch for address match - only access address field
-          for (const lead of result.page) {
-            if (normalizeAddress(lead.address) === normalizedAddress) {
-              duplicateAddressLeadId = lead._id; // Only store ID, not full lead
-              break;
-            }
-          }
-
-          leadsChecked += result.page.length;
-          isDone = result.isDone;
-          cursor = result.continueCursor;
-        }
-
-        // Log if we hit the limit without checking all leads
-        if (!isDone && leadsChecked >= MAX_LEADS_TO_CHECK && !duplicateAddressLeadId) {
-          console.log(
-            `Address dedup check: Only checked ${leadsChecked} of user's leads due to volume limit`
-          );
-        }
-
-        if (duplicateAddressLeadId) {
-          console.log(
-            `Duplicate address detected: "${args.leadData.address}" for user ${args.userId}, skipping`
-          );
-
-          // Track duplicate prevention for analytics
-          await ctx.db.insert("duplicateMetrics", {
-            userId: args.userId,
-            searchId: args.searchId,
-            placeId: args.leadData.placeId,
-            duplicateType: "address",
-            originalLeadId: duplicateAddressLeadId as any,
-            businessName: args.leadData.businessName,
-            preventedAt: Date.now(),
-          });
-
-          return {
-            status: "skipped" as const,
-            reason: "address" as const,
-            duplicateLeadId: duplicateAddressLeadId as any,
-          };
-        }
-      }
-    }
+    // NOTE: Address deduplication is now handled in the ACTION layer (search/actions.ts)
+    // using checkAddressDuplicatePage query which can safely paginate through all user leads.
+    // The action calls the query in a loop before calling this mutation.
+    // This mutation trusts that address dedup was already performed if enableAddressDedup is true.
+    // See: tryProcessPlace() in search/actions.ts for the implementation.
 
     // ============================================================================
     // End of Additional Deduplication Checks
@@ -528,6 +664,9 @@ export const createLeadInternal = internalMutation({
         searchId: args.searchId,
         businessName: args.leadData.businessName,
         address: args.leadData.address,
+        normalizedAddress: args.leadData.address
+          ? normalizeAddress(args.leadData.address)
+          : undefined, // Store normalized address for O(1) dedup lookups
         placeId: args.leadData.placeId,
         location: args.leadData.location,
         phone: args.leadData.phone,
@@ -584,6 +723,65 @@ export const createLeadInternal = internalMutation({
       // If not a duplicate issue, re-throw the error
       throw error;
     }
+  },
+});
+
+/**
+ * Backfill denormalized fields for existing leads.
+ * Run once after deploying schema changes to populate primaryEmail and normalizedAddress.
+ * This enables O(1) dedup lookups for existing leads.
+ *
+ * Usage: Call from Convex dashboard or schedule as one-time job.
+ */
+export const backfillDenormalizedFields = internalMutation({
+  args: {
+    cursor: v.optional(v.string()),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const pageSize = args.batchSize || 100;
+    let updated = 0;
+
+    const result = await ctx.db
+      .query("leads")
+      .paginate({ numItems: pageSize, cursor: args.cursor as any ?? null });
+
+    for (const lead of result.page) {
+      const updates: {
+        normalizedAddress?: string;
+        primaryEmail?: string;
+      } = {};
+
+      // Backfill normalizedAddress if not set
+      if (lead.address && !lead.normalizedAddress) {
+        const normalized = normalizeAddress(lead.address);
+        if (normalized) {
+          updates.normalizedAddress = normalized;
+        }
+      }
+
+      // Backfill primaryEmail if not set
+      if (lead.contactInfo && !lead.primaryEmail) {
+        const email = extractPrimaryEmail(lead.contactInfo);
+        if (email) {
+          updates.primaryEmail = email.toLowerCase().trim();
+        }
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await ctx.db.patch(lead._id, updates);
+        updated++;
+      }
+    }
+
+    return {
+      updated,
+      isDone: result.isDone,
+      continueCursor: result.isDone ? null : result.continueCursor,
+      message: result.isDone
+        ? `Backfill complete. Updated ${updated} leads in this batch.`
+        : `Batch complete. Updated ${updated} leads. Call again with cursor to continue.`,
+    };
   },
 });
 

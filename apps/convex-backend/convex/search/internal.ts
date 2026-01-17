@@ -376,3 +376,49 @@ export const logApiError = internalMutation({
     return { logId, success: true };
   },
 });
+
+// Track duplicate prevention for analytics
+// Used by actions that perform deduplication checks before calling mutations
+export const trackDuplicateMetric = internalMutation({
+  args: {
+    userId: v.id("users"),
+    searchId: v.id("searches"),
+    placeId: v.string(),
+    duplicateType: v.union(
+      v.literal("search_level"),
+      v.literal("user_level"),
+      v.literal("place_name"),
+      v.literal("address"),
+      v.literal("email"),
+    ),
+    originalLeadId: v.string(),
+    businessName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("duplicateMetrics", {
+      userId: args.userId,
+      searchId: args.searchId,
+      placeId: args.placeId,
+      duplicateType: args.duplicateType,
+      originalLeadId: args.originalLeadId as any,
+      businessName: args.businessName,
+      preventedAt: Date.now(),
+    });
+
+    // Also update the search's duplicate counter
+    const search = await ctx.db.get(args.searchId);
+    if (search) {
+      if (args.duplicateType === "address") {
+        const current = search.duplicatesFilteredAddress || 0;
+        await ctx.db.patch(args.searchId, {
+          duplicatesFilteredAddress: current + 1,
+        });
+      } else if (args.duplicateType === "email") {
+        const current = search.duplicatesFilteredEmail || 0;
+        await ctx.db.patch(args.searchId, {
+          duplicatesFilteredEmail: current + 1,
+        });
+      }
+    }
+  },
+});
