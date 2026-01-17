@@ -1,4 +1,5 @@
-import { mutation } from "../_generated/server";
+import { mutation, internalMutation } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { requireAdmin } from "../auth";
 
@@ -877,5 +878,315 @@ export const resumeSearchEnrichment = mutation({
     });
 
     return { success: true };
+  },
+});
+
+// Recovery function for stuck enrichment pipeline
+// Clears leaked semaphore slots and requeues stuck in_progress leads
+export const recoverStuckEnrichment = mutation({
+  args: {
+    searchId: v.id("searches"),
+    apiKeyHash: v.optional(v.string()), // Optional: specific API key hash to reset
+  },
+  handler: async (ctx, args) => {
+    const adminUser = await requireAdmin(ctx);
+
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      throw new Error("Search not found");
+    }
+
+    const results: {
+      slotsReleased: number;
+      leadsRequeued: number;
+      analysisTriggered: boolean;
+    } = {
+      slotsReleased: 0,
+      leadsRequeued: 0,
+      analysisTriggered: false,
+    };
+
+    // 1. Get all leads for this search
+    const leads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    // 2. Find and reset stuck in_progress leads back to pending
+    const stuckLeads = leads.filter((lead) => lead.enrichmentStatus === "in_progress");
+
+    for (const lead of stuckLeads) {
+      await ctx.db.patch(lead._id, {
+        enrichmentStatus: "pending",
+        enrichmentQueuedAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      results.leadsRequeued++;
+    }
+
+    // 3. Clear semaphore slots if apiKeyHash provided
+    if (args.apiKeyHash) {
+      const slots = await ctx.db
+        .query("enrichmentApiKeySlots")
+        .withIndex("by_key_hash", (q) => q.eq("apiKeyHash", args.apiKeyHash))
+        .collect();
+
+      for (const slot of slots) {
+        if (slot.claimedBy) {
+          await ctx.db.patch(slot._id, {
+            claimedBy: undefined,
+            claimedAt: undefined,
+          });
+          results.slotsReleased++;
+        }
+      }
+    }
+
+    // 4. Check if all enrichment is actually complete and trigger analysis if needed
+    const refreshedLeads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    const allEnrichmentComplete = refreshedLeads.every((lead) =>
+      lead.enrichmentStatus === "completed" ||
+      lead.enrichmentStatus === "completed_fallback" ||
+      lead.enrichmentStatus === "no_contacts_found" ||
+      lead.enrichmentStatus === "failed"
+    );
+
+    const analysisAlreadyTriggered = refreshedLeads.some((lead) =>
+      lead.analysisStatus === "scheduled" ||
+      lead.analysisStatus === "processing" ||
+      lead.analysisStatus === "completed"
+    );
+
+    if (allEnrichmentComplete && !analysisAlreadyTriggered) {
+      // Mark leads as pending for analysis
+      const leadsToAnalyze = refreshedLeads.filter(
+        (lead) =>
+          lead.enrichmentStatus === "completed" ||
+          lead.enrichmentStatus === "completed_fallback"
+      );
+
+      for (const lead of leadsToAnalyze) {
+        await ctx.db.patch(lead._id, {
+          analysisStatus: "pending",
+          updatedAt: Date.now(),
+        });
+      }
+
+      results.analysisTriggered = true;
+    }
+
+    // Log the recovery action
+    await ctx.db.insert("systemLogs", {
+      type: "admin_recovery",
+      action: "recover_stuck_enrichment",
+      userId: adminUser._id,
+      timestamp: Date.now(),
+      data: {
+        searchId: args.searchId,
+        searchName: search.name,
+        apiKeyHash: args.apiKeyHash,
+        results,
+      },
+    });
+
+    return { success: true, ...results };
+  },
+});
+
+// Internal version - can be run directly from Convex dashboard without auth
+export const recoverStuckEnrichmentInternal = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    apiKeyHash: v.optional(v.string()),
+    triggerAnalysis: v.optional(v.boolean()), // If true, schedule analyzeLeads action
+  },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      throw new Error("Search not found");
+    }
+
+    const results: {
+      slotsReleased: number;
+      leadsRequeued: number;
+      analysisTriggered: boolean;
+      leadsMarkedPending: number;
+    } = {
+      slotsReleased: 0,
+      leadsRequeued: 0,
+      analysisTriggered: false,
+      leadsMarkedPending: 0,
+    };
+
+    // 1. Get all leads for this search
+    const leads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    console.log(`[Recovery] Found ${leads.length} leads for search ${args.searchId}`);
+
+    // 2. Find and reset stuck in_progress leads back to pending
+    const stuckLeads = leads.filter((lead) => lead.enrichmentStatus === "in_progress");
+    console.log(`[Recovery] Found ${stuckLeads.length} stuck in_progress leads`);
+
+    for (const lead of stuckLeads) {
+      await ctx.db.patch(lead._id, {
+        enrichmentStatus: "pending",
+        enrichmentQueuedAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      results.leadsRequeued++;
+    }
+
+    // 3. Clear ALL semaphore slots if apiKeyHash provided
+    if (args.apiKeyHash) {
+      const slots = await ctx.db
+        .query("enrichmentApiKeySlots")
+        .withIndex("by_key_hash", (q) => q.eq("apiKeyHash", args.apiKeyHash))
+        .collect();
+
+      console.log(`[Recovery] Found ${slots.length} slots for API key ${args.apiKeyHash.substring(0, 8)}...`);
+
+      for (const slot of slots) {
+        if (slot.claimedBy) {
+          await ctx.db.patch(slot._id, {
+            claimedBy: undefined,
+            claimedAt: undefined,
+          });
+          results.slotsReleased++;
+        }
+      }
+    }
+
+    // 4. Check enrichment status after requeue
+    const refreshedLeads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    const enrichmentStats = {
+      pending: refreshedLeads.filter((l) => l.enrichmentStatus === "pending").length,
+      in_progress: refreshedLeads.filter((l) => l.enrichmentStatus === "in_progress").length,
+      completed: refreshedLeads.filter((l) => l.enrichmentStatus === "completed" || l.enrichmentStatus === "completed_fallback").length,
+      failed: refreshedLeads.filter((l) => l.enrichmentStatus === "failed").length,
+      no_contacts: refreshedLeads.filter((l) => l.enrichmentStatus === "no_contacts_found").length,
+    };
+
+    console.log(`[Recovery] Enrichment stats:`, enrichmentStats);
+
+    const allEnrichmentComplete = refreshedLeads.every((lead) =>
+      lead.enrichmentStatus === "completed" ||
+      lead.enrichmentStatus === "completed_fallback" ||
+      lead.enrichmentStatus === "no_contacts_found" ||
+      lead.enrichmentStatus === "failed"
+    );
+
+    const analysisAlreadyTriggered = refreshedLeads.some((lead) =>
+      lead.analysisStatus === "scheduled" ||
+      lead.analysisStatus === "processing" ||
+      lead.analysisStatus === "completed"
+    );
+
+    console.log(`[Recovery] All enrichment complete: ${allEnrichmentComplete}, Analysis already triggered: ${analysisAlreadyTriggered}`);
+
+    if (allEnrichmentComplete && !analysisAlreadyTriggered) {
+      // Mark leads as pending for analysis
+      const leadsToAnalyze = refreshedLeads.filter(
+        (lead) =>
+          lead.enrichmentStatus === "completed" ||
+          lead.enrichmentStatus === "completed_fallback"
+      );
+
+      console.log(`[Recovery] Marking ${leadsToAnalyze.length} leads for analysis`);
+
+      for (const lead of leadsToAnalyze) {
+        await ctx.db.patch(lead._id, {
+          analysisStatus: "pending",
+          updatedAt: Date.now(),
+        });
+        results.leadsMarkedPending++;
+      }
+
+      results.analysisTriggered = true;
+
+      // Schedule the analysis action if requested
+      if (args.triggerAnalysis) {
+        console.log(`[Recovery] Scheduling analyzeLeads action for search ${args.searchId}`);
+        await ctx.scheduler.runAfter(
+          0,
+          internal.leads.actions.analyzeLeads,
+          { searchId: args.searchId }
+        );
+      }
+    }
+
+    console.log(`[Recovery] Results:`, results);
+
+    return { success: true, ...results, enrichmentStats };
+  },
+});
+
+/**
+ * Fix search where all leads have no_contacts_found - mark them as "skipped" for analysis
+ * This provides clear UI feedback about why no emails were generated
+ */
+export const markNoContactsLeadsAsSkipped = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      throw new Error("Search not found");
+    }
+
+    const leads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    let skippedCount = 0;
+
+    for (const lead of leads) {
+      // Mark no_contacts_found leads as "skipped" for analysis
+      if (
+        lead.enrichmentStatus === "no_contacts_found" &&
+        (!lead.analysisStatus || lead.analysisStatus === "pending")
+      ) {
+        await ctx.db.patch(lead._id, {
+          analysisStatus: "skipped",
+          analysisError: "No email contacts found for this business",
+          updatedAt: Date.now(),
+        });
+        skippedCount++;
+      }
+
+      // Also mark failed enrichment leads as "skipped"
+      if (
+        lead.enrichmentStatus === "failed" &&
+        (!lead.analysisStatus || lead.analysisStatus === "pending")
+      ) {
+        await ctx.db.patch(lead._id, {
+          analysisStatus: "skipped",
+          analysisError: "Enrichment failed - unable to find contact information",
+          updatedAt: Date.now(),
+        });
+        skippedCount++;
+      }
+    }
+
+    console.log(`[Recovery] Marked ${skippedCount}/${leads.length} leads as skipped for analysis in search ${args.searchId}`);
+
+    return {
+      success: true,
+      totalLeads: leads.length,
+      skippedCount,
+      searchId: args.searchId,
+    };
   },
 });

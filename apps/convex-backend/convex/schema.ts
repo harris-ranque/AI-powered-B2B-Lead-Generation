@@ -547,6 +547,7 @@ export default defineSchema({
         v.literal("completed"),
         v.literal("failed"),
         v.literal("timeout"),
+        v.literal("skipped"), // Leads with no contacts found - nothing to analyze
       ),
     ),
     analysisScheduledAt: v.optional(v.number()),
@@ -586,6 +587,15 @@ export default defineSchema({
     leadTier: v.optional(v.union(v.literal("A"), v.literal("B"))),
     leadTierReason: v.optional(v.string()),
 
+    // Denormalized fields for efficient deduplication lookups (O(1) vs O(n))
+    primaryEmail: v.optional(v.string()), // Extracted from contactInfo.emails[0], lowercase
+    normalizedAddress: v.optional(v.string()), // normalizeAddress(address) for consistent matching
+
+    // Enrichment queue management (OCC-safe: each lead tracks its own queue position)
+    enrichmentQueuedAt: v.optional(v.number()),        // When this lead was queued for enrichment
+    enrichmentSearchQueuedAt: v.optional(v.number()), // Denormalized: search.createdAt for FIFO ordering
+    enrichmentApiKeyHash: v.optional(v.string()),     // For tenant isolation (API key partitioning)
+
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -601,7 +611,11 @@ export default defineSchema({
     .index("by_enrichment_status_time", ["enrichmentStatus", "enrichmentStartedAt"]) // For stuck detection
     .index("by_analysis_status", ["analysisStatus"])
     .index("by_analysis_scheduled", ["analysisScheduledAt"])
-    .index("by_search_analysis_status", ["searchId", "analysisStatus"]),
+    .index("by_search_analysis_status", ["searchId", "analysisStatus"])
+    .index("by_user_primary_email", ["userId", "primaryEmail"]) // O(1) email deduplication
+    .index("by_user_normalized_address", ["userId", "normalizedAddress"]) // O(1) address deduplication
+    // OCC-safe enrichment queue index: tenant → status → oldest search first → oldest lead first
+    .index("by_enrichment_queue", ["enrichmentApiKeyHash", "enrichmentStatus", "enrichmentSearchQueuedAt", "enrichmentQueuedAt"]),
 
   // Email Sequences - AI-generated personalized emails
   emailSequences: defineTable({
@@ -1880,6 +1894,17 @@ export default defineSchema({
     .index("by_lead", ["leadId"])
     .index("by_search", ["searchId", "status"])
     .index("by_status_queued", ["status", "queuedAt"]),
+
+  // Cron Locks - Mutex for cron job execution to prevent overlapping runs
+  // Used by single-consumer crons like the enrichment queue processor
+  // Prevents OCC failures from multiple concurrent cron executions
+  cronLocks: defineTable({
+    key: v.string(),            // Unique identifier for the cron job (e.g., "enrichment_queue_processor")
+    acquiredAt: v.number(),     // When the lock was acquired
+    expiresAt: v.number(),      // Auto-expiration for stuck locks (e.g., 30 seconds)
+  })
+    .index("by_key", ["key"])
+    .index("by_expires", ["expiresAt"]),
 
   // Enrichment Batches - Tracks Workpool enrichment batches for progress and completion
   // Used by the Workpool onComplete handler to track when all leads are enriched

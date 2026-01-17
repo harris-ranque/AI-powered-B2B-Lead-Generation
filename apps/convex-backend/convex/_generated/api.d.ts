@@ -50,6 +50,7 @@ import type * as leads_enrichment_provider from "../leads/enrichment/provider.js
 import type * as leads_enrichment_rateLimitMutations from "../leads/enrichment/rateLimitMutations.js";
 import type * as leads_enrichment_types from "../leads/enrichment/types.js";
 import type * as leads_enrichmentMonitoring from "../leads/enrichmentMonitoring.js";
+import type * as leads_enrichmentQueueProcessor from "../leads/enrichmentQueueProcessor.js";
 import type * as leads_internal from "../leads/internal.js";
 import type * as leads_monitoring from "../leads/monitoring.js";
 import type * as leads_mutations from "../leads/mutations.js";
@@ -171,6 +172,7 @@ declare const fullApi: ApiFromModules<{
   "leads/enrichment/rateLimitMutations": typeof leads_enrichment_rateLimitMutations;
   "leads/enrichment/types": typeof leads_enrichment_types;
   "leads/enrichmentMonitoring": typeof leads_enrichmentMonitoring;
+  "leads/enrichmentQueueProcessor": typeof leads_enrichmentQueueProcessor;
   "leads/internal": typeof leads_internal;
   "leads/monitoring": typeof leads_monitoring;
   "leads/mutations": typeof leads_mutations;

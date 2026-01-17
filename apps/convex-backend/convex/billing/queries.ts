@@ -40,15 +40,16 @@ export const getUserBilling = query({
 });
 
 // Get credit transactions with pagination
+// Returns null if not authenticated (allows query during auth hydration)
 export const getCreditTransactions = query({
   args: {
     limit: v.optional(v.number()),
     offset: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return null;
     }
 
     const limit = args.limit || 20;
@@ -65,6 +66,7 @@ export const getCreditTransactions = query({
 });
 
 // Get usage statistics
+// Returns null if not authenticated (allows query during auth hydration)
 export const getUsageStats = query({
   args: {
     period: v.optional(
@@ -72,9 +74,9 @@ export const getUsageStats = query({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return null;
     }
 
     const period = args.period || "30d";

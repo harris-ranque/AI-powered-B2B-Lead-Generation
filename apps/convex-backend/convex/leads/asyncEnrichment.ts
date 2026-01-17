@@ -84,6 +84,86 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Helper function to check for email duplicates using paginated queries.
+ * This avoids the Convex "multiple paginated queries" limitation in mutations.
+ *
+ * @param ctx - Action context with runQuery and runMutation
+ * @param leadId - The lead to check
+ * @param userId - The user who owns the lead
+ * @param searchId - The search the lead belongs to
+ * @returns Object indicating if duplicate was found and handled
+ */
+async function checkEmailDuplicateWithPagination(
+  ctx: {
+    runQuery: (fn: any, args: any) => Promise<any>;
+    runMutation: (fn: any, args: any) => Promise<any>;
+  },
+  leadId: string,
+  userId: string,
+  searchId: string,
+): Promise<{ isDuplicate: boolean; duplicateEmail?: string }> {
+  // Step 1: Get lead info and check if email dedup is enabled
+  const dedupInfo = await ctx.runQuery(
+    internal.leads.internal.getLeadEmailDedupInfo,
+    { leadId, userId, searchId },
+  );
+
+  if (!dedupInfo.shouldCheck || !dedupInfo.primaryEmail) {
+    return { isDuplicate: false };
+  }
+
+  const primaryEmail = dedupInfo.primaryEmail;
+
+  // Step 2: Paginate through all user leads to find duplicates
+  let cursor: string | null = null;
+  let isDone = false;
+  let duplicateLeadId: string | null = null;
+
+  while (!isDone && !duplicateLeadId) {
+    const result: {
+      found: boolean;
+      duplicateId: string | null;
+      continueCursor: string | null;
+      isDone: boolean;
+    } = await ctx.runQuery(
+      internal.leads.internal.checkEmailDuplicatePage,
+      {
+        userId,
+        email: primaryEmail,
+        excludeLeadId: leadId,
+        cursor: cursor ?? undefined,
+        batchSize: 1000,
+      },
+    );
+
+    if (result.found && result.duplicateId) {
+      duplicateLeadId = result.duplicateId;
+    } else if (result.isDone) {
+      isDone = true;
+    } else {
+      cursor = result.continueCursor;
+    }
+  }
+
+  // Step 3: If duplicate found, mark the lead
+  if (duplicateLeadId) {
+    await ctx.runMutation(
+      internal.leads.internal.markLeadAsEmailDuplicate,
+      {
+        leadId,
+        userId,
+        searchId,
+        duplicateEmail: primaryEmail,
+        duplicateLeadId,
+      },
+    );
+    return { isDuplicate: true, duplicateEmail: primaryEmail };
+  }
+
+  return { isDuplicate: false };
+}
+
+/**
  * Result from tryProvider - includes pipeline-blocking error info if applicable
  */
 interface TryProviderResult {
@@ -277,67 +357,68 @@ export const enrichSingleLeadWorkpool = internalAction({
     );
 
     if (!slotResult.acquired) {
-      // If this came from the queue and still can't get a slot, re-queue it
-      // This handles edge cases where multiple leads are triggered simultaneously
-      if (args._fromQueue) {
-        logWithCorrelation(
-          "warn",
-          correlation,
-          "⏳ [Workpool] Re-queuing lead from queue (still at capacity)",
-          {
-            leadId: args.leadId,
-            currentActive: slotResult.currentActive,
-          },
-        );
-        // Re-queue the lead - it will be triggered again when a slot frees up
-        await ctx.runMutation(
-          internal.apiKeySemaphore.semaphore.queueLeadForSlot,
-          {
-            apiKeyHash,
-            leadId: args.leadId,
-            searchId: args.searchId,
-            userId: args.userId,
-            userApiKey: args.userApiKey || "",
-            correlationId: correlation.correlationId,
-            priority: 1, // Slightly lower priority for re-queued items
-          },
-        );
-        // Return success with queued flag - tells Workpool this job is "done"
-        // The lead will be processed when triggered from the queue
-        return { success: true, skipped: true, reason: "requeued" };
-      }
-
-      // First time hitting capacity - queue the lead instead of failing
+      // API key at capacity - queue lead using OCC-safe lead-based queue
+      // The single-consumer cron (enrichmentQueueProcessor) will process queued leads
       logWithCorrelation(
         "info",
         correlation,
-        "📥 [Workpool] API key at capacity - queuing lead for later",
+        "📥 [Workpool] API key at capacity - queuing lead for cron processing",
         {
           leadId: args.leadId,
           currentActive: slotResult.currentActive,
+          fromQueue: args._fromQueue,
         },
       );
 
-      // Queue the lead - it will be automatically triggered when a slot frees up
-      const queueResult = await ctx.runMutation(
-        internal.apiKeySemaphore.semaphore.queueLeadForSlot,
+      // Get search createdAt for FIFO ordering
+      const search = await ctx.runQuery(
+        internal.search.internal.getSearchInternal,
+        { searchId: args.searchId },
+      );
+      const searchQueuedAt = search?.createdAt || Date.now();
+
+      if (args._fromQueue) {
+        const lead = await ctx.runQuery(
+          internal.leads.internal.getLeadInternal,
+          { leadId: args.leadId },
+        );
+
+        const queuedApiKeyHash = lead?.enrichmentApiKeyHash || apiKeyHash;
+
+        await ctx.runMutation(
+          internal.leads.internal.requeueLeadForEnrichment,
+          {
+            leadId: args.leadId,
+            searchId: args.searchId,
+            apiKeyHash: queuedApiKeyHash,
+            searchQueuedAt,
+          },
+        );
+
+        return {
+          success: true,
+          skipped: true,
+          reason: "requeued",
+        };
+      }
+
+      // Queue the lead - cron will process it when slots are available
+      await ctx.runMutation(
+        internal.leads.internal.queueLeadForEnrichment,
         {
-          apiKeyHash,
           leadId: args.leadId,
           searchId: args.searchId,
-          userId: args.userId,
-          userApiKey: args.userApiKey || "",
-          correlationId: correlation.correlationId,
+          apiKeyHash,
+          searchQueuedAt,
         },
       );
 
       // Return success with queued flag - tells Workpool this job is "done"
-      // The lead will be processed later when triggered from the queue
+      // The single-consumer cron (enrichmentQueueProcessor) will process it
       return {
         success: true,
         skipped: true,
         reason: "queued",
-        queueDepth: queueResult.queueDepth,
       };
     }
 
@@ -393,10 +474,6 @@ export const enrichSingleLeadWorkpool = internalAction({
             internal.leads.workpool.reportQueuedLeadCompletion,
             { searchId: args.searchId, leadId: args.leadId, success: false },
           );
-          await ctx.runMutation(
-            internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
-            { leadId: args.leadId },
-          );
         }
 
         return { success: false, skipped: true, reason: "enrichment_paused" };
@@ -436,9 +513,12 @@ export const enrichSingleLeadWorkpool = internalAction({
           { leadId: args.leadId, provider: "csv_import" }
         );
 
-        await ctx.runMutation(
-          internal.leads.internal.checkEmailDuplication,
-          { leadId: args.leadId, userId: args.userId, searchId: args.searchId },
+        // Check for email duplicates using paginated queries (handles >5000 leads)
+        await checkEmailDuplicateWithPagination(
+          ctx,
+          args.leadId,
+          args.userId,
+          args.searchId,
         );
 
         // Release slot before returning
@@ -452,10 +532,6 @@ export const enrichSingleLeadWorkpool = internalAction({
           await ctx.runMutation(
             internal.leads.workpool.reportQueuedLeadCompletion,
             { searchId: args.searchId, leadId: args.leadId, success: true },
-          );
-          await ctx.runMutation(
-            internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
-            { leadId: args.leadId },
           );
         }
 
@@ -488,10 +564,6 @@ export const enrichSingleLeadWorkpool = internalAction({
           await ctx.runMutation(
             internal.leads.workpool.reportQueuedLeadCompletion,
             { searchId: args.searchId, leadId: args.leadId, success: false },
-          );
-          await ctx.runMutation(
-            internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
-            { leadId: args.leadId },
           );
         }
 
@@ -599,10 +671,6 @@ export const enrichSingleLeadWorkpool = internalAction({
             internal.leads.workpool.reportQueuedLeadCompletion,
             { searchId: args.searchId, leadId: args.leadId, success: false },
           );
-          await ctx.runMutation(
-            internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
-            { leadId: args.leadId },
-          );
         }
 
         // Return with error info for workpool to handle
@@ -629,9 +697,12 @@ export const enrichSingleLeadWorkpool = internalAction({
           },
         );
 
-        await ctx.runMutation(
-          internal.leads.internal.checkEmailDuplication,
-          { leadId: args.leadId, userId: args.userId, searchId: args.searchId },
+        // Check for email duplicates using paginated queries (handles >5000 leads)
+        await checkEmailDuplicateWithPagination(
+          ctx,
+          args.leadId,
+          args.userId,
+          args.searchId,
         );
 
         const perfData = endPerformanceTracking(performanceTracker);
@@ -671,11 +742,6 @@ export const enrichSingleLeadWorkpool = internalAction({
           await ctx.runMutation(
             internal.leads.workpool.reportQueuedLeadCompletion,
             { searchId: args.searchId, leadId: args.leadId, success: true },
-          );
-          // Also mark queue entry as completed
-          await ctx.runMutation(
-            internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
-            { leadId: args.leadId },
           );
         }
 
@@ -733,10 +799,6 @@ export const enrichSingleLeadWorkpool = internalAction({
           await ctx.runMutation(
             internal.leads.workpool.reportQueuedLeadCompletion,
             { searchId: args.searchId, leadId: args.leadId, success: true },
-          );
-          await ctx.runMutation(
-            internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
-            { leadId: args.leadId },
           );
         }
 
@@ -805,10 +867,6 @@ export const enrichSingleLeadWorkpool = internalAction({
             internal.leads.workpool.reportQueuedLeadCompletion,
             { searchId: args.searchId, leadId: args.leadId, success: false },
           );
-          await ctx.runMutation(
-            internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
-            { leadId: args.leadId },
-          );
         }
         return { success: false, provider: "none", reason: errorMsg };
       }
@@ -819,10 +877,6 @@ export const enrichSingleLeadWorkpool = internalAction({
         await ctx.runMutation(
           internal.leads.workpool.reportQueuedLeadCompletion,
           { searchId: args.searchId, leadId: args.leadId, success: false },
-        );
-        await ctx.runMutation(
-          internal.apiKeySemaphore.semaphore.markQueuedLeadCompleted,
-          { leadId: args.leadId },
         );
       }
 
@@ -1211,14 +1265,12 @@ export const enrichSingleLead = internalAction({
           { leadId: args.leadId, provider: "csv_import" }
         );
 
-        // Check for email duplicates even for CSV imports
-        await ctx.runMutation(
-          internal.leads.internal.checkEmailDuplication,
-          {
-            leadId: args.leadId,
-            userId: args.userId,
-            searchId: args.searchId,
-          },
+        // Check for email duplicates using paginated queries (handles >5000 leads)
+        await checkEmailDuplicateWithPagination(
+          ctx,
+          args.leadId,
+          args.userId,
+          args.searchId,
         );
 
         const perfData = endPerformanceTracking(performanceTracker);
@@ -1457,14 +1509,12 @@ export const enrichSingleLead = internalAction({
           },
         );
 
-        // Check for email duplicates
-        await ctx.runMutation(
-          internal.leads.internal.checkEmailDuplication,
-          {
-            leadId: args.leadId,
-            userId: args.userId,
-            searchId: args.searchId,
-          },
+        // Check for email duplicates using paginated queries (handles >5000 leads)
+        await checkEmailDuplicateWithPagination(
+          ctx,
+          args.leadId,
+          args.userId,
+          args.searchId,
         );
 
         const perfData = endPerformanceTracking(performanceTracker);

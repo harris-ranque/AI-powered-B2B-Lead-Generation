@@ -154,7 +154,9 @@ export const tryAcquireApiKeySlot = internalMutation({
  *
  * Can release by claimId (preferred) or slotIndex (fallback)
  *
- * IMPORTANT: After releasing, this automatically triggers the next queued lead!
+ * NOTE: Queue processing is now handled by the single-consumer cron
+ * (enrichmentQueueProcessor.processEnrichmentQueue) to avoid OCC failures.
+ * This function only releases the slot - no trigger-on-release logic.
  */
 export const releaseApiKeySlot = internalMutation({
   args: {
@@ -191,7 +193,7 @@ export const releaseApiKeySlot = internalMutation({
         `[Semaphore] No slot found to release for API key ${args.apiKeyHash.substring(0, 8)}... ` +
         `(claimId: ${args.claimId?.substring(0, 16) || "N/A"}, slotIndex: ${args.slotIndex ?? "N/A"})`
       );
-      return { released: false, triggeredNext: false };
+      return { released: false };
     }
 
     // Release the slot
@@ -218,52 +220,23 @@ export const releaseApiKeySlot = internalMutation({
       `(active: ${activeCount}/${MAX_SLOTS_PER_KEY})`
     );
 
-    // Check if there are queued leads waiting for a slot
-    const nextQueued = await ctx.db
-      .query("enrichmentSlotQueue")
-      .withIndex("by_api_key_status", (q: any) =>
-        q.eq("apiKeyHash", args.apiKeyHash).eq("status", "pending")
-      )
-      .first();
-
-    let triggeredNext = false;
-    if (nextQueued) {
-      console.log(
-        `[Semaphore] 🚀 Triggering next queued lead ${nextQueued.leadId} for API key ${args.apiKeyHash.substring(0, 8)}...`
-      );
-
-      // Mark as processing to prevent duplicate triggers
-      await ctx.db.patch(nextQueued._id, {
-        status: "processing",
-        processedAt: now,
-      });
-
-      // Schedule the enrichment action to run immediately
-      // Import is done via internal reference to avoid circular deps
-      await ctx.scheduler.runAfter(0, internal.leads.asyncEnrichment.enrichSingleLeadWorkpool, {
-        leadId: nextQueued.leadId,
-        searchId: nextQueued.searchId,
-        userId: nextQueued.userId,
-        userApiKey: nextQueued.userApiKey,
-        correlationId: nextQueued.correlationId,
-        // Mark this as a retry from queue so it doesn't re-queue on failure
-        _fromQueue: true,
-      });
-
-      triggeredNext = true;
-    }
+    // NOTE: Queue processing is handled by the cron (enrichmentQueueProcessor)
+    // No trigger-on-release logic here to avoid OCC failures
 
     return {
       released: true,
       currentActive: activeCount,
       releasedSlotIndex: slotToRelease.slotIndex,
-      triggeredNext,
-      nextLeadId: nextQueued?.leadId,
     };
   },
 });
 
 /**
+ * @deprecated Use `internal.leads.internal.queueLeadForEnrichment` instead.
+ * This function uses the old enrichmentSlotQueue table which causes OCC failures.
+ * The new system stores queue state directly on lead documents and processes
+ * via the single-consumer cron (enrichmentQueueProcessor).
+ *
  * Add a lead to the enrichment queue when slots are full
  * Called by enrichSingleLeadWorkpool when it can't acquire a slot
  */
@@ -346,6 +319,10 @@ export const queueLeadForSlot = internalMutation({
 });
 
 /**
+ * @deprecated No longer needed. Queue state is now stored on lead documents.
+ * When leads complete enrichment, the enrichmentQueuedAt and enrichmentSearchQueuedAt
+ * fields are cleared by claimLeadForEnrichment in enrichmentQueueProcessor.ts.
+ *
  * Mark a queued lead as completed (called after successful enrichment)
  */
 export const markQueuedLeadCompleted = internalMutation({
@@ -371,6 +348,10 @@ export const markQueuedLeadCompleted = internalMutation({
 });
 
 /**
+ * @deprecated Use `internal.leads.internal.cancelQueuedLeadsForSearchV2` instead.
+ * This function uses the old enrichmentSlotQueue table.
+ * The new system clears queue fields directly on lead documents.
+ *
  * Cancel all queued leads for a search (called when search is cancelled)
  */
 export const cancelQueuedLeadsForSearch = internalMutation({
@@ -400,6 +381,10 @@ export const cancelQueuedLeadsForSearch = internalMutation({
 });
 
 /**
+ * @deprecated Use `internal.leads.internal.getEnrichmentQueueStats` instead.
+ * This function queries the old enrichmentSlotQueue table.
+ * The new system queries lead documents directly.
+ *
  * Get queue status for an API key (for monitoring)
  */
 export const getQueueStatus = internalQuery({

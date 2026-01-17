@@ -1,4 +1,4 @@
-import { action } from "../_generated/server";
+import { action, internalAction } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { Doc } from "../_generated/dataModel";
@@ -744,7 +744,9 @@ export const resumeEnrichment: any = action({
 });
 
 // Analyze leads using LangGraph AI system (Async Fire-and-Forget Architecture)
-export const analyzeLeads: any = action({
+// NOTE: This is an internalAction because it's only called from internal contexts
+// (workpool completion handlers, dead letter processor, monitoring recovery)
+export const analyzeLeads: any = internalAction({
   args: {
     searchId: v.id("searches"),
   },
@@ -845,37 +847,13 @@ export const analyzeLeads: any = action({
         },
       );
 
-      // Get all leads for this search that have valid contact information
-      // Only analyze leads with both email and contact name
-      const allLeads: any = await ctx.runQuery(
-        internal.leads.internal.getSearchLeadsInternal,
+      // Get leads ready for analysis (filters enrichment status, analysis status, and contact info)
+      const leads: any = await ctx.runQuery(
+        internal.leads.internal.getLeadsForAnalysis,
         {
           searchId: args.searchId,
         },
       );
-
-      // Filter leads to only those with valid contact information
-      const leads = allLeads.filter((lead: any) => {
-        const hasEmail = lead.contactInfo?.emails?.length > 0;
-        const hasContactName = lead.contactInfo?.contacts?.length > 0 &&
-                              lead.contactInfo.contacts[0]?.name;
-        return hasEmail && hasContactName;
-      });
-
-      const skippedLeads = allLeads.length - leads.length;
-      if (skippedLeads > 0) {
-        logWithCorrelation(
-          "info",
-          correlation,
-          `📋 Filtering Leads for AI Analysis`,
-          {
-            totalLeads: allLeads.length,
-            leadsWithContact: leads.length,
-            skippedLeads,
-            reason: "missing_email_or_contact_name",
-          },
-        );
-      }
 
       // LangGraph service configuration
       const langgraphUrl = process.env.LANGGRAPH_URL;

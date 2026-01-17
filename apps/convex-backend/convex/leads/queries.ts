@@ -1,6 +1,6 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireAuth } from "../auth";
+import { requireAuth, getCurrentUser } from "../auth";
 
 // Get leads for a search (FULL documents - use sparingly, prefer getLeadsListView)
 export const getLeadsBySearch = query({
@@ -203,6 +203,7 @@ export const exportLeads = query({
 });
 
 // Get user leads with pagination (FULL documents - use sparingly)
+// Returns null if not authenticated (allows query during auth hydration)
 export const getUserLeads = query({
   args: {
     limit: v.optional(v.number()),
@@ -210,9 +211,9 @@ export const getUserLeads = query({
     searchId: v.optional(v.id("searches")),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return null;
     }
 
     // OPTIMIZATION: Reduce default limit from 20 to 10
@@ -421,12 +422,13 @@ export const getEnrichmentProgress = query({
 // Get lead statistics for user
 // OPTIMIZED: Aggregates from searches table (much lighter than leads)
 // Searches already have pre-computed stats in progress/results fields
+// Returns null if not authenticated (allows query during auth hydration)
 export const getLeadStats = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return null;
     }
 
     // Aggregate from searches table - MUCH lighter than loading all leads

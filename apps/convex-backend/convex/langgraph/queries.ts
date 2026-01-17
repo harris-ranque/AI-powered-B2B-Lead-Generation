@@ -1,17 +1,18 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireAuth } from "../auth";
+import { requireAuth, getCurrentUser } from "../auth";
 
 // Get user LangGraph requests with pagination
+// Returns null if not authenticated (allows query during auth hydration)
 export const getUserRequests = query({
   args: {
     limit: v.optional(v.number()),
     offset: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return null;
     }
 
     const limit = args.limit || 20;

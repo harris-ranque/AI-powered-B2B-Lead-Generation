@@ -1,6 +1,106 @@
-import { query } from "../_generated/server";
+import { query, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAdmin } from "../auth";
+
+// Diagnostic query - run from dashboard without auth to check search/enrichment state
+export const diagnoseSearch = internalQuery({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      return { error: "Search not found" };
+    }
+
+    // Get all leads
+    const leads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    // Get enrichment batch
+    const batches = await ctx.db
+      .query("enrichmentBatches")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    // Get slot queue entries for this search
+    const queueEntries = await ctx.db
+      .query("enrichmentSlotQueue")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    // Get all semaphore slots (to check for leaks)
+    const allSlots = await ctx.db
+      .query("enrichmentApiKeySlots")
+      .collect();
+
+    // Compute stats
+    const enrichmentStats = {
+      pending: leads.filter((l) => l.enrichmentStatus === "pending").length,
+      in_progress: leads.filter((l) => l.enrichmentStatus === "in_progress").length,
+      completed: leads.filter((l) => l.enrichmentStatus === "completed").length,
+      completed_fallback: leads.filter((l) => l.enrichmentStatus === "completed_fallback").length,
+      failed: leads.filter((l) => l.enrichmentStatus === "failed").length,
+      no_contacts_found: leads.filter((l) => l.enrichmentStatus === "no_contacts_found").length,
+    };
+
+    const analysisStats = {
+      none: leads.filter((l) => !l.analysisStatus).length,
+      pending: leads.filter((l) => l.analysisStatus === "pending").length,
+      scheduled: leads.filter((l) => l.analysisStatus === "scheduled").length,
+      processing: leads.filter((l) => l.analysisStatus === "processing").length,
+      completed: leads.filter((l) => l.analysisStatus === "completed").length,
+      failed: leads.filter((l) => l.analysisStatus === "failed").length,
+      skipped: leads.filter((l) => l.analysisStatus === "skipped").length,
+    };
+
+    const slotStats = {
+      totalSlotRecords: allSlots.length,
+      claimed: allSlots.filter((s) => s.claimedBy).length,
+      available: allSlots.filter((s) => !s.claimedBy).length,
+      byApiKey: Object.entries(
+        allSlots.reduce((acc, slot) => {
+          const key = slot.apiKeyHash.substring(0, 8);
+          if (!acc[key]) acc[key] = { claimed: 0, available: 0 };
+          if (slot.claimedBy) acc[key].claimed++;
+          else acc[key].available++;
+          return acc;
+        }, {} as Record<string, { claimed: number; available: number }>)
+      ),
+    };
+
+    return {
+      search: {
+        id: search._id,
+        name: search.name,
+        status: search.status,
+        researchStage: search.researchStage,
+        createdAt: new Date(search.createdAt).toISOString(),
+      },
+      leads: {
+        total: leads.length,
+        enrichmentStats,
+        analysisStats,
+      },
+      batches: batches.map((b) => ({
+        batchId: b.batchId,
+        status: b.status,
+        totalLeads: b.totalLeads,
+        completedLeads: b.completedLeads,
+        successfulLeads: b.successfulLeads,
+        failedLeads: b.failedLeads,
+      })),
+      slotQueue: {
+        total: queueEntries.length,
+        pending: queueEntries.filter((q) => q.status === "pending").length,
+        processing: queueEntries.filter((q) => q.status === "processing").length,
+      },
+      semaphoreSlots: slotStats,
+    };
+  },
+});
 
 // Get admin metrics and statistics
 export const getAdminMetrics = query({

@@ -23,6 +23,7 @@ import {
   shouldBlockPipeline,
   type ApiError,
 } from "../lib/apiErrors";
+import { normalizeAddress } from "../lib/deduplication";
 // Note: This action can be scheduled by the orchestrator (no user auth).
 
 const METERS_PER_MILE = 1609.34;
@@ -615,6 +616,84 @@ export const searchGoogleMaps: any = action({
           ["postal_code"],
         );
 
+        // ========================================================================
+        // ADDRESS DEDUPLICATION (Paginated Query - Safe for Large User Datasets)
+        // ========================================================================
+        // Check for duplicate address BEFORE calling mutation.
+        // Uses paginated query that can safely iterate through all user leads.
+        // This avoids the Convex "multiple paginated queries" error in mutations.
+        if (deduplicationConfig.enableAddressDedup && detailedPlace.formatted_address) {
+          const normalizedAddr = normalizeAddress(detailedPlace.formatted_address);
+
+          if (normalizedAddr) {
+            let addressCursor: string | null = null;
+            let addressDedupDone = false;
+            let duplicateAddressLeadId: string | null = null;
+
+            // Iterate through all pages of user's leads to check for address match
+            while (!addressDedupDone) {
+              const dedupResult: {
+                found: boolean;
+                duplicateId: string | null;
+                continueCursor: string | null;
+                isDone: boolean;
+              } = await ctx.runQuery(
+                internal.leads.internal.checkAddressDuplicatePage,
+                {
+                  userId: search.userId,
+                  normalizedAddress: normalizedAddr,
+                  cursor: addressCursor ?? undefined,
+                  batchSize: 1000,
+                },
+              );
+
+              if (dedupResult.found && dedupResult.duplicateId) {
+                duplicateAddressLeadId = dedupResult.duplicateId;
+                addressDedupDone = true;
+              } else if (dedupResult.isDone) {
+                addressDedupDone = true;
+              } else {
+                addressCursor = dedupResult.continueCursor;
+              }
+            }
+
+            // If duplicate address found, skip this lead
+            if (duplicateAddressLeadId) {
+              logWithCorrelation(
+                "debug",
+                discoveryCorrelation,
+                "⏭️ Skipping lead with duplicate address",
+                {
+                  placeId: place.place_id,
+                  businessName: detailedPlace.name || "Unknown",
+                  address: detailedPlace.formatted_address,
+                  reason: "address_duplicate",
+                  duplicateLeadId: duplicateAddressLeadId,
+                },
+              );
+
+              // Track duplicate for analytics (via mutation)
+              await ctx.runMutation(
+                internal.search.internal.trackDuplicateMetric,
+                {
+                  userId: search.userId,
+                  searchId: args.searchId,
+                  placeId: detailedPlace.place_id || place.place_id,
+                  duplicateType: "address",
+                  originalLeadId: duplicateAddressLeadId,
+                  businessName: detailedPlace.name || "Unknown",
+                },
+              );
+
+              duplicateCounters.address++;
+              return;
+            }
+          }
+        }
+        // ========================================================================
+        // END ADDRESS DEDUPLICATION
+        // ========================================================================
+
         const leadResult = await ctx.runMutation(
           internal.leads.internal.createLeadInternal,
           {
@@ -673,9 +752,9 @@ export const searchGoogleMaps: any = action({
             duplicateCounters.placeId++;
           } else if (leadResult.reason === "place_name") {
             duplicateCounters.placeName++;
-          } else if (leadResult.reason === "address") {
-            duplicateCounters.address++;
           }
+          // Note: Address duplicates are now handled before calling createLeadInternal
+          // and tracked via duplicateCounters.address++ above
         }
       };
 
