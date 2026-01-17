@@ -41,6 +41,25 @@ crons.interval(
 );
 
 // ============================================================================
+// ENRICHMENT QUEUE PROCESSOR (Every 3 seconds)
+// ============================================================================
+// OCC-safe single-consumer cron for processing queued leads
+// - Eliminates OCC failures from trigger-on-release pattern
+// - Uses cron lock to prevent overlapping executions
+// - Processes leads FIFO by search within each API key (tenant isolation)
+// - Maximum 25 leads processed per tick to keep execution time low
+//
+// COST/SPEED TRADEOFF: 3 seconds balances responsiveness vs Convex billing.
+// - 3s = 28,800 calls/day (vs 43,200 at 2s, 17,280 at 5s)
+// - 500 leads: ~7.5 min (vs ~6.7 min at 2s, ~8.3 min at 5s)
+// - Each call when idle: ~3-5 database ops (lock acquire, query, lock release)
+crons.interval(
+  "process-enrichment-queue",
+  { seconds: 3 },
+  internal.leads.enrichmentQueueProcessor.processEnrichmentQueue,
+);
+
+// ============================================================================
 // FINDYMAIL API HEALTH CHECK (Every 30 minutes)
 // ============================================================================
 // Proactively check FindyMail API health and alert on issues

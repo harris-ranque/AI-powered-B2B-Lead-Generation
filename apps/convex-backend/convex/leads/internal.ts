@@ -1359,3 +1359,142 @@ export const getSearchEnrichmentStatus = internalQuery({
     };
   },
 });
+
+// ============================================================================
+// ENRICHMENT QUEUE MANAGEMENT (OCC-Safe Lead-Based Queue)
+// ============================================================================
+
+/**
+ * Queue a lead for enrichment using lead-based queue fields (OCC-safe)
+ *
+ * This replaces the old enrichmentSlotQueue table approach to avoid OCC failures.
+ * Queue state is stored directly in the lead document, and the single-consumer
+ * cron (enrichmentQueueProcessor) processes queued leads.
+ *
+ * @param leadId - The lead to queue
+ * @param searchId - Associated search (for FIFO ordering by search)
+ * @param apiKeyHash - API key hash for tenant isolation
+ * @param searchQueuedAt - Search creation time (denormalized for FIFO ordering)
+ */
+export const queueLeadForEnrichment = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+    searchId: v.id("searches"),
+    apiKeyHash: v.string(),
+    searchQueuedAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const lead = await ctx.db.get(args.leadId);
+    if (!lead) {
+      return { queued: false, reason: "lead_not_found" };
+    }
+
+    // Only queue if lead is in pending state
+    if (lead.enrichmentStatus !== "pending") {
+      return {
+        queued: false,
+        reason: "not_pending",
+        currentStatus: lead.enrichmentStatus,
+      };
+    }
+
+    // Check if already queued (has queuedAt set)
+    if (lead.enrichmentQueuedAt && lead.enrichmentApiKeyHash) {
+      return { queued: false, reason: "already_queued" };
+    }
+
+    // Update lead with queue fields
+    await ctx.db.patch(args.leadId, {
+      enrichmentQueuedAt: Date.now(),
+      enrichmentSearchQueuedAt: args.searchQueuedAt,
+      enrichmentApiKeyHash: args.apiKeyHash,
+      updatedAt: Date.now(),
+    });
+
+    console.log(
+      `[EnrichmentQueue] Queued lead ${args.leadId} for API key ${args.apiKeyHash.substring(0, 8)}...`
+    );
+
+    return { queued: true };
+  },
+});
+
+/**
+ * Cancel queued leads for a search (OCC-safe version)
+ * Called when a search is cancelled to stop pending enrichments
+ */
+export const cancelQueuedLeadsForSearchV2 = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    // Find all queued leads for this search
+    const queuedLeads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("enrichmentStatus"), "pending"),
+          q.neq(q.field("enrichmentQueuedAt"), undefined)
+        )
+      )
+      .collect();
+
+    // Clear queue fields (they will not be processed by the cron)
+    for (const lead of queuedLeads) {
+      await ctx.db.patch(lead._id, {
+        enrichmentQueuedAt: undefined,
+        enrichmentSearchQueuedAt: undefined,
+        // Keep enrichmentApiKeyHash for reference
+        updatedAt: Date.now(),
+      });
+    }
+
+    console.log(
+      `[EnrichmentQueue] Cancelled ${queuedLeads.length} queued leads for search ${args.searchId}`
+    );
+
+    return { cancelled: queuedLeads.length };
+  },
+});
+
+/**
+ * Get queue stats for an API key (for monitoring)
+ */
+export const getEnrichmentQueueStats = internalQuery({
+  args: {
+    apiKeyHash: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    let query = ctx.db.query("leads")
+      .withIndex("by_enrichment_status", (q) => q.eq("enrichmentStatus", "pending"))
+      .filter((q) => q.neq(q.field("enrichmentQueuedAt"), undefined));
+
+    const queuedLeads = await query.collect();
+
+    // Group by API key hash
+    const byApiKey = new Map<string, number>();
+    for (const lead of queuedLeads) {
+      if (lead.enrichmentApiKeyHash) {
+        const count = byApiKey.get(lead.enrichmentApiKeyHash) || 0;
+        byApiKey.set(lead.enrichmentApiKeyHash, count + 1);
+      }
+    }
+
+    if (args.apiKeyHash) {
+      return {
+        apiKeyHash: args.apiKeyHash.substring(0, 8),
+        queuedCount: byApiKey.get(args.apiKeyHash) || 0,
+        totalQueued: queuedLeads.length,
+      };
+    }
+
+    return {
+      totalQueued: queuedLeads.length,
+      byApiKey: Array.from(byApiKey.entries()).map(([hash, count]) => ({
+        apiKeyHash: hash.substring(0, 8),
+        count,
+      })),
+    };
+  },
+});
