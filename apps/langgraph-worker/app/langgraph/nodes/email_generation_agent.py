@@ -316,7 +316,7 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
             model=email_model,
             temperature=0.4,
             max_completion_tokens=email_token_budget,
-            reasoning_effort="minimal",
+            reasoning_effort="low",  # GPT-5.2 supports: none, low, medium, high, xhigh
             require_user_key=using_user_keys,
         ).with_structured_output(EmailSequence)
         

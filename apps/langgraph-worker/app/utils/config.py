@@ -141,8 +141,8 @@ class Settings(BaseSettings):
     max_execution_time: int = int(os.getenv("MAX_EXECUTION_TIME_OPTIONAL", "300"))  # 5 minutes
     
     # Model Configuration
-    # GPT-5-mini: Released August 2025, supports up to 128K output tokens
-    # - Reasoning model with minimal/low/medium/high reasoning_effort settings
+    # GPT-5.2: Reasoning model with up to 128K output tokens
+    # - Supports reasoning_effort: none, low, medium, high, xhigh
     # - Optimized for lighter reasoning tasks with reduced latency
     # - Context window: ~400K tokens, Knowledge cutoff: May 30, 2024
     default_model: str = os.getenv("DEFAULT_MODEL", "gpt-5-mini")

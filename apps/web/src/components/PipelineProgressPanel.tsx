@@ -350,9 +350,6 @@ export function PipelineProgressPanel({
                 {progress.statusLabel ?? "Pipeline"}
               </Badge>
             </div>
-            <span className="text-xs text-muted-foreground">
-              {progress.percentComplete}% complete
-            </span>
           </div>
           {actions}
         </CardContent>
@@ -368,17 +365,14 @@ export function PipelineProgressPanel({
             <CardTitle className="text-base font-semibold">
               {stageName}
             </CardTitle>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {progress.percentComplete}% complete
-              </span>
-              {progress.statusLabel && (
+            {progress.statusLabel && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-[11px] font-medium">
                   <Sparkles className="h-3 w-3 text-amber-500" />
                   {progress.statusLabel}
                 </span>
-              )}
-            </div>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Badge className={cn("text-[11px]", healthVariant.className)}>

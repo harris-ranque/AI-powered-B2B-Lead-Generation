@@ -189,7 +189,7 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
             model=qa_model,
             temperature=0.2,
             max_completion_tokens=qa_token_budget,
-            reasoning_effort="minimal",
+            reasoning_effort="low",  # GPT-5.2 supports: none, low, medium, high, xhigh
             require_user_key=using_user_keys,
         ).with_structured_output(QualityAssessment)
         

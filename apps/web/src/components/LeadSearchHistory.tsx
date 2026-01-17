@@ -21,7 +21,6 @@ import {
   TrendingUp,
   Clock,
   Filter,
-  AlertCircle,
   DollarSign,
   Zap,
   BarChart3,
@@ -283,16 +282,12 @@ export function LeadSearchHistory() {
                         </div>
                       </div>
 
-                      {/* Results & Quality */}
+                      {/* Results */}
                       <div className="flex items-start gap-2 text-muted-foreground">
                         <BarChart3 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
                         <div className="flex flex-col gap-0.5">
                           <span className="font-medium text-foreground" data-testid="results-count">
-                            {s.results?.totalFound ?? 0} leads found
-                          </span>
-                          <span>
-                            {enrichmentRate}% with contacts • {analysisRate}%
-                            analyzed
+                            {s.results?.enrichedCount ?? 0} leads found
                           </span>
                         </div>
                       </div>
@@ -336,17 +331,6 @@ export function LeadSearchHistory() {
                       </div>
                     </div>
 
-                    {/* Warnings/Alerts */}
-                    {s.partialResults && (
-                      <div className="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950/20 p-2 rounded-md">
-                        <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                        <div>
-                          <span className="font-medium">Partial Results:</span>{" "}
-                          {s.discoveryMetadata?.expansionMessage ||
-                            "Search area exhausted before reaching target"}
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   {/* Action Buttons */}
