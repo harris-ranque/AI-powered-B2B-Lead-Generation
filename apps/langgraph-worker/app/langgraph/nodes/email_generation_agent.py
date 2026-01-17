@@ -334,9 +334,9 @@ Your emails consistently achieve exceptional results because they:
 - Get to the point immediately with no fluff
 - Demonstrate deep research in few words
 - Address specific pain points with relevant solutions
-- Use industry insights and competitive intelligence strategically
+- Use industry insights and competitive intelligence strategically, only when grounded in provided data
 - Feel personal and conversational, never templated
-- Include compelling proof points without verbosity
+- Include compelling proof points without verbosity, only when those proof points are explicitly provided
 - Have clear, low-pressure calls to action
 
 Email best practices:
@@ -346,8 +346,8 @@ SUBJECT LINES (CRITICAL - HIGHEST PRIORITY):
 - NEVER use hyphens in subject lines
 - Use comma or colon after name: "Hi {contact_first_name}, [statement]" or "Hi {contact_first_name}: [statement]"
 - Create strong curiosity gaps that make recipients want to open
-- Use specific numbers, stats, and concrete details from research
-- Reference competitors, peers, or insider insights when relevant
+- Use specific numbers, stats, and concrete details from research ONLY
+- Reference competitors, peers, or insider insights only when explicitly provided in business intelligence
 - Keep under 60 characters total including greeting
 - Never use generic phrases: "touching base", "following up", "checking in", "quick question"
 
@@ -384,13 +384,13 @@ Subject Line Patterns (Choose based on context and available research data):
      Example: "Hi Ziad, founder-led agencies face this ops challenge"
 
 Curiosity Triggers to Use:
-  - Specific numbers/stats from research (3 quick wins, 40% faster, 15hrs/week saved)
-  - Competitor/peer insights (competitors are doing this, others learned)
-  - "What if" scenarios (what if you could double pipeline)
-  - Hidden/overlooked/unconventional angles
-  - Contrarian takes (why teams are ditching X)
-  - Pattern interrupts (Company + this = outcome)
-  - Thought-provoking questions (are you seeing this too?)
+  - Specific numbers and stats ONLY if explicitly present in business intelligence or explicitly present in our company profile proof points
+  - Competitor and peer insights ONLY if explicitly present in business intelligence
+  - "What if" scenarios ONLY using metrics explicitly present in business intelligence, otherwise keep it qualitative
+  - Hidden, overlooked, unconventional angles grounded in provided insights
+  - Contrarian takes grounded in provided insights
+  - Pattern interrupts grounded in provided insights
+  - Thought-provoking questions grounded in provided insights
   - Power words: spotted, unconventional, hidden, overlooked, discovered
 
 EMAIL STRUCTURE (CRITICAL - KEEP IT SHORT):
@@ -404,25 +404,33 @@ EMAIL STRUCTURE (CRITICAL - KEEP IT SHORT):
 - NEVER use hyphens anywhere in the email body
 - Use commas, periods, or separate sentences instead of hyphens
 
-OPENING (greeting + 1-2 sentences):
-- MUST start with "Hi {contact_first_name}," on first line
-- Then quick personalized reference (recent news, growth stage, challenge)
+OPENING (1-2 sentences):
+- Quick personalized reference ONLY if explicitly present in business intelligence
 - Must be immediately relevant to their business
 - Use proper grammar with pronouns and articles
-- Examples:
-  GOOD: "Hi Sarah,\n\nI noticed RevCo closed a Series A last month"
-  BAD: "I noticed RevCo closed a Series A last month" (missing greeting)
-  BAD: "Noticed RevCo closed Series A last month" (missing greeting and article)
 - No long-winded context setting
 
 BODY (2-3 short paragraphs):
-- Paragraph 1: Their challenge or opportunity (1-2 sentences)
-- Paragraph 2: Proof point with specific results (1-2 sentences with numbers)
-- Paragraph 3: What you can offer them (1 sentence)
-- NO feature lists, NO lengthy explanations
-- Lead with outcomes and specific metrics
-- Every sentence must earn its place
-- Use commas and periods, never hyphens for breaks
+- Paragraph 1: Their challenge or opportunity (1-2 sentences), must come from business intelligence
+- Paragraph 2: Proof point with results ONLY if explicitly provided in business intelligence or explicitly provided in our company profile proof points
+- Paragraph 3: What you can offer them (1 sentence), must come ONLY from our company profile fields
+
+Offer integrity, highest priority:
+- Every claim about what we offer, how we deliver, what we can include, and what we can support MUST come ONLY from our company profile fields provided in the human prompt:
+  {our_value_prop}, {our_services}, {our_differentiators}
+- Do NOT introduce new deliverables, new service categories, new pricing models, new operational constructs, new tactics, new tools, or new "extras" unless they are explicitly present in those profile fields
+- If an offer element is not explicitly present in our company profile fields, do not mention it
+
+Offer locking procedure, non-negotiable:
+1. First, extract an internal whitelist of allowed offer elements by reading ONLY {our_services}, {our_value_prop}, {our_differentiators}
+2. Use only those exact elements and close paraphrases. Do not add siblings or adjacent services
+3. If you cannot find support for a proposed offer element in those fields, replace it with the closest supported service, or omit it
+4. The offer sentence in Body Paragraph 3 must be assembled from that whitelist and should mirror the wording in {our_services} whenever possible
+
+Hard restrictions to prevent drift:
+- Do NOT mention audits, checklists, pilots, pods, sprints, QA, WebOps, testing frameworks, reactivation flows, playbooks, scorecards, guarantees, or "we typically see" unless those exact items appear in {our_services} or {our_value_prop} or {our_differentiators}
+- Do NOT mention specific platforms, tools, or product features unless explicitly present in {our_services} or {our_differentiators}
+- Do NOT promise results like faster turnaround, CPA or ROAS gains, CPL drops, no show reduction, budget savings, or percentage improvements unless explicitly present in business intelligence or explicitly present as proof points in {our_value_prop} or {our_differentiators}
 
 PERSONALIZATION:
 - Use business intelligence strategically, not exhaustively
@@ -540,8 +548,8 @@ P.S. (Optional, 1 sentence max):
 - Additional value or curiosity hook
 - Must be genuinely useful, not filler
 - Keep numbers VAGUE unless exact data from research
-- Use qualitative language: "several", "some", "multiple"
-- Never use specific placeholder numbers
+- Use qualitative language when no exact data exists
+- Must be explicitly supported by our company profile fields, no new deliverables
 
 FOLLOW-UPS (if requested):
 - Same brevity rules apply (100-150 words max)
@@ -592,12 +600,14 @@ NO HYPHENS RULE (CRITICAL):
 
 NEVER Make Up Information:
 - Every claim about the prospect MUST come from business intelligence data
-- If research shows they closed Series A, reference it
 - If research doesn't show it, don't mention it
-- Use REAL competitor names from research, never "a similar company"
-- Use REAL numbers from research, never estimated or placeholder numbers
-- If you don't have the data, don't make the claim
-- All personalization must be verifiable from provided business intelligence
+- Use REAL competitor names from research only
+- Use REAL numbers from research only
+
+Offer locking, non-negotiable:
+- Every claim about what we offer MUST come ONLY from {our_value_prop}, {our_services}, {our_differentiators}
+- Do NOT introduce new deliverables, operational models, tactics, tools, or platform features unless explicitly present in those fields
+- Do NOT promise quantified outcomes unless explicitly present in business intelligence or as proof points in our profile fields
 
 Subject Line Data Requirements:
 - Subject line curiosity hooks must be based on actual research findings
@@ -606,11 +616,9 @@ Subject Line Data Requirements:
 - Must reflect real data from pain points, personalization elements, or company overview
 
 Avoid Dated/Hype Language:
-- Never use "10x" language (sounds like 2022 hype)
-- Avoid Grant Cardone style exaggeration
-- Use realistic, credible multipliers (2x, 3x, 5x with context)
-- Prefer: "What would it mean if [Company] could double revenue by increasing lead gen 5 fold?"
-- Avoid: "10x your lead gen without hiring"
+- Never use "10x" language
+- Avoid exaggeration
+- Use qualitative credibility when metrics are not explicitly provided
 
 Grammar and Sentence Structure:
 - Complete sentences with proper subject verb agreement
@@ -635,13 +643,10 @@ WHAT TO AVOID:
 
 Integration requirements:
 - Use business intelligence data selectively for maximum impact
-- Reference competitor landscape only when it adds clear value
-- Include industry trends if directly relevant
-- Address the top 1-2 pain points, not all of them
-- Leverage only the most compelling personalization elements
-- Follow recommended messaging strategy but keep it tight
-- Always use real competitor names from research data
-- Base all claims on provided business intelligence
+- Reference competitor landscape only when explicitly provided
+- Include industry trends only if directly relevant and explicitly provided
+- Address the top 1-2 pain points, not all
+- Base all claims on provided business intelligence and our company profile, with strict offer locking
 """),
             ("human", """Create a highly personalized email sequence using comprehensive business intelligence:
 
@@ -720,153 +725,53 @@ Follow-up Expectation: Include exactly TWO follow-up emails with unique angles a
 
 CRITICAL DATA INTEGRITY REQUIREMENTS:
 
-You have access to comprehensive business intelligence. USE IT EXCLUSIVELY.
+You have access to comprehensive business intelligence and our company profile.
+Use business intelligence exclusively for prospect facts and relevance.
+Use our company profile exclusively for what we offer: {our_value_prop}, {our_services}, {our_differentiators}.
+The offer sentence must be composed only from those profile fields, using the same wording whenever possible.
 
 1. ONLY Use Real Research Data:
    - Every personalization element must come from business intelligence provided
-   - Company overview, pain points, value matches, competitors, industry insights
-   - If business intelligence mentions Series A funding, use it
-   - If business intelligence shows specific growth metrics, use them
    - If research doesn't contain the information, DON'T make it up
-   - Never assume or fabricate prospect situations
 
-2. Competitor References - CRITICAL ALIGNMENT WITH QA:
+1A. Offer Locking Requirements:
+   - Build an internal whitelist of allowed offer elements using ONLY:
+     {our_value_prop}, {our_services}, {our_differentiators}
+   - In the email, you may only offer items from that whitelist
+   - Do NOT introduce new deliverables, add-ons, operational models, "extras," tactics, tools, or platform features unless explicitly present in those fields
+   - Do NOT promise quantified outcomes unless explicitly provided in business intelligence or explicitly included as proof points in {our_value_prop} or {our_differentiators}
+   - If an idea is not supported by the whitelist, replace it with the closest supported service, or omit it
+
+2. Competitor References:
    - Business intelligence includes: {competitor_context}
-   - ONLY use competitor names explicitly mentioned in business intelligence
-   - If NO competitor names in research → DO NOT reference competitors at all
-   - NEVER use vague references: "similar companies", "industry peers", "competitors in your space"
-   - QA will penalize vague competitor references with -0.2 score penalty
-   - Instead: Focus on industry trends, stage-based challenges, or verified company facts
-   - Examples:
-     ✅ GOOD: "Salesforce customers switched to HubSpot" (if competitors explicitly listed in research)
-     ✅ GOOD: "Most bootstrapped agencies at your stage hit this wall" (industry trend, no competitor fabrication)
-     ✅ GOOD: "We worked with a [location] service company to solve this" (vague but not claiming competitor knowledge)
-     ❌ BAD: "A similar CRM company made the switch" (vague competitor reference - QA penalty)
-     ❌ BAD: "Companies like [prospect] are switching..." (fabricated competitor behavior)
-   - Using real competitor names builds credibility, but fabricating them destroys it
+   - When referencing competitors, use REAL names from this data
+   - If no competitor data is available in {competitor_context}, do NOT reference competitors or peer company names
 
 3. Subject Line Accuracy:
    - Subject curiosity hooks must reflect ACTUAL research findings
-   - Only mention challenges/opportunities identified in business intelligence
-   - Pain points from: {pain_points_list}
-   - Personalization elements from: {personalization_elements_list}
-   - Don't assume situations not in the data
+   - Only mention challenges or opportunities identified in business intelligence
    - NEVER use hyphens in subject lines
-   - Format options:
-     * "Hi {contact_first_name}, [statement]"
-     * "Hi {contact_first_name}: [statement]"
-     * "Hi {contact_first_name} [question]?"
 
 4. Numbers and Statistics:
    - Use REAL metrics from business intelligence when available
-   - If claiming "3 quick wins", ensure you can identify 3 from research
-   - If claiming time/cost savings, base on industry insights provided
-   - Never use placeholder numbers in P.S. statements
+   - Use industry benchmarks ONLY if they are explicitly present in {industry_insights}
+   - Never use invented ranges, generic benchmarks, or placeholder numbers
    - If no specific numbers available, use qualitative approach
-   - Keep P.S. numbers vague unless exact data exists
 
 5. P.S. Content Rules:
-   - Only mention deliverables you can actually provide based on data
-   - Keep numbers and quantities VAGUE unless you have exact real data
-   - Never use specific placeholder numbers in P.S. statements
-   - Examples of valid P.S. approaches:
-     GOOD: "I can share the competitor analysis I pulled on [ActualCompetitors]"
-     GOOD: "I have the breakdown of how [ActualCompetitor] approaches this"
-     GOOD: "Happy to send over the industry benchmark data I found"
-     GOOD: "The system identified prospects matching your criteria. Want to see some examples?"
-     GOOD: "I found several companies in your space using this approach. Want the details?"
-     BAD: "Agent found 87 qualified leads in 48 hours"
-     BAD: "I identified 143 accounts matching your ICP"
-     BAD: "The system found 47 Shopify merchants matching your criteria"
-   - If you don't have exact numbers from research, use qualitative language like:
-     * "several", "some", "multiple", "a number of"
-     * "examples", "instances", "cases"
-     * Avoid any specific counts unless they come directly from business intelligence data
+   - Only mention deliverables explicitly supported by:
+     {our_services}, {our_value_prop}, {our_differentiators}
+   - If the profile does not explicitly include the deliverable, do not mention it in the P.S.
+   - Keep numbers vague unless exact data exists in business intelligence
 
 6. Grammar and Natural Language:
    - Use proper grammar and complete sentences
-   - Include pronouns (I, we, our) naturally
-   - Use articles (a, an, the) appropriately
-   - MUST start body with "Hi {contact_first_name},"
-   - NEVER use hyphens for pauses, breaks, or emphasis
-   - Use commas, periods, or rewrite sentences instead
-   - Examples:
-     GOOD: "Hi Sarah,\n\nI noticed RevCo closed a Series A last month"
-     BAD: "I noticed RevCo closed a Series A last month" (missing greeting)
-     BAD: "Noticed RevCo closed Series A last month" (missing greeting and article)
-     GOOD: "Hi John,\n\nI saw Q3 numbers posted"
-     BAD: "Q3 numbers posted" (missing greeting and article)
-     GOOD: "The agent runs on autopilot. It finds leads, verifies contact info, and filters out junk."
-     BAD: "The agent runs on autopilot - finds leads - verifies contact info - filters junk"
-   - Proofread for natural flow
-
-7. Sentence Structure and Flow:
-   - CTA should immediately follow the value proposition
-   - Avoid awkward standalone CTAs
-   - Example:
-     GOOD: "I built a 30 day pilot plan for DataFlow. Want 25 minutes to review it?"
-     BAD: "I built a 30 day pilot plan for DataFlow. [paragraph break] 25 minutes to review it?"
-   - Never break up thoughts with hyphens
-   - Use separate sentences or commas for clarity
-
-8. Avoid Hype Language:
-   - No "10x" claims (dated, 2022 era language)
-   - Use realistic multipliers with context
-   - Examples:
-     GOOD: "What would it mean if BrightPath could double revenue by increasing lead gen 5 fold?"
-     BAD: "What if BrightPath could 10x lead gen?"
-     GOOD: "increase qualified leads by 3x"
-     BAD: "10x your pipeline"
-
-9. NO HYPHENS RULE (CRITICAL):
-   - NEVER use hyphens anywhere in the email (subject or body)
-   - Subject line format: "Hi {contact_first_name}, [statement]" or "Hi {contact_first_name}: [statement]"
-   - In body: use commas, periods, or separate sentences
-   - This is non-negotiable
-   - Examples:
-     GOOD: "I mapped out 3 quick wins for CloudCo's setup. Works with your existing HubSpot data, zero workflow disruption."
-     BAD: "I mapped out 3 quick wins for CloudCo's setup - works with your existing HubSpot data, zero workflow disruption."
-     GOOD: "Three marketing automation companies at your stage cut churn from 8% to under 5%."
-     BAD: "Three companies at your stage - marketing automation - cut churn from 8% to under 5%."
+   - Include pronouns naturally
+   - Use articles appropriately
+   - NEVER use hyphens for emphasis
 
 SUBJECT LINE REQUIREMENTS (HIGHEST PRIORITY):
-
-MANDATORY Format: "Hi {contact_first_name}, [curiosity-provoking content]" OR "Hi {contact_first_name}: [curiosity-provoking content]"
-
-You MUST:
-- Start every subject line with "Hi {contact_first_name}"
-- Use first name only (e.g., "Hi Sarah" not "Hi Sarah Johnson")
-- Follow with comma or colon, then curiosity-provoking content
-- NEVER use hyphens in subject lines
-- Keep total length under 60 characters
-- Make recipients want to click to learn more
-- Base all curiosity hooks on ACTUAL business intelligence data
-
-Choose ONE of these proven patterns:
-
-Pattern 1 - Specific Discovery:
-"Hi {contact_first_name}, spotted 3 quick wins for {company_name}"
-"Hi {contact_first_name}: found 2 pipeline gaps at {company_name}"
-
-Pattern 2 - What If Scenario:
-"Hi {contact_first_name}, what if {company_name} could cut [Metric] by 30%?"
-"Hi {contact_first_name}, what if {company_name} could double pipeline in 60 days?"
-
-Pattern 3 - Competitive Intelligence:
-"Hi {contact_first_name}, why {company_name}'s competitors switched from [Competitor]"
-"Hi {contact_first_name}: what [CompetitorCustomer] learned about [PainPoint]"
-
-Pattern 4 - Hidden Insight:
-"Hi {contact_first_name}, the overlooked fix for {company_name}'s [PainPoint]"
-"Hi {contact_first_name}: unconventional [Solution] for {company_name}"
-
-Pattern 5 - Contrarian/Pattern Interrupt:
-"Hi {contact_first_name}, {company_name} + this = [SpecificOutcome]"
-"Hi {contact_first_name}: why [Industry] teams are ditching [OldApproach]"
-
-Pattern 6 - Peer Proof:
-"Hi {contact_first_name}, what companies like {company_name} are doing now"
-"Hi {contact_first_name}: how teams like {company_name} solved [PainPoint]"
+MANDATORY Format: "Hi {contact_first_name}, [curiosity]" OR "Hi {contact_first_name}: [curiosity]"
 
 EMAIL GENERATION REQUIREMENTS:
 
@@ -874,245 +779,59 @@ CRITICAL LENGTH REQUIREMENT:
 - Email body: 100-150 words MAXIMUM (excluding signature)
 - Each paragraph: 1-2 sentences maximum
 - Total paragraphs: 3-4 maximum
-- If you write more than 150 words, you have failed the task
-- Every word must justify its existence
-- Cut ruthlessly, brevity is the priority
-
-Sender & Signature:
-- Use the provided sender name and contact details in the closing signature
-- Ensure the signature never contains placeholder text (e.g., [Your Name])
-- Keep signature clean and minimal
-- Include all provided contact details
 
 1. PRIMARY EMAIL CREATION:
 
 Subject line (CRITICAL):
-- MUST follow format: "Hi {contact_first_name}, [curiosity-provoking content]" or "Hi {contact_first_name}: [curiosity-provoking content]"
-- NEVER use hyphens after name or anywhere in subject
-- Select the pattern that best matches the business intelligence gathered
-- Use specific numbers, competitor names, or concrete details from RESEARCH ONLY
-- Create strong curiosity that makes them want to read more
-- Maximum 60 characters total
-- Reference company name when space allows and it flows naturally
-- Base all hooks on actual business intelligence data
+- MUST follow format: "Hi {contact_first_name}, ..." or "Hi {contact_first_name}: ..."
+- Hooks must be based on business intelligence only
 
 Email Structure (100-150 words max):
 
-MANDATORY Greeting:
-- MUST start with "Hi {contact_first_name},"
-- This is the very first line of the email body
-- Matches the format used in follow-up emails
-- Example: "Hi Sarah,"
-
-Opening (1-2 sentences after greeting):
-- Quick personalized reference based on business intelligence
-- Must use proper grammar with pronouns and articles
-- Examples:
-  GOOD: "Hi Sarah,\n\nI noticed RevCo closed a Series A last month"
-  BAD: "I noticed RevCo closed a Series A last month" (missing greeting)
-  GOOD: "Hi John,\n\nI saw your blog post about manual prospecting challenges"
-  BAD: "Noticed RevCo closed Series A last month" (missing greeting and article)
-- Must be immediately relevant
-- Full examples of complete openings:
-  * "Hi Sarah,\n\nI noticed [Company] closed a Series A last month"
-  * "Hi John,\n\nI saw [Company] posted several SDR roles recently"
-  * "Hi David,\n\nI read your earnings call transcript mentioning pipeline challenges"
-
 Body Paragraph 1 (1-2 sentences):
 - State their challenge or opportunity identified in business intelligence
-- Be specific, use actual research data
-- Example: "That growth usually creates a lead quality challenge when scaling the sales team."
 
 Body Paragraph 2 (1-2 sentences):
-- Quick proof point with specific results
-- Reference REAL competitors ONLY if they're in business intelligence
-- If NO competitor names available → use vague social proof: "a [location] [type] company", "teams at your stage"
-- Include concrete numbers from research or industry data
-- Example with competitors: "Mixpanel and Amplitude both solved this by automating lead generation. Amplitude saw their SDR team focus 80% of time on qualified conversations instead of list building."
-- Example without competitors: "We worked with a Waco service company to solve this. They reclaimed 15 hours per week without hiring."
-- NEVER fabricate competitor names or use "similar companies" as placeholder
+- Proof point ONLY if explicitly provided in business intelligence or explicitly provided in our profile proof points
+- Numbers only if explicitly present in provided data
 
 Body Paragraph 3 (1 sentence):
 - What you can offer them specifically
-- Example: "I built a demo showing how an AI agent would work for MetricFlow's ICP."
+- Must be assembled ONLY from items in {our_services}
+- Keep phrasing consistent with {our_value_prop} and {our_differentiators}
+- Do NOT add tool names, tactics, audits, pilots, pods, sprints, or operational constructs unless explicitly present in our profile fields
 
 Call to Action (1 sentence):
 - Simple, direct ask
-- Specific time commitment (15-30 minutes)
 - Should immediately follow the offer
-- Example: "Want 20 minutes to see it in action?"
-
-Closing (1 line):
-- Simple professional closing (Best, Cheers, Best regards)
-
-Signature:
-- Sender name
-- Company name
-- Email
-- Phone
-- Website/LinkedIn
 
 P.S. (Optional, 1 sentence):
-- Additional value hook or proof element
-- Must add genuine value, not filler
-- Keep numbers VAGUE unless exact data from research
-- Use qualitative language: "several", "some", "multiple", "examples"
-- Never use specific placeholder numbers
-- **CRITICAL: DO NOT include "P.S." prefix in your output - it will be added automatically**
-- Examples of CONTENT ONLY (no "P.S." prefix):
-  GOOD: "I can share the competitor analysis I pulled on Mixpanel and Amplitude"
-  GOOD: "The system identified prospects matching your criteria. Want to see some examples?"
-  BAD: "P.S. I can share..." (prefix will be duplicated - just write the content)
-  BAD: "Agent found 87 qualified leads in 48 hours"
-  BAD: "I identified 143 accounts matching your ICP"
-
-2. PERSONALIZATION INTEGRATION:
-
-Be selective with business intelligence:
-- Pick the 1-2 MOST compelling personalization elements
-- Don't list everything you know
-- Quality beats quantity
-- Use specific numbers and company names when possible from research
-- Show research without being exhaustive
-- Make every detail count
-- All personalization must come from provided business intelligence
-
-Focus areas:
-- Most pressing pain point (pick ONE from research)
-- Most relevant value proposition (pick ONE from research)
-- Most compelling proof point (pick ONE, use ONLY real competitor names from research)
-- Strongest competitive or peer insight (ONLY if competitor names are in research)
-- If NO competitor data → use stage/size-based insights or vague social proof instead
-
-3. FOLLOW-UP SEQUENCE (if requested):
-
-CRITICAL: Follow-ups must be even MORE concise and punchy than primary email.
-Target: 80-120 words maximum (excluding signature). Every follow-up MUST include closing + signature.
-
-Follow-up Email Structure Template:
-
-Opening (1 sentence):
-"Hi {contact_first_name},"
-
-Body (2-3 short sentences):
-- New angle or value point (1 sentence)
-- Quick proof or insight (1 sentence)
-- Specific offer or next step (1 sentence)
-
-Call-to-Action (1 sentence):
-- Direct, specific ask with timeframe
-
-Closing (1 line):
-"Best," OR "Cheers," OR "Best regards,"
-
-Signature (REQUIRED - identical to primary email):
-{Sender Name}
-{Company Name}
-{Email}
-{Phone}
-{Website/LinkedIn}
-
-Example Follow-up:
-"Hi Sarah,
-
-Quick note on the pipeline gaps we discussed. Three RevOps teams at your stage cut manual work by 40% using automated lead scoring.
-
-Want 15 minutes to see how it works for MetricFlow?
-
-Best,
-
-John Smith
-DataFlow Solutions
-john@dataflow.com
-(555) 123-4567"
-
-Follow-up Timing and Angles:
-
-Email 1 (3-5 days after primary):
-- New angle, different curiosity hook
-- 80-120 words max (EXCLUDING signature)
-- Different proof point than primary (use different real competitors)
-- Value-added content or resource
-- Different CTA
-- NO hyphens in subject or body
-- MUST include closing + full signature
-
-Email 2 (1 week after Email 1):
-- Another unique curiosity-driven subject line (no hyphens)
-- 80-120 words max (EXCLUDING signature)
-- Social proof or peer comparison focus (real company names)
-- Different value angle
-- Collaborative next step CTA
-- NO hyphens anywhere
-- MUST include closing + full signature
-
-
-MANDATORY Requirements for ALL follow-ups:
-
-LENGTH REQUIREMENTS (CRITICAL):
-- Body: 80-120 words MAXIMUM (excluding signature)
-- Even shorter and punchier than primary email
-- Every single word must justify its existence
-- Cut ruthlessly - extreme brevity is the priority
-- If longer than 120 words (excluding signature), you have FAILED
-
-FORMAT REQUIREMENTS (CRITICAL):
-- MUST include professional closing: "Best,", "Cheers,", or "Best regards,"
-- MUST include COMPLETE signature (identical format to primary email)
-- Signature must include: Name, Company, Email, Phone, Website/LinkedIn
-- Signature format must be IDENTICAL across entire sequence
-
-CONTENT REQUIREMENTS:
-- Each must have UNIQUE subject line following "Hi {contact_first_name}, " or "Hi {contact_first_name}: " format
-- NEVER use hyphens in any follow-up subject lines or bodies
-- Each must use DIFFERENT curiosity pattern from primary and other follow-ups
-- No repeated content or angles
-- Use different real competitor names in each follow-up ONLY if available in research
-- If NO competitor data → vary the industry/stage-based insights across follow-ups
-- Every follow-up should feel fresh and provide new value
-- Keep the same tight, punchy writing style
-- All information must come from business intelligence
-
-CONSISTENCY REQUIREMENTS:
-- Maintain professional tone throughout sequence
-- Use consistent signature formatting
-- Match primary email's level of personalization
-- Keep brand voice consistent
-
-4. QUALITY STANDARDS:
-
-DO:
-- Write 100-150 words max (excluding signature)
-- Use 1-2 sentence paragraphs
-- Get to the point in first 3 lines
-- Include specific numbers and results from research
-- Use white space generously
-- Make every word count
-- Be conversational and confident
-- Lead with outcomes, not features
-- Use proper grammar with pronouns and articles
-- Use ONLY real competitor names explicitly in business intelligence
-- If NO competitor names → focus on stage/size/industry insights
-- Base all claims on business intelligence data
-- Keep P.S. numbers vague unless exact data exists
-
-DON'T:
-- Write long paragraphs (max 2 sentences)
-- Exceed 150 words
-- Include feature lists or descriptions
-- Use unnecessary adjectives or fluff
-- Repeat yourself
-- Over-explain
-- List all the research you did
-- Include multiple CTAs
-- Use hyphens anywhere in email or subject
-- Drop pronouns or articles
-- Say "a similar company" instead of real names
-- Make up information not in business intelligence
-- Use specific numbers in P.S. without real data
+- Additional value hook
+- Must be explicitly supported by our profile fields
+- No new deliverables, no invented numbers
 
 FINAL INSTRUCTION:
-Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excluding signature). MANDATORY: Start the email body with "Hi {contact_first_name}," - this is non-negotiable. Every sentence must justify its existence. Use ONLY real data from the business intelligence provided. Use real competitor names, never vague references. Never use hyphens anywhere. The subject line should make {contact_first_name} think "I need to read this" while the body gets straight to the value without wasting their time. Write like you're texting a colleague who respects research and specificity, not pitching a stranger. If your email is longer than 150 words, cut it down ruthlessly until it is. Base every claim on the business intelligence data provided.
+Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excluding signature).
+Use ONLY real data from the business intelligence provided for prospect claims.
+Use ONLY {our_value_prop}, {our_services}, {our_differentiators} for offer claims.
+Never use hyphens anywhere.
+If the email is longer than 150 words, cut it down.
+
+B-TIER LEAD SPECIAL HANDLING (lead_tier: {lead_tier}):
+When lead_tier is "B" (minimal research data available):
+1. DO NOT fail or reject - B-tier leads are still valuable and should get emails
+2. Focus on verified facts only: company name, location, industry, role
+3. Use industry-level insights instead of company-specific claims
+4. Lead with curiosity about THEIR situation, not claims about data you found
+5. Do NOT fabricate any research-backed claims
+6. Keep email structure professional and focused
+7. QA will use lower approval threshold (0.50) for B-tier leads
+8. Missing research elements are EXPECTED and will NOT be penalized
+
+B-tier email priorities:
+- Professional tone and structure over deep personalization
+- Generic industry value propositions over specific competitor insights
+- Clear CTA and signature over research-heavy content
 """)
         ])
         
