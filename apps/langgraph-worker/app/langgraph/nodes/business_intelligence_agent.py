@@ -340,14 +340,14 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         if is_reasoning_model:
             # Reasoning models (o1, gpt-5, gpt-5.2): Use reasoning_effort parameter
             # GPT-5.2 supports: none, low, medium, high, xhigh (not "minimal")
-            reasoning_level = "low"
+            reasoning_level = "medium"
 
             llm = registry.get_openai_client(
                 api_key=openai_api_key,
                 model=bi_model,
                 temperature=0.3,
                 max_completion_tokens=bi_token_budget,
-                reasoning_effort=reasoning_level,  # low for efficient reasoning
+                reasoning_effort=reasoning_level,  # medium for balanced reasoning
                 require_user_key=using_user_keys,
             ).with_structured_output(BusinessIntelligence)
             logger.info(f"Using reasoning model: {bi_model} with {bi_token_budget} tokens, reasoning_effort={reasoning_level}")
