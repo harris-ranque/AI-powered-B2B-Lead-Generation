@@ -62,7 +62,10 @@ class RateLimitingConfig:
     perplexity_max_rpm: int = 2000
     perplexity_sonar_pro_rpm: int = 50
     perplexity_deep_research_rpm: int = 5
-    perplexity_max_concurrent: int = 1  # Serialize to prevent thundering herd
+    # Model-specific concurrency (per API key) - Perplexity has no explicit concurrency limit
+    perplexity_sonar_pro_concurrent: int = 5  # Higher for sonar-pro (faster responses, higher RPM)
+    perplexity_deep_research_concurrent: int = 2  # Lower for deep-research (slower, stricter limits)
+    perplexity_per_key_concurrent: bool = True  # Enable per-API-key queue isolation
 
     # OpenAI settings (start conservative)
     openai_default_rpm: int = 100
@@ -80,8 +83,11 @@ class RateLimitingConfig:
     # Adaptive learning settings
     halve_on_429: bool = True
     recovery_increment: float = 0.10  # 10% increase on recovery
-    success_threshold: int = 50  # Successes before rate increase attempt
-    recovery_cooldown_seconds: int = 300  # 5 minutes
+    success_threshold: int = 15  # Successes before rate increase attempt (reduced from 50)
+    recovery_cooldown_seconds: int = 120  # 2 minutes (reduced from 5 minutes)
+    # Time-based recovery: recover rate after elapsed time regardless of success count
+    time_based_recovery_enabled: bool = True
+    time_based_recovery_seconds: int = 180  # Recover after 3 min since last 429
 
     # Queue settings
     max_queue_size: int = 1000
@@ -107,7 +113,9 @@ class RateLimitingConfig:
             perplexity_max_rpm=get_env_int('PERPLEXITY_MAX_RPM', 2000),
             perplexity_sonar_pro_rpm=get_env_int('PERPLEXITY_SONAR_PRO_RPM', 50),
             perplexity_deep_research_rpm=get_env_int('PERPLEXITY_DEEP_RESEARCH_RPM', 5),
-            perplexity_max_concurrent=get_env_int('PERPLEXITY_MAX_CONCURRENT', 1),
+            perplexity_sonar_pro_concurrent=get_env_int('PERPLEXITY_SONAR_PRO_CONCURRENT', 5),
+            perplexity_deep_research_concurrent=get_env_int('PERPLEXITY_DEEP_RESEARCH_CONCURRENT', 2),
+            perplexity_per_key_concurrent=get_env_bool('PERPLEXITY_PER_KEY_CONCURRENT', True),
 
             # OpenAI
             openai_default_rpm=get_env_int('OPENAI_DEFAULT_RPM', 100),
@@ -125,8 +133,10 @@ class RateLimitingConfig:
             # Adaptive
             halve_on_429=get_env_bool('RATE_LIMIT_HALVE_ON_429', True),
             recovery_increment=get_env_float('RATE_LIMIT_RECOVERY_INCREMENT', 0.10),
-            success_threshold=get_env_int('RATE_LIMIT_SUCCESS_THRESHOLD', 50),
-            recovery_cooldown_seconds=get_env_int('RATE_LIMIT_RECOVERY_COOLDOWN', 300),
+            success_threshold=get_env_int('RATE_LIMIT_SUCCESS_THRESHOLD', 15),
+            recovery_cooldown_seconds=get_env_int('RATE_LIMIT_RECOVERY_COOLDOWN', 120),
+            time_based_recovery_enabled=get_env_bool('RATE_LIMIT_TIME_RECOVERY_ENABLED', True),
+            time_based_recovery_seconds=get_env_int('RATE_LIMIT_TIME_RECOVERY_SECONDS', 180),
 
             # Queue
             max_queue_size=get_env_int('RATE_LIMIT_MAX_QUEUE', 1000),
@@ -206,10 +216,24 @@ class RateLimitingConfig:
                 max_rpm=1000,
             )
 
-    def get_max_concurrent(self, provider: Provider) -> int:
-        """Get maximum concurrent requests for a provider."""
+    def get_max_concurrent(self, provider: Provider, model: Optional[str] = None) -> int:
+        """
+        Get maximum concurrent requests for a provider/model combination.
+
+        Args:
+            provider: API provider
+            model: Optional model name for model-specific limits (e.g., sonar-deep-research)
+
+        Returns:
+            Maximum concurrent requests allowed
+        """
         if provider == Provider.PERPLEXITY:
-            return self.perplexity_max_concurrent
+            # Model-specific concurrency for Perplexity
+            if model == "sonar-deep-research":
+                return self.perplexity_deep_research_concurrent
+            else:
+                # Default to sonar-pro concurrency for other models
+                return self.perplexity_sonar_pro_concurrent
         elif provider == Provider.OPENAI:
             return self.openai_max_concurrent
         elif provider == Provider.FINDYMAIL:
@@ -226,7 +250,9 @@ class RateLimitingConfig:
                 "default_rpm": self.perplexity_default_rpm,
                 "sonar_pro_rpm": self.perplexity_sonar_pro_rpm,
                 "deep_research_rpm": self.perplexity_deep_research_rpm,
-                "max_concurrent": self.perplexity_max_concurrent,
+                "sonar_pro_concurrent": self.perplexity_sonar_pro_concurrent,
+                "deep_research_concurrent": self.perplexity_deep_research_concurrent,
+                "per_key_concurrent": self.perplexity_per_key_concurrent,
             },
             "openai": {
                 "default_rpm": self.openai_default_rpm,
@@ -241,6 +267,8 @@ class RateLimitingConfig:
                 "recovery_increment": self.recovery_increment,
                 "success_threshold": self.success_threshold,
                 "cooldown_seconds": self.recovery_cooldown_seconds,
+                "time_based_recovery_enabled": self.time_based_recovery_enabled,
+                "time_based_recovery_seconds": self.time_based_recovery_seconds,
             },
             "circuit_breaker": {
                 "enabled": self.circuit_breaker_enabled,

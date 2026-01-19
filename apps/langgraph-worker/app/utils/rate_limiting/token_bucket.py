@@ -76,6 +76,9 @@ class TokenBucket:
     Tokens are refilled at a constant rate based on the effective RPM.
     If the bucket is empty, requests wait until tokens accumulate.
 
+    Uses asyncio.Condition for efficient waiting - waiters sleep for the exact
+    time needed and are notified early when rate adjustments occur.
+
     Attributes:
         config: Provider configuration with rate limits
         effective_rpm: Current effective requests per minute (can be adjusted)
@@ -85,7 +88,7 @@ class TokenBucket:
     config: ProviderConfig
     current_tokens: float = field(init=False)
     last_refill_time: float = field(init=False)
-    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
+    _condition: asyncio.Condition = field(default_factory=asyncio.Condition, repr=False)
     metrics: TokenBucketMetrics = field(default_factory=TokenBucketMetrics, repr=False)
 
     # Dynamic rate fields
@@ -116,6 +119,8 @@ class TokenBucket:
         Acquire tokens from the bucket.
 
         Waits if insufficient tokens are available. Returns the total wait time.
+        Uses efficient async waiting - sleeps for exact time needed and wakes
+        early when rate adjustments occur.
 
         Args:
             tokens: Number of tokens to acquire (default 1)
@@ -128,9 +133,9 @@ class TokenBucket:
             asyncio.TimeoutError: If timeout exceeded while waiting for tokens
         """
         start_time = time.monotonic()
-        total_wait = 0.0
+        deadline = start_time + timeout if timeout is not None else None
 
-        async with self._lock:
+        async with self._condition:
             while True:
                 # Refill bucket based on elapsed time
                 self._refill()
@@ -138,37 +143,40 @@ class TokenBucket:
                 if self.current_tokens >= tokens:
                     # Have enough tokens, consume and return
                     self.current_tokens -= tokens
+                    total_wait = time.monotonic() - start_time
                     self.metrics.record_request(total_wait, tokens)
                     return total_wait
 
-                # Calculate wait time for required tokens
+                # Calculate exact wait time for required tokens
                 tokens_needed = tokens - self.current_tokens
                 wait_time = tokens_needed / self._refill_rate_per_second
 
-                # Check timeout
-                if timeout is not None:
-                    elapsed = time.monotonic() - start_time
-                    if elapsed + wait_time > timeout:
+                # Check timeout deadline
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
                         raise asyncio.TimeoutError(
                             f"Rate limit timeout: need {tokens_needed:.2f} tokens, "
-                            f"would wait {wait_time:.2f}s but timeout is {timeout - elapsed:.2f}s"
+                            f"no time remaining"
                         )
+                    if wait_time > remaining:
+                        raise asyncio.TimeoutError(
+                            f"Rate limit timeout: need {tokens_needed:.2f} tokens, "
+                            f"would wait {wait_time:.2f}s but only {remaining:.2f}s remaining"
+                        )
+                    # Don't wait longer than deadline allows
+                    wait_time = min(wait_time, remaining)
 
-                # Release lock while waiting to allow rate adjustments
-                # Use a copy of wait_time to avoid race conditions
-                wait_duration = min(wait_time, 1.0)  # Wait max 1 second at a time
-
-        # Wait outside the lock
-        await asyncio.sleep(wait_duration)
-        total_wait += wait_duration
-
-        # Re-acquire lock and continue the loop
-        async with self._lock:
-            pass  # Will loop back to check tokens again
-
-        # Recursive call to continue waiting if needed
-        # This allows rate adjustments to take effect during long waits
-        return total_wait + await self.acquire(tokens, timeout - total_wait if timeout else None)
+                # Efficient wait - will wake early if rate is adjusted (notify_all called)
+                try:
+                    await asyncio.wait_for(
+                        self._condition.wait(),
+                        timeout=wait_time
+                    )
+                    # Woken early by notify_all (rate adjustment) - loop and recheck
+                except asyncio.TimeoutError:
+                    # Expected timeout - tokens should now be available
+                    pass
 
     def _refill(self) -> None:
         """
@@ -187,29 +195,34 @@ class TokenBucket:
             float(self._max_bucket_size)
         )
 
-    def adjust_rate(self, new_rpm: int) -> None:
+    async def adjust_rate(self, new_rpm: int) -> None:
         """
         Dynamically adjust the rate limit.
 
         Called when we learn the actual API tier from 429 responses,
-        or when recovering after successful requests.
+        or when recovering after successful requests. Wakes all waiters
+        to recompute their wait times with the new rate.
 
         Args:
             new_rpm: New requests per minute limit
         """
-        # Clamp to configured bounds
-        self._effective_rpm = max(
-            self.config.min_rpm,
-            min(new_rpm, self.config.max_rpm)
-        )
-        self._refill_rate_per_second = self._effective_rpm / 60.0
+        async with self._condition:
+            # Clamp to configured bounds
+            self._effective_rpm = max(
+                self.config.min_rpm,
+                min(new_rpm, self.config.max_rpm)
+            )
+            self._refill_rate_per_second = self._effective_rpm / 60.0
 
-        # Adjust bucket size proportionally (allow ~10 seconds of burst)
-        self._max_bucket_size = max(10, self._effective_rpm // 6)
+            # Adjust bucket size proportionally (allow ~10 seconds of burst)
+            self._max_bucket_size = max(10, self._effective_rpm // 6)
 
-        # Don't let current tokens exceed new max
-        if self.current_tokens > self._max_bucket_size:
-            self.current_tokens = float(self._max_bucket_size)
+            # Don't let current tokens exceed new max
+            if self.current_tokens > self._max_bucket_size:
+                self.current_tokens = float(self._max_bucket_size)
+
+            # Wake all waiters to recalculate with new rate
+            self._condition.notify_all()
 
     def get_available_tokens(self) -> float:
         """
@@ -236,14 +249,17 @@ class TokenBucket:
             "metrics": self.metrics.to_dict(),
         }
 
-    def reset(self) -> None:
+    async def reset(self) -> None:
         """Reset bucket to initial state (full tokens, default rate)."""
-        self._effective_rpm = self.config.default_rpm
-        self._max_bucket_size = self.config.max_bucket_size
-        self._refill_rate_per_second = self._effective_rpm / 60.0
-        self.current_tokens = float(self._max_bucket_size)
-        self.last_refill_time = time.monotonic()
-        self.metrics = TokenBucketMetrics()
+        async with self._condition:
+            self._effective_rpm = self.config.default_rpm
+            self._max_bucket_size = self.config.max_bucket_size
+            self._refill_rate_per_second = self._effective_rpm / 60.0
+            self.current_tokens = float(self._max_bucket_size)
+            self.last_refill_time = time.monotonic()
+            self.metrics = TokenBucketMetrics()
+            # Wake waiters to recalculate with reset rate
+            self._condition.notify_all()
 
 
 class TokenBucketContext:

@@ -227,7 +227,9 @@ class AdaptiveRateLimiter:
         """
         Record a successful request.
 
-        May trigger rate increase if success streak threshold met.
+        May trigger rate increase if:
+        1. Success streak threshold met (count-based recovery)
+        2. Sufficient time elapsed since last 429 (time-based recovery)
 
         Args:
             api_key: User's BYOK API key (None for system key)
@@ -241,14 +243,29 @@ class AdaptiveRateLimiter:
 
         # Check if we should attempt rate increase
         config = self.config
+        global_config = get_rate_limit_config()
         recovery_cooldown = timedelta(seconds=config.recovery_window_seconds)
 
-        should_increase = (
+        # Count-based recovery: increase after N successes post-cooldown
+        count_based_recovery = (
             config.adaptive_enabled
             and state.successful_requests_since_429 >= config.success_threshold
             and state.last_429_at is not None
             and datetime.utcnow() - state.last_429_at > recovery_cooldown
         )
+
+        # Time-based recovery: increase after time elapsed regardless of success count
+        # This prevents being stuck at low rates when request volume is low
+        time_based_recovery = (
+            config.adaptive_enabled
+            and global_config.time_based_recovery_enabled
+            and state.last_429_at is not None
+            and datetime.utcnow() - state.last_429_at > timedelta(seconds=global_config.time_based_recovery_seconds)
+            and state.learned_rpm < config.max_rpm
+        )
+
+        should_increase = count_based_recovery or time_based_recovery
+        recovery_reason = "count_based" if count_based_recovery else "time_based" if time_based_recovery else None
 
         if should_increase:
             current_rpm = bucket.effective_rpm
@@ -258,13 +275,17 @@ class AdaptiveRateLimiter:
             )
 
             if new_rpm > current_rpm:
-                bucket.adjust_rate(new_rpm)
+                await bucket.adjust_rate(new_rpm)
                 state.learned_rpm = new_rpm
                 state.successful_requests_since_429 = 0
+                # Reset time-based recovery timer by updating last_429_at to prevent continuous increases
+                if time_based_recovery:
+                    state.last_429_at = datetime.utcnow()
 
                 logger.info(
                     f"[AdaptiveRateLimit] Increased rate for {self.provider.value}: "
-                    f"{current_rpm} -> {new_rpm} RPM (key={self._get_bucket_key(api_key, model)})"
+                    f"{current_rpm} -> {new_rpm} RPM (key={self._get_bucket_key(api_key, model)}, "
+                    f"reason={recovery_reason})"
                 )
 
                 capture_event(
@@ -275,7 +296,8 @@ class AdaptiveRateLimiter:
                         "old_rpm": current_rpm,
                         "new_rpm": new_rpm,
                         "total_requests": state.total_requests,
-                        "success_streak": config.success_threshold,
+                        "success_streak": state.successful_requests_since_429,
+                        "recovery_reason": recovery_reason,
                     }
                 )
 
@@ -325,7 +347,7 @@ class AdaptiveRateLimiter:
         if state.consecutive_429_count > 1:
             new_rpm = max(config.min_rpm, new_rpm // 2)
 
-        bucket.adjust_rate(new_rpm)
+        await bucket.adjust_rate(new_rpm)
         state.learned_rpm = new_rpm
 
         # Attempt tier detection
@@ -418,7 +440,7 @@ class AdaptiveRateLimiter:
                 # Reset specific bucket
                 bucket_key = self._get_bucket_key(api_key, model)
                 if bucket_key in self._buckets:
-                    self._buckets[bucket_key].reset()
+                    await self._buckets[bucket_key].reset()
                     self._states[bucket_key] = RateLimitState(
                         provider=self.provider,
                         api_key_hash=self._hash_key(api_key),
@@ -426,7 +448,9 @@ class AdaptiveRateLimiter:
                     if bucket_key in self._circuit_open:
                         del self._circuit_open[bucket_key]
             else:
-                # Reset all
+                # Reset all buckets (await each reset)
+                for bucket in self._buckets.values():
+                    await bucket.reset()
                 self._buckets.clear()
                 self._states.clear()
                 self._circuit_open.clear()

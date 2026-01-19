@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Literal
 
 import aiohttp
 import googlemaps
+import sentry_sdk
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
@@ -617,9 +618,29 @@ class PerplexityClient:
                 error=f"Perplexity API error {e.status_code}: {e.message[:200]}",
                 api_error=api_error.to_dict()
             )
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:
             # Classify timeout error
             api_error = classify_perplexity_error(408, "Request timed out")
+
+            # Capture timeout in Sentry for observability
+            sentry_sdk.capture_exception(
+                e,
+                extras={
+                    "company_name": company_name,
+                    "domain": domain,
+                    "model": "sonar-pro",
+                    "timeout_seconds": self.timeout,
+                    "operation": "comprehensive_research",
+                    "response_time": time.time() - start_time,
+                },
+                tags={
+                    "provider": "perplexity",
+                    "error_type": "timeout",
+                    "model": "sonar-pro",
+                }
+            )
+            logger.error(f"Perplexity sonar-pro timeout for {company_name} after {time.time() - start_time:.1f}s")
+
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
@@ -885,9 +906,29 @@ class PerplexityClient:
                 api_error=api_error.to_dict(),
                 final_tier_used="deep_failed"
             )
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:
             # Classify timeout error
             api_error = classify_perplexity_error(408, "Deep research timeout (60s)")
+
+            # Capture timeout in Sentry for observability
+            sentry_sdk.capture_exception(
+                e,
+                extras={
+                    "company_name": company_name,
+                    "domain": domain,
+                    "model": "sonar-deep-research",
+                    "timeout_seconds": 60.0,
+                    "operation": "deep_research",
+                    "response_time": time.time() - start_time,
+                },
+                tags={
+                    "provider": "perplexity",
+                    "error_type": "timeout",
+                    "model": "sonar-deep-research",
+                }
+            )
+            logger.error(f"Perplexity deep-research timeout for {company_name} after {time.time() - start_time:.1f}s")
+
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,

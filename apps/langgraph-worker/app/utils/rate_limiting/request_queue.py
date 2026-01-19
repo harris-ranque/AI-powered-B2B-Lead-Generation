@@ -12,6 +12,7 @@ Features:
 """
 
 import asyncio
+import hashlib
 import heapq
 import time
 from dataclasses import dataclass, field
@@ -21,13 +22,15 @@ from uuid import uuid4
 from .types import Provider, RequestContext
 from .config import get_rate_limit_config
 
-# Import logger from parent utils
+# Import logger and Sentry from parent utils
 try:
     from ..logger import setup_logger
     from ..analytics import capture_event
+    import sentry_sdk
 except ImportError:
     # Fallback for testing
     import logging
+    import sentry_sdk
     def setup_logger(name):
         return logging.getLogger(name)
     def capture_event(event_name, properties):
@@ -250,7 +253,7 @@ class ProviderRequestQueue:
         try:
             result = await asyncio.wait_for(future, timeout=timeout)
             return result
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:
             self.metrics.record_timeout()
             # Try to remove from queue if still there
             async with self._lock:
@@ -261,9 +264,27 @@ class ProviderRequestQueue:
                 except ValueError:
                     pass  # Already being processed
 
+            # Capture queue timeout in Sentry for observability
+            sentry_sdk.capture_exception(
+                e,
+                extras={
+                    "provider": self.provider.value,
+                    "request_id": request.request_id,
+                    "timeout_seconds": timeout,
+                    "queue_depth": len(self._queue),
+                    "max_concurrent": self.max_concurrent,
+                    "priority": -request.priority,  # Un-negate for display
+                    "correlation_id": request.context.correlation_id if request.context else None,
+                },
+                tags={
+                    "error_type": "queue_wait_timeout",
+                    "provider": self.provider.value,
+                }
+            )
+
             logger.warning(
                 f"[RequestQueue] Request timeout for {self.provider.value}: "
-                f"id={request.request_id}, timeout={timeout}s"
+                f"id={request.request_id}, timeout={timeout}s, queue_depth={len(self._queue)}"
             )
             raise
 
@@ -345,6 +366,25 @@ class ProviderRequestQueue:
                 "configuration" in error_str  # Config problem
             )
 
+            # Capture timeout and serious errors in Sentry for observability
+            if isinstance(e, asyncio.TimeoutError) or is_serious:
+                sentry_sdk.capture_exception(
+                    e,
+                    extras={
+                        "provider": self.provider.value,
+                        "request_id": request.request_id,
+                        "queue_depth": len(self._queue),
+                        "active_count": self._active_count,
+                        "max_concurrent": self.max_concurrent,
+                        "wait_time": wait_time if 'wait_time' in dir() else None,
+                    },
+                    tags={
+                        "error_type": "queue_timeout" if isinstance(e, asyncio.TimeoutError) else "queue_error",
+                        "provider": self.provider.value,
+                        "is_serious": str(is_serious),
+                    }
+                )
+
             if is_serious:
                 logger.error(
                     f"[RequestQueue] Request failed for {self.provider.value}: "
@@ -394,22 +434,79 @@ class QueueFullError(Exception):
 
 class RequestQueueManager:
     """
-    Manages request queues for all providers.
+    Manages request queues per API key for multi-tenant isolation.
 
-    Provides a unified interface for submitting requests to any provider's queue.
+    Each unique (provider, api_key_hash, model) combination gets its own queue
+    with independent concurrency limits. This prevents one user's rate limiting
+    from affecting other users.
+
+    For Perplexity, model-specific concurrency is used:
+    - sonar-pro: 5 concurrent requests per API key (faster, higher RPM)
+    - sonar-deep-research: 2 concurrent requests per API key (slower, stricter limits)
     """
 
     def __init__(self):
-        self._queues: Dict[Provider, ProviderRequestQueue] = {}
+        self._queues: Dict[str, ProviderRequestQueue] = {}
         self._lock = asyncio.Lock()
 
-    async def get_queue(self, provider: Provider) -> ProviderRequestQueue:
-        """Get or create queue for a provider."""
-        if provider not in self._queues:
+    def _hash_api_key(self, api_key: Optional[str]) -> str:
+        """Hash API key for secure tracking."""
+        if not api_key:
+            return "system"
+        return hashlib.sha256(api_key.encode()).hexdigest()[:16]
+
+    def _get_queue_key(
+        self,
+        provider: Provider,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None
+    ) -> str:
+        """
+        Generate unique key for queue lookup.
+
+        Args:
+            provider: API provider
+            api_key: User's API key (hashed for security)
+            model: Model name for model-specific queues
+
+        Returns:
+            Queue key in format: "{provider}:{api_key_hash}:{model}"
+        """
+        config = get_rate_limit_config()
+        key_hash = self._hash_api_key(api_key)
+
+        # For Perplexity with per-key concurrency enabled, use model-specific queues
+        if provider == Provider.PERPLEXITY and config.perplexity_per_key_concurrent:
+            model_key = model or "sonar-pro"
+            return f"{provider.value}:{key_hash}:{model_key}"
+
+        # For other providers, just use provider:key
+        return f"{provider.value}:{key_hash}"
+
+    async def get_queue(
+        self,
+        provider: Provider,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None
+    ) -> ProviderRequestQueue:
+        """
+        Get or create queue for a provider/key/model combination.
+
+        Args:
+            provider: API provider
+            api_key: User's API key for per-key isolation
+            model: Model name for model-specific concurrency
+
+        Returns:
+            ProviderRequestQueue for this combination
+        """
+        queue_key = self._get_queue_key(provider, api_key, model)
+
+        if queue_key not in self._queues:
             async with self._lock:
-                if provider not in self._queues:
+                if queue_key not in self._queues:
                     config = get_rate_limit_config()
-                    max_concurrent = config.get_max_concurrent(provider)
+                    max_concurrent = config.get_max_concurrent(provider, model)
 
                     queue = ProviderRequestQueue(
                         provider=provider,
@@ -417,9 +514,14 @@ class RequestQueueManager:
                         max_queue_size=config.max_queue_size
                     )
                     await queue.start()
-                    self._queues[provider] = queue
+                    self._queues[queue_key] = queue
 
-        return self._queues[provider]
+                    logger.info(
+                        f"[RequestQueueManager] Created queue: {queue_key}, "
+                        f"max_concurrent={max_concurrent}"
+                    )
+
+        return self._queues[queue_key]
 
     async def submit(
         self,
@@ -432,17 +534,23 @@ class RequestQueueManager:
         """
         Submit a request to the appropriate provider queue.
 
+        Uses context.api_key and context.model for per-key/model queue routing.
+
         Args:
             provider: Target API provider
             func: Async function to execute
-            context: Request context for tracking
+            context: Request context for tracking (includes api_key and model)
             priority: Request priority (higher = more important)
             timeout: Maximum wait time in seconds
 
         Returns:
             Result of the function execution
         """
-        queue = await self.get_queue(provider)
+        # Extract api_key and model from context for queue routing
+        api_key = context.api_key if context else None
+        model = context.model if context else None
+
+        queue = await self.get_queue(provider, api_key, model)
         return await queue.submit(func, context, priority, timeout)
 
     async def shutdown(self) -> None:
@@ -455,6 +563,6 @@ class RequestQueueManager:
     def get_all_stats(self) -> Dict[str, Dict]:
         """Get statistics for all queues."""
         return {
-            provider.value: queue.get_stats()
-            for provider, queue in self._queues.items()
+            queue_key: queue.get_stats()
+            for queue_key, queue in self._queues.items()
         }
