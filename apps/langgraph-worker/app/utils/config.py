@@ -154,14 +154,19 @@ class Settings(BaseSettings):
     # IMPORTANT: Reasoning models (o1, gpt-5) use completion tokens for BOTH reasoning AND output
     # If max_completion_tokens is too low, all tokens go to reasoning with none left for output
     # This causes LengthFinishReasonError - the model cannot produce structured output
+    #
+    # FIX (Jan 2026): Doubled token budgets to prevent LengthFinishReasonError
+    # Reasoning models were consuming 100% of tokens for reasoning, leaving 0 for output
+    # Email Gen: 8000 → 16000 (reasoning ~8K + structured output ~3K + buffer)
+    # QA Agent: 4000 → 8000 (reasoning ~4K + structured output ~2K + buffer)
 
     # Business Intelligence: Complex structured output (14 fields) needs higher budget
     # Reasoning models need 16K+ to allow for reasoning overhead + structured output
     business_intelligence_max_tokens: int = int(os.getenv("BUSINESS_INTELLIGENCE_MAX_TOKENS", "16000") or "16000")
-    # Email Generation: Email content + follow-up sequences
-    email_generation_max_tokens: int = int(os.getenv("EMAIL_GENERATION_MAX_TOKENS", "8000") or "8000")
-    # Quality Assurance: Scoring, validation, and feedback
-    quality_assurance_max_tokens: int = int(os.getenv("QUALITY_ASSURANCE_MAX_TOKENS", "4000") or "4000")
+    # Email Generation: Email content + follow-up sequences (INCREASED from 8000)
+    email_generation_max_tokens: int = int(os.getenv("EMAIL_GENERATION_MAX_TOKENS", "16000") or "16000")
+    # Quality Assurance: Scoring, validation, and feedback (INCREASED from 4000)
+    quality_assurance_max_tokens: int = int(os.getenv("QUALITY_ASSURANCE_MAX_TOKENS", "8000") or "8000")
 
     @property
     def temperature(self) -> float:
@@ -186,10 +191,18 @@ class Settings(BaseSettings):
             return 2000
 
     def clamp_tokens(self, requested: Optional[int]) -> int:
-        """Clamp agent token budgets to the global max_tokens."""
+        """Return agent-specific token budget, with fallback to global max_tokens.
+
+        NOTE: Agent-specific budgets (email_generation_max_tokens, etc.) should be
+        used directly rather than clamped to the lower global max_tokens. The global
+        max_tokens (default 2000) is for legacy/general use and should not limit
+        reasoning model budgets which need 8K-16K+ for proper structured output.
+        """
         if requested is None or requested <= 0:
             return self.max_tokens
-        return min(self.max_tokens, requested)
+        # Return the requested budget directly - don't clamp to global max_tokens
+        # Agent-specific budgets are set explicitly based on reasoning model requirements
+        return requested
     
     # Sentry Configuration
     sentry_dsn: Optional[str] = os.getenv("SENTRY_DSN", None)

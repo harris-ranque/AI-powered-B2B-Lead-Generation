@@ -1003,26 +1003,41 @@ async def process_batch_with_progress(
                             )
                         else:
                             # Workflow completed but failed to generate valid email
-                            # Do NOT add to results - failed leads should not appear in CSV export
+                            # FIXED: Include failed leads in results so webhook handler can update their status
+                            # This is required for search completion to trigger properly
                             error_msg = (
                                 lead_analysis.get("error") if isinstance(lead_analysis, dict)
                                 else "Email generation failed or not approved"
                             )
-                            # Increment failure count but don't add to results array
+                            # Add failed lead to results so Convex can update analysisStatus to "failed"
+                            results.append(BatchLeadResult(
+                                leadId=lead_id,
+                                status="failed",
+                                result=None,
+                                error=error_msg,
+                                processingTime=lead_time
+                            ))
                             failure_count += 1
 
                             logger.warning(
-                                f"[Batch] ❌ Lead {lead_index+1}/{len(leads)} FAILED (excluded from export): {lead.company_name} - {error_msg} "
+                                f"[Batch] ❌ Lead {lead_index+1}/{len(leads)} FAILED: {lead.company_name} - {error_msg} "
                                 f"(has_email={has_email}, approved={is_approved}, quality={quality_score:.2f}, meets_threshold={meets_quality_threshold}, has_error={has_error})"
                             )
                     else:
-                        # Workflow error - do NOT add to results (excluded from CSV export)
+                        # Workflow error - include in results so Convex can track failure
                         error_msg = result.get("error", "Unknown error")
-                        # Increment failure count but don't add to results array
+                        # Add failed lead to results so Convex can update analysisStatus to "failed"
+                        results.append(BatchLeadResult(
+                            leadId=lead_id,
+                            status="failed",
+                            result=None,
+                            error=error_msg,
+                            processingTime=lead_time
+                        ))
                         failure_count += 1
 
                         logger.warning(
-                            f"[Batch] ❌ Lead {lead_index+1}/{len(leads)} FAILED (excluded from export): {lead.company_name} - {error_msg}"
+                            f"[Batch] ❌ Lead {lead_index+1}/{len(leads)} FAILED: {lead.company_name} - {error_msg}"
                         )
 
             except Exception as e:
@@ -1041,12 +1056,19 @@ async def process_batch_with_progress(
 
                 async with results_lock:
                     completed_count += 1
-                    # Do NOT add exception failures to results (excluded from CSV export)
-                    # Only increment failure count
+                    # FIXED: Include exception failures in results so Convex can update lead status
+                    # This is required for search completion to trigger properly
+                    results.append(BatchLeadResult(
+                        leadId=lead_id,
+                        status="failed",
+                        result=None,
+                        error=error_msg,
+                        processingTime=lead_time
+                    ))
                     failure_count += 1
 
                 logger.error(
-                    f"[Batch] 💥 Lead {lead_index+1}/{len(leads)} exception (excluded from export): {lead.company_name} - {error_msg}"
+                    f"[Batch] 💥 Lead {lead_index+1}/{len(leads)} exception: {lead.company_name} - {error_msg}"
                 )
 
             # Send progress if needed (completed_count already updated above)
@@ -1092,9 +1114,11 @@ async def process_batch_with_progress(
     total_time = time.time() - batch_start
     batch_status = "completed" if failure_count == 0 else "partial" if success_count > 0 else "failed"
 
+    # Note: results now includes both success and failed leads for proper status tracking
+    # "completed" in summary means total processed (success + failure)
     summary = {
         "total": len(leads),
-        "completed": len(results),
+        "completed": len(results),  # Now includes all processed leads (success + failed)
         "success": success_count,
         "failed": failure_count,
         "success_rate": (success_count / len(leads)) * 100 if len(leads) > 0 else 0,
