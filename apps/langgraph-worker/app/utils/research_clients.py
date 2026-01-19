@@ -791,7 +791,9 @@ class PerplexityClient:
             "return_citations": True,
             "return_images": False,
             # Deep research specific parameters
-            "reasoning_effort": "high",  # Use high reasoning effort for exhaustive analysis
+            # Use "low" reasoning effort to avoid timeouts with sync API
+            # "high" causes queries to take 2-5+ minutes which exceeds our timeout
+            "reasoning_effort": "low",
         }
 
         headers = {
