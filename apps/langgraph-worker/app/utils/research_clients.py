@@ -548,6 +548,17 @@ class PerplexityClient:
                         operation_name=f"sonar_pro_research:{company_name}"
                     )
 
+        async def execute_with_rate_limit() -> dict:
+            """Execute API call with rate limiting (retried by outer wrapper on 429)."""
+            return await rate_limited_request(
+                Provider.PERPLEXITY,
+                make_api_call,
+                model="sonar-pro",
+                api_key=self.api_key,
+                correlation_id=f"sonar_pro:{company_name}",
+                timeout=self.timeout + 30,  # Allow extra time for queue wait
+            )
+
         try:
             # Use NEW adaptive rate limiting system with request queue
             # This replaces the old sliding window rate limiter
@@ -558,14 +569,12 @@ class PerplexityClient:
                 location=location,
                 rate_limit_wait_time=0,  # Will be tracked by new system
             ) as tracker:
-                # Execute with adaptive rate limiting + request queue
-                data = await rate_limited_request(
-                    Provider.PERPLEXITY,
-                    make_api_call,
-                    model="sonar-pro",
-                    api_key=self.api_key,
-                    correlation_id=f"sonar_pro:{company_name}",
-                    timeout=self.timeout + 30,  # Allow extra time for queue wait
+                # Execute with retry logic wrapping the rate-limited request
+                # perplexity_request_with_retry handles RateLimitError with exponential backoff
+                data = await perplexity_request_with_retry(
+                    execute_with_rate_limit,
+                    config=self.retry_config,
+                    operation_name=f"sonar_pro:{company_name}"
                 )
 
                 # Set result metrics for PostHog tracking
@@ -805,6 +814,18 @@ class PerplexityClient:
                         operation_name=f"deep_research:{company_name}"
                     )
 
+        async def execute_with_rate_limit() -> dict:
+            """Execute API call with rate limiting (retried by outer wrapper on 429)."""
+            return await rate_limited_request(
+                Provider.PERPLEXITY,
+                make_api_call,
+                model="sonar-deep-research",
+                api_key=self.api_key,
+                correlation_id=f"deep_research:{company_name}",
+                timeout=deep_research_timeout + 60,  # Allow extra time for queue wait
+                priority=0,  # Lower priority than sonar-pro
+            )
+
         try:
             # Use NEW adaptive rate limiting system with request queue
             # This replaces the old sliding window rate limiter
@@ -815,16 +836,12 @@ class PerplexityClient:
                 location=location,
                 rate_limit_wait_time=0,  # Will be tracked by new system
             ) as tracker:
-                # Execute with adaptive rate limiting + request queue
-                # Deep research has very strict limits (5 RPM at Tier 0)
-                data = await rate_limited_request(
-                    Provider.PERPLEXITY,
-                    make_api_call,
-                    model="sonar-deep-research",
-                    api_key=self.api_key,
-                    correlation_id=f"deep_research:{company_name}",
-                    timeout=deep_research_timeout + 60,  # Allow extra time for queue wait
-                    priority=0,  # Lower priority than sonar-pro
+                # Execute with retry logic wrapping the rate-limited request
+                # perplexity_request_with_retry handles RateLimitError with exponential backoff
+                data = await perplexity_request_with_retry(
+                    execute_with_rate_limit,
+                    config=self.retry_config,
+                    operation_name=f"deep_research:{company_name}"
                 )
 
                 # Set result metrics for PostHog tracking
