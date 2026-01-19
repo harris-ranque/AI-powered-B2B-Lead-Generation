@@ -287,14 +287,65 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
             logger.warning(f"Research quality concern for {lead.company_name}: "
                           f"Relevance={relevance_score:.2f}, Issues={len(relevance_warnings)}")
 
-        # Determine lead tier based on research quality
+        # CLEANUP: When research is garbage (empty/irrelevant), clean it up instead of rejecting
+        # This prevents the LLM from saying "I cannot provide business intelligence..."
+        research_content_length = len(research_result.company_overview or "")
+        is_research_garbage = (
+            relevance_score < 0.2 or  # Research is completely irrelevant
+            research_content_length == 0 or  # No content returned (timeout)
+            (validation_result.validation_score == 0.0 and research_result.data_points == 0)  # Zero data
+        )
+
+        if is_research_garbage:
+            logger.warning(
+                f"Research garbage for {lead.company_name} - cleaning up and using minimal context. "
+                f"Relevance={relevance_score:.2f}, Content={research_content_length} chars, "
+                f"DataPoints={research_result.data_points}"
+            )
+            capture_event(
+                "bi_agent_research_garbage_cleaned",
+                {
+                    **analytics_context,
+                    "relevance_score": relevance_score,
+                    "content_length": research_content_length,
+                    "data_points": research_result.data_points,
+                    "validation_score": validation_result.validation_score,
+                    "research_tier": research_result.tier.value,
+                    "research_time": research_time,
+                },
+            )
+
+            # Clean up the research result - remove garbage citations and content
+            # Provide minimal context from lead data so LLM doesn't say "I cannot provide..."
+            research_result.company_overview = f"{lead.company_name} is a business in the {getattr(lead, 'industry', 'general')} sector."
+            research_result.raw_data = {
+                "cleaned": True,
+                "original_relevance": relevance_score,
+                "reason": "Research returned empty/irrelevant content (likely timeout)",
+                "citations": [],  # Clear garbage citations
+                "recent_news": [],
+                "competitor_mentions": [],
+                "quantifiable_metrics": [],
+                "pain_points": [],
+                "industry_benchmarks": [],
+            }
+            research_result.confidence_score = 0.3  # Low confidence
+            research_result.data_points = 0
+
+            # Force B-tier classification
+            lead_tier = "B"
+            lead_tier_reason = "Research failed/timed out - using minimal context"
+            logger.info(f"Forced B-tier for {lead.company_name} due to research failure")
+
+        # Determine lead tier based on research quality (skip if already forced above)
         # A-tier: Rich research (validation >= 0.6, confidence >= 0.6, missing <= 1)
         # B-tier: Minimal research (still usable, not penalized in email generation)
-        lead_tier, lead_tier_reason = determine_lead_tier(
-            validation_score=validation_result.validation_score,
-            confidence_score=research_result.confidence_score,
-            missing_data_points=len(validation_result.missing_data_points),
-        )
+        if not is_research_garbage:
+            lead_tier, lead_tier_reason = determine_lead_tier(
+                validation_score=validation_result.validation_score,
+                confidence_score=research_result.confidence_score,
+                missing_data_points=len(validation_result.missing_data_points),
+            )
         logger.info(f"Lead tier classification for {lead.company_name}: {lead_tier} ({lead_tier_reason})")
 
         # Calculate credit cost (base cost + deep research cost if used)
