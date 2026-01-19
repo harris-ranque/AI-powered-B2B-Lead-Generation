@@ -801,9 +801,9 @@ class PerplexityClient:
             "Content-Type": "application/json"
         }
 
-        # Longer timeout for deep research (90 seconds vs 20 seconds for standard)
-        # Deep research queries can be complex and Perplexity needs more time
-        deep_research_timeout = 90.0
+        # Longer timeout for deep research (180 seconds vs 20 seconds for standard)
+        # Deep research does multiple searches even with low reasoning_effort
+        deep_research_timeout = 180.0
 
         async def make_api_call() -> dict:
             """Execute the actual API call."""
