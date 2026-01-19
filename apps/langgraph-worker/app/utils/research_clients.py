@@ -550,13 +550,16 @@ class PerplexityClient:
 
         async def execute_with_rate_limit() -> dict:
             """Execute API call with rate limiting (retried by outer wrapper on 429)."""
+            # Note: timeout here is for QUEUE wait, not API call
+            # API timeout is set in make_api_call via aiohttp.ClientTimeout
+            # Use default queue timeout (60s) - don't inflate it
             return await rate_limited_request(
                 Provider.PERPLEXITY,
                 make_api_call,
                 model="sonar-pro",
                 api_key=self.api_key,
                 correlation_id=f"sonar_pro:{company_name}",
-                timeout=self.timeout + 30,  # Allow extra time for queue wait
+                # timeout defaults to 60s queue wait (from config)
             )
 
         try:
@@ -816,13 +819,16 @@ class PerplexityClient:
 
         async def execute_with_rate_limit() -> dict:
             """Execute API call with rate limiting (retried by outer wrapper on 429)."""
+            # Note: timeout here is for QUEUE wait, not API call
+            # API timeout (90s) is set in make_api_call via aiohttp.ClientTimeout
+            # Use default queue timeout (60s) - don't inflate to 150s!
             return await rate_limited_request(
                 Provider.PERPLEXITY,
                 make_api_call,
                 model="sonar-deep-research",
                 api_key=self.api_key,
                 correlation_id=f"deep_research:{company_name}",
-                timeout=deep_research_timeout + 60,  # Allow extra time for queue wait
+                # timeout defaults to 60s queue wait (from config)
                 priority=0,  # Lower priority than sonar-pro
             )
 
