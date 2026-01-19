@@ -723,7 +723,7 @@ class PerplexityClient:
                            previous_context: str = "") -> ResearchResult:
         """
         Generate exhaustive research report using Perplexity Deep Research model.
-        Runs 30-60 seconds and searches hundreds of sources for comprehensive analysis.
+        Runs 30-90 seconds and searches hundreds of sources for comprehensive analysis.
 
         Args:
             company_name: Name of the company to research
@@ -787,8 +787,9 @@ class PerplexityClient:
             "Content-Type": "application/json"
         }
 
-        # Longer timeout for deep research (60 seconds vs 20 seconds)
-        deep_research_timeout = 60.0
+        # Longer timeout for deep research (90 seconds vs 20 seconds for standard)
+        # Deep research queries can be complex and Perplexity needs more time
+        deep_research_timeout = 90.0
 
         async def make_api_call() -> dict:
             """Execute the actual API call."""
@@ -886,14 +887,16 @@ class PerplexityClient:
                 final_tier_used="deep_failed"
             )
         except asyncio.TimeoutError:
+            elapsed = time.time() - start_time
             # Classify timeout error
-            api_error = classify_perplexity_error(408, "Deep research timeout (60s)")
+            api_error = classify_perplexity_error(408, f"Deep research timeout ({deep_research_timeout}s)")
+            logger.warning(f"Perplexity deep-research timeout for {company_name} after {elapsed:.1f}s (limit: {deep_research_timeout}s)")
             return ResearchResult(
                 query=company_name,
                 tier=ResearchTier.PERPLEXITY,
                 confidence_score=0.2,
-                response_time=time.time() - start_time,
-                error="Deep research timeout (60s)",
+                response_time=elapsed,
+                error=f"Deep research timeout ({deep_research_timeout}s)",
                 api_error=api_error.to_dict(),
                 final_tier_used="deep_failed"
             )

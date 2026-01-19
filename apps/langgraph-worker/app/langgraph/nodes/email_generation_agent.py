@@ -47,13 +47,13 @@ class EmailSequence(BaseModel):
     """Complete email sequence with primary email and follow-ups"""
     model_config = ConfigDict(extra="forbid")
 
-    # Primary email
-    primary_subject: str = Field(..., description="Primary email subject line")
-    primary_opening: str = Field(..., description="Personalized opening that shows research")
-    primary_body: str = Field(..., description="Main email body content")
-    primary_cta: str = Field(..., description="Clear call to action")
-    primary_closing: str = Field(..., description="Professional closing")
-    primary_ps: str = Field(default="", description="Optional P.S. for additional engagement")
+    # Primary email - CRITICAL: Each field contains ONLY its specific content, NO overlap
+    primary_subject: str = Field(..., description="Subject line ONLY - format: 'Hi [Name], [curiosity hook]'")
+    primary_opening: str = Field(..., description="GREETING + FIRST SENTENCE ONLY - Start with 'Hi [Name],' followed by ONE personalized research hook sentence. DO NOT include any body paragraphs here.")
+    primary_body: str = Field(..., description="BODY PARAGRAPHS ONLY (2-3 paragraphs) - NO greeting, NO CTA. Contains: challenge/opportunity paragraph, proof point paragraph, specific offer paragraph.")
+    primary_cta: str = Field(..., description="SINGLE CTA SENTENCE ONLY - NO duplicates. One clear ask for a 15-30 minute call.")
+    primary_closing: str = Field(..., description="CLOSING ONLY - Just the sign-off like 'Best,' or 'Looking forward,'")
+    primary_ps: str = Field(default="", description="Optional P.S. - ONE sentence max, additional value hook")
     
     # Personalization elements
     personalization_elements: List[str] = Field(..., description="Specific personalization used")
@@ -150,6 +150,72 @@ def _generate_fallback_followups(
 
     # Only return exactly 2 follow-ups (removed optional third follow-up)
     return fallback_followups
+
+
+def _clean_duplicate_content(email_sequence: "EmailSequence", contact_first_name: str) -> "EmailSequence":
+    """
+    Post-process email sequence to remove duplicate content between fields.
+
+    This is a safety net for when the LLM mistakenly includes:
+    - Greeting in both primary_opening and primary_body
+    - CTA in both primary_body and primary_cta
+    - Research hook repeated across fields
+    """
+    import re
+
+    # Common greeting patterns to detect
+    greeting_pattern = rf"^Hi\s+{re.escape(contact_first_name)}\s*[,:]?\s*\n*"
+
+    opening = email_sequence.primary_opening.strip()
+    body = email_sequence.primary_body.strip()
+    cta = email_sequence.primary_cta.strip()
+
+    # 1. Remove duplicate greeting from body if opening already has it
+    if opening.lower().startswith(f"hi {contact_first_name.lower()}"):
+        # Body should NOT start with a greeting
+        body = re.sub(greeting_pattern, "", body, count=1, flags=re.IGNORECASE).strip()
+
+    # 2. Remove CTA from body if it's duplicated
+    if cta:
+        # Check if CTA appears at end of body
+        cta_normalized = cta.lower().strip().rstrip('?').rstrip('.')
+        body_lines = body.split('\n')
+        cleaned_lines = []
+        for line in body_lines:
+            line_normalized = line.lower().strip().rstrip('?').rstrip('.')
+            # Skip line if it's essentially the same as CTA
+            if line_normalized and cta_normalized and (
+                line_normalized == cta_normalized or
+                (len(cta_normalized) > 20 and cta_normalized in line_normalized) or
+                (len(line_normalized) > 20 and line_normalized in cta_normalized)
+            ):
+                continue
+            cleaned_lines.append(line)
+        body = '\n'.join(cleaned_lines).strip()
+
+    # 3. Check for duplicated first sentence between opening and body
+    opening_lines = opening.split('\n')
+    if len(opening_lines) >= 2:
+        # Get the research hook (first sentence after greeting)
+        research_hook = opening_lines[-1].strip() if opening_lines[-1].strip() else (
+            opening_lines[1].strip() if len(opening_lines) > 1 else ""
+        )
+        if research_hook and len(research_hook) > 30:
+            # Check if this exact sentence appears at start of body
+            hook_normalized = research_hook.lower()
+            body_start = body[:len(research_hook) + 50].lower() if body else ""
+            if hook_normalized in body_start:
+                # Remove the duplicate from body
+                body = body.replace(research_hook, "", 1).strip()
+                # Clean up any resulting double newlines
+                body = re.sub(r'\n{3,}', '\n\n', body)
+
+    # Return updated email sequence
+    return email_sequence.model_copy(update={
+        "primary_opening": opening,
+        "primary_body": body,
+        "primary_cta": cta
+    })
 
 
 async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, Any]:
@@ -316,7 +382,7 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
             model=email_model,
             temperature=0.4,
             max_completion_tokens=email_token_budget,
-            reasoning_effort="minimal",
+            reasoning_effort="low",  # GPT-5.1 supports: low, medium, high
             require_user_key=using_user_keys,
         ).with_structured_output(EmailSequence)
         
@@ -563,13 +629,29 @@ WRITING TONE:
 
 CRITICAL WRITING REQUIREMENTS:
 
+OUTPUT FIELD STRUCTURE (CRITICAL - PREVENTS DUPLICATION):
+- primary_opening: ONLY the greeting + ONE research hook sentence
+  Example: "Hi Sarah,\n\nI noticed RevCo closed a Series A last month."
+- primary_body: ONLY the 2-3 body paragraphs, NO greeting, NO CTA
+  Example: "Series A companies typically face X challenge.\n\nWe helped Company Y achieve Z result.\n\nOur solution could help RevCo with..."
+- primary_cta: ONLY ONE sentence asking for a call
+  Example: "Would a 15-minute call next week work to explore this?"
+- primary_closing: ONLY the sign-off
+  Example: "Best,"
+
+DUPLICATION PREVENTION (CRITICAL):
+- NEVER repeat the greeting in primary_body (it's already in primary_opening)
+- NEVER repeat the CTA in primary_body (it goes in primary_cta only)
+- NEVER repeat the research hook from primary_opening in primary_body
+- Each field contains UNIQUE content with ZERO overlap
+
 Natural, Human Language:
 - Write like a real person, not a bot
 - Use complete sentences with proper grammar
-- MUST start email body with "Hi {contact_first_name},"
+- The greeting "Hi {contact_first_name}," goes in primary_opening ONLY
 - Always use articles (a, an, the) where grammatically appropriate
 - Include pronouns (I, we, our) naturally
-- Examples:
+- Examples of what the ASSEMBLED email looks like:
   GOOD: "Hi Sarah,\n\nI noticed RevCo closed a Series A last month"
   BAD: "I noticed RevCo closed a Series A last month" (missing greeting)
   BAD: "Noticed RevCo closed Series A last month" (missing greeting and article)
@@ -1224,9 +1306,13 @@ Target score: ≥0.65 for approval.
             messages,
             config={"callbacks": callbacks}  # PostHog captures tokens, cost, latency
         )
-        
+
+        # Post-process to clean up any duplicate content between fields
+        # This is a safety net for when the LLM includes greeting/CTA in multiple fields
+        email_sequence = _clean_duplicate_content(email_sequence, contact_first_name)
+
         execution_time = time.time() - start_time
-        
+
         # Create primary email content
         primary_email = EmailContent(
             subject=email_sequence.primary_subject,
