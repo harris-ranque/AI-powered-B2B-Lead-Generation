@@ -3,6 +3,11 @@ import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { requireAdmin } from "../auth";
 
+// Constants for query limits
+const MAX_ITERATION_COUNT = 100000;
+const DEFAULT_EXPORT_LIMIT = 10000;
+const BATCH_DELETE_SIZE = 100;
+
 // Update user status (suspend/reactivate)
 export const updateUserStatus = mutation({
   args: {
@@ -157,7 +162,10 @@ export const addUserCredits = mutation({
   },
 });
 
-// Export users data
+/**
+ * Export users data - OPTIMIZED VERSION
+ * Uses indexes and streaming with limits to avoid memory issues
+ */
 export const exportUsers = mutation({
   args: {
     format: v.union(v.literal("csv"), v.literal("json")),
@@ -175,41 +183,70 @@ export const exportUsers = mutation({
         isActive: v.optional(v.boolean()),
       }),
     ),
+    limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
 
-    // Get users with optional filters
-    let users = await ctx.db.query("users").collect();
+    const exportLimit = Math.min(args.limit || DEFAULT_EXPORT_LIMIT, DEFAULT_EXPORT_LIMIT);
 
-    if (args.filters?.plan) {
-      users = users.filter((u) => u.plan === args.filters!.plan);
-    }
-    if (args.filters?.role) {
-      users = users.filter((u) => u.role === args.filters!.role);
-    }
-    if (args.filters?.isActive !== undefined) {
-      users = users.filter((u) => u.isActive === args.filters!.isActive);
+    // Build query with appropriate index
+    let query;
+    if (args.filters?.plan !== undefined) {
+      query = ctx.db
+        .query("users")
+        .withIndex("by_plan", (q) => q.eq("plan", args.filters!.plan!));
+    } else if (args.filters?.isActive !== undefined) {
+      query = ctx.db
+        .query("users")
+        .withIndex("by_active", (q) => q.eq("isActive", args.filters!.isActive!));
+    } else {
+      query = ctx.db.query("users");
     }
 
-    // Sanitize sensitive data
-    const sanitizedUsers = users.map((user) => ({
-      id: user._id,
-      email: user.email,
-      name: user.name,
-      plan: user.plan,
-      role: user.role,
-      credits: user.credits,
-      isActive: user.isActive,
-      createdAt: new Date(user.createdAt).toISOString(),
-      updatedAt: new Date(user.updatedAt || user.createdAt).toISOString(),
-    }));
+    // Stream users with limit and filter
+    const sanitizedUsers: Array<{
+      id: string;
+      email: string;
+      name: string | undefined;
+      plan: string;
+      role: string;
+      credits: number;
+      isActive: boolean;
+      createdAt: string;
+      updatedAt: string;
+    }> = [];
+
+    let processed = 0;
+    for await (const user of query) {
+      // Apply additional filters that couldn't use index
+      if (args.filters?.role && user.role !== args.filters.role) continue;
+      if (args.filters?.plan && user.plan !== args.filters.plan) continue;
+      if (args.filters?.isActive !== undefined && user.isActive !== args.filters.isActive) continue;
+
+      sanitizedUsers.push({
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        plan: user.plan,
+        role: user.role,
+        credits: user.credits,
+        isActive: user.isActive,
+        createdAt: new Date(user.createdAt).toISOString(),
+        updatedAt: new Date(user.updatedAt || user.createdAt).toISOString(),
+      });
+
+      processed++;
+      if (processed >= exportLimit || processed >= MAX_ITERATION_COUNT) break;
+    }
 
     let exportData: string;
 
     if (args.format === "csv") {
       // Convert to CSV
-      const headers = Object.keys(sanitizedUsers[0] || {});
+      const headers = sanitizedUsers.length > 0 && sanitizedUsers[0]
+        ? Object.keys(sanitizedUsers[0])
+        : ["id", "email", "name", "plan", "role", "credits", "isActive", "createdAt", "updatedAt"];
       const csvContent = [
         headers.join(","),
         ...sanitizedUsers.map((user) =>
@@ -232,6 +269,7 @@ export const exportUsers = mutation({
       data: exportData,
       count: sanitizedUsers.length,
       timestamp: Date.now(),
+      hasMore: processed >= exportLimit,
     };
   },
 });
@@ -240,7 +278,10 @@ export const exportUsers = mutation({
 // Current systemConfiguration schema only supports creditCosts and planLimits
 // Would need schema update to add flexible settings field for admin configuration
 
-// Reset system cache by clearing provider caches used during lead enrichment
+/**
+ * Reset system cache by clearing provider caches - OPTIMIZED VERSION
+ * Uses batch deletion with iteration safeguards
+ */
 export const resetSystemCache = mutation({
   args: {},
   handler: async (ctx) => {
@@ -254,13 +295,16 @@ export const resetSystemCache = mutation({
       { table: "enrichmentCache" as const, label: "enrichmentCache" },
     ];
 
-    const clearedCaches: Array<{ table: string; cleared: number }> = [];
+    const clearedCaches: Array<{ table: string; cleared: number; limitReached: boolean }> = [];
 
     for (const { table, label } of cacheTables) {
       let cleared = 0;
-      // Delete in batches to avoid hitting query limits with large caches
-      while (true) {
-        const batch = await ctx.db.query(table).take(100);
+      let iterations = 0;
+      const maxIterations = MAX_ITERATION_COUNT / BATCH_DELETE_SIZE;
+
+      // Delete in batches with iteration safeguard
+      while (iterations < maxIterations) {
+        const batch = await ctx.db.query(table).take(BATCH_DELETE_SIZE);
         if (batch.length === 0) {
           break;
         }
@@ -268,12 +312,18 @@ export const resetSystemCache = mutation({
           await ctx.db.delete(record._id);
         }
         cleared += batch.length;
+        iterations++;
       }
 
-      clearedCaches.push({ table: label, cleared });
+      clearedCaches.push({
+        table: label,
+        cleared,
+        limitReached: iterations >= maxIterations,
+      });
     }
 
     const totalCleared = clearedCaches.reduce((sum, entry) => sum + entry.cleared, 0);
+    const anyLimitReached = clearedCaches.some((entry) => entry.limitReached);
     const timestamp = Date.now();
 
     // Log the cache reset
@@ -283,7 +333,9 @@ export const resetSystemCache = mutation({
       userId: adminUser._id,
       timestamp,
       data: {
-        message: "System cache has been reset",
+        message: anyLimitReached
+          ? "System cache partially reset (iteration limit reached)"
+          : "System cache has been reset",
         clearedCaches,
         totalCleared,
       },
@@ -293,15 +345,19 @@ export const resetSystemCache = mutation({
       success: true,
       message:
         totalCleared > 0
-          ? `System cache reset completed (${totalCleared} entries cleared)`
+          ? `System cache reset completed (${totalCleared} entries cleared)${anyLimitReached ? " - some tables hit limit, run again if needed" : ""}`
           : "System cache reset completed",
       clearedCaches,
       totalCleared,
+      anyLimitReached,
     };
   },
 });
 
-// Run system maintenance
+/**
+ * Run system maintenance - OPTIMIZED VERSION
+ * All loops have iteration safeguards to prevent runaway execution
+ */
 export const runSystemMaintenance = mutation({
   args: {
     tasks: v.array(
@@ -322,88 +378,109 @@ export const runSystemMaintenance = mutation({
     const reservationRetentionMs = 30 * 24 * 60 * 60 * 1000;
     const langgraphRetentionMs = 30 * 24 * 60 * 60 * 1000;
     const rateLimitRetentionMs = 24 * 60 * 60 * 1000;
+    const maxIterations = MAX_ITERATION_COUNT / BATCH_DELETE_SIZE;
 
     for (const task of args.tasks) {
       try {
         switch (task) {
           case "cleanup_old_logs":
-            // Delete old system logs in batches using timestamp index
-            let deletedLogs = 0;
-            while (true) {
-              const batch = await ctx.db
-                .query("systemLogs")
-                .withIndex("by_timestamp", (q) => q.lt("timestamp", thirtyDaysAgo))
-                .take(100);
+            {
+              // Delete old system logs in batches using timestamp index
+              let deletedLogs = 0;
+              let iterations = 0;
+              while (iterations < maxIterations) {
+                const batch = await ctx.db
+                  .query("systemLogs")
+                  .withIndex("by_timestamp", (q) => q.lt("timestamp", thirtyDaysAgo))
+                  .take(BATCH_DELETE_SIZE);
 
-              if (batch.length === 0) {
-                break;
+                if (batch.length === 0) {
+                  break;
+                }
+
+                for (const log of batch) {
+                  await ctx.db.delete(log._id);
+                }
+                deletedLogs += batch.length;
+                iterations++;
               }
 
-              for (const log of batch) {
-                await ctx.db.delete(log._id);
-              }
-              deletedLogs += batch.length;
+              results.push({
+                task,
+                success: true,
+                deletedCount: deletedLogs,
+                limitReached: iterations >= maxIterations,
+              });
             }
-
-            results.push({ task, success: true, deletedCount: deletedLogs });
             break;
 
           case "reset_rate_limits":
-            // Clear rate limit records and violations outside the active window
-            let clearedRateLimits = 0;
-            while (true) {
-              const batch = await ctx.db
-                .query("rateLimitRecords")
-                .withIndex("by_window", (q) => q.lt("windowStart", now - rateLimitRetentionMs))
-                .take(100);
+            {
+              // Clear rate limit records and violations outside the active window
+              let clearedRateLimits = 0;
+              let rateLimitIterations = 0;
+              while (rateLimitIterations < maxIterations) {
+                const batch = await ctx.db
+                  .query("rateLimitRecords")
+                  .withIndex("by_window", (q) => q.lt("windowStart", now - rateLimitRetentionMs))
+                  .take(BATCH_DELETE_SIZE);
 
-              if (batch.length === 0) {
-                break;
+                if (batch.length === 0) {
+                  break;
+                }
+
+                for (const record of batch) {
+                  await ctx.db.delete(record._id);
+                }
+                clearedRateLimits += batch.length;
+                rateLimitIterations++;
               }
 
-              for (const record of batch) {
-                await ctx.db.delete(record._id);
+              let clearedViolations = 0;
+              let violationIterations = 0;
+              while (violationIterations < maxIterations) {
+                const batch = await ctx.db
+                  .query("rateLimitViolations")
+                  .withIndex("by_timestamp", (q) => q.lt("timestamp", thirtyDaysAgo))
+                  .take(BATCH_DELETE_SIZE);
+
+                if (batch.length === 0) {
+                  break;
+                }
+
+                for (const violation of batch) {
+                  await ctx.db.delete(violation._id);
+                }
+                clearedViolations += batch.length;
+                violationIterations++;
               }
-              clearedRateLimits += batch.length;
+
+              results.push({
+                task,
+                success: true,
+                clearedRateLimits,
+                clearedViolations,
+                limitReached:
+                  rateLimitIterations >= maxIterations ||
+                  violationIterations >= maxIterations,
+              });
             }
-
-            let clearedViolations = 0;
-            while (true) {
-              const batch = await ctx.db
-                .query("rateLimitViolations")
-                .withIndex("by_timestamp", (q) => q.lt("timestamp", thirtyDaysAgo))
-                .take(100);
-
-              if (batch.length === 0) {
-                break;
-              }
-
-              for (const violation of batch) {
-                await ctx.db.delete(violation._id);
-              }
-              clearedViolations += batch.length;
-            }
-
-            results.push({
-              task,
-              success: true,
-              clearedRateLimits,
-              clearedViolations,
-            });
             break;
 
           case "optimize_database":
             {
               let expiredReservations = 0;
               let removedReservations = 0;
+              let totalIterations = 0;
 
               // Mark any lingering pending reservations as rolled back
-              while (true) {
+              let expireIterations = 0;
+              while (expireIterations < maxIterations) {
                 const batch = await ctx.db
                   .query("creditReservations")
                   .withIndex("by_status", (q) => q.eq("status", "pending"))
                   .filter((q) => q.lt(q.field("expiresAt"), now))
-                  .take(100);
+                  .take(BATCH_DELETE_SIZE);
 
                 if (batch.length === 0) {
                   break;
@@ -416,16 +493,19 @@ export const runSystemMaintenance = mutation({
                   });
                   expiredReservations += 1;
                 }
+                expireIterations++;
               }
+              totalIterations += expireIterations;
 
               const reservationStatusesToPurge = ["rolled_back", "committed"] as const;
               for (const status of reservationStatusesToPurge) {
-                while (true) {
+                let statusIterations = 0;
+                while (statusIterations < maxIterations / 2) {
                   const batch = await ctx.db
                     .query("creditReservations")
                     .withIndex("by_status", (q) => q.eq("status", status))
                     .filter((q) => q.lt(q.field("expiresAt"), now - reservationRetentionMs))
-                    .take(100);
+                    .take(BATCH_DELETE_SIZE);
 
                   if (batch.length === 0) {
                     break;
@@ -444,19 +524,22 @@ export const runSystemMaintenance = mutation({
                   if (deletedInBatch === 0) {
                     break;
                   }
+                  statusIterations++;
                 }
+                totalIterations += statusIterations;
               }
 
               // Remove stale LangGraph request history beyond retention window
               let removedLanggraphRequests = 0;
               const staleStatuses = ["completed", "failed"] as const;
               for (const status of staleStatuses) {
-                while (true) {
+                let lgIterations = 0;
+                while (lgIterations < maxIterations / 2) {
                   const batch = await ctx.db
                     .query("langgraphRequests")
                     .withIndex("by_status", (q) => q.eq("status", status))
                     .filter((q) => q.lt(q.field("createdAt"), now - langgraphRetentionMs))
-                    .take(100);
+                    .take(BATCH_DELETE_SIZE);
 
                   if (batch.length === 0) {
                     break;
@@ -472,7 +555,9 @@ export const runSystemMaintenance = mutation({
                   if (deletedInBatch === 0) {
                     break;
                   }
+                  lgIterations++;
                 }
+                totalIterations += lgIterations;
               }
 
               results.push({
@@ -481,6 +566,7 @@ export const runSystemMaintenance = mutation({
                 expiredReservations,
                 removedReservations,
                 removedLanggraphRequests,
+                limitReached: totalIterations >= maxIterations,
               });
             }
             break;
@@ -495,15 +581,16 @@ export const runSystemMaintenance = mutation({
                 { table: "enrichmentCache" as const, label: "enrichmentCache" },
               ];
 
-              const cacheResults: Array<{ table: string; cleared: number }> = [];
+              const cacheResults: Array<{ table: string; cleared: number; limitReached: boolean }> = [];
 
               for (const { table, label } of cacheTables) {
                 let cleared = 0;
-                while (true) {
+                let cacheIterations = 0;
+                while (cacheIterations < maxIterations / 2) {
                   const batch = await ctx.db
                     .query(table)
                     .withIndex("by_expires", (q) => q.lt("expiresAt", now))
-                    .take(100);
+                    .take(BATCH_DELETE_SIZE);
 
                   if (batch.length === 0) {
                     break;
@@ -513,18 +600,24 @@ export const runSystemMaintenance = mutation({
                     await ctx.db.delete(record._id);
                   }
                   cleared += batch.length;
+                  cacheIterations++;
                 }
 
-                cacheResults.push({ table: label, cleared });
+                cacheResults.push({
+                  table: label,
+                  cleared,
+                  limitReached: cacheIterations >= maxIterations / 2,
+                });
               }
 
               let expiredReservations = 0;
-              while (true) {
+              let resIterations = 0;
+              while (resIterations < maxIterations) {
                 const batch = await ctx.db
                   .query("creditReservations")
                   .withIndex("by_status", (q) => q.eq("status", "pending"))
                   .filter((q) => q.lt(q.field("expiresAt"), now))
-                  .take(100);
+                  .take(BATCH_DELETE_SIZE);
 
                 if (batch.length === 0) {
                   break;
@@ -537,6 +630,7 @@ export const runSystemMaintenance = mutation({
                   });
                   expiredReservations += 1;
                 }
+                resIterations++;
               }
 
               results.push({
@@ -544,6 +638,9 @@ export const runSystemMaintenance = mutation({
                 success: true,
                 cacheResults,
                 expiredReservations,
+                limitReached:
+                  resIterations >= maxIterations ||
+                  cacheResults.some((r) => r.limitReached),
               });
             }
             break;
@@ -881,8 +978,10 @@ export const resumeSearchEnrichment = mutation({
   },
 });
 
-// Recovery function for stuck enrichment pipeline
-// Clears leaked semaphore slots and requeues stuck in_progress leads
+/**
+ * Recovery function for stuck enrichment pipeline - OPTIMIZED VERSION
+ * Uses streaming with limits instead of .collect()
+ */
 export const recoverStuckEnrichment = mutation({
   args: {
     searchId: v.id("searches"),
@@ -900,38 +999,73 @@ export const recoverStuckEnrichment = mutation({
       slotsReleased: number;
       leadsRequeued: number;
       analysisTriggered: boolean;
+      leadsProcessed: number;
     } = {
       slotsReleased: 0,
       leadsRequeued: 0,
       analysisTriggered: false,
+      leadsProcessed: 0,
     };
 
-    // 1. Get all leads for this search
-    const leads = await ctx.db
+    // 1. Stream leads and find stuck ones
+    let allEnrichmentComplete = true;
+    let analysisAlreadyTriggered = false;
+    const leadsToAnalyze: Array<{ _id: any }> = [];
+    let processed = 0;
+
+    for await (const lead of ctx.db
       .query("leads")
-      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
-      .collect();
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))) {
+      processed++;
 
-    // 2. Find and reset stuck in_progress leads back to pending
-    const stuckLeads = leads.filter((lead) => lead.enrichmentStatus === "in_progress");
+      // Reset stuck in_progress leads back to pending
+      if (lead.enrichmentStatus === "in_progress") {
+        await ctx.db.patch(lead._id, {
+          enrichmentStatus: "pending",
+          enrichmentQueuedAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+        results.leadsRequeued++;
+      }
 
-    for (const lead of stuckLeads) {
-      await ctx.db.patch(lead._id, {
-        enrichmentStatus: "pending",
-        enrichmentQueuedAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-      results.leadsRequeued++;
+      // Track enrichment completion status
+      if (
+        lead.enrichmentStatus !== "completed" &&
+        lead.enrichmentStatus !== "completed_fallback" &&
+        lead.enrichmentStatus !== "no_contacts_found" &&
+        lead.enrichmentStatus !== "failed"
+      ) {
+        allEnrichmentComplete = false;
+      }
+
+      // Track analysis status
+      if (
+        lead.analysisStatus === "scheduled" ||
+        lead.analysisStatus === "processing" ||
+        lead.analysisStatus === "completed"
+      ) {
+        analysisAlreadyTriggered = true;
+      }
+
+      // Track leads ready for analysis
+      if (
+        lead.enrichmentStatus === "completed" ||
+        lead.enrichmentStatus === "completed_fallback"
+      ) {
+        leadsToAnalyze.push({ _id: lead._id });
+      }
+
+      if (processed >= MAX_ITERATION_COUNT) break;
     }
+    results.leadsProcessed = processed;
 
-    // 3. Clear semaphore slots if apiKeyHash provided
+    // 2. Clear semaphore slots if apiKeyHash provided
     if (args.apiKeyHash) {
-      const slots = await ctx.db
+      const apiKeyHashValue = args.apiKeyHash;
+      let slotProcessed = 0;
+      for await (const slot of ctx.db
         .query("enrichmentApiKeySlots")
-        .withIndex("by_key_hash", (q) => q.eq("apiKeyHash", args.apiKeyHash))
-        .collect();
-
-      for (const slot of slots) {
+        .withIndex("by_key_hash", (q) => q.eq("apiKeyHash", apiKeyHashValue))) {
         if (slot.claimedBy) {
           await ctx.db.patch(slot._id, {
             claimedBy: undefined,
@@ -939,43 +1073,19 @@ export const recoverStuckEnrichment = mutation({
           });
           results.slotsReleased++;
         }
+        slotProcessed++;
+        if (slotProcessed >= 1000) break; // Reasonable limit for slots
       }
     }
 
-    // 4. Check if all enrichment is actually complete and trigger analysis if needed
-    const refreshedLeads = await ctx.db
-      .query("leads")
-      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
-      .collect();
-
-    const allEnrichmentComplete = refreshedLeads.every((lead) =>
-      lead.enrichmentStatus === "completed" ||
-      lead.enrichmentStatus === "completed_fallback" ||
-      lead.enrichmentStatus === "no_contacts_found" ||
-      lead.enrichmentStatus === "failed"
-    );
-
-    const analysisAlreadyTriggered = refreshedLeads.some((lead) =>
-      lead.analysisStatus === "scheduled" ||
-      lead.analysisStatus === "processing" ||
-      lead.analysisStatus === "completed"
-    );
-
-    if (allEnrichmentComplete && !analysisAlreadyTriggered) {
-      // Mark leads as pending for analysis
-      const leadsToAnalyze = refreshedLeads.filter(
-        (lead) =>
-          lead.enrichmentStatus === "completed" ||
-          lead.enrichmentStatus === "completed_fallback"
-      );
-
+    // 3. If all enrichment is complete, trigger analysis
+    if (allEnrichmentComplete && !analysisAlreadyTriggered && leadsToAnalyze.length > 0) {
       for (const lead of leadsToAnalyze) {
         await ctx.db.patch(lead._id, {
           analysisStatus: "pending",
           updatedAt: Date.now(),
         });
       }
-
       results.analysisTriggered = true;
     }
 
@@ -997,7 +1107,10 @@ export const recoverStuckEnrichment = mutation({
   },
 });
 
-// Internal version - can be run directly from Convex dashboard without auth
+/**
+ * Internal version - OPTIMIZED VERSION
+ * Uses streaming with limits instead of .collect()
+ */
 export const recoverStuckEnrichmentInternal = internalMutation({
   args: {
     searchId: v.id("searches"),
@@ -1015,44 +1128,91 @@ export const recoverStuckEnrichmentInternal = internalMutation({
       leadsRequeued: number;
       analysisTriggered: boolean;
       leadsMarkedPending: number;
+      totalLeads: number;
     } = {
       slotsReleased: 0,
       leadsRequeued: 0,
       analysisTriggered: false,
       leadsMarkedPending: 0,
+      totalLeads: 0,
     };
 
-    // 1. Get all leads for this search
-    const leads = await ctx.db
+    // Stats tracking
+    const enrichmentStats = {
+      pending: 0,
+      in_progress: 0,
+      completed: 0,
+      failed: 0,
+      no_contacts: 0,
+    };
+
+    // Track leads needing analysis
+    const leadsToAnalyze: Array<{ _id: any }> = [];
+    let allEnrichmentComplete = true;
+    let analysisAlreadyTriggered = false;
+
+    // 1. Stream leads and process
+    for await (const lead of ctx.db
       .query("leads")
-      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
-      .collect();
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))) {
+      results.totalLeads++;
 
-    console.log(`[Recovery] Found ${leads.length} leads for search ${args.searchId}`);
+      // Reset stuck in_progress leads
+      if (lead.enrichmentStatus === "in_progress") {
+        await ctx.db.patch(lead._id, {
+          enrichmentStatus: "pending",
+          enrichmentQueuedAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+        results.leadsRequeued++;
+        enrichmentStats.pending++;
+      } else {
+        // Count enrichment status
+        switch (lead.enrichmentStatus) {
+          case "pending":
+            enrichmentStats.pending++;
+            allEnrichmentComplete = false;
+            break;
+          case "completed":
+          case "completed_fallback":
+            enrichmentStats.completed++;
+            leadsToAnalyze.push({ _id: lead._id });
+            break;
+          case "failed":
+            enrichmentStats.failed++;
+            break;
+          case "no_contacts_found":
+            enrichmentStats.no_contacts++;
+            break;
+          default:
+            allEnrichmentComplete = false;
+        }
+      }
 
-    // 2. Find and reset stuck in_progress leads back to pending
-    const stuckLeads = leads.filter((lead) => lead.enrichmentStatus === "in_progress");
-    console.log(`[Recovery] Found ${stuckLeads.length} stuck in_progress leads`);
+      // Track analysis status
+      if (
+        lead.analysisStatus === "scheduled" ||
+        lead.analysisStatus === "processing" ||
+        lead.analysisStatus === "completed"
+      ) {
+        analysisAlreadyTriggered = true;
+      }
 
-    for (const lead of stuckLeads) {
-      await ctx.db.patch(lead._id, {
-        enrichmentStatus: "pending",
-        enrichmentQueuedAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-      results.leadsRequeued++;
+      if (results.totalLeads >= MAX_ITERATION_COUNT) break;
     }
 
-    // 3. Clear ALL semaphore slots if apiKeyHash provided
+    console.log(`[Recovery] Found ${results.totalLeads} leads for search ${args.searchId}`);
+    console.log(`[Recovery] Found ${results.leadsRequeued} stuck in_progress leads`);
+    console.log(`[Recovery] Enrichment stats:`, enrichmentStats);
+
+    // 2. Clear semaphore slots if apiKeyHash provided
     if (args.apiKeyHash) {
-      const slots = await ctx.db
+      const apiKeyHashValue = args.apiKeyHash;
+      let slotCount = 0;
+      for await (const slot of ctx.db
         .query("enrichmentApiKeySlots")
-        .withIndex("by_key_hash", (q) => q.eq("apiKeyHash", args.apiKeyHash))
-        .collect();
-
-      console.log(`[Recovery] Found ${slots.length} slots for API key ${args.apiKeyHash.substring(0, 8)}...`);
-
-      for (const slot of slots) {
+        .withIndex("by_key_hash", (q) => q.eq("apiKeyHash", apiKeyHashValue))) {
+        slotCount++;
         if (slot.claimedBy) {
           await ctx.db.patch(slot._id, {
             claimedBy: undefined,
@@ -1060,48 +1220,15 @@ export const recoverStuckEnrichmentInternal = internalMutation({
           });
           results.slotsReleased++;
         }
+        if (slotCount >= 1000) break;
       }
+      console.log(`[Recovery] Found ${slotCount} slots for API key ${args.apiKeyHash.substring(0, 8)}...`);
     }
-
-    // 4. Check enrichment status after requeue
-    const refreshedLeads = await ctx.db
-      .query("leads")
-      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
-      .collect();
-
-    const enrichmentStats = {
-      pending: refreshedLeads.filter((l) => l.enrichmentStatus === "pending").length,
-      in_progress: refreshedLeads.filter((l) => l.enrichmentStatus === "in_progress").length,
-      completed: refreshedLeads.filter((l) => l.enrichmentStatus === "completed" || l.enrichmentStatus === "completed_fallback").length,
-      failed: refreshedLeads.filter((l) => l.enrichmentStatus === "failed").length,
-      no_contacts: refreshedLeads.filter((l) => l.enrichmentStatus === "no_contacts_found").length,
-    };
-
-    console.log(`[Recovery] Enrichment stats:`, enrichmentStats);
-
-    const allEnrichmentComplete = refreshedLeads.every((lead) =>
-      lead.enrichmentStatus === "completed" ||
-      lead.enrichmentStatus === "completed_fallback" ||
-      lead.enrichmentStatus === "no_contacts_found" ||
-      lead.enrichmentStatus === "failed"
-    );
-
-    const analysisAlreadyTriggered = refreshedLeads.some((lead) =>
-      lead.analysisStatus === "scheduled" ||
-      lead.analysisStatus === "processing" ||
-      lead.analysisStatus === "completed"
-    );
 
     console.log(`[Recovery] All enrichment complete: ${allEnrichmentComplete}, Analysis already triggered: ${analysisAlreadyTriggered}`);
 
-    if (allEnrichmentComplete && !analysisAlreadyTriggered) {
-      // Mark leads as pending for analysis
-      const leadsToAnalyze = refreshedLeads.filter(
-        (lead) =>
-          lead.enrichmentStatus === "completed" ||
-          lead.enrichmentStatus === "completed_fallback"
-      );
-
+    // 3. Trigger analysis if ready
+    if (allEnrichmentComplete && !analysisAlreadyTriggered && leadsToAnalyze.length > 0) {
       console.log(`[Recovery] Marking ${leadsToAnalyze.length} leads for analysis`);
 
       for (const lead of leadsToAnalyze) {
@@ -1119,7 +1246,7 @@ export const recoverStuckEnrichmentInternal = internalMutation({
         console.log(`[Recovery] Scheduling analyzeLeads action for search ${args.searchId}`);
         await ctx.scheduler.runAfter(
           0,
-          internal.leads.actions.analyzeLeads,
+          (internal.leads as any).actions.analyzeLeads,
           { searchId: args.searchId }
         );
       }
@@ -1132,8 +1259,8 @@ export const recoverStuckEnrichmentInternal = internalMutation({
 });
 
 /**
- * Fix search where all leads have no_contacts_found - mark them as "skipped" for analysis
- * This provides clear UI feedback about why no emails were generated
+ * Fix search where all leads have no_contacts_found - OPTIMIZED VERSION
+ * Uses streaming with limits instead of .collect()
  */
 export const markNoContactsLeadsAsSkipped = internalMutation({
   args: {
@@ -1145,14 +1272,14 @@ export const markNoContactsLeadsAsSkipped = internalMutation({
       throw new Error("Search not found");
     }
 
-    const leads = await ctx.db
-      .query("leads")
-      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
-      .collect();
-
+    let totalLeads = 0;
     let skippedCount = 0;
 
-    for (const lead of leads) {
+    for await (const lead of ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))) {
+      totalLeads++;
+
       // Mark no_contacts_found leads as "skipped" for analysis
       if (
         lead.enrichmentStatus === "no_contacts_found" &&
@@ -1178,13 +1305,15 @@ export const markNoContactsLeadsAsSkipped = internalMutation({
         });
         skippedCount++;
       }
+
+      if (totalLeads >= MAX_ITERATION_COUNT) break;
     }
 
-    console.log(`[Recovery] Marked ${skippedCount}/${leads.length} leads as skipped for analysis in search ${args.searchId}`);
+    console.log(`[Recovery] Marked ${skippedCount}/${totalLeads} leads as skipped for analysis in search ${args.searchId}`);
 
     return {
       success: true,
-      totalLeads: leads.length,
+      totalLeads,
       skippedCount,
       searchId: args.searchId,
     };
