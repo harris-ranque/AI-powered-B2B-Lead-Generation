@@ -93,4 +93,17 @@ crons.interval(
   internal.leads.deadLetterQueue.cleanupResolvedOperations,
 );
 
+// ============================================================================
+// ADMIN METRICS AGGREGATION (Daily at 1 AM UTC)
+// ============================================================================
+// Pre-computes admin dashboard metrics for fast loading
+// Aggregates user counts, revenue, usage stats, and quality metrics
+// Runs at 1 AM UTC to capture complete previous day data
+crons.cron(
+  "aggregate-daily-admin-metrics",
+  "0 1 * * *", // Daily at 1:00 AM UTC
+  internal.admin.metricsAggregation.aggregateDailyMetrics,
+  {}, // Empty args - date will default to today
+);
+
 export default crons;
