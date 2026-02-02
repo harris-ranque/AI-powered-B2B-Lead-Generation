@@ -518,11 +518,12 @@ export const searchGoogleMaps: any = action({
             // - formatted_address (Basic Data - FREE) ✅
             // - geometry (Basic Data - FREE) ✅
             // - website (Contact Data SKU - $0.003/call) ✅ REQUIRED for lead enrichment
+            // - international_phone_number (Contact Data SKU - $0.003/call) ✅ REQUIRED for CSV export
             //
-            // NOTE: Nearby Search API does NOT return website field - must fetch via Place Details
+            // NOTE: Nearby Search API does NOT return website or phone fields - must fetch via Place Details
             detailsUrl.searchParams.set(
               "fields",
-              "formatted_address,geometry,website"
+              "formatted_address,geometry,website,international_phone_number"
             );
             detailsUrl.searchParams.set("key", googleMapsApiKey!);
 
@@ -723,8 +724,8 @@ export const searchGoogleMaps: any = action({
                 postalCode: postalCode ?? undefined,
               },
               phone:
+                detailedPlace.international_phone_number ||
                 detailedPlace.formatted_phone_number ||
-                (detailedPlace as any).international_phone_number ||
                 undefined,
               website: detailedPlace.website, // Always has value due to filter above
               rating: detailedPlace.rating || undefined,
