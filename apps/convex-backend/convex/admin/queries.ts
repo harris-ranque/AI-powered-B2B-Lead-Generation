@@ -3,7 +3,10 @@ import { v } from "convex/values";
 import { requireAdmin } from "../auth";
 
 // Constants for query limits to prevent memory issues
-const MAX_ITERATION_COUNT = 100000; // Safety limit for counting loops
+// Lead documents are 5-20KB each (AI analysis, email content, enrichment data)
+// Convex enforces 16MB per function execution, so we need conservative limits
+const MAX_ITERATION_COUNT = 10000; // Safety limit for matching results
+const MAX_DOCS_SCAN = 5000; // Safety limit for total documents scanned regardless of filter match
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
 
@@ -128,8 +131,10 @@ export const getAdminMetrics = query({
       .withIndex("by_date", (q) => q.eq("date", today))
       .unique();
 
-    // Get users in a single query - use index for efficient counting
-    // Count total users using streaming to avoid memory issues
+    // If we have cached metrics, use totals from cache and only compute recent breakdowns
+    const cachedTotals = cachedMetrics?.metrics;
+
+    // Get user stats - users table is typically small, safe to scan with limit
     let totalUsers = 0;
     let activeUsers = 0;
     let newUsers7d = 0;
@@ -142,38 +147,66 @@ export const getAdminMetrics = query({
       if (user.createdAt >= sevenDaysAgo) newUsers7d++;
       if (user.createdAt >= thirtyDaysAgo) newUsers30d++;
       planDistribution[user.plan] = (planDistribution[user.plan] || 0) + 1;
-
-      // Safety limit
-      if (totalUsers >= MAX_ITERATION_COUNT) break;
+      if (totalUsers >= MAX_DOCS_SCAN) break;
     }
 
-    // Get search statistics using streaming
-    let totalSearches = 0;
+    // Get search stats - use by_created index for time-range, scan with safety limit
+    let totalSearches = cachedTotals?.totalSearches ?? 0;
     let completedSearches = 0;
     let searches7d = 0;
     let searches30d = 0;
+    let docsScanned = 0;
 
-    for await (const search of ctx.db.query("searches")) {
-      totalSearches++;
-      if (search.status === "completed") completedSearches++;
-      if (search.createdAt >= sevenDaysAgo) searches7d++;
-      if (search.createdAt >= thirtyDaysAgo) searches30d++;
-
-      // Safety limit
-      if (totalSearches >= MAX_ITERATION_COUNT) break;
+    if (cachedTotals) {
+      // Only compute recent growth stats using indexed time-range query
+      for await (const search of ctx.db
+        .query("searches")
+        .withIndex("by_created", (q) => q.gte("createdAt", thirtyDaysAgo))) {
+        searches30d++;
+        if (search.status === "completed") completedSearches++;
+        if (search.createdAt >= sevenDaysAgo) searches7d++;
+        if (searches30d >= MAX_ITERATION_COUNT) break;
+      }
+    } else {
+      // No cache - scan with safety limit
+      for await (const search of ctx.db.query("searches")) {
+        totalSearches++;
+        docsScanned++;
+        if (search.status === "completed") completedSearches++;
+        if (search.createdAt >= sevenDaysAgo) searches7d++;
+        if (search.createdAt >= thirtyDaysAgo) searches30d++;
+        if (docsScanned >= MAX_DOCS_SCAN) break;
+      }
     }
 
-    // Get credit usage using index and streaming
-    let totalCreditsSpent = 0;
+    // Get credit usage - use compound index for time-range queries
+    let totalCreditsSpent = cachedTotals?.totalCreditsUsed ?? 0;
     let creditsSpent7d = 0;
     let creditsSpent30d = 0;
+    docsScanned = 0;
 
-    for await (const tx of ctx.db
-      .query("creditTransactions")
-      .withIndex("by_type", (q) => q.eq("type", "usage"))) {
-      totalCreditsSpent += tx.amount;
-      if (tx.createdAt >= sevenDaysAgo) creditsSpent7d += tx.amount;
-      if (tx.createdAt >= thirtyDaysAgo) creditsSpent30d += tx.amount;
+    if (cachedTotals) {
+      // Only compute recent spending using indexed time-range query
+      for await (const tx of ctx.db
+        .query("creditTransactions")
+        .withIndex("by_type_created", (q) =>
+          q.eq("type", "usage").gte("createdAt", thirtyDaysAgo))) {
+        creditsSpent30d += tx.amount;
+        if (tx.createdAt >= sevenDaysAgo) creditsSpent7d += tx.amount;
+        docsScanned++;
+        if (docsScanned >= MAX_DOCS_SCAN) break;
+      }
+    } else {
+      // No cache - scan all usage transactions with safety limit
+      for await (const tx of ctx.db
+        .query("creditTransactions")
+        .withIndex("by_type", (q) => q.eq("type", "usage"))) {
+        totalCreditsSpent += tx.amount;
+        if (tx.createdAt >= sevenDaysAgo) creditsSpent7d += tx.amount;
+        if (tx.createdAt >= thirtyDaysAgo) creditsSpent30d += tx.amount;
+        docsScanned++;
+        if (docsScanned >= MAX_DOCS_SCAN) break;
+      }
     }
 
     return {
@@ -205,7 +238,6 @@ export const getAdminMetrics = query({
         searchGrowth7d: searches7d,
         searchGrowth30d: searches30d,
       },
-      // Include cached metrics timestamp if available
       cachedAt: cachedMetrics?.createdAt,
     };
   },
@@ -360,8 +392,9 @@ export const getAllUsers = query({
       if (users.length < limit) {
         users.push(user as any);
       }
-      // Safety limit
-      if (total >= MAX_ITERATION_COUNT) break;
+      // Safety limit - stop scanning once we have our page and counted enough
+      if (users.length >= limit && total >= offset + limit + 1) break;
+      if (total >= MAX_DOCS_SCAN) break;
     }
 
     return {
@@ -415,18 +448,20 @@ export const getAnalytics = query({
       if (searchGrowth30d >= MAX_ITERATION_COUNT) break;
     }
 
-    // Credit usage with index
+    // Credit usage with compound index - only read last 30 days
     let creditUsage7d = 0;
     let creditUsage30d = 0;
+    let creditDocsScanned = 0;
     for await (const tx of ctx.db
       .query("creditTransactions")
-      .withIndex("by_type", (q) => q.eq("type", "usage"))) {
-      if (tx.createdAt >= thirtyDaysAgo) {
-        creditUsage30d += tx.amount;
-        if (tx.createdAt >= sevenDaysAgo) {
-          creditUsage7d += tx.amount;
-        }
+      .withIndex("by_type_created", (q) =>
+        q.eq("type", "usage").gte("createdAt", thirtyDaysAgo))) {
+      creditUsage30d += tx.amount;
+      if (tx.createdAt >= sevenDaysAgo) {
+        creditUsage7d += tx.amount;
       }
+      creditDocsScanned++;
+      if (creditDocsScanned >= MAX_DOCS_SCAN) break;
     }
 
     const averageSearchesPerActiveUser =
@@ -473,7 +508,7 @@ export const getRevenueStats = query({
     let revenueThisWeek = 0;
     let transactionCount = 0;
 
-    // Use index for purchase transactions
+    // Use index for purchase transactions with docs-scanned safety limit
     for await (const tx of ctx.db
       .query("creditTransactions")
       .withIndex("by_type", (q) => q.eq("type", "purchase"))) {
@@ -485,7 +520,7 @@ export const getRevenueStats = query({
       if (tx.createdAt > sevenDaysAgo) {
         revenueThisWeek += tx.amount;
       }
-      if (transactionCount >= MAX_ITERATION_COUNT) break;
+      if (transactionCount >= MAX_DOCS_SCAN) break;
     }
 
     return {
@@ -527,32 +562,41 @@ export const getUsageStats = query({
       };
     }
 
-    // Fallback: stream count with safety limits
-    // Note: This may be incomplete for very large datasets but won't crash
+    // Fallback: use indexed queries with conservative safety limits
+    // Lead documents are large (5-20KB) so we must limit total bytes read
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+
     let totalSearches = 0;
+    let docsScanned = 0;
     for await (const _ of ctx.db.query("searches")) {
       totalSearches++;
-      if (totalSearches >= MAX_ITERATION_COUNT) break;
+      docsScanned++;
+      if (totalSearches >= MAX_ITERATION_COUNT || docsScanned >= MAX_DOCS_SCAN) break;
     }
 
-    // For leads, we estimate from recent data to avoid memory issues
-    // Count leads from last 30 days as a representative sample
-    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    // Use by_created index to only read recent leads (avoids scanning entire table)
     let recentLeads = 0;
-    for await (const lead of ctx.db.query("leads")) {
-      if (lead.createdAt && lead.createdAt >= thirtyDaysAgo) {
-        recentLeads++;
-      }
+    for await (const _ of ctx.db
+      .query("leads")
+      .withIndex("by_created", (q) => q.gte("createdAt", thirtyDaysAgo))) {
+      recentLeads++;
       if (recentLeads >= MAX_ITERATION_COUNT) break;
     }
 
-    // Credit usage with index
+    // Credit usage with compound index + safety limit
     let totalCreditsSpent = 0;
+    docsScanned = 0;
     for await (const tx of ctx.db
       .query("creditTransactions")
       .withIndex("by_type", (q) => q.eq("type", "usage"))) {
       totalCreditsSpent += tx.amount;
+      docsScanned++;
+      if (docsScanned >= MAX_DOCS_SCAN) break;
     }
+
+    const approximate = totalSearches >= MAX_ITERATION_COUNT ||
+      recentLeads >= MAX_ITERATION_COUNT ||
+      docsScanned >= MAX_DOCS_SCAN;
 
     return {
       totalSearches,
@@ -560,9 +604,9 @@ export const getUsageStats = query({
       totalCreditsSpent,
       averageLeadsPerSearch:
         totalSearches > 0 ? recentLeads / totalSearches : 0,
-      note: totalSearches >= MAX_ITERATION_COUNT || recentLeads >= MAX_ITERATION_COUNT
+      note: approximate
         ? "Counts may be approximate due to dataset size. Run daily aggregation for accurate totals."
-        : undefined,
+        : "Using live counts (last 30 days for leads). Set up daily aggregation for cached metrics.",
     };
   },
 });
@@ -831,13 +875,13 @@ export const getSystemStatus = query({
           30 * 60 * 1000,
       );
 
-      // Get user counts using streaming with index
+      // Get user counts - scan with conservative safety limit
       let totalUsers = 0;
       let activeUsers = 0;
       for await (const user of ctx.db.query("users")) {
         totalUsers++;
         if (user.isActive) activeUsers++;
-        if (totalUsers >= MAX_ITERATION_COUNT) break;
+        if (totalUsers >= MAX_DOCS_SCAN) break;
       }
 
       // Check LangGraph worker status using index

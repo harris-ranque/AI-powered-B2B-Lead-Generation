@@ -617,6 +617,7 @@ export default defineSchema({
     .index("by_search_analysis_status", ["searchId", "analysisStatus"])
     .index("by_user_primary_email", ["userId", "primaryEmail"]) // O(1) email deduplication
     .index("by_user_normalized_address", ["userId", "normalizedAddress"]) // O(1) address deduplication
+    .index("by_created", ["createdAt"]) // Time-range queries for admin metrics
     // OCC-safe enrichment queue index: tenant → status → oldest search first → oldest lead first
     .index("by_enrichment_queue", ["enrichmentApiKeyHash", "enrichmentStatus", "enrichmentSearchQueuedAt", "enrichmentQueuedAt"]),
 
@@ -778,7 +779,8 @@ export default defineSchema({
     .index("by_parent", ["parentTransactionId"])
     // Compound indexes for credit transaction queries
     .index("by_user_type", ["userId", "type"])
-    .index("by_user_type_created", ["userId", "type", "createdAt"]),
+    .index("by_user_type_created", ["userId", "type", "createdAt"])
+    .index("by_type_created", ["type", "createdAt"]),
 
   // Credit Reservations - Two-phase commit for credit operations
   creditReservations: defineTable({
