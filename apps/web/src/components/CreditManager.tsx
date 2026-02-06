@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useBilling } from "@/hooks/useBilling";
-import { useFastSpring } from "@/hooks/useFastSpring";
 import { useRuntimeConfig, type PlanType } from "@/lib/runtime-config";
 import { useUser, useUserCredits } from "@/hooks/useUser";
 import { useAnalytics } from "@/hooks/useAnalytics";
@@ -73,28 +72,8 @@ export function CreditManager({
   const { billing, usage } = useBilling();
   const { config: runtimeConfig } = useRuntimeConfig();
 
-  // FastSpring checkout hook
-  const {
-    startSubscriptionCheckout,
-    startCreditsCheckout,
-    isLoading: checkoutLoading,
-  } = useFastSpring({
-    autoLoad: true,
-    onOrderComplete: (order) => {
-      // Track successful purchase
-      analytics.trackCreditPurchaseCompleted({
-        amount: order.items?.[0]?.quantity || 0,
-        price: order.total || 0,
-        payment_method: "fastspring",
-        new_balance: (currentCredits || 0) + (order.items?.[0]?.quantity || 0),
-      });
-
-      toast({
-        title: "Payment successful!",
-        description: "Your purchase has been processed.",
-      });
-    },
-  });
+  // FastSpring checkout disabled - not currently in use
+  const checkoutLoading = false;
 
   const normalizePlan = (plan: string | undefined): PlanType => {
     const validPlans: PlanType[] = [
@@ -237,25 +216,8 @@ export function CreditManager({
       return;
     }
 
-    setIsProcessing(true);
-
-    try {
-      // Open FastSpring popup checkout for subscription
-      await startSubscriptionCheckout(planId, "monthly");
-
-      // Callback for parent component if provided
-      if (onUpgrade) {
-        onUpgrade(planId);
-      }
-    } catch (error) {
-      console.error("Plan upgrade failed:", error);
-      toast({
-        title: "Upgrade Failed",
-        description: "Failed to start upgrade process. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsProcessing(false);
+    if (onUpgrade) {
+      onUpgrade(planId);
     }
   };
 
@@ -273,10 +235,6 @@ export function CreditManager({
         price: pack.price,
         payment_method: "fastspring",
       });
-
-      // Open FastSpring popup checkout for credit purchase
-      // Pass the base credit amount (FastSpring product is configured by base amount)
-      await startCreditsCheckout(pack.amount);
 
       // Callback for parent component if provided
       if (onPurchaseCredits) {

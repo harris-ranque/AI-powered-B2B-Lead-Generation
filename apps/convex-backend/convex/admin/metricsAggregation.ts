@@ -5,6 +5,7 @@ import { v } from "convex/values";
 // Lead documents are 5-20KB each, so 5000 * 10KB = 50MB would exceed limit
 const MAX_ITERATION_COUNT = 10000;
 const MAX_DOCS_SCAN = 5000;
+const MAX_LEADS_SCAN = 500; // Leads are 5-20KB each; 500 * 20KB = 10MB, safely under 16MB limit
 
 /**
  * Daily admin metrics aggregation - runs once per day via cron
@@ -119,7 +120,7 @@ export const aggregateDailyMetrics = internalMutation({
         errorCount++;
       }
 
-      if (totalLeads >= MAX_DOCS_SCAN) break;
+      if (totalLeads >= MAX_LEADS_SCAN) break;
     }
 
     // Calculate credit usage for the day using compound index
