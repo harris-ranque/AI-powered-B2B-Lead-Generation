@@ -9,6 +9,7 @@
  */
 
 import type * as admin_billing from "../admin/billing.js";
+import type * as admin_metricsAggregation from "../admin/metricsAggregation.js";
 import type * as admin_mutations from "../admin/mutations.js";
 import type * as admin_queries from "../admin/queries.js";
 import type * as admin_systemControl from "../admin/systemControl.js";
@@ -131,6 +132,7 @@ import type {
  */
 declare const fullApi: ApiFromModules<{
   "admin/billing": typeof admin_billing;
+  "admin/metricsAggregation": typeof admin_metricsAggregation;
   "admin/mutations": typeof admin_mutations;
   "admin/queries": typeof admin_queries;
   "admin/systemControl": typeof admin_systemControl;

@@ -1,9 +1,10 @@
 import { internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 
-// Constants for query limits
-const MAX_ITERATION_COUNT = 100000;
-const BATCH_SIZE = 100;
+// Constants for query limits - conservative to stay under Convex 16MB byte limit
+// Lead documents are 5-20KB each, so 5000 * 10KB = 50MB would exceed limit
+const MAX_ITERATION_COUNT = 10000;
+const MAX_DOCS_SCAN = 5000;
 
 /**
  * Daily admin metrics aggregation - runs once per day via cron
@@ -62,7 +63,7 @@ export const aggregateDailyMetrics = internalMutation({
           break;
       }
 
-      if (totalUsers >= MAX_ITERATION_COUNT) break;
+      if (totalUsers >= MAX_DOCS_SCAN) break;
     }
 
     // Count searches for the day
@@ -76,67 +77,29 @@ export const aggregateDailyMetrics = internalMutation({
       if (totalSearches >= MAX_ITERATION_COUNT) break;
     }
 
-    // Count total leads (all time is expensive, estimate from recent activity)
+    // Count leads and compute quality metrics in a SINGLE pass using by_created index
+    // This replaces 3 separate full-table scans that would each hit the 16MB byte limit
     let totalLeads = 0;
-    let leadsProcessed = 0;
-    for await (const lead of ctx.db.query("leads")) {
-      totalLeads++;
-      leadsProcessed++;
-      if (leadsProcessed >= MAX_ITERATION_COUNT) break;
-    }
-
-    // Count generated emails (leads with emails and analysis completed)
     let totalEmails = 0;
-    let emailsProcessed = 0;
-    for await (const lead of ctx.db.query("leads")) {
-      if (lead.analysisStatus === "completed" && lead.generatedEmails && lead.generatedEmails.length > 0) {
-        totalEmails++;
-      }
-      emailsProcessed++;
-      if (emailsProcessed >= MAX_ITERATION_COUNT) break;
-    }
-
-    // Calculate credit usage for the day
-    let totalCreditsUsed = 0;
-    for await (const tx of ctx.db
-      .query("creditTransactions")
-      .withIndex("by_type", (q) => q.eq("type", "usage"))) {
-      if (tx.createdAt >= dateStart && tx.createdAt <= dateEnd) {
-        totalCreditsUsed += Math.abs(tx.amount);
-      }
-    }
-
-    // Calculate revenue from billing (simplified - active subscriptions)
-    let totalRevenue = 0;
-    let newRevenue = 0;
-    for await (const billing of ctx.db
-      .query("billing")
-      .withIndex("by_status", (q) => q.eq("status", "active"))) {
-      totalRevenue += billing.amount || 0;
-
-      // Check if subscription started today
-      if (billing.createdAt >= dateStart && billing.createdAt <= dateEnd) {
-        newRevenue += billing.amount || 0;
-      }
-    }
-
-    // Calculate quality metrics from recent leads
     let relevanceSum = 0;
     let relevanceCount = 0;
     let processingTimeSum = 0;
     let processingTimeCount = 0;
     let errorCount = 0;
-    let qualityLeadsProcessed = 0;
+    let todayLeadsProcessed = 0;
 
-    // No by_created index on leads - filter in memory
-    for await (const lead of ctx.db.query("leads")) {
-      // Filter by creation date
-      if (lead.createdAt < dateStart || lead.createdAt > dateEnd) {
-        continue;
+    for await (const lead of ctx.db
+      .query("leads")
+      .withIndex("by_created", (q) => q.gte("createdAt", dateStart).lte("createdAt", dateEnd))) {
+      totalLeads++;
+
+      // Email count
+      if (lead.analysisStatus === "completed" && lead.generatedEmails && lead.generatedEmails.length > 0) {
+        totalEmails++;
       }
-      qualityLeadsProcessed++;
 
-      // relevanceScore is inside aiAnalysis
+      // Quality metrics
+      todayLeadsProcessed++;
       const relevanceScore = lead.aiAnalysis?.relevanceScore;
       if (relevanceScore !== undefined && relevanceScore !== null) {
         relevanceSum += relevanceScore;
@@ -156,7 +119,36 @@ export const aggregateDailyMetrics = internalMutation({
         errorCount++;
       }
 
-      if (qualityLeadsProcessed >= MAX_ITERATION_COUNT) break;
+      if (totalLeads >= MAX_DOCS_SCAN) break;
+    }
+
+    // Calculate credit usage for the day using compound index
+    let totalCreditsUsed = 0;
+    let creditDocsScanned = 0;
+    for await (const tx of ctx.db
+      .query("creditTransactions")
+      .withIndex("by_type_created", (q) =>
+        q.eq("type", "usage").gte("createdAt", dateStart).lte("createdAt", dateEnd))) {
+      totalCreditsUsed += Math.abs(tx.amount);
+      creditDocsScanned++;
+      if (creditDocsScanned >= MAX_DOCS_SCAN) break;
+    }
+
+    // Calculate revenue from billing (simplified - active subscriptions)
+    let totalRevenue = 0;
+    let newRevenue = 0;
+    let billingDocsScanned = 0;
+    for await (const billing of ctx.db
+      .query("billing")
+      .withIndex("by_status", (q) => q.eq("status", "active"))) {
+      totalRevenue += billing.amount || 0;
+
+      // Check if subscription started today
+      if (billing.createdAt >= dateStart && billing.createdAt <= dateEnd) {
+        newRevenue += billing.amount || 0;
+      }
+      billingDocsScanned++;
+      if (billingDocsScanned >= MAX_DOCS_SCAN) break;
     }
 
     const avgRelevanceScore =
@@ -166,8 +158,8 @@ export const aggregateDailyMetrics = internalMutation({
         ? Math.round(processingTimeSum / processingTimeCount)
         : 0;
     const errorRate =
-      qualityLeadsProcessed > 0
-        ? Math.round((errorCount / qualityLeadsProcessed) * 10000) / 100
+      todayLeadsProcessed > 0
+        ? Math.round((errorCount / todayLeadsProcessed) * 10000) / 100
         : 0;
 
     const metrics = {

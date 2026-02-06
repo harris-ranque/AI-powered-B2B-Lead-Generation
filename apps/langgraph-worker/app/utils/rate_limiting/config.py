@@ -91,7 +91,7 @@ class RateLimitingConfig:
 
     # Queue settings
     max_queue_size: int = 1000
-    queue_timeout_seconds: float = 60.0
+    queue_timeout_seconds: float = 900.0  # 15 minutes for deep research requests
 
     # Circuit breaker settings
     circuit_breaker_enabled: bool = True
@@ -140,7 +140,7 @@ class RateLimitingConfig:
 
             # Queue
             max_queue_size=get_env_int('RATE_LIMIT_MAX_QUEUE', 1000),
-            queue_timeout_seconds=get_env_float('RATE_LIMIT_QUEUE_TIMEOUT', 60.0),
+            queue_timeout_seconds=get_env_float('RATE_LIMIT_QUEUE_TIMEOUT', 900.0),
 
             # Circuit breaker
             circuit_breaker_enabled=get_env_bool('RATE_LIMIT_CIRCUIT_BREAKER', True),

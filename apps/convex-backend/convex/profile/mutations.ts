@@ -74,6 +74,9 @@ export const createOrUpdateProfile = mutation({
             ? normalizeUrl(args.contactInfo.linkedin)
             : ""
           : "",
+        signature: args.contactInfo.signature
+          ? sanitizeString(args.contactInfo.signature)
+          : "",
       },
     };
 
@@ -293,6 +296,11 @@ export const updateProfileSection = mutation({
             args.data.linkedin && validateUrl(args.data.linkedin)
               ? normalizeUrl(args.data.linkedin)
               : profile.contactInfo?.linkedin || "",
+          signature:
+            args.data.signature !== undefined
+              ? sanitizeString(args.data.signature)
+              : (profile.contactInfo as { signature?: string } | undefined)
+                  ?.signature || "",
         };
         break;
 

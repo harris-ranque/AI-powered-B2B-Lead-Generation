@@ -80,6 +80,7 @@ export const sectionUpdateValidator = v.union(
     phone: v.optional(v.string()),
     website: v.optional(v.string()),
     linkedin: v.optional(v.string()),
+    signature: v.optional(v.string()),
   }),
 );
 

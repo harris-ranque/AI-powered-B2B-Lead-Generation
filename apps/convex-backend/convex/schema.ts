@@ -60,7 +60,9 @@ export default defineSchema({
     .index("by_plan", ["plan"])
     .index("by_role", ["role"])
     .index("by_created", ["createdAt"])
-    .index("by_stripe_customer", ["stripeCustomerId"]),
+    .index("by_stripe_customer", ["stripeCustomerId"])
+    .index("by_active", ["isActive"])
+    .index("by_active_created", ["isActive", "createdAt"]),
 
   // Business Profiles - Company information for AI personalization
   businessProfiles: defineTable({
@@ -87,6 +89,7 @@ export default defineSchema({
       phone: v.optional(v.string()),
       website: v.optional(v.string()),
       linkedin: v.optional(v.string()),
+      signature: v.optional(v.string()),
     }),
     isComplete: v.boolean(),
     createdAt: v.number(),
@@ -614,6 +617,7 @@ export default defineSchema({
     .index("by_search_analysis_status", ["searchId", "analysisStatus"])
     .index("by_user_primary_email", ["userId", "primaryEmail"]) // O(1) email deduplication
     .index("by_user_normalized_address", ["userId", "normalizedAddress"]) // O(1) address deduplication
+    .index("by_created", ["createdAt"]) // Time-range queries for admin metrics
     // OCC-safe enrichment queue index: tenant → status → oldest search first → oldest lead first
     .index("by_enrichment_queue", ["enrichmentApiKeyHash", "enrichmentStatus", "enrichmentSearchQueuedAt", "enrichmentQueuedAt"]),
 
@@ -740,7 +744,9 @@ export default defineSchema({
     .index("by_trial", ["isTrialing"])
     .index("by_period_end", ["currentPeriodEnd"])
     // Compound indexes for billing webhooks optimization
-    .index("by_fastspring_account_status", ["fastspringAccountId", "status"]),
+    .index("by_fastspring_account_status", ["fastspringAccountId", "status"])
+    .index("by_status_created", ["status", "createdAt"])
+    .index("by_plan_status", ["plan", "status"]),
 
   // Credit Transactions - Credit purchases and usage
   creditTransactions: defineTable({
@@ -773,7 +779,8 @@ export default defineSchema({
     .index("by_parent", ["parentTransactionId"])
     // Compound indexes for credit transaction queries
     .index("by_user_type", ["userId", "type"])
-    .index("by_user_type_created", ["userId", "type", "createdAt"]),
+    .index("by_user_type_created", ["userId", "type", "createdAt"])
+    .index("by_type_created", ["type", "createdAt"]),
 
   // Credit Reservations - Two-phase commit for credit operations
   creditReservations: defineTable({
