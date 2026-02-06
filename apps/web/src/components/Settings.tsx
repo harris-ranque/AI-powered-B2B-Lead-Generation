@@ -186,6 +186,7 @@ export function Settings() {
       phone?: string;
       website?: string;
       linkedin?: string;
+      signature?: string;
     } | null;
 
     const normalizedName = normalizeContactName(
@@ -193,14 +194,16 @@ export function Settings() {
     );
     const fromEmail = contactInfo?.email || userData?.email || "";
 
+    // Use saved signature from backend, or build default if none exists
+    const savedSignature = contactInfo?.signature;
+    const signature =
+      savedSignature ||
+      buildSignature(normalizedName, businessProfile?.companyName || "", fromEmail);
+
     setEmailConfig({
       fromName: normalizedName,
       fromEmail,
-      signature: buildSignature(
-        normalizedName,
-        businessProfile?.companyName || "",
-        fromEmail,
-      ),
+      signature,
     });
   }, [businessProfile, userData]);
 
@@ -293,17 +296,14 @@ export function Settings() {
           phone: contactInfo.phone || "",
           website: contactInfo.website || "",
           linkedin: contactInfo.linkedin || "",
+          signature: emailConfig.signature, // Persist user's custom signature
         },
       });
 
       setEmailConfig((prev) => ({
         ...prev,
         fromName: sanitizedFromName,
-        signature: buildSignature(
-          sanitizedFromName,
-          businessProfile?.companyName || "",
-          emailConfig.fromEmail,
-        ),
+        // Keep the user's signature as-is instead of rebuilding it
       }));
 
       toast.success("Email configuration updated successfully");
