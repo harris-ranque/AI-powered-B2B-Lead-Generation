@@ -290,7 +290,8 @@ async def execute_email_generation(
                 "result": final_result,
                 "processing_time": total_time,
                 "quality_score": quality_assessment.get("overall_quality_score", 0),
-                "approved": quality_assessment.get("approval_status") == "Approved"
+                "approved": quality_assessment.get("approval_status") == "Approved",
+                "lead_tier": result.get("lead_tier", "A"),
             }
         else:
             logger.error(f"No final result generated for {request_id}")

@@ -979,9 +979,12 @@ async def process_batch_with_progress(
                         # Check approval status from QA (strict check - must be explicitly True)
                         is_approved = result.get("approved") is True
 
-                        # Also check quality_score threshold (≥0.60 for approval)
+                        # Check quality_score against tier-aware threshold
+                        # B-tier leads (less public data) use 0.50; A-tier uses 0.60
                         quality_score = result.get("quality_score", 0)
-                        meets_quality_threshold = quality_score >= 0.60
+                        lead_tier = result.get("lead_tier", "A")
+                        tier_threshold = 0.50 if lead_tier == "B" else 0.60
+                        meets_quality_threshold = quality_score >= tier_threshold
 
                         # Check for errors in lead_analysis (where aggregator stores them)
                         lead_analysis = final_result.get("lead_analysis") if isinstance(final_result, dict) else getattr(final_result, "lead_analysis", {})
