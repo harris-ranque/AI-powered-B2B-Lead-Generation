@@ -562,25 +562,18 @@ export const getUsageStats = query({
       };
     }
 
-    // Fallback: use indexed queries with conservative safety limits
-    // Lead documents are large (5-20KB) so we must limit total bytes read
+    // Fallback: derive lead counts from searches table (small docs) instead of
+    // scanning leads table (5-20KB per doc) which hits the 16MB byte limit
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
     let totalSearches = 0;
+    let totalLeads = 0;
     let docsScanned = 0;
-    for await (const _ of ctx.db.query("searches")) {
+    for await (const search of ctx.db.query("searches")) {
       totalSearches++;
+      totalLeads += search.results?.totalFound ?? search.progress?.discovered ?? 0;
       docsScanned++;
-      if (totalSearches >= MAX_ITERATION_COUNT || docsScanned >= MAX_DOCS_SCAN) break;
-    }
-
-    // Use by_created index to only read recent leads (avoids scanning entire table)
-    let recentLeads = 0;
-    for await (const _ of ctx.db
-      .query("leads")
-      .withIndex("by_created", (q) => q.gte("createdAt", thirtyDaysAgo))) {
-      recentLeads++;
-      if (recentLeads >= MAX_ITERATION_COUNT) break;
+      if (docsScanned >= MAX_DOCS_SCAN) break;
     }
 
     // Credit usage with compound index + safety limit
@@ -594,19 +587,18 @@ export const getUsageStats = query({
       if (docsScanned >= MAX_DOCS_SCAN) break;
     }
 
-    const approximate = totalSearches >= MAX_ITERATION_COUNT ||
-      recentLeads >= MAX_ITERATION_COUNT ||
+    const approximate = totalSearches >= MAX_DOCS_SCAN ||
       docsScanned >= MAX_DOCS_SCAN;
 
     return {
       totalSearches,
-      totalLeads: recentLeads,
+      totalLeads,
       totalCreditsSpent,
       averageLeadsPerSearch:
-        totalSearches > 0 ? recentLeads / totalSearches : 0,
+        totalSearches > 0 ? totalLeads / totalSearches : 0,
       note: approximate
         ? "Counts may be approximate due to dataset size. Run daily aggregation for accurate totals."
-        : "Using live counts (last 30 days for leads). Set up daily aggregation for cached metrics.",
+        : "Using live counts derived from searches. Set up daily aggregation for cached metrics.",
     };
   },
 });
