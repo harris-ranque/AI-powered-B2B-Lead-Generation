@@ -110,6 +110,7 @@ export const generateEmail: unknown = action({
       phone: profile.contactInfo?.phone || "",
       website: profile.contactInfo?.website || "",
       linkedin: profile.contactInfo?.linkedin || "",
+      signature: profile.contactInfo?.signature || "",
     };
 
     // Create LangGraph-compatible request id: searchId_leadId_attempt
@@ -318,6 +319,7 @@ export const analyzeLead = action({
       phone: profile.contactInfo?.phone || "",
       website: profile.contactInfo?.website || "",
       linkedin: profile.contactInfo?.linkedin || "",
+      signature: profile.contactInfo?.signature || "",
     };
 
     // Create LangGraph request using scheduler
