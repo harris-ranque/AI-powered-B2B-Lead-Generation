@@ -344,9 +344,21 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         sender_phone = contact_info.get("phone", "")
         sender_website = contact_info.get("website", "")
         sender_linkedin = contact_info.get("linkedin", "")
+        sender_signature = (contact_info.get("signature", "") or "").strip()
 
         def append_signature(body: str) -> str:
             """Append sender signature details if they're not already present."""
+
+            if sender_signature:
+                normalized_body = "\n".join(line.strip() for line in body.splitlines()).lower()
+                normalized_signature = "\n".join(
+                    line.strip() for line in sender_signature.splitlines()
+                ).lower()
+
+                if normalized_signature and normalized_signature in normalized_body:
+                    return body
+
+                return f"{body}\n\n{sender_signature}"
 
             signature_lines = []
             lower_body = body.lower()
