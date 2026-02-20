@@ -923,11 +923,13 @@ http.route({
         });
       }
 
-      // Filter out leads without email addresses - only export actionable leads
+      // Filter out leads without email addresses and failed analyses - only export actionable leads
       const totalBeforeFilter = leads.length;
       leads = leads.filter((lead) => {
         const emails = (lead as any).contactInfo?.emails;
-        return Array.isArray(emails) && emails.length > 0 && emails[0]?.email;
+        const hasEmail = Array.isArray(emails) && emails.length > 0 && emails[0]?.email;
+        const analysisFailed = (lead as any).analysisStatus === "failed";
+        return hasEmail && !analysisFailed;
       });
 
       if (leads.length === 0) {

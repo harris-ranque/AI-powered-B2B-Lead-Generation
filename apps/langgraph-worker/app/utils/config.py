@@ -165,8 +165,9 @@ class Settings(BaseSettings):
     business_intelligence_max_tokens: int = int(os.getenv("BUSINESS_INTELLIGENCE_MAX_TOKENS", "16000") or "16000")
     # Email Generation: Email content + follow-up sequences (INCREASED from 8000)
     email_generation_max_tokens: int = int(os.getenv("EMAIL_GENERATION_MAX_TOKENS", "16000") or "16000")
-    # Quality Assurance: Scoring, validation, and feedback (INCREASED from 4000)
-    quality_assurance_max_tokens: int = int(os.getenv("QUALITY_ASSURANCE_MAX_TOKENS", "8000") or "8000")
+    # Quality Assurance: Scoring, validation, and feedback (INCREASED from 8000)
+    # Reasoning models need 16K to allow for reasoning overhead + structured output
+    quality_assurance_max_tokens: int = int(os.getenv("QUALITY_ASSURANCE_MAX_TOKENS", "16000") or "16000")
 
     @property
     def temperature(self) -> float:
