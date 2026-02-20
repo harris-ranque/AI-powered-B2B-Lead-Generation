@@ -515,6 +515,9 @@ export const createSearchFromCSV = mutation({
       });
     }
 
+    // Count leads that are actually pre-enriched (have email AND contact name)
+    const preEnrichedCount = args.leads.filter(l => l.costEstimate.skipEnrichment).length;
+
     // Create search record
     const searchId = await ctx.db.insert("searches", {
       userId: user._id,
@@ -529,13 +532,13 @@ export const createSearchFromCSV = mutation({
       },
       progress: {
         discovered: args.leads.length,
-        enriched: 0,
+        enriched: preEnrichedCount,
         analyzed: 0,
         total: args.leads.length,
       },
       results: {
         totalFound: args.leads.length,
-        enrichedCount: 0,
+        enrichedCount: preEnrichedCount,
         analyzedCount: 0,
       },
       creditsUsed: creditCost,

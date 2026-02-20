@@ -1059,14 +1059,11 @@ export const getLeadsForAnalysis = internalQuery({
       )
       .collect();
 
-    // Filter to only leads with valid contact information (email + name)
+    // Filter to only leads with valid email (contact name not required —
+    // LangGraph worker handles missing names with fallbacks like "Unknown"/"there")
     return leads.filter((lead) => {
       const hasEmail = lead.contactInfo?.emails?.length && lead.contactInfo.emails.length > 0;
-      const hasContactName =
-        lead.contactInfo?.contacts?.length &&
-        lead.contactInfo.contacts.length > 0 &&
-        lead.contactInfo.contacts[0]?.name;
-      return hasEmail && hasContactName;
+      return hasEmail;
     });
   },
 });

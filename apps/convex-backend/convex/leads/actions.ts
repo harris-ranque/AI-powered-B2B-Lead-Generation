@@ -865,6 +865,8 @@ export const analyzeLeads: any = internalAction({
         "📋 AI Analysis Configuration (Batch Processing)",
         {
           totalLeadsToAnalyze: leads.length,
+          leadsWithContactName: leads.filter((l: any) => l.contactInfo?.contacts?.[0]?.name).length,
+          leadsWithoutContactName: leads.filter((l: any) => !l.contactInfo?.contacts?.[0]?.name).length,
           architecture: "batch_processing",
           batchSize: 100,
           webhookBased: true,

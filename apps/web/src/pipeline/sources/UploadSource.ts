@@ -110,16 +110,38 @@ export interface RowCostEstimate {
  * Calculate credit cost for a single CSV row
  *
  * Logic:
- * - Has valid contact_email → 1 credit (skip enrichment, research only)
+ * - Has valid email AND contact_name → 1 credit (skip enrichment, research only)
+ * - Has email but no contact_name → 2 credits (enrichment via domain from email)
  * - Has domain but no email → 2 credits (enrichment + research)
  * - No domain AND no email → 0 credits (invalid, will be skipped)
  */
 export function calculateRowCost(row: Record<string, string>): RowCostEstimate {
   const contactEmail = row.contact_email || row.email;
-  const domain = row.domain || extractDomain(row.website);
+  const contactName = row.contact_name;
+  const domain = extractDomain(row.domain) || extractDomain(row.website);
 
-  // Priority 1: Has valid email → Skip enrichment → 1 credit (research only)
+  // Priority 1: Has valid email AND contact name → Skip enrichment → 1 credit
+  if (contactEmail && validateEmail(contactEmail) && contactName?.trim()) {
+    return {
+      cost: 1,
+      reason: "Has email and contact name (skip enrichment)",
+      skipEnrichment: true,
+    };
+  }
+
+  // Priority 2: Has email but no contact name → Need FindyMail for contact discovery
+  // Extract domain from email if no explicit domain provided
   if (contactEmail && validateEmail(contactEmail)) {
+    const emailDomain = contactEmail.split("@")[1] || "";
+    const effectiveDomain = domain || emailDomain;
+    if (effectiveDomain && validateDomain(effectiveDomain)) {
+      return {
+        cost: 2,
+        reason: "Needs enrichment for contact discovery",
+        skipEnrichment: false,
+      };
+    }
+    // Has email but no usable domain — keep as 1 credit fallback
     return {
       cost: 1,
       reason: "Has email (skip enrichment)",
@@ -127,7 +149,7 @@ export function calculateRowCost(row: Record<string, string>): RowCostEstimate {
     };
   }
 
-  // Priority 2: Has domain → Need enrichment → 2 credits
+  // Priority 3: Has domain → Need enrichment → 2 credits
   if (domain && validateDomain(domain)) {
     return {
       cost: 2,
@@ -136,7 +158,7 @@ export function calculateRowCost(row: Record<string, string>): RowCostEstimate {
     };
   }
 
-  // Priority 3: No domain AND no email → Invalid → 0 credits (skip)
+  // Priority 4: No domain AND no email → Invalid → 0 credits (skip)
   return {
     cost: 0,
     reason: "Missing domain and email",
@@ -180,7 +202,7 @@ export function validateRow(
 
   // CRITICAL: Must have either domain OR email
   const contactEmail = sanitizedRow.contact_email || sanitizedRow.email;
-  const domain = sanitizedRow.domain || extractDomain(sanitizedRow.website);
+  const domain = extractDomain(sanitizedRow.domain) || extractDomain(sanitizedRow.website);
 
   if (!domain && !contactEmail) {
     errors.push("Must provide either domain OR email address");
@@ -376,8 +398,9 @@ function parseCSVToLeads(
     }
 
     // Extract domain from website if not explicitly provided
-    const domain = leadData.domain || extractDomain(leadData.website);
     const contactEmail = leadData.contact_email || leadData.email;
+    const emailDomain = contactEmail ? contactEmail.split("@")[1] || "" : "";
+    const domain = extractDomain(leadData.domain) || extractDomain(leadData.website) || emailDomain;
 
     // Build lead object
     const leadId = `csv_${now}_${index}`;
@@ -389,8 +412,11 @@ function parseCSVToLeads(
     const safeDomain = (domain || companyName.replace(/[^a-z0-9]/gi, '_')).toLowerCase();
     const syntheticPlaceId = `csv_upload_${safeDomain}_${now}_${index}`;
 
-    // Prepare contact info if email exists
-    const contactEmails = contactEmail && validateEmail(contactEmail)
+    // Only populate contactEmails when skipping enrichment (has email AND contact_name)
+    // Leads going through FindyMail must NOT have pre-populated emails to avoid
+    // short-circuiting the enrichment pipeline
+    const shouldSkipEnrichment = validation.costEstimate.skipEnrichment;
+    const contactEmails = (shouldSkipEnrichment && contactEmail && validateEmail(contactEmail))
       ? [
           {
             email: contactEmail,
@@ -420,7 +446,7 @@ function parseCSVToLeads(
       company_name: companyName,
       industry: industry || null,
       category: industry || null,
-      website: leadData.website?.trim() || (domain ? `https://${domain}` : null),
+      website: leadData.website?.trim() || (domain && validateDomain(domain) ? `https://${domain}` : null),
       phone: leadData.phone?.trim() || null,
       placeId: syntheticPlaceId,
       address: "CSV Import",

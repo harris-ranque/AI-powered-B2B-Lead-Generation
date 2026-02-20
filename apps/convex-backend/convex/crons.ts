@@ -71,6 +71,19 @@ crons.interval(
 );
 
 // ============================================================================
+// LANGGRAPH WORKER HEALTH CHECK (Every 5 minutes)
+// ============================================================================
+// Periodically checks the LangGraph worker service health
+// - Resets "unavailable" status when service recovers
+// - Auto-pauses lead generation after 3 consecutive failures
+// - Auto-resumes when health is restored
+crons.interval(
+  "langgraph-health-check",
+  { minutes: 5 },
+  internal.langgraph.health.checkLangGraphHealth,
+);
+
+// ============================================================================
 // DEAD LETTER QUEUE PROCESSOR (Every 2 minutes)
 // ============================================================================
 // Processes failed pipeline operations (completion handlers, phase transitions)
