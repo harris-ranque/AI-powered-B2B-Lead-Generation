@@ -98,15 +98,13 @@ AI_CONFIG = {
     },
 }
 
-# Perplexity API Rate Limiting Configuration
-# Defaults to Tier 5 limits (most generous) - BYOK clients likely have high tiers
-# Lower-tier users will hit 429s but retry logic handles this gracefully
-# Clients can override via environment variables if needed
+# Perplexity API rate-limit reference configuration (legacy path).
+# The active limiter is app/utils/rate_limiting/*, but these values remain as
+# fallback defaults for legacy call sites and operational visibility.
 PERPLEXITY_RATE_LIMIT_CONFIG = {
-    # Rate limits by model (requests per minute) - Tier 5 defaults
-    # Tier 5 ($5000+ credits): sonar-pro=2000 RPM, deep-research=100 RPM
-    # Retry logic with exponential backoff handles lower-tier users who hit 429s
-    'SONAR_PRO_RPM': get_env_int('PERPLEXITY_SONAR_PRO_RPM', 2000),
+    # Current Perplexity documented upper tier model defaults:
+    # sonar-pro=4000 RPM, sonar-deep-research=100 RPM
+    'SONAR_PRO_RPM': get_env_int('PERPLEXITY_SONAR_PRO_RPM', 4000),
     'DEEP_RESEARCH_RPM': get_env_int('PERPLEXITY_DEEP_RESEARCH_RPM', 100),
 
     # Retry configuration for rate limit errors

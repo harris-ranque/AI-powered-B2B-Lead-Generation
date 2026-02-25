@@ -59,7 +59,7 @@ class RateLimitingConfig:
     # Perplexity settings (start conservative - Tier 0)
     perplexity_default_rpm: int = 50
     perplexity_min_rpm: int = 10
-    perplexity_max_rpm: int = 2000
+    perplexity_max_rpm: int = 4000
     perplexity_sonar_pro_rpm: int = 50
     perplexity_deep_research_rpm: int = 5
     # Model-specific concurrency (per API key) - Perplexity has no explicit concurrency limit
@@ -110,7 +110,7 @@ class RateLimitingConfig:
             # Perplexity
             perplexity_default_rpm=get_env_int('PERPLEXITY_DEFAULT_RPM', 50),
             perplexity_min_rpm=get_env_int('PERPLEXITY_MIN_RPM', 10),
-            perplexity_max_rpm=get_env_int('PERPLEXITY_MAX_RPM', 2000),
+            perplexity_max_rpm=get_env_int('PERPLEXITY_MAX_RPM', 4000),
             perplexity_sonar_pro_rpm=get_env_int('PERPLEXITY_SONAR_PRO_RPM', 50),
             perplexity_deep_research_rpm=get_env_int('PERPLEXITY_DEEP_RESEARCH_RPM', 5),
             perplexity_sonar_pro_concurrent=get_env_int('PERPLEXITY_SONAR_PRO_CONCURRENT', 5),
