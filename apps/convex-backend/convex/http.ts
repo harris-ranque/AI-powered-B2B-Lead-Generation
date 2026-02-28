@@ -923,11 +923,13 @@ http.route({
         });
       }
 
-      // Filter out leads without email addresses and failed analyses - only export actionable leads
+      // Filter out leads without email addresses and failed analyses - only export actionable leads.
+      // Prefer the same email resolution logic used by CSV row rendering so legacy records with
+      // lead.email or contact-level emails are still exportable.
       const totalBeforeFilter = leads.length;
       leads = leads.filter((lead) => {
-        const emails = (lead as any).contactInfo?.emails;
-        const hasEmail = Array.isArray(emails) && emails.length > 0 && emails[0]?.email;
+        const resolvedContact = extractContactDetails(lead);
+        const hasEmail = resolvedContact.email.trim().length > 0;
         const analysisFailed = (lead as any).analysisStatus === "failed";
         return hasEmail && !analysisFailed;
       });
