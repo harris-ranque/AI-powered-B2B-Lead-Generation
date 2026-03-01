@@ -15,6 +15,11 @@ import {
   bufferFromBase64,
   type ExportTokenPayload,
 } from "./lib/cryptoHelpers";
+import {
+  extractContactDetails,
+  isLeadExportable,
+  noExportableLeadsMessage,
+} from "./lib/exportEligibility";
 
 const http = httpRouter();
 
@@ -220,56 +225,6 @@ function extractCompanyProfile(lead: LeadDoc): string {
 
   // Return bullet-point summary (newlines for CSV cell readability)
   return bullets.join("\n");
-}
-
-function deriveFirstNameFromEmail(email: string): string {
-  const [localPart] = email.split("@");
-  if (!localPart) {
-    return "";
-  }
-  const segment = localPart
-    .split(/[._-]+/)
-    .map((part) => part.replace(/[0-9]/g, ""))
-    .find((part) => part.length > 0);
-  if (!segment) {
-    return "";
-  }
-  return segment.charAt(0).toUpperCase() + segment.slice(1);
-}
-
-function extractContactDetails(lead: LeadDoc): {
-  firstName: string;
-  fullName: string;
-  email: string;
-} {
-  const contacts = lead.contactInfo?.contacts ?? [];
-  const emails = lead.contactInfo?.emails ?? [];
-
-  const contactWithEmail = contacts.find(
-    (contact) => typeof contact?.email === "string" && contact.email.trim(),
-  );
-  const primaryContact = contactWithEmail ?? contacts[0];
-
-  const emailCandidates: Array<string | undefined> = [
-    lead.email,
-    contactWithEmail?.email,
-    primaryContact?.email,
-    emails.find((entry) => typeof entry?.email === "string")?.email,
-  ];
-
-  const email = firstNonEmptyString(...emailCandidates);
-  const fullName = firstNonEmptyString(primaryContact?.name);
-  const firstName = fullName
-    ? fullName.split(/\s+/)[0] ?? ""
-    : email
-      ? deriveFirstNameFromEmail(email)
-      : "";
-
-  return {
-    firstName,
-    fullName,
-    email,
-  };
 }
 
 function parseFollowUps(source: unknown): FollowUpEmail[] {
@@ -923,18 +878,20 @@ http.route({
         });
       }
 
-      // Filter out leads without email addresses and failed analyses - only export actionable leads
+      // Filter out leads without exportable email addresses and failed analyses.
+      // Reuse the same eligibility helper tested in isolation to keep behavior consistent.
       const totalBeforeFilter = leads.length;
-      leads = leads.filter((lead) => {
-        const emails = (lead as any).contactInfo?.emails;
-        const hasEmail = Array.isArray(emails) && emails.length > 0 && emails[0]?.email;
-        const analysisFailed = (lead as any).analysisStatus === "failed";
-        return hasEmail && !analysisFailed;
-      });
+      leads = leads.filter((lead) =>
+        isLeadExportable({
+          email: lead.email,
+          analysisStatus: (lead as any).analysisStatus,
+          contactInfo: lead.contactInfo,
+        }),
+      );
 
       if (leads.length === 0) {
         return new Response(
-          `No leads with email addresses found for export (${totalBeforeFilter} leads discovered but none had contact emails)`,
+          noExportableLeadsMessage(totalBeforeFilter),
           {
             status: 404,
             headers: baseHeaders,
