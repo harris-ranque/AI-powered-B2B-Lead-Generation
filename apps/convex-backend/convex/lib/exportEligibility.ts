@@ -1,6 +1,5 @@
 export type ExportableLead = {
   email?: string;
-  analysisStatus?: string;
   contactInfo?: {
     contacts?: Array<{
       name?: string;
@@ -73,8 +72,7 @@ export function extractContactDetails(lead: ExportableLead): {
 
 export function isLeadExportable(lead: ExportableLead): boolean {
   const { email } = extractContactDetails(lead);
-  const analysisFailed = lead.analysisStatus === "failed";
-  return email.length > 0 && !analysisFailed;
+  return email.length > 0;
 }
 
 export function noExportableLeadsMessage(totalBeforeFilter: number): string {

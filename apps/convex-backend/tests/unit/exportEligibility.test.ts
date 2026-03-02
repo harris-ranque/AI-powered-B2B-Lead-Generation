@@ -40,13 +40,13 @@ describe("exportEligibility", () => {
     expect(extractContactDetails(lead).email).toBe("team@company.com");
   });
 
-  it("does not export leads that failed analysis", () => {
+  it("exports leads with email even when analysis failed", () => {
     const lead: ExportableLead = {
       email: "valid@example.com",
       analysisStatus: "failed",
     };
 
-    expect(isLeadExportable(lead)).toBe(false);
+    expect(isLeadExportable(lead)).toBe(true);
   });
 
   it("returns hardened no-exportable-leads message", () => {

@@ -878,13 +878,12 @@ http.route({
         });
       }
 
-      // Filter out leads without exportable email addresses and failed analyses.
-      // Reuse the same eligibility helper tested in isolation to keep behavior consistent.
+      // Filter out leads without exportable email addresses.
+      // Leads with valid emails are always exportable regardless of analysis status.
       const totalBeforeFilter = leads.length;
       leads = leads.filter((lead) =>
         isLeadExportable({
           email: lead.email,
-          analysisStatus: (lead as any).analysisStatus,
           contactInfo: lead.contactInfo,
         }),
       );
