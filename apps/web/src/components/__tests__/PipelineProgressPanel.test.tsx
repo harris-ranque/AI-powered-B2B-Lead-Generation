@@ -148,7 +148,7 @@ describe("PipelineProgressPanel", () => {
     renderPanel();
 
     expect(screen.getByTestId("probe-stage")).toHaveTextContent("ai_personalization");
-    expect(screen.getByTestId("probe-percent")).toHaveTextContent("80");
+    expect(screen.getByTestId("probe-percent")).toHaveTextContent("70");
   });
 
   it("displays metrics from search progress data", async () => {
@@ -214,6 +214,7 @@ describe("PipelineProgressPanel", () => {
     fireEvent.click(toggleButton);
     expect(toggleButton).toHaveTextContent(/expand/i);
     expect(screen.getByTestId("probe-collapsed")).toHaveTextContent("true");
+    expect(screen.getByText(/pipeline details are collapsed/i)).toBeInTheDocument();
   });
 
   it("updates stage when broadcasts advance the pipeline", async () => {

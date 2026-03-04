@@ -404,7 +404,13 @@ export function PipelineProgressPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-6 pt-0">
-        <StageRail inlinePanel={!isCollapsed ? inlinePanel : undefined} />
+        {isCollapsed ? (
+          <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+            Pipeline details are collapsed. Expand to view stage flow, metrics, and activity.
+          </div>
+        ) : (
+          <StageRail inlinePanel={inlinePanel} />
+        )}
 
         {showMetrics && (
           <div>
