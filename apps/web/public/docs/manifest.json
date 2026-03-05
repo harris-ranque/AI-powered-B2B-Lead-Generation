@@ -1,10 +1,17 @@
 {
-  "generatedAt": 1766977157766,
+  "generatedAt": 1772678608287,
   "root": {
     "type": "dir",
     "name": "docs",
     "path": "",
     "children": [
+      {
+        "type": "file",
+        "name": "ARCHITECTURE.md",
+        "path": "ARCHITECTURE.md",
+        "title": "Genni Platform — System Architecture",
+        "isMarkdown": true
+      },
       {
         "type": "file",
         "name": "CONFIGURATION.md",
@@ -122,6 +129,13 @@
         "name": "lead-generation-tweaks.md",
         "path": "lead-generation-tweaks.md",
         "title": "Lead Generation Pipeline Tweaks",
+        "isMarkdown": true
+      },
+      {
+        "type": "file",
+        "name": "METRO_SEARCH_FEATURE_PLAN.md",
+        "path": "METRO_SEARCH_FEATURE_PLAN.md",
+        "title": "Metro Search Feature - Implementation Plan",
         "isMarkdown": true
       },
       {

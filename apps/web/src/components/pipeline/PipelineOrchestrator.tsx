@@ -41,6 +41,9 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { PipelineStage } from "@/pipeline/types";
+import type { Id } from "@genni/convex-types/dataModel";
+import { SearchSwitcher } from "./SearchSwitcher";
 import { useSearch, useSearches } from "@/hooks/useSearches";
 import { useLeads } from "@/hooks/useLeads";
 import { useSearchBroadcasts } from "@/hooks/useStatusBroadcasts";
@@ -68,7 +71,7 @@ export function PipelineOrchestrator({
   onOpenLeadHistory,
   onNavigateToSettings,
 }: PipelineOrchestratorProps) {
-  const { state, setStage, canProgressToStage, setLeads, setEnrichedLeads, resetPipeline } =
+  const { state, setStage, canProgressToStage, setLeads, setEnrichedLeads, resetPipeline, setSearchId, markStageComplete } =
     usePipeline();
   const [isPipelineCollapsed, setIsPipelineCollapsed] = useState(false);
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
@@ -78,7 +81,7 @@ export function PipelineOrchestrator({
 
   // Get search data and real-time updates
   const { search } = useSearch(state.searchId || undefined);
-  const { cancelSearch } = useSearches();
+  const { searches, cancelSearch } = useSearches();
   const { broadcasts, latestStatus } = useSearchBroadcasts(
     state.searchId || undefined,
   );
@@ -105,6 +108,57 @@ export function PipelineOrchestrator({
 
     setIsPipelineCollapsed(true);
   }, [onOpenLeadHistory, setIsPipelineCollapsed]);
+
+  const handleNewSearch = useCallback(() => {
+    resetPipeline();
+    setIsPipelineCollapsed(false);
+    setShowCompletionDialog(false);
+  }, [resetPipeline]);
+
+  const handleSwitchSearch = useCallback(
+    (searchId: Id<"searches">, status: string) => {
+      if (searchId === state.searchId) return;
+
+      resetPipeline();
+      setSearchId(searchId);
+
+      const stagesToMark: Record<string, { complete: PipelineStage[]; goTo: PipelineStage }> = {
+        completed: {
+          complete: ["source_selection", "lead_discovery", "enrichment", "ai_personalization"],
+          goTo: "review_export",
+        },
+        in_progress: {
+          complete: ["source_selection", "lead_discovery"],
+          goTo: "enrichment",
+        },
+        processing: {
+          complete: ["source_selection", "lead_discovery"],
+          goTo: "enrichment",
+        },
+        pending: {
+          complete: ["source_selection"],
+          goTo: "lead_discovery",
+        },
+        failed: {
+          complete: ["source_selection", "lead_discovery"],
+          goTo: "review_export",
+        },
+        cancelled: {
+          complete: ["source_selection", "lead_discovery"],
+          goTo: "review_export",
+        },
+      };
+
+      const mapping = stagesToMark[status] ?? stagesToMark.pending;
+      for (const stage of mapping.complete) {
+        markStageComplete(stage);
+      }
+      setStage(mapping.goTo);
+      setIsPipelineCollapsed(false);
+      setShowCompletionDialog(false);
+    },
+    [state.searchId, resetPipeline, setSearchId, markStageComplete, setStage],
+  );
 
   const currentStageIndex = STAGE_ORDER.indexOf(state.currentStage);
 
@@ -458,11 +512,7 @@ export function PipelineOrchestrator({
           <DialogFooter className="flex gap-2 sm:gap-2">
             <Button
               variant="outline"
-              onClick={() => {
-                setShowCompletionDialog(false);
-                resetPipeline();
-                setIsPipelineCollapsed(false);
-              }}
+              onClick={handleNewSearch}
               className="border border-border hover:bg-secondary"
             >
               <RotateCcw className="h-4 w-4 mr-2" />
@@ -517,6 +567,14 @@ export function PipelineOrchestrator({
 
         {/* Completion UI removed - using modal dialog only to prevent duplicate UI and flickering */}
       </div>
+
+      {/* Search Switcher */}
+      <SearchSwitcher
+        searches={searches}
+        activeSearchId={state.searchId}
+        onSelectSearch={handleSwitchSearch}
+        onNewSearch={handleNewSearch}
+      />
 
       {/* System Status Warning */}
       {systemStatus?.leadGenerationPaused && (
