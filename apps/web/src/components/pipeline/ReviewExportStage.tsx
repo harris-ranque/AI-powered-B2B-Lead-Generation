@@ -514,7 +514,16 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
         const res = await fetch(exportUrl, { method: "GET" });
 
         if (!res.ok) {
-          throw new Error("Export failed");
+          let errorMessage = "Export failed";
+          try {
+            const body = await res.text();
+            if (body && body.length > 0 && body.length < 500) {
+              errorMessage = body;
+            }
+          } catch {
+            // Response body unreadable — fall through with generic message
+          }
+          throw new Error(errorMessage);
         }
 
         const blob = await res.blob();

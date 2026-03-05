@@ -50,6 +50,7 @@ type LeadDoc = {
       email?: string;
     }>;
   };
+  analysisStatus?: string;
   emailContent?: {
     subject?: string;
     body?: string;
@@ -878,19 +879,32 @@ http.route({
         });
       }
 
-      // Filter out leads without exportable email addresses.
-      // Leads with valid emails are always exportable regardless of analysis status.
+      // Compute breakdown stats before filtering for diagnostic messages.
       const totalBeforeFilter = leads.length;
+      let withoutEmailCount = 0;
+      let analysisFailedCount = 0;
+      for (const lead of leads) {
+        const { email } = extractContactDetails({ email: lead.email, contactInfo: lead.contactInfo });
+        if (email.length === 0) withoutEmailCount++;
+        if (lead.analysisStatus === "failed") analysisFailedCount++;
+      }
+
+      // Filter out leads without email or with failed analysis.
       leads = leads.filter((lead) =>
         isLeadExportable({
           email: lead.email,
+          analysisStatus: lead.analysisStatus,
           contactInfo: lead.contactInfo,
         }),
       );
 
       if (leads.length === 0) {
         return new Response(
-          noExportableLeadsMessage(totalBeforeFilter),
+          noExportableLeadsMessage({
+            total: totalBeforeFilter,
+            withoutEmail: withoutEmailCount,
+            analysisFailed: analysisFailedCount,
+          }),
           {
             status: 404,
             headers: baseHeaders,

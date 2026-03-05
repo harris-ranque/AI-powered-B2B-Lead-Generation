@@ -71,6 +71,7 @@ import type * as lib_deduplication from "../lib/deduplication.js";
 import type * as lib_env_validation from "../lib/env_validation.js";
 import type * as lib_errorHandling from "../lib/errorHandling.js";
 import type * as lib_errorMessages from "../lib/errorMessages.js";
+import type * as lib_exportEligibility from "../lib/exportEligibility.js";
 import type * as lib_helpers from "../lib/helpers.js";
 import type * as lib_logger from "../lib/logger.js";
 import type * as lib_logging from "../lib/logging.js";
@@ -194,6 +195,7 @@ declare const fullApi: ApiFromModules<{
   "lib/env_validation": typeof lib_env_validation;
   "lib/errorHandling": typeof lib_errorHandling;
   "lib/errorMessages": typeof lib_errorMessages;
+  "lib/exportEligibility": typeof lib_exportEligibility;
   "lib/helpers": typeof lib_helpers;
   "lib/logger": typeof lib_logger;
   "lib/logging": typeof lib_logging;

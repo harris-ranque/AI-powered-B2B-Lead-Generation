@@ -1,5 +1,6 @@
 export type ExportableLead = {
   email?: string;
+  analysisStatus?: string;
   contactInfo?: {
     contacts?: Array<{
       name?: string;
@@ -72,9 +73,22 @@ export function extractContactDetails(lead: ExportableLead): {
 
 export function isLeadExportable(lead: ExportableLead): boolean {
   const { email } = extractContactDetails(lead);
-  return email.length > 0;
+  const analysisFailed = lead.analysisStatus === "failed";
+  return email.length > 0 && !analysisFailed;
 }
 
-export function noExportableLeadsMessage(totalBeforeFilter: number): string {
-  return `No exportable leads found (${totalBeforeFilter} leads discovered but none had usable email addresses)`;
+export function noExportableLeadsMessage(stats: {
+  total: number;
+  withoutEmail: number;
+  analysisFailed: number;
+}): string {
+  const { total, withoutEmail, analysisFailed } = stats;
+  if (total === 0) return "No leads found for export";
+
+  const reasons: string[] = [];
+  if (withoutEmail > 0) reasons.push(`${withoutEmail} had no usable email address`);
+  if (analysisFailed > 0) reasons.push(`${analysisFailed} had failed analysis`);
+
+  if (reasons.length === 0) return `No exportable leads found out of ${total} total leads`;
+  return `No exportable leads found (${total} leads discovered: ${reasons.join(", ")})`;
 }
