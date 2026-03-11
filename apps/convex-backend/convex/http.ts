@@ -133,10 +133,15 @@ function extractCompanyProfile(lead: LeadDoc): string {
     return "";
   };
 
-  // Helper to truncate long text to keep it concise
+  // Helper to truncate long text at word boundaries to keep it concise
   const truncate = (text: string, maxLength: number = 100): string => {
     if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength).trim() + "...";
+    const truncated = text.substring(0, maxLength);
+    const lastSpace = truncated.lastIndexOf(" ");
+    if (lastSpace > maxLength * 0.7) {
+      return truncated.substring(0, lastSpace).trim() + "...";
+    }
+    return truncated.trim() + "...";
   };
 
   // Extract and create concise bullet-point summary (prioritize most important info)
@@ -144,42 +149,31 @@ function extractCompanyProfile(lead: LeadDoc): string {
   // Company overview - truncate to keep it brief
   const overview = getString("company_overview") || getString("companyOverview") || getString("overview");
   if (overview) {
-    bullets.push(`• ${truncate(overview, 120)}`);
-  }
-
-  // Industry and business model
-  const industry = getString("industry_focus") || getString("industryFocus");
-  const businessModel = getString("business_model") || getString("businessModel");
-  if (industry && businessModel) {
-    bullets.push(`• ${industry} company using ${businessModel} model`);
-  } else if (industry) {
-    bullets.push(`• ${industry} sector`);
-  } else if (businessModel) {
-    bullets.push(`• ${businessModel} business model`);
+    bullets.push(`- ${truncate(overview, 200)}`);
   }
 
   // Growth stage and size indicators
   const growthStage = getString("growth_stage") || getString("growthStage");
   if (growthStage) {
-    bullets.push(`• ${growthStage}`);
+    bullets.push(`- ${growthStage}`);
   }
 
   // Key services/products - limit to top 2
   const keyServices = formatArrayConcise(record.key_services || record.keyServices, 2);
   if (keyServices) {
-    bullets.push(`• Offers: ${keyServices}`);
+    bullets.push(`- Offers: ${keyServices}`);
   }
 
   // Target customers
   const targetCustomers = getString("target_customers") || getString("targetCustomers");
   if (targetCustomers) {
-    bullets.push(`• Targets: ${truncate(targetCustomers, 80)}`);
+    bullets.push(`- Targets: ${truncate(targetCustomers, 160)}`);
   }
 
   // Tech stack - limit to top 2 technologies
   const techStack = formatArrayConcise(record.technology_stack || record.technologyStack, 2);
   if (techStack) {
-    bullets.push(`• Tech: ${techStack}`);
+    bullets.push(`- Tech: ${techStack}`);
   }
 
   // Recent news - most recent only
@@ -187,14 +181,14 @@ function extractCompanyProfile(lead: LeadDoc): string {
   if (Array.isArray(recentNewsArray) && recentNewsArray.length > 0) {
     const latestNews = recentNewsArray[0];
     if (typeof latestNews === "string" && latestNews.trim()) {
-      bullets.push(`• Recent: ${truncate(latestNews, 100)}`);
+      bullets.push(`- Recent: ${truncate(latestNews, 160)}`);
     }
   }
 
   // Pain points - top 2 only
   const painPoints = formatArrayConcise(record.pain_points || record.painPoints, 2);
   if (painPoints) {
-    bullets.push(`• Challenges: ${painPoints}`);
+    bullets.push(`- Challenges: ${painPoints}`);
   }
 
   // If no structured data found, try fallback to any string value
@@ -208,24 +202,24 @@ function extractCompanyProfile(lead: LeadDoc): string {
 
     for (const key of candidateKeys) {
       const value = getString(key);
-      if (value) return `• ${truncate(value, 150)}`;
+      if (value) return `- ${truncate(value, 250)}`;
     }
 
     const fallbackValue = Object.values(record).find(
       (value) => typeof value === "string" && value.trim(),
     );
     if (typeof fallbackValue === "string") {
-      return `• ${truncate(fallbackValue.trim(), 150)}`;
+      return `- ${truncate(fallbackValue.trim(), 250)}`;
     }
   }
 
   // If still no data, try notes
   if (bullets.length === 0 && typeof lead.notes === "string" && lead.notes.trim()) {
-    return `• ${truncate(lead.notes.trim(), 150)}`;
+    return `- ${truncate(lead.notes.trim(), 250)}`;
   }
 
-  // Return bullet-point summary (newlines for CSV cell readability)
-  return bullets.join("\n");
+  // Return bullet-point summary (pipe separator for single-line Excel compatibility)
+  return bullets.join(" | ");
 }
 
 function parseFollowUps(source: unknown): FollowUpEmail[] {
@@ -1050,12 +1044,12 @@ http.route({
         return rowValues.map(escapeCsvValue).join(",");
       });
 
-      const csvContent = [csvHeaders.join(","), ...csvRows].join("\n");
+      const csvContent = "\uFEFF" + [csvHeaders.join(","), ...csvRows].join("\r\n");
 
       return new Response(csvContent, {
         headers: {
           ...baseHeaders,
-          "Content-Type": "text/csv",
+          "Content-Type": "text/csv; charset=utf-8",
           "Content-Disposition": searchId
             ? `attachment; filename="leads_${searchId}.csv"`
             : `attachment; filename="leads_${resolvedUserId}.csv"`,
