@@ -1001,6 +1001,12 @@ export default defineSchema({
                 openai: v.string(),
                 convex: v.string(),
               }),
+              v.object({
+                fastapi: v.string(),
+                langgraph: v.string(),
+                openrouter: v.string(),
+                convex: v.string(),
+              }),
               v.null(),
             ),
             performance: v.union(
