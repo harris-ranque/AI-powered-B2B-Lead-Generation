@@ -43,11 +43,12 @@ export function AuthAnalyticsProvider({ children }: AuthAnalyticsProviderProps) 
     if (!prevState.isSignedIn && isSignedIn && clerkUser) {
       logger.info("User signed in", { userId: currentUserId });
 
+      const email = clerkUser.emailAddresses?.[0]?.emailAddress;
+      const firstName = clerkUser.firstName;
+      const lastName = clerkUser.lastName;
+
       // Identify user with PostHog
       if (!hasIdentified.current) {
-        const email = clerkUser.emailAddresses?.[0]?.emailAddress;
-        const firstName = clerkUser.firstName;
-        const lastName = clerkUser.lastName;
 
         posthog.identify(
           currentUserId,
