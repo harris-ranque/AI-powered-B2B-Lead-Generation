@@ -30,6 +30,7 @@ export interface BusinessProfileInput {
     phone?: string;
     website?: string;
     linkedin?: string;
+    signature?: string;
   };
 }
 

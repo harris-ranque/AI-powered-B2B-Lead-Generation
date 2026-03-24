@@ -89,6 +89,7 @@ function createValidProfileData(overrides: Partial<any> = {}) {
       phone: '555-1234',
       website: 'https://company.com',
       linkedin: 'https://linkedin.com/company/test',
+      signature: 'Best regards,\nJohn Doe',
     },
     ...overrides,
   };
@@ -123,6 +124,7 @@ function createMockProfile(overrides: Partial<any> = {}) {
       phone: '555-5678',
       website: 'https://existing.com',
       linkedin: '',
+      signature: 'Best regards,\nJane Doe',
     },
     isComplete: true,
     createdAt: Date.now() - 86400000,
@@ -731,6 +733,30 @@ describe('profile/mutations - updateProfileSection', () => {
 
         const normalizedUrl = normalizeUrl(newLinkedin);
         expect(normalizedUrl).toBe('https://linkedin.com/company/newcompany');
+      });
+
+      it('should preserve existing signature when omitted from a full profile save', () => {
+        const existingProfile = createMockProfile();
+        const newData: { signature?: string } = {};
+
+        const signature =
+          newData.signature !== undefined
+            ? sanitizeString(newData.signature)
+            : existingProfile.contactInfo?.signature || '';
+
+        expect(signature).toBe('Best regards,\nJane Doe');
+      });
+
+      it('should allow explicitly clearing the signature', () => {
+        const existingProfile = createMockProfile();
+        const newData = { signature: '' };
+
+        const signature =
+          newData.signature !== undefined
+            ? sanitizeString(newData.signature)
+            : existingProfile.contactInfo?.signature || '';
+
+        expect(signature).toBe('');
       });
     });
   });

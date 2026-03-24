@@ -21,6 +21,7 @@ export interface ProfileData {
     phone?: string;
     website?: string;
     linkedin?: string;
+    signature?: string;
   } | null;
   caseStudies?: Array<{
     title: string;
@@ -297,6 +298,7 @@ interface ContactInfo {
   phone?: string;
   website?: string;
   linkedin?: string;
+  signature?: string;
 }
 
 /**
@@ -367,5 +369,9 @@ function mergeContactInfo(
     phone: incoming.phone || existing.phone || "",
     website: incoming.website || existing.website || "",
     linkedin: incoming.linkedin || existing.linkedin || "",
+    signature:
+      incoming.signature !== undefined
+        ? incoming.signature
+        : existing.signature || "",
   };
 }

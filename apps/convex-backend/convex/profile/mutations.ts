@@ -29,6 +29,21 @@ export const createOrUpdateProfile = mutation({
       );
     }
 
+    const existingProfile = await ctx.db
+      .query("businessProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .unique();
+
+    const existingContactInfo =
+      (existingProfile?.contactInfo as {
+        name?: string;
+        email?: string;
+        phone?: string;
+        website?: string;
+        linkedin?: string;
+        signature?: string;
+      } | null) || {};
+
     // Validate and sanitize input data
     const sanitizedData = {
       companyName: sanitizeString(args.companyName),
@@ -53,30 +68,36 @@ export const createOrUpdateProfile = mutation({
             metrics: cs.metrics,
           })) || [],
       contactInfo: {
-        name: args.contactInfo.name
-          ? sanitizeString(args.contactInfo.name)
-          : user.name || "",
-        email: args.contactInfo.email
-          ? validateEmail(args.contactInfo.email)
-            ? args.contactInfo.email
-            : ""
-          : user.email || "",
-        phone: args.contactInfo.phone
-          ? sanitizeString(args.contactInfo.phone)
-          : "",
-        website: args.contactInfo.website
-          ? validateUrl(args.contactInfo.website)
-            ? normalizeUrl(args.contactInfo.website)
-            : ""
-          : "",
-        linkedin: args.contactInfo.linkedin
-          ? validateUrl(args.contactInfo.linkedin)
-            ? normalizeUrl(args.contactInfo.linkedin)
-            : ""
-          : "",
-        signature: args.contactInfo.signature
-          ? sanitizeString(args.contactInfo.signature)
-          : "",
+        name:
+          args.contactInfo.name !== undefined
+            ? sanitizeString(args.contactInfo.name)
+            : existingContactInfo.name || user.name || "",
+        email:
+          args.contactInfo.email !== undefined
+            ? validateEmail(args.contactInfo.email)
+              ? args.contactInfo.email
+              : existingContactInfo.email || user.email || ""
+            : existingContactInfo.email || user.email || "",
+        phone:
+          args.contactInfo.phone !== undefined
+            ? sanitizeString(args.contactInfo.phone)
+            : existingContactInfo.phone || "",
+        website:
+          args.contactInfo.website !== undefined
+            ? validateUrl(args.contactInfo.website)
+              ? normalizeUrl(args.contactInfo.website)
+              : existingContactInfo.website || ""
+            : existingContactInfo.website || "",
+        linkedin:
+          args.contactInfo.linkedin !== undefined
+            ? validateUrl(args.contactInfo.linkedin)
+              ? normalizeUrl(args.contactInfo.linkedin)
+              : existingContactInfo.linkedin || ""
+            : existingContactInfo.linkedin || "",
+        signature:
+          args.contactInfo.signature !== undefined
+            ? sanitizeString(args.contactInfo.signature)
+            : existingContactInfo.signature || "",
       },
     };
 
@@ -114,12 +135,6 @@ export const createOrUpdateProfile = mutation({
     // to allow partial saves during the wizard flow. The frontend
     // will guide users to fill all fields, and isComplete flag
     // will track whether profile is ready for use.
-
-    // Check if profile already exists
-    const existingProfile = await ctx.db
-      .query("businessProfiles")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .unique();
 
     // Determine if profile is complete using extracted pure function
     const isComplete = checkProfileComplete(sanitizedData, user.email);

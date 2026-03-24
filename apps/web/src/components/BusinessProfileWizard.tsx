@@ -582,6 +582,7 @@ export function BusinessProfileWizard({
           phone: profile.contactPhone,
           website: profile.contactWebsite,
           linkedin: profile.contactLinkedin,
+          signature: existingProfile?.contactInfo?.signature,
         },
       });
 
@@ -1000,6 +1001,7 @@ export function BusinessProfileWizard({
             phone: profile.contactPhone,
             website: profile.contactWebsite,
             linkedin: profile.contactLinkedin,
+            signature: existingProfile?.contactInfo?.signature,
           },
         });
 

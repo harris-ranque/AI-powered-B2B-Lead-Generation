@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@genni/convex-types";
 import { Card } from "@/components/ui/card";
@@ -24,6 +24,11 @@ import {
 import { toast } from "sonner";
 import { ProviderKeyManager } from "@/components/settings/ProviderKeyManager";
 import { InstantlySettings } from "@/components/settings/InstantlySettings";
+import {
+  hasSameEmailConfig,
+  resolveSignature,
+  type EmailConfigState,
+} from "@/components/settings/emailConfig";
 import {
   Tooltip,
   TooltipContent,
@@ -91,11 +96,12 @@ export function Settings() {
     email: "",
     phone: "",
   });
-  const [emailConfig, setEmailConfig] = useState({
+  const [emailConfig, setEmailConfig] = useState<EmailConfigState>({
     fromName: "",
     fromEmail: "",
     signature: "",
   });
+  const lastSyncedEmailConfig = useRef<EmailConfigState | null>(null);
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [expansionIterationsSetting, setExpansionIterationsSetting] =
     useState(5);
@@ -109,17 +115,6 @@ export function Settings() {
           .replace(/[\u200B-\u200D\uFEFF]/g, "")
           .trim()
       : "";
-
-  const buildSignature = (name: string, company?: string, email?: string) => {
-    const lines = [
-      "Best regards,",
-      name,
-      company,
-      email,
-    ].filter((line) => !!line?.trim());
-
-    return lines.join("\n");
-  };
 
   const clampExpansionIterations = (value: number) =>
     Math.min(Math.max(Math.round(value), 0), 5);
@@ -196,15 +191,23 @@ export function Settings() {
 
     // Use saved signature from backend, or build default if none exists
     const savedSignature = contactInfo?.signature;
-    const signature =
-      savedSignature ||
-      buildSignature(normalizedName, businessProfile?.companyName || "", fromEmail);
-
-    setEmailConfig({
+    const nextEmailConfig = {
       fromName: normalizedName,
       fromEmail,
-      signature,
-    });
+      signature: resolveSignature(
+        savedSignature,
+        normalizedName,
+        businessProfile?.companyName || "",
+        fromEmail,
+      ),
+    };
+
+    if (hasSameEmailConfig(lastSyncedEmailConfig.current, nextEmailConfig)) {
+      return;
+    }
+
+    lastSyncedEmailConfig.current = nextEmailConfig;
+    setEmailConfig(nextEmailConfig);
   }, [businessProfile, userData]);
 
   const handlePreferencesUpdate = async (

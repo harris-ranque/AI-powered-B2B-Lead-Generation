@@ -429,6 +429,45 @@ describe("profileLogic", () => {
       expect(result.contactInfo?.website).toBe("https://new.example.com");
     });
 
+    it("should preserve an existing signature when incoming contact info omits it", () => {
+      const existing = {
+        ...existingProfile,
+        contactInfo: {
+          ...existingProfile.contactInfo,
+          signature: "Best regards,\nExisting Sender",
+        },
+      };
+
+      const result = mergeProfileData(existing, {
+        contactInfo: {
+          email: "updated@example.com",
+        },
+      });
+
+      expect(result.contactInfo?.email).toBe("updated@example.com");
+      expect(result.contactInfo?.signature).toBe(
+        "Best regards,\nExisting Sender",
+      );
+    });
+
+    it("should allow an incoming signature to explicitly clear the existing one", () => {
+      const existing = {
+        ...existingProfile,
+        contactInfo: {
+          ...existingProfile.contactInfo,
+          signature: "Best regards,\nExisting Sender",
+        },
+      };
+
+      const result = mergeProfileData(existing, {
+        contactInfo: {
+          signature: "",
+        },
+      });
+
+      expect(result.contactInfo?.signature).toBe("");
+    });
+
     it("should handle empty existing profile", () => {
       const incoming = {
         companyName: "New Corp",
