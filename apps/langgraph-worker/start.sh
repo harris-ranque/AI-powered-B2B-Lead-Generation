@@ -2,7 +2,6 @@
 
 # Set default PORT if not provided
 export PORT=${PORT:-8080}
-export GUNICORN_WORKERS=${GUNICORN_WORKERS:-2}
 
 echo "Starting LangGraph Worker on port $PORT"
 
@@ -14,7 +13,7 @@ which gunicorn || echo "WARNING: gunicorn not found in PATH: $PATH"
 # --timeout: Request timeout (long for AI processing)
 exec /usr/local/bin/gunicorn -k uvicorn.workers.UvicornWorker app.main:app \
     --bind "0.0.0.0:$PORT" \
-    --workers "$GUNICORN_WORKERS" \
+    --workers 2 \
     --graceful-timeout 110 \
     --timeout 300 \
     --access-logfile - \

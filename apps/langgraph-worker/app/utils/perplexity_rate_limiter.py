@@ -2,7 +2,7 @@
 Perplexity API Rate Limiter with per-user sliding window algorithm.
 
 Implements separate rate limits for different Perplexity models per user:
-- sonar-pro: 4000 RPM (Tier 4/5 default)
+- sonar-pro: 2000 RPM (Tier 5 default)
 - sonar-deep-research: 100 RPM (Tier 5 default)
 
 **Per-User Architecture:**
@@ -14,11 +14,11 @@ Perplexity Tier System:
 | Tier | Spending   | Sonar Pro RPM | Deep Research RPM |
 |------|------------|---------------|-------------------|
 | 0    | $0         | 50            | 5                 |
-| 1    | $50+       | 150           | 10                |
+| 1    | $50+       | 50            | 10                |
 | 2    | $250+      | 500           | 20                |
-| 3    | $500+      | 1000          | 40                |
-| 4    | $1000+     | 4000          | 60                |
-| 5    | $5000+     | 4000          | 100               |
+| 3    | $500+      | 1000          | 50                |
+| 4    | $1000+     | 1500          | 75                |
+| 5    | $5000+     | 2000          | 100               |
 
 Uses sliding window pattern for consistency.
 Supports BYOK clients with per-user tier configuration.
@@ -128,18 +128,18 @@ class PerplexityRateLimiter:
     | Tier | Spending | Sonar Pro RPM | Deep Research RPM |
     |------|----------|---------------|-------------------|
     | 0    | $0       | 50            | 5                 |
-    | 1    | $50+     | 150           | 10                |
+    | 1    | $50+     | 50            | 10                |
     | 2    | $250+    | 500           | 20                |
-    | 3    | $500+    | 1000          | 40                |
-    | 4    | $1000+   | 4000          | 60                |
-    | 5    | $5000+   | 4000          | 100               |
+    | 3    | $500+    | 1000          | 50                |
+    | 4    | $1000+   | 1500          | 75                |
+    | 5    | $5000+   | 2000          | 100               |
 
     Default to Tier 5 limits (most generous) - BYOK clients likely have high tiers.
     Lower-tier users who hit 429s are handled by retry logic with exponential backoff.
     """
 
-    # Default rate limits (highest documented sonar-pro tier)
-    DEFAULT_SONAR_PRO_RPM = 4000
+    # Default rate limits (Tier 5 - most generous)
+    DEFAULT_SONAR_PRO_RPM = 2000
     DEFAULT_DEEP_RESEARCH_RPM = 100
 
     def __init__(

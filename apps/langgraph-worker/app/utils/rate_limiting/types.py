@@ -86,7 +86,6 @@ class RateLimitState:
         successful_requests_since_429: Successes since last 429
         total_requests: Total requests made
         total_429s: Total 429 errors received
-        last_rate_adjustment_at: Timestamp of latest RPM adjustment
         last_updated: Timestamp of last state update
     """
     provider: Provider
@@ -98,7 +97,6 @@ class RateLimitState:
     successful_requests_since_429: int = 0
     total_requests: int = 0
     total_429s: int = 0
-    last_rate_adjustment_at: datetime = field(default_factory=datetime.utcnow)
     last_updated: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -148,11 +146,11 @@ class RateLimitResult:
 # Perplexity tier mapping (RPM limits by model)
 PERPLEXITY_TIER_LIMITS: Dict[RateLimitTier, Dict[str, int]] = {
     RateLimitTier.TIER_0: {"sonar-pro": 50, "sonar-deep-research": 5},
-    RateLimitTier.TIER_1: {"sonar-pro": 150, "sonar-deep-research": 10},
+    RateLimitTier.TIER_1: {"sonar-pro": 50, "sonar-deep-research": 10},
     RateLimitTier.TIER_2: {"sonar-pro": 500, "sonar-deep-research": 20},
-    RateLimitTier.TIER_3: {"sonar-pro": 1000, "sonar-deep-research": 40},
-    RateLimitTier.TIER_4: {"sonar-pro": 4000, "sonar-deep-research": 60},
-    RateLimitTier.TIER_5: {"sonar-pro": 4000, "sonar-deep-research": 100},
+    RateLimitTier.TIER_3: {"sonar-pro": 1000, "sonar-deep-research": 50},
+    RateLimitTier.TIER_4: {"sonar-pro": 1500, "sonar-deep-research": 75},
+    RateLimitTier.TIER_5: {"sonar-pro": 2000, "sonar-deep-research": 100},
 }
 
 # OpenAI tier mapping (approximate - varies by model)

@@ -178,6 +178,7 @@ class AdaptiveRateLimiter:
         Acquire rate limit permission.
 
         Waits if rate limit would be exceeded.
+        Resets consecutive 429 count on acquire attempt.
 
         Args:
             api_key: User's BYOK API key (None for system key)
@@ -203,6 +204,10 @@ class AdaptiveRateLimiter:
             )
 
         bucket, state = await self.get_or_create_bucket(api_key, model)
+
+        # Reset consecutive 429 count on new acquire attempt
+        if state.consecutive_429_count > 0:
+            state.consecutive_429_count = 0
 
         wait_time = await bucket.acquire(tokens, timeout)
 
@@ -231,31 +236,22 @@ class AdaptiveRateLimiter:
             model: Model name for model-specific limits
         """
         bucket, state = await self.get_or_create_bucket(api_key, model)
-        now = datetime.utcnow()
 
         state.total_requests += 1
         state.successful_requests_since_429 += 1
-        state.last_updated = now
-
-        # A successful request breaks the consecutive 429 streak.
-        if state.consecutive_429_count > 0:
-            state.consecutive_429_count = 0
+        state.last_updated = datetime.utcnow()
 
         # Check if we should attempt rate increase
         config = self.config
         global_config = get_rate_limit_config()
         recovery_cooldown = timedelta(seconds=config.recovery_window_seconds)
-        time_since_last_adjustment = now - state.last_rate_adjustment_at
-        adjusted_outside_cooldown = time_since_last_adjustment > recovery_cooldown
 
-        # Count-based recovery: increase after N successes and cooldown from
-        # the most recent rate adjustment. This also enables startup ramp-up
-        # for keys that haven't hit a 429 yet.
+        # Count-based recovery: increase after N successes post-cooldown
         count_based_recovery = (
             config.adaptive_enabled
             and state.successful_requests_since_429 >= config.success_threshold
-            and adjusted_outside_cooldown
-            and state.learned_rpm < config.max_rpm
+            and state.last_429_at is not None
+            and datetime.utcnow() - state.last_429_at > recovery_cooldown
         )
 
         # Time-based recovery: increase after time elapsed regardless of success count
@@ -264,8 +260,7 @@ class AdaptiveRateLimiter:
             config.adaptive_enabled
             and global_config.time_based_recovery_enabled
             and state.last_429_at is not None
-            and now - state.last_429_at > timedelta(seconds=global_config.time_based_recovery_seconds)
-            and adjusted_outside_cooldown
+            and datetime.utcnow() - state.last_429_at > timedelta(seconds=global_config.time_based_recovery_seconds)
             and state.learned_rpm < config.max_rpm
         )
 
@@ -283,7 +278,9 @@ class AdaptiveRateLimiter:
                 await bucket.adjust_rate(new_rpm)
                 state.learned_rpm = new_rpm
                 state.successful_requests_since_429 = 0
-                state.last_rate_adjustment_at = now
+                # Reset time-based recovery timer by updating last_429_at to prevent continuous increases
+                if time_based_recovery:
+                    state.last_429_at = datetime.utcnow()
 
                 logger.info(
                     f"[AdaptiveRateLimit] Increased rate for {self.provider.value}: "
@@ -352,7 +349,6 @@ class AdaptiveRateLimiter:
 
         await bucket.adjust_rate(new_rpm)
         state.learned_rpm = new_rpm
-        state.last_rate_adjustment_at = datetime.utcnow()
 
         # Attempt tier detection
         detected_tier = detect_tier_from_rpm(self.provider, new_rpm, model)

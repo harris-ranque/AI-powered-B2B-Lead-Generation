@@ -831,7 +831,7 @@ class PerplexityClient:
                 api_key=self.api_key,
                 correlation_id=f"deep_research:{company_name}",
                 timeout=deep_research_timeout,  # Match API timeout (180s) - queue must wait for deep research!
-                priority=-1,  # Lower priority than sonar-pro's default (0)
+                priority=0,  # Lower priority than sonar-pro
             )
 
         try:
