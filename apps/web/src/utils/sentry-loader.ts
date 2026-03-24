@@ -19,7 +19,9 @@ let hasInitialized = false;
 let pendingInitFactory: InitOptionsFactory | null = null;
 const pendingCaptures: CaptureArgs[] = [];
 
-const shouldAttemptLoad = typeof window !== "undefined";
+const shouldAttemptLoad =
+  typeof window !== "undefined" &&
+  Boolean(import.meta.env.VITE_SENTRY_DSN?.trim());
 const moduleSpecifier = "@sentry/react";
 
 if (shouldAttemptLoad) {
@@ -56,7 +58,9 @@ if (shouldAttemptLoad) {
     });
 } else {
   sentryLoadError = new Error(
-    "Sentry SDK loading skipped outside the browser environment.",
+    typeof window === "undefined"
+      ? "Sentry SDK loading skipped outside the browser environment."
+      : "Sentry SDK loading skipped because VITE_SENTRY_DSN is not configured.",
   );
 }
 

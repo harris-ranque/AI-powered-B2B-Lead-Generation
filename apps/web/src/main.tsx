@@ -54,48 +54,52 @@ if (posthogKey) {
 }
 
 createRoot(document.getElementById("root")!).render(
-  <PostHogProvider
-    apiKey={posthogKey}
-    options={{
-      api_host: posthogHost,
-      // Snapshot defaults for configuration consistency
-      // See: https://posthog.com/docs/libraries/js/config
-      defaults: '2025-11-30',
-      // Create person profiles for identified users (when identify() is called)
-      // Use 'always' if you want profiles for anonymous users too (4x more expensive)
-      // See: https://posthog.com/docs/data/anonymous-vs-identified-events
-      person_profiles: 'identified_only',
-      // Autocapture clicks, form submissions, etc.
-      // Exception autocapture is controlled via project settings in PostHog dashboard
-      // See: https://posthog.com/docs/error-tracking/installation/web
-      autocapture: true,
-      // Capture page views automatically
-      capture_pageview: true,
-      // Capture page leaves for session duration
-      capture_pageleave: true,
-      // Persist user identification across sessions
-      persistence: 'localStorage+cookie',
-      // Enable session recording (if you have it enabled in PostHog)
-      disable_session_recording: false,
-      // Debug mode in development
-      debug: import.meta.env.MODE === "development",
-      // Bootstrap with feature flags disabled initially
-      bootstrap: {
-        featureFlags: {},
-      },
-      // Respect Do Not Track browser setting
-      respect_dnt: true,
-      // Load feature flags on init
-      loaded: (posthog) => {
-        if (import.meta.env.MODE === "development") {
-          console.log("[PostHog] Loaded successfully", {
-            distinctId: posthog.get_distinct_id(),
-            sessionId: posthog.get_session_id(),
-          });
-        }
-      },
-    }}
-  >
+  posthogKey ? (
+    <PostHogProvider
+      apiKey={posthogKey}
+      options={{
+        api_host: posthogHost,
+        // Snapshot defaults for configuration consistency
+        // See: https://posthog.com/docs/libraries/js/config
+        defaults: '2025-11-30',
+        // Create person profiles for identified users (when identify() is called)
+        // Use 'always' if you want profiles for anonymous users too (4x more expensive)
+        // See: https://posthog.com/docs/data/anonymous-vs-identified-events
+        person_profiles: 'identified_only',
+        // Autocapture clicks, form submissions, etc.
+        // Exception autocapture is controlled via project settings in PostHog dashboard
+        // See: https://posthog.com/docs/error-tracking/installation/web
+        autocapture: true,
+        // Capture page views automatically
+        capture_pageview: true,
+        // Capture page leaves for session duration
+        capture_pageleave: true,
+        // Persist user identification across sessions
+        persistence: 'localStorage+cookie',
+        // Enable session recording (if you have it enabled in PostHog)
+        disable_session_recording: false,
+        // Debug mode in development
+        debug: import.meta.env.MODE === "development",
+        // Bootstrap with feature flags disabled initially
+        bootstrap: {
+          featureFlags: {},
+        },
+        // Respect Do Not Track browser setting
+        respect_dnt: true,
+        // Load feature flags on init
+        loaded: (posthog) => {
+          if (import.meta.env.MODE === "development") {
+            console.log("[PostHog] Loaded successfully", {
+              distinctId: posthog.get_distinct_id(),
+              sessionId: posthog.get_session_id(),
+            });
+          }
+        },
+      }}
+    >
+      <App />
+    </PostHogProvider>
+  ) : (
     <App />
-  </PostHogProvider>
+  )
 );

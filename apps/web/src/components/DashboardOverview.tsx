@@ -20,7 +20,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import type { Search } from "@/lib/types";
+import type { Search as SearchRecord } from "@/lib/types";
 import { PlanStatusCard } from "@/components/PlanStatusCard";
 import { DashboardHelpWidget } from "@/components/DashboardHelpWidget";
 import { cn } from "@/lib/utils";
@@ -50,7 +50,7 @@ interface DashboardOverviewProps {
   credits: number;
   leadStats?: LeadStatsSummary | null;
   emailCount: number;
-  searches?: Search[] | null;
+  searches?: SearchRecord[] | null;
   hasCompletedProfile: boolean;
   isAdmin?: boolean;
 }
