@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Shield, AlertCircle } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 
 interface AdminRouteProps {
   children: ReactNode;
@@ -18,6 +18,7 @@ interface AdminRouteProps {
 
 export function AdminRoute({ children }: AdminRouteProps) {
   const { isLoading, isAuthenticated, user } = useAuth();
+  const location = useLocation();
 
   if (isLoading) {
     return (
@@ -28,25 +29,12 @@ export function AdminRoute({ children }: AdminRouteProps) {
   }
 
   if (!isAuthenticated) {
+    const redirectUrl = `${location.pathname}${location.search}${location.hash}`;
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="flex items-center justify-center mb-4">
-              <Shield className="h-12 w-12 text-primary" />
-            </div>
-            <CardTitle>Admin Access Required</CardTitle>
-            <CardDescription>
-              Please sign in with an administrator account to access this page.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-center">
-            <Link to="/signin">
-              <Button className="w-full">Sign In</Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
+      <Navigate
+        replace
+        to={`/signin?redirect_url=${encodeURIComponent(redirectUrl)}`}
+      />
     );
   }
 
