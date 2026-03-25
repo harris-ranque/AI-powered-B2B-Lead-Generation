@@ -107,6 +107,8 @@ export function Settings() {
   });
   const signatureTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
+  const [isUpdatingSignatureToggle, setIsUpdatingSignatureToggle] =
+    useState(false);
   const [expansionIterationsSetting, setExpansionIterationsSetting] =
     useState(5);
   const [expansionMultiplierSetting, setExpansionMultiplierSetting] =
@@ -412,6 +414,60 @@ export function Settings() {
     }
   };
 
+  const handleSignatureToggleChange = async (checked: boolean) => {
+    const previousValue = emailConfig.signatureEnabled;
+
+    writeEmailSignatureDraft(getSignatureDraftStorage(), userData?._id, {
+      value: emailConfig.signature,
+      signatureEnabled: checked,
+      mode: "dirty",
+      updatedAt: Date.now(),
+    });
+
+    setEmailConfig((prev) => ({
+      ...prev,
+      signatureEnabled: checked,
+    }));
+
+    if (!businessProfile) {
+      return;
+    }
+
+    setIsUpdatingSignatureToggle(true);
+    try {
+      await updateBusinessProfile({
+        section: "contact_info",
+        data: {
+          signatureEnabled: checked,
+        },
+      });
+
+      writeEmailSignatureDraft(getSignatureDraftStorage(), userData?._id, {
+        value: emailConfig.signature,
+        signatureEnabled: checked,
+        mode: "saved",
+        updatedAt: Date.now(),
+      });
+    } catch (error) {
+      writeEmailSignatureDraft(getSignatureDraftStorage(), userData?._id, {
+        value: emailConfig.signature,
+        signatureEnabled: previousValue,
+        mode: "dirty",
+        updatedAt: Date.now(),
+      });
+
+      setEmailConfig((prev) => ({
+        ...prev,
+        signatureEnabled: previousValue,
+      }));
+
+      toast.error("Failed to update signature setting");
+      console.error(error);
+    } finally {
+      setIsUpdatingSignatureToggle(false);
+    }
+  };
+
   const handleDataExport = async () => {
     setIsLoading(true);
     try {
@@ -639,22 +695,9 @@ export function Settings() {
                   </div>
                   <Switch
                     checked={emailConfig.signatureEnabled}
+                    disabled={isUpdatingSignatureToggle}
                     onCheckedChange={(checked) => {
-                      writeEmailSignatureDraft(
-                        getSignatureDraftStorage(),
-                        userData?._id,
-                        {
-                          value: emailConfig.signature,
-                          signatureEnabled: checked,
-                          mode: "dirty",
-                          updatedAt: Date.now(),
-                        },
-                      );
-
-                      setEmailConfig((prev) => ({
-                        ...prev,
-                        signatureEnabled: checked,
-                      }));
+                      void handleSignatureToggleChange(checked);
                     }}
                   />
                 </div>
