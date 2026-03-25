@@ -15,6 +15,64 @@ import {
   mergeProfileData,
 } from "../lib/profileLogic";
 
+type ContactInfoInput = {
+  name?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  linkedin?: string;
+  signature?: string;
+};
+
+const resolveContactInfo = ({
+  existing,
+  incoming,
+  fallbackName = "",
+  fallbackEmail = "",
+}: {
+  existing: ContactInfoInput | null | undefined;
+  incoming: ContactInfoInput | null | undefined;
+  fallbackName?: string;
+  fallbackEmail?: string;
+}) => ({
+  name:
+    incoming?.name !== undefined
+      ? sanitizeString(incoming.name)
+      : existing?.name || fallbackName || "",
+  email:
+    incoming?.email !== undefined
+      ? incoming.email === ""
+        ? ""
+        : validateEmail(incoming.email)
+          ? incoming.email
+          : existing?.email || fallbackEmail || ""
+      : existing?.email || fallbackEmail || "",
+  phone:
+    incoming?.phone !== undefined
+      ? sanitizeString(incoming.phone)
+      : existing?.phone || "",
+  website:
+    incoming?.website !== undefined
+      ? incoming.website === ""
+        ? ""
+        : validateUrl(incoming.website)
+          ? normalizeUrl(incoming.website)
+          : existing?.website || ""
+      : existing?.website || "",
+  linkedin:
+    incoming?.linkedin !== undefined
+      ? incoming.linkedin === ""
+        ? ""
+        : validateUrl(incoming.linkedin)
+          ? normalizeUrl(incoming.linkedin)
+          : existing?.linkedin || ""
+      : existing?.linkedin || "",
+  signature:
+    incoming?.signature !== undefined
+      ? sanitizeString(incoming.signature)
+      : existing?.signature || "",
+});
+
 // Create or update business profile
 export const createOrUpdateProfile = mutation({
   args: businessProfileValidator,
@@ -34,15 +92,7 @@ export const createOrUpdateProfile = mutation({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
 
-    const existingContactInfo =
-      (existingProfile?.contactInfo as {
-        name?: string;
-        email?: string;
-        phone?: string;
-        website?: string;
-        linkedin?: string;
-        signature?: string;
-      } | null) || {};
+    const existingContactInfo = (existingProfile?.contactInfo as ContactInfoInput | null) || {};
 
     // Validate and sanitize input data
     const sanitizedData = {
@@ -67,38 +117,12 @@ export const createOrUpdateProfile = mutation({
             results: sanitizeString(cs.results),
             metrics: cs.metrics,
           })) || [],
-      contactInfo: {
-        name:
-          args.contactInfo.name !== undefined
-            ? sanitizeString(args.contactInfo.name)
-            : existingContactInfo.name || user.name || "",
-        email:
-          args.contactInfo.email !== undefined
-            ? validateEmail(args.contactInfo.email)
-              ? args.contactInfo.email
-              : existingContactInfo.email || user.email || ""
-            : existingContactInfo.email || user.email || "",
-        phone:
-          args.contactInfo.phone !== undefined
-            ? sanitizeString(args.contactInfo.phone)
-            : existingContactInfo.phone || "",
-        website:
-          args.contactInfo.website !== undefined
-            ? validateUrl(args.contactInfo.website)
-              ? normalizeUrl(args.contactInfo.website)
-              : existingContactInfo.website || ""
-            : existingContactInfo.website || "",
-        linkedin:
-          args.contactInfo.linkedin !== undefined
-            ? validateUrl(args.contactInfo.linkedin)
-              ? normalizeUrl(args.contactInfo.linkedin)
-              : existingContactInfo.linkedin || ""
-            : existingContactInfo.linkedin || "",
-        signature:
-          args.contactInfo.signature !== undefined
-            ? sanitizeString(args.contactInfo.signature)
-            : existingContactInfo.signature || "",
-      },
+      contactInfo: resolveContactInfo({
+        existing: existingContactInfo,
+        incoming: args.contactInfo,
+        fallbackName: user.name || "",
+        fallbackEmail: user.email || "",
+      }),
     };
 
     // Additional validation
@@ -291,32 +315,10 @@ export const updateProfileSection = mutation({
         break;
 
       case "contact_info":
-        updateData.contactInfo = {
-          name: args.data.name
-            ? sanitizeString(args.data.name)
-            : (profile.contactInfo as { name?: string } | undefined)?.name ||
-              "",
-          email:
-            args.data.email && validateEmail(args.data.email)
-              ? args.data.email
-              : profile.contactInfo?.email || "",
-          phone: args.data.phone
-            ? sanitizeString(args.data.phone)
-            : profile.contactInfo?.phone || "",
-          website:
-            args.data.website && validateUrl(args.data.website)
-              ? normalizeUrl(args.data.website)
-              : profile.contactInfo?.website || "",
-          linkedin:
-            args.data.linkedin && validateUrl(args.data.linkedin)
-              ? normalizeUrl(args.data.linkedin)
-              : profile.contactInfo?.linkedin || "",
-          signature:
-            args.data.signature !== undefined
-              ? sanitizeString(args.data.signature)
-              : (profile.contactInfo as { signature?: string } | undefined)
-                  ?.signature || "",
-        };
+        updateData.contactInfo = resolveContactInfo({
+          existing: profile.contactInfo as ContactInfoInput | null,
+          incoming: args.data as ContactInfoInput,
+        });
         break;
 
       default:
