@@ -215,6 +215,11 @@ const resolveArray = (...values: unknown[]): string[] => {
 
 const wizardLogger = createLogger("BusinessProfileWizard");
 
+const summarizeSignature = (value: string | undefined) => ({
+  length: value?.length ?? null,
+  empty: value === "",
+});
+
 // Reusable Array Input Component
 interface ArrayInputProps {
   label: string;
@@ -570,6 +575,13 @@ export function BusinessProfileWizard({
       }
 
       // Save current state to Convex
+      console.log("[BusinessProfileWizard.save.start]", {
+        variant,
+        currentStep,
+        existingProfileSignature: summarizeSignature(
+          existingProfile?.contactInfo?.signature,
+        ),
+      });
       await createOrUpdateProfile({
         companyName: profile.companyName,
         industry: profile.industry,
@@ -584,6 +596,14 @@ export function BusinessProfileWizard({
           linkedin: profile.contactLinkedin,
           signature: existingProfile?.contactInfo?.signature,
         },
+      });
+
+      console.log("[BusinessProfileWizard.save.complete]", {
+        variant,
+        currentStep,
+        existingProfileSignature: summarizeSignature(
+          existingProfile?.contactInfo?.signature,
+        ),
       });
 
       wizardLogger.info(`Step ${currentStep} saved successfully`);
@@ -989,6 +1009,13 @@ export function BusinessProfileWizard({
           }
         }
 
+        console.log("[BusinessProfileWizard.save.start]", {
+          variant,
+          currentStep,
+          existingProfileSignature: summarizeSignature(
+            existingProfile?.contactInfo?.signature,
+          ),
+        });
         await createOrUpdateProfile({
           companyName: profile.companyName,
           industry: profile.industry,
@@ -1003,6 +1030,14 @@ export function BusinessProfileWizard({
             linkedin: profile.contactLinkedin,
             signature: existingProfile?.contactInfo?.signature,
           },
+        });
+
+        console.log("[BusinessProfileWizard.save.complete]", {
+          variant,
+          currentStep,
+          existingProfileSignature: summarizeSignature(
+            existingProfile?.contactInfo?.signature,
+          ),
         });
 
         wizardLogger.info("Profile saved successfully");

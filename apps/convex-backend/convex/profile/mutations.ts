@@ -73,6 +73,17 @@ const resolveContactInfo = ({
       : existing?.signature || "",
 });
 
+const summarizeContactInfo = (contactInfo: ContactInfoInput | null | undefined) => ({
+  hasName: contactInfo?.name !== undefined,
+  hasEmail: contactInfo?.email !== undefined,
+  hasPhone: contactInfo?.phone !== undefined,
+  hasWebsite: contactInfo?.website !== undefined,
+  hasLinkedin: contactInfo?.linkedin !== undefined,
+  hasSignature: contactInfo?.signature !== undefined,
+  signatureLength: contactInfo?.signature?.length ?? null,
+  signatureEmpty: contactInfo?.signature === "",
+});
+
 // Create or update business profile
 export const createOrUpdateProfile = mutation({
   args: businessProfileValidator,
@@ -124,6 +135,13 @@ export const createOrUpdateProfile = mutation({
         fallbackEmail: user.email || "",
       }),
     };
+
+    console.log("[profile.createOrUpdateProfile] incoming", {
+      userId: user._id,
+      incoming: summarizeContactInfo(args.contactInfo as ContactInfoInput),
+      existing: summarizeContactInfo(existingContactInfo),
+      resolved: summarizeContactInfo(sanitizedData.contactInfo),
+    });
 
     // Additional validation
     if (!sanitizedData.companyName) {
@@ -315,9 +333,18 @@ export const updateProfileSection = mutation({
         break;
 
       case "contact_info":
+        console.log("[profile.updateProfileSection] incoming contact_info", {
+          userId: user._id,
+          incoming: summarizeContactInfo(args.data as ContactInfoInput),
+          existing: summarizeContactInfo(profile.contactInfo as ContactInfoInput | null),
+        });
         updateData.contactInfo = resolveContactInfo({
           existing: profile.contactInfo as ContactInfoInput | null,
           incoming: args.data as ContactInfoInput,
+        });
+        console.log("[profile.updateProfileSection] resolved contact_info", {
+          userId: user._id,
+          resolved: summarizeContactInfo(updateData.contactInfo as ContactInfoInput),
         });
         break;
 
