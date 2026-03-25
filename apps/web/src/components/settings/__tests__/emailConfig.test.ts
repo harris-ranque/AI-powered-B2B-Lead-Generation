@@ -26,6 +26,7 @@ describe("emailConfig helpers", () => {
       fromName: "Alex Rivera",
       fromEmail: "alex@example.com",
       signature: "Custom signature",
+      signatureEnabled: true,
     };
 
     expect(hasSameEmailConfig(config, config)).toBe(true);
@@ -41,8 +42,10 @@ describe("emailConfig helpers", () => {
     expect(
       resolveInitialEmailSignature({
         savedSignature: "Old signature",
+        savedSignatureEnabled: true,
         draft: {
           value: "",
+          signatureEnabled: false,
           mode: "dirty",
           updatedAt: 1_000,
         },
@@ -51,6 +54,7 @@ describe("emailConfig helpers", () => {
       }),
     ).toEqual({
       signature: "",
+      signatureEnabled: false,
       clearStoredDraft: false,
     });
   });
@@ -59,8 +63,10 @@ describe("emailConfig helpers", () => {
     expect(
       resolveInitialEmailSignature({
         savedSignature: "Old signature",
+        savedSignatureEnabled: true,
         draft: {
           value: "",
+          signatureEnabled: false,
           mode: "saved",
           updatedAt: 10_000,
         },
@@ -69,6 +75,7 @@ describe("emailConfig helpers", () => {
       }),
     ).toEqual({
       signature: "",
+      signatureEnabled: false,
       clearStoredDraft: false,
     });
   });
@@ -77,8 +84,10 @@ describe("emailConfig helpers", () => {
     expect(
       resolveInitialEmailSignature({
         savedSignature: "",
+        savedSignatureEnabled: false,
         draft: {
           value: "",
+          signatureEnabled: false,
           mode: "saved",
           updatedAt: 10_000,
         },
@@ -87,7 +96,29 @@ describe("emailConfig helpers", () => {
       }),
     ).toEqual({
       signature: "",
+      signatureEnabled: false,
       clearStoredDraft: true,
+    });
+  });
+
+  it("keeps a recently saved toggle draft during backend reconciliation", () => {
+    expect(
+      resolveInitialEmailSignature({
+        savedSignature: "Best regards,\nAlex Rivera",
+        savedSignatureEnabled: true,
+        draft: {
+          value: "Best regards,\nAlex Rivera",
+          signatureEnabled: false,
+          mode: "saved",
+          updatedAt: 10_000,
+        },
+        now: 20_000,
+        reconciliationWindowMs: 15_000,
+      }),
+    ).toEqual({
+      signature: "Best regards,\nAlex Rivera",
+      signatureEnabled: false,
+      clearStoredDraft: false,
     });
   });
 });

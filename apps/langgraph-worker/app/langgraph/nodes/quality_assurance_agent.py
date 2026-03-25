@@ -110,8 +110,92 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
     signature_requirement = (
         "A professional closing and complete signature are required for this request."
         if signature_enabled
-        else "Signature appending is disabled for this request. Do not require a closing or signature, and do not flag their absence as an issue."
+        else "Signature appending is disabled for this request. Do not require a closing or signature, but flag any closing or signature that appears."
     )
+    sender_name = contact_info.get("name") or contact_info.get("contactName") or ""
+    sender_email = contact_info.get("email", "")
+    sender_phone = contact_info.get("phone", "")
+    sender_website = contact_info.get("website", "")
+    sender_linkedin = contact_info.get("linkedin", "")
+    sender_signature = (contact_info.get("signature", "") or "").strip()
+    closing_phrases = {
+        "best",
+        "best regards",
+        "kind regards",
+        "warm regards",
+        "regards",
+        "sincerely",
+        "sincerely yours",
+        "yours sincerely",
+        "thanks",
+        "thank you",
+        "many thanks",
+        "thanks again",
+        "cheers",
+        "looking forward",
+        "looking forward to hearing from you",
+        "talk soon",
+        "speak soon",
+    }
+    sender_signature_lines = {
+        line.strip().lower()
+        for line in sender_signature.splitlines()
+        if line.strip()
+    }
+    sender_identity_lines = {
+        value.strip().lower()
+        for value in (
+            sender_name,
+            getattr(business_profile, "company_name", ""),
+            sender_email,
+            sender_phone,
+            sender_website,
+            sender_linkedin,
+        )
+        if isinstance(value, str) and value.strip()
+    }
+
+    def is_signature_tail_line(line: str) -> bool:
+        normalized = line.strip().lower()
+        compact = normalized.rstrip(" ,.!:")
+        if compact in closing_phrases:
+            return True
+        if normalized in sender_signature_lines or normalized in sender_identity_lines:
+            return True
+        if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", line.strip()):
+            return True
+        if re.fullmatch(r"(?:https?://|www\.)\S+", line.strip(), re.IGNORECASE):
+            return True
+
+        digits = sum(ch.isdigit() for ch in line)
+        if digits >= 7 and re.fullmatch(r"[\d\s()+\-./xXextEXT]+", line.strip()):
+            return True
+
+        return False
+
+    def has_signature_like_tail(body: str) -> bool:
+        lines = body.splitlines()
+        end = len(lines) - 1
+        while end >= 0 and not lines[end].strip():
+            end -= 1
+
+        if end < 0:
+            return False
+
+        saw_signature_content = False
+        idx = end
+        while idx >= 0:
+            stripped = lines[idx].strip()
+            if not stripped:
+                idx -= 1
+                continue
+            if is_signature_tail_line(stripped):
+                saw_signature_content = True
+                idx -= 1
+                continue
+            break
+
+        return saw_signature_content
 
     logger.info(f"Starting quality assurance for {lead.company_name} (Tier: {lead_tier}, Threshold: {approval_threshold})")
     if lead_tier == "B":
@@ -283,7 +367,7 @@ CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
 9. SIGNATURE VALIDATION:
    - Signature mode for this request: {signature_requirement}
    - If signatures are enabled: require a professional closing and complete signature (Name, Company, Email, Phone, Website)
-   - If signatures are disabled: do NOT require a closing or signature and do NOT flag them as missing
+   - If signatures are disabled: any closing or signature is a violation and should be flagged
    - NO placeholder text like "[Your Name]", "Company Name"
    - For sequences with signatures enabled: ALL emails MUST have identical signature format
 
@@ -562,6 +646,35 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
                 updated_improvement_suggestions.append(suggestion_text)
 
             updated_overall = min(quality_assessment.overall_quality_score, 0.6)
+            updated_status = (
+                "Needs_Improvement"
+                if quality_assessment.approval_status == "Approved"
+                else quality_assessment.approval_status
+            )
+
+            quality_assessment = quality_assessment.model_copy(
+                update={
+                    "quality_issues": updated_quality_issues,
+                    "improvement_suggestions": updated_improvement_suggestions,
+                    "overall_quality_score": updated_overall,
+                    "approval_status": updated_status,
+                }
+            )
+
+        if not signature_enabled and has_signature_like_tail(email_body):
+            issue_text = "Signature toggle is off, but the email still ends with a closing or signature block."
+            suggestion_text = "Remove the closing and signature lines so the email ends with the CTA or final body sentence."
+            updated_quality_issues = list(quality_assessment.quality_issues)
+            if issue_text not in updated_quality_issues:
+                updated_quality_issues.append(issue_text)
+
+            updated_improvement_suggestions = list(
+                quality_assessment.improvement_suggestions
+            )
+            if suggestion_text not in updated_improvement_suggestions:
+                updated_improvement_suggestions.append(suggestion_text)
+
+            updated_overall = min(quality_assessment.overall_quality_score, 0.59)
             updated_status = (
                 "Needs_Improvement"
                 if quality_assessment.approval_status == "Approved"

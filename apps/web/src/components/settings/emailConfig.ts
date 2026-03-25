@@ -7,6 +7,7 @@ export type EmailConfigState = {
 
 export type EmailSignatureDraft = {
   value: string;
+  signatureEnabled: boolean;
   mode: "dirty" | "saved";
   updatedAt: number;
 };
@@ -46,6 +47,7 @@ export const readEmailSignatureDraft = (
     const parsed = JSON.parse(rawDraft) as Partial<EmailSignatureDraft>;
     if (
       typeof parsed.value !== "string" ||
+      typeof parsed.signatureEnabled !== "boolean" ||
       (parsed.mode !== "dirty" && parsed.mode !== "saved") ||
       typeof parsed.updatedAt !== "number"
     ) {
@@ -83,11 +85,13 @@ export const clearEmailSignatureDraft = (
 
 export const resolveInitialEmailSignature = ({
   savedSignature,
+  savedSignatureEnabled,
   draft,
   now,
   reconciliationWindowMs,
 }: {
   savedSignature: string | undefined;
+  savedSignatureEnabled: boolean;
   draft: EmailSignatureDraft | null;
   now: number;
   reconciliationWindowMs: number;
@@ -98,12 +102,19 @@ export const resolveInitialEmailSignature = ({
     (draft.mode === "dirty" ||
       (draft.mode === "saved" &&
         draft.updatedAt > now - reconciliationWindowMs &&
-        draft.value !== resolvedSignature));
+        (draft.value !== resolvedSignature ||
+          draft.signatureEnabled !== savedSignatureEnabled)));
 
   return {
     signature: shouldUseDraft ? draft.value : resolvedSignature,
+    signatureEnabled: shouldUseDraft
+      ? draft.signatureEnabled
+      : savedSignatureEnabled,
     clearStoredDraft:
-      !!draft && draft.mode === "saved" && draft.value === resolvedSignature,
+      !!draft &&
+      draft.mode === "saved" &&
+      draft.value === resolvedSignature &&
+      draft.signatureEnabled === savedSignatureEnabled,
   };
 };
 

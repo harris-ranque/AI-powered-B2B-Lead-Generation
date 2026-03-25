@@ -3,6 +3,7 @@ Email Generation Agent for LangGraph workflow
 Consolidates email writing and follow-up strategy into unified email generation
 with rich business intelligence integration.
 """
+import re
 import time
 from typing import Dict, Any, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
@@ -352,12 +353,98 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
                 and raw_signature_enabled.strip().lower() in {"0", "false", "no", "off"}
             )
         )
+        closing_phrases = {
+            "best",
+            "best regards",
+            "kind regards",
+            "warm regards",
+            "regards",
+            "sincerely",
+            "sincerely yours",
+            "yours sincerely",
+            "thanks",
+            "thank you",
+            "many thanks",
+            "thanks again",
+            "cheers",
+            "looking forward",
+            "looking forward to hearing from you",
+            "talk soon",
+            "speak soon",
+        }
+        sender_signature_lines = {
+            line.strip().lower()
+            for line in sender_signature.splitlines()
+            if line.strip()
+        }
+        sender_identity_lines = {
+            value.strip().lower()
+            for value in (
+                sender_name,
+                business_profile.company_name,
+                sender_email,
+                sender_phone,
+                sender_website,
+                sender_linkedin,
+            )
+            if value and value.strip()
+        }
+
+        def is_signature_tail_line(line: str) -> bool:
+            normalized = line.strip().lower()
+            compact = normalized.rstrip(" ,.!:")
+            if compact in closing_phrases:
+                return True
+            if normalized in sender_signature_lines or normalized in sender_identity_lines:
+                return True
+            if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", line.strip()):
+                return True
+            if re.fullmatch(r"(?:https?://|www\.)\S+", line.strip(), re.IGNORECASE):
+                return True
+
+            digits = sum(ch.isdigit() for ch in line)
+            if digits >= 7 and re.fullmatch(r"[\d\s()+\-./xXextEXT]+", line.strip()):
+                return True
+
+            return False
+
+        def strip_signature_like_tail(body: str) -> str:
+            """Remove trailing closings/signature lines when signatures are disabled."""
+
+            lines = body.splitlines()
+            end = len(lines) - 1
+            while end >= 0 and not lines[end].strip():
+                end -= 1
+
+            if end < 0:
+                return ""
+
+            start = end
+            saw_signature_content = False
+            while start >= 0:
+                stripped = lines[start].strip()
+                if not stripped:
+                    start -= 1
+                    continue
+                if is_signature_tail_line(stripped):
+                    saw_signature_content = True
+                    start -= 1
+                    continue
+                break
+
+            if not saw_signature_content:
+                return body.strip()
+
+            cleaned_lines = lines[: start + 1]
+            while cleaned_lines and not cleaned_lines[-1].strip():
+                cleaned_lines.pop()
+            return "\n".join(cleaned_lines).strip()
 
         def append_signature(body: str) -> str:
             """Append sender signature details if they're not already present."""
 
             if not sender_signature_enabled:
-                return body
+                return strip_signature_like_tail(body)
 
             if sender_signature:
                 normalized_sig = "\n".join(

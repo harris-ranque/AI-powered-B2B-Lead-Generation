@@ -232,6 +232,7 @@ export function Settings() {
     );
     const initialSignature = resolveInitialEmailSignature({
       savedSignature,
+      savedSignatureEnabled,
       draft: localDraft,
       now: Date.now(),
       reconciliationWindowMs: SIGNATURE_SAVE_RECONCILIATION_MS,
@@ -248,6 +249,7 @@ export function Settings() {
           }
         : null,
       chosen: summarizeSignature(initialSignature.signature),
+      resolvedSignatureEnabled: initialSignature.signatureEnabled,
       clearStoredDraft: initialSignature.clearStoredDraft,
     });
 
@@ -257,12 +259,12 @@ export function Settings() {
 
     setEmailConfig((prev) =>
       prev.signature === initialSignature.signature &&
-      prev.signatureEnabled === savedSignatureEnabled
+      prev.signatureEnabled === initialSignature.signatureEnabled
         ? prev
         : {
             ...prev,
             signature: initialSignature.signature,
-            signatureEnabled: savedSignatureEnabled,
+            signatureEnabled: initialSignature.signatureEnabled,
           },
     );
   }, [businessProfile, userData]);
@@ -325,6 +327,13 @@ export function Settings() {
             signatureEnabled: emailConfig.signatureEnabled,
           },
         });
+
+        writeEmailSignatureDraft(getSignatureDraftStorage(), userData?._id, {
+          value: emailConfig.signature,
+          signatureEnabled: emailConfig.signatureEnabled,
+          mode: "saved",
+          updatedAt: Date.now(),
+        });
       }
 
       setProfileData((prev) => ({
@@ -375,6 +384,7 @@ export function Settings() {
 
       writeEmailSignatureDraft(getSignatureDraftStorage(), userData?._id, {
         value: emailConfig.signature,
+        signatureEnabled: emailConfig.signatureEnabled,
         mode: "saved",
         updatedAt: Date.now(),
       });
@@ -629,12 +639,23 @@ export function Settings() {
                   </div>
                   <Switch
                     checked={emailConfig.signatureEnabled}
-                    onCheckedChange={(checked) =>
+                    onCheckedChange={(checked) => {
+                      writeEmailSignatureDraft(
+                        getSignatureDraftStorage(),
+                        userData?._id,
+                        {
+                          value: emailConfig.signature,
+                          signatureEnabled: checked,
+                          mode: "dirty",
+                          updatedAt: Date.now(),
+                        },
+                      );
+
                       setEmailConfig((prev) => ({
                         ...prev,
                         signatureEnabled: checked,
-                      }))
-                    }
+                      }));
+                    }}
                   />
                 </div>
 
@@ -661,6 +682,7 @@ export function Settings() {
                       userData?._id,
                       {
                         value: nextSignature,
+                        signatureEnabled: emailConfig.signatureEnabled,
                         mode: "dirty",
                         updatedAt: Date.now(),
                       },
