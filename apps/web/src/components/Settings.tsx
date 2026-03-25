@@ -25,7 +25,6 @@ import { toast } from "sonner";
 import { ProviderKeyManager } from "@/components/settings/ProviderKeyManager";
 import { InstantlySettings } from "@/components/settings/InstantlySettings";
 import {
-  hasSameEmailConfig,
   resolveSignature,
   type EmailConfigState,
 } from "@/components/settings/emailConfig";
@@ -101,7 +100,7 @@ export function Settings() {
     fromEmail: "",
     signature: "",
   });
-  const lastSyncedEmailConfig = useRef<EmailConfigState | null>(null);
+  const signatureInitialized = useRef(false);
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [expansionIterationsSetting, setExpansionIterationsSetting] =
     useState(5);
@@ -174,14 +173,12 @@ export function Settings() {
     }
   }, [userData, businessProfile]);
 
+  // Sync fromName and fromEmail whenever profile or user data changes.
+  // Signature is intentionally excluded — it is only initialized once below.
   useEffect(() => {
     const contactInfo = businessProfile?.contactInfo as {
       name?: string;
       email?: string;
-      phone?: string;
-      website?: string;
-      linkedin?: string;
-      signature?: string;
     } | null;
 
     const normalizedName = normalizeContactName(
@@ -189,21 +186,22 @@ export function Settings() {
     );
     const fromEmail = contactInfo?.email || userData?.email || "";
 
-    // Use saved signature from backend, or build default if none has ever been saved
-    const savedSignature = contactInfo?.signature;
-    const nextEmailConfig = {
-      fromName: normalizedName,
-      fromEmail,
-      signature: resolveSignature(savedSignature),
-    };
-
-    if (hasSameEmailConfig(lastSyncedEmailConfig.current, nextEmailConfig)) {
-      return;
-    }
-
-    lastSyncedEmailConfig.current = nextEmailConfig;
-    setEmailConfig(nextEmailConfig);
+    setEmailConfig((prev) => {
+      if (prev.fromName === normalizedName && prev.fromEmail === fromEmail)
+        return prev;
+      return { ...prev, fromName: normalizedName, fromEmail };
+    });
   }, [businessProfile, userData]);
+
+  // Initialize signature once from backend on first load.
+  // Never overwritten by unrelated profile saves — only "Save Email Settings" updates it.
+  useEffect(() => {
+    if (signatureInitialized.current || businessProfile === undefined) return;
+    signatureInitialized.current = true;
+    const savedSignature = (businessProfile?.contactInfo as { signature?: string } | null)
+      ?.signature;
+    setEmailConfig((prev) => ({ ...prev, signature: resolveSignature(savedSignature) }));
+  }, [businessProfile]);
 
   const handlePreferencesUpdate = async (
     updates: Partial<PreferencesState>,
