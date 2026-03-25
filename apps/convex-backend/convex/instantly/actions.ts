@@ -11,7 +11,7 @@ const INSTANTLY_BASE_URL = "https://api.instantly.ai/api/v2";
 // Rate limit: 100 requests/10 seconds, 600 requests/minute
 // Use ~150ms delay between batches to stay safe
 const RATE_LIMIT_DELAY_MS = 150;
-const BATCH_SIZE = 100;
+const BATCH_SIZE = 25; // Keep small to avoid large payloads with custom_variables
 const REQUEST_TIMEOUT_MS = 30000; // 30 second timeout
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 1000;
@@ -323,6 +323,61 @@ async function fetchWithRetry(
 // HELPER FUNCTIONS
 // ============================================================================
 
+// Lightweight lead type returned by the paginated getLeadsForPush query
+// Only includes fields needed for building Instantly payloads
+type LeadForPush = {
+  _id: string;
+  businessName: string;
+  website?: string;
+  phone?: string;
+  contactInfo?: Doc<"leads">["contactInfo"];
+  emailContent?: Doc<"leads">["emailContent"];
+  followUpEmails?: Doc<"leads">["followUpEmails"];
+};
+
+/**
+ * Fetch all leads for push using paginated queries to avoid Convex read limits.
+ * Returns lightweight projections with only the fields needed for Instantly.
+ */
+async function fetchAllLeadsForPush(
+  ctx: { runQuery: (fn: any, args: any) => Promise<any> },
+  searchId: string
+): Promise<LeadForPush[]> {
+  const allLeads: LeadForPush[] = [];
+  let cursor: string | null = null;
+  let isDone = false;
+
+  let page = 0;
+  while (!isDone) {
+    try {
+      const result = await ctx.runQuery(
+        internal.instantly.queries.getLeadsForPush,
+        {
+          searchId,
+          paginationOpts: { cursor, numItems: 20 },
+        }
+      );
+
+      allLeads.push(...result.leads);
+      cursor = result.continueCursor;
+      isDone = result.isDone;
+      page++;
+      console.log(`fetchAllLeadsForPush: page ${page}, got ${result.leads.length} leads, isDone=${isDone}`);
+    } catch (error) {
+      console.error(`fetchAllLeadsForPush: FAILED on page ${page + 1}`, {
+        searchId,
+        cursor,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
+    }
+  }
+
+  console.log(`fetchAllLeadsForPush: total ${allLeads.length} leads fetched`);
+  return allLeads;
+}
+
 // Helper: Parse name into first/last name
 function parseName(fullName?: string): { firstName: string; lastName: string } {
   if (!fullName) return { firstName: "", lastName: "" };
@@ -337,7 +392,7 @@ function parseName(fullName?: string): { firstName: string; lastName: string } {
 function buildCampaignPayload(
   name: string,
   senderEmail: string,
-  leads: Doc<"leads">[]
+  leads: LeadForPush[]
 ) {
   // Find a lead with email content to use as template structure
   const templateLead = leads.find((l) => l.emailContent);
@@ -417,7 +472,7 @@ function buildCampaignPayload(
 
 // Helper: Build leads payload for Instantly API V2
 // Endpoint: POST /api/v2/leads/add
-function buildLeadsPayload(campaignId: string, leads: Doc<"leads">[]) {
+function buildLeadsPayload(campaignId: string, leads: LeadForPush[]) {
   return {
     campaign_id: campaignId,
     skip_if_in_campaign: true, // Don't add duplicates
@@ -640,11 +695,8 @@ export const pushToInstantly = action({
       );
     }
 
-    // Get leads with email content
-    const leads = await ctx.runQuery(
-      internal.instantly.queries.getLeadsForPush,
-      { searchId: args.searchId }
-    );
+    // Get leads with email content (paginated to avoid Convex read limits)
+    const leads = await fetchAllLeadsForPush(ctx, args.searchId);
 
     if (leads.length === 0) {
       throw new Error(
@@ -946,11 +998,8 @@ export const autoPushToInstantly = internalAction({
         };
       }
 
-      // Get leads
-      const leads = await ctx.runQuery(
-        internal.instantly.queries.getLeadsForPush,
-        { searchId: args.searchId }
-      );
+      // Get leads (paginated to avoid Convex read limits)
+      const leads = await fetchAllLeadsForPush(ctx, args.searchId);
 
       if (leads.length === 0) {
         console.log(`${logPrefix} Skipped: No leads with emails`);

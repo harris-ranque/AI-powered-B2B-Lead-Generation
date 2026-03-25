@@ -302,7 +302,8 @@ export function Settings() {
         name: sanitizedName || undefined,
       });
 
-      // Update business profile contact info
+      // Update business profile contact info — always include current signature so
+      // "Update Profile" never clobbers an unsaved signature edit or a previous clear.
       if (businessProfile) {
         await updateBusinessProfile({
           section: "contact_info",
@@ -312,6 +313,7 @@ export function Settings() {
             phone: profileData.phone,
             website: businessProfile.contactInfo?.website || "",
             linkedin: businessProfile.contactInfo?.linkedin || "",
+            signature: emailConfig.signature,
           },
         });
       }

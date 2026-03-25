@@ -78,22 +78,51 @@ export const getSettingsInternal = internalQuery({
 });
 
 // Internal: Get leads ready for push (with email addresses and completed analysis)
+// Returns only the fields needed for the Instantly push to avoid hitting Convex read limits
 export const getLeadsForPush = internalQuery({
   args: {
     searchId: v.id("searches"),
+    paginationOpts: v.optional(
+      v.object({
+        cursor: v.union(v.string(), v.null()),
+        numItems: v.number(),
+      })
+    ),
   },
   handler: async (ctx, args) => {
-    const leads = await ctx.db
+    // Use pagination to avoid hitting Convex's 8MB query read limit on large searches
+    const pageSize = args.paginationOpts?.numItems ?? 20;
+    const result = await ctx.db
       .query("leads")
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
-      .collect();
+      .paginate({
+        numItems: pageSize,
+        cursor: args.paginationOpts?.cursor ?? null,
+      });
 
-    // Filter to leads with email addresses and completed analysis
-    return leads.filter(
-      (lead) =>
-        lead.contactInfo?.emails &&
-        lead.contactInfo.emails.length > 0 &&
-        lead.analysisStatus === "completed"
-    );
+    // Filter to leads with email addresses and completed analysis,
+    // then project only the fields needed for the Instantly push payload
+    const projectedLeads = result.page
+      .filter(
+        (lead) =>
+          lead.contactInfo?.emails &&
+          lead.contactInfo.emails.length > 0 &&
+          lead.analysisStatus === "completed"
+      )
+      .map((lead) => ({
+        _id: lead._id,
+        businessName: lead.businessName,
+        website: lead.website,
+        phone: lead.phone,
+        contactInfo: lead.contactInfo,
+        emailContent: lead.emailContent,
+        followUpEmails: lead.followUpEmails,
+      }));
+
+    return {
+      leads: projectedLeads,
+      continueCursor: result.continueCursor,
+      isDone: result.isDone,
+    };
   },
 });

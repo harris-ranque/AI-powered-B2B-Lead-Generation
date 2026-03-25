@@ -346,16 +346,56 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         sender_linkedin = contact_info.get("linkedin", "")
         sender_signature = (contact_info.get("signature", "") or "").strip()
 
+        # Standalone closing phrases the LLM may emit at the end of an email body.
+        # When a custom sender_signature is set, these are stripped before appending
+        # the canonical signature to prevent duplicate closings like "Best,\n\nBest regards,\nName".
+        _LLM_CLOSING_PHRASES: frozenset[str] = frozenset(
+            {
+                "best,", "best regards,", "kind regards,", "warm regards,",
+                "regards,", "sincerely,", "sincerely yours,", "yours sincerely,",
+                "thanks,", "thank you,", "many thanks,", "thanks again,",
+                "cheers,", "looking forward,", "looking forward to hearing from you,",
+                "talk soon,", "speak soon,",
+            }
+        )
+
         def append_signature(body: str) -> str:
-            """Append sender signature details if they're not already present."""
+            """Append sender signature details if they're not already present.
+
+            When a custom ``sender_signature`` is configured, any LLM-generated
+            standalone closing phrase that appears at the tail of the body (e.g.
+            "Best," or "Kind regards,") is stripped first so the canonical
+            signature is never duplicated.
+            """
 
             if sender_signature:
-                normalized_body = "\n".join(line.strip() for line in body.splitlines()).lower()
-                normalized_signature = "\n".join(
+                normalized_sig = "\n".join(
                     line.strip() for line in sender_signature.splitlines()
                 ).lower()
 
-                if normalized_signature and normalized_signature in normalized_body:
+                # Strip trailing LLM-generated closing from the body so we never
+                # end up with "Best,\n\nBest regards,\nName".
+                lines = body.splitlines()
+                tail_window = min(12, len(lines))
+                cut_index: int | None = None
+                for i in range(len(lines) - 1, len(lines) - tail_window - 1, -1):
+                    stripped = lines[i].strip().lower()
+                    if stripped in _LLM_CLOSING_PHRASES:
+                        cut_index = i
+                    elif stripped:
+                        # Stop scanning once we hit a non-empty, non-closing line
+                        break
+                if cut_index is not None:
+                    # Remove trailing closing block and any blank lines before it
+                    lines = lines[:cut_index]
+                    while lines and not lines[-1].strip():
+                        lines.pop()
+                    body = "\n".join(lines)
+
+                # If the full custom signature is already verbatim in the body
+                # (after stripping), skip appending to avoid duplication.
+                normalized_body = "\n".join(line.strip() for line in body.splitlines()).lower()
+                if normalized_sig and normalized_sig in normalized_body:
                     return body
 
                 return f"{body}\n\n{sender_signature}"
