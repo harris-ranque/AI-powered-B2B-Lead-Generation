@@ -13,15 +13,11 @@ describe("emailConfig helpers", () => {
   });
 
   it("preserves an explicitly empty saved signature", () => {
-    expect(resolveSignature("", "Alex Rivera", "Genni", "alex@example.com")).toBe(
-      "",
-    );
+    expect(resolveSignature("")).toBe("");
   });
 
-  it("falls back to a generated signature only when no signature is saved", () => {
-    expect(
-      resolveSignature(undefined, "Alex Rivera", "Genni", "alex@example.com"),
-    ).toBe("Best regards,\nAlex Rivera\nGenni\nalex@example.com");
+  it("returns empty string when no signature has been saved", () => {
+    expect(resolveSignature(undefined)).toBe("");
   });
 
   it("compares email config snapshots accurately", () => {

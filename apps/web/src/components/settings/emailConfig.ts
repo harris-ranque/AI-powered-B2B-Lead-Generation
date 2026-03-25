@@ -18,13 +18,7 @@ export const buildSignature = (
 
 export const resolveSignature = (
   savedSignature: string | undefined,
-  name: string,
-  company?: string,
-  email?: string,
-) =>
-  savedSignature !== undefined
-    ? savedSignature
-    : buildSignature(name, company, email);
+) => savedSignature ?? "";
 
 export const hasSameEmailConfig = (
   left: EmailConfigState | null,

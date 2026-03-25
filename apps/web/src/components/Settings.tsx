@@ -194,12 +194,7 @@ export function Settings() {
     const nextEmailConfig = {
       fromName: normalizedName,
       fromEmail,
-      signature: resolveSignature(
-        savedSignature,
-        normalizedName,
-        businessProfile?.companyName || "",
-        fromEmail,
-      ),
+      signature: resolveSignature(savedSignature),
     };
 
     if (hasSameEmailConfig(lastSyncedEmailConfig.current, nextEmailConfig)) {
@@ -545,7 +540,7 @@ export function Settings() {
                     }))
                   }
                   className="bg-input border-border min-h-[100px]"
-                  placeholder="Enter your email signature"
+                  placeholder={`e.g. Best regards,\n${emailConfig.fromName || "Your Name"}`}
                 />
               </div>
 
