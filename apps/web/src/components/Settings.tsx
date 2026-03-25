@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@genni/convex-types";
 import { Card } from "@/components/ui/card";
@@ -104,6 +104,7 @@ export function Settings() {
     fromEmail: "",
     signature: "",
   });
+  const signatureTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [expansionIterationsSetting, setExpansionIterationsSetting] =
     useState(5);
@@ -125,6 +126,15 @@ export function Settings() {
     length: value?.length ?? null,
     empty: value === "",
   });
+
+  useEffect(() => {
+    const textarea = signatureTextareaRef.current;
+    console.log("[Settings.signature.render]", {
+      state: summarizeSignature(emailConfig.signature),
+      dom: summarizeSignature(textarea?.value),
+      matches: textarea ? textarea.value === emailConfig.signature : null,
+    });
+  }, [emailConfig.signature]);
 
   const clampExpansionIterations = (value: number) =>
     Math.min(Math.max(Math.round(value), 0), 5);
@@ -598,9 +608,14 @@ export function Settings() {
                   Email Signature
                 </label>
                 <Textarea
+                  ref={signatureTextareaRef}
                   value={emailConfig.signature}
                   onChange={(e) => {
                     const nextSignature = e.target.value;
+
+                    console.log("[Settings.signature.change]", {
+                      next: summarizeSignature(nextSignature),
+                    });
 
                     setEmailConfig((prev) => ({
                       ...prev,
