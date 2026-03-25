@@ -32,7 +32,7 @@ class FollowUpEmailPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     subject: str = Field(..., description="Subject line for the follow-up email")
-    body: str = Field(..., description="Full body content for the follow-up email")
+    body: str = Field(..., description="Full body content for the follow-up email. Do NOT include a closing or signature — they are appended automatically.")
     objective: str = Field(
         default="",
         description="Goal or focus for this follow-up touch point",
@@ -52,7 +52,6 @@ class EmailSequence(BaseModel):
     primary_opening: str = Field(..., description="GREETING + FIRST SENTENCE ONLY - Start with 'Hi [Name],' followed by ONE personalized research hook sentence. DO NOT include any body paragraphs here.")
     primary_body: str = Field(..., description="BODY PARAGRAPHS ONLY (2-3 paragraphs) - NO greeting, NO CTA. Contains: challenge/opportunity paragraph, proof point paragraph, specific offer paragraph.")
     primary_cta: str = Field(..., description="SINGLE CTA SENTENCE ONLY - NO duplicates. One clear ask for a 15-30 minute call.")
-    primary_closing: str = Field(..., description="CLOSING ONLY - Just the sign-off like 'Best,' or 'Looking forward,'")
     primary_ps: str = Field(default="", description="Optional P.S. - ONE sentence max, additional value hook")
     
     # Personalization elements
@@ -346,54 +345,16 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         sender_linkedin = contact_info.get("linkedin", "")
         sender_signature = (contact_info.get("signature", "") or "").strip()
 
-        # Standalone closing phrases the LLM may emit at the end of an email body.
-        # When a custom sender_signature is set, these are stripped before appending
-        # the canonical signature to prevent duplicate closings like "Best,\n\nBest regards,\nName".
-        _LLM_CLOSING_PHRASES: frozenset[str] = frozenset(
-            {
-                "best,", "best regards,", "kind regards,", "warm regards,",
-                "regards,", "sincerely,", "sincerely yours,", "yours sincerely,",
-                "thanks,", "thank you,", "many thanks,", "thanks again,",
-                "cheers,", "looking forward,", "looking forward to hearing from you,",
-                "talk soon,", "speak soon,",
-            }
-        )
-
         def append_signature(body: str) -> str:
-            """Append sender signature details if they're not already present.
-
-            When a custom ``sender_signature`` is configured, any LLM-generated
-            standalone closing phrase that appears at the tail of the body (e.g.
-            "Best," or "Kind regards,") is stripped first so the canonical
-            signature is never duplicated.
-            """
+            """Append sender signature details if they're not already present."""
 
             if sender_signature:
                 normalized_sig = "\n".join(
                     line.strip() for line in sender_signature.splitlines()
                 ).lower()
 
-                # Strip trailing LLM-generated closing from the body so we never
-                # end up with "Best,\n\nBest regards,\nName".
-                lines = body.splitlines()
-                tail_window = min(12, len(lines))
-                cut_index: int | None = None
-                for i in range(len(lines) - 1, len(lines) - tail_window - 1, -1):
-                    stripped = lines[i].strip().lower()
-                    if stripped in _LLM_CLOSING_PHRASES:
-                        cut_index = i
-                    elif stripped:
-                        # Stop scanning once we hit a non-empty, non-closing line
-                        break
-                if cut_index is not None:
-                    # Remove trailing closing block and any blank lines before it
-                    lines = lines[:cut_index]
-                    while lines and not lines[-1].strip():
-                        lines.pop()
-                    body = "\n".join(lines)
-
-                # If the full custom signature is already verbatim in the body
-                # (after stripping), skip appending to avoid duplication.
+                # If the full custom signature is already verbatim in the body,
+                # skip appending to avoid duplication.
                 normalized_body = "\n".join(line.strip() for line in body.splitlines()).lower()
                 if normalized_sig and normalized_sig in normalized_body:
                     return body
@@ -640,7 +601,7 @@ When lead_tier is "B" (minimal research data available):
 B-tier email priorities:
 - Professional tone and structure over deep personalization
 - Generic industry value propositions over specific competitor insights
-- Clear CTA and signature over research-heavy content
+- Clear CTA and concise body over research-heavy content
 
 CALL TO ACTION:
 - One simple sentence
@@ -688,13 +649,12 @@ OUTPUT FIELD STRUCTURE (CRITICAL - PREVENTS DUPLICATION):
   Example: "Series A companies typically face X challenge.\n\nWe helped Company Y achieve Z result.\n\nOur solution could help RevCo with..."
 - primary_cta: ONLY ONE sentence asking for a call
   Example: "Would a 15-minute call next week work to explore this?"
-- primary_closing: ONLY the sign-off
-  Example: "Best,"
 
 DUPLICATION PREVENTION (CRITICAL):
 - NEVER repeat the greeting in primary_body (it's already in primary_opening)
 - NEVER repeat the CTA in primary_body (it goes in primary_cta only)
 - NEVER repeat the research hook from primary_opening in primary_body
+- NEVER include a closing or signature in any generated field
 - Each field contains UNIQUE content with ZERO overlap
 
 Natural, Human Language:
@@ -1012,11 +972,10 @@ CRITICAL LENGTH REQUIREMENT:
 - Every word must justify its existence
 - Cut ruthlessly, brevity is the priority
 
-Sender & Signature:
-- Use the provided sender name and contact details in the closing signature
-- Ensure the signature never contains placeholder text (e.g., [Your Name])
-- Keep signature clean and minimal
-- Include all provided contact details
+Signature Handling:
+- Do NOT include any closing or signature in the model output
+- A canonical closing and signature block is appended automatically after generation
+- Never include placeholder signature text such as [Your Name]
 
 1. PRIMARY EMAIL CREATION:
 
@@ -1076,16 +1035,6 @@ Call to Action (1 sentence):
 - Should immediately follow the offer
 - Example: "Want 20 minutes to see it in action?"
 
-Closing (1 line):
-- Simple professional closing (Best, Cheers, Best regards)
-
-Signature:
-- Sender name
-- Company name
-- Email
-- Phone
-- Website/LinkedIn
-
 P.S. (Optional, 1 sentence):
 - Additional value hook or proof element
 - Must add genuine value, not filler
@@ -1121,7 +1070,7 @@ Focus areas:
 3. FOLLOW-UP SEQUENCE (if requested):
 
 CRITICAL: Follow-ups must be even MORE concise and punchy than primary email.
-Target: 80-120 words maximum (excluding signature). Every follow-up MUST include closing + signature.
+Target: 80-120 words maximum (excluding auto-appended signature). Do NOT include a closing or signature in follow-up body content.
 
 Follow-up Email Structure Template:
 
@@ -1135,30 +1084,14 @@ Body (2-3 short sentences):
 
 Call-to-Action (1 sentence):
 - Direct, specific ask with timeframe
-
-Closing (1 line):
-"Best," OR "Cheers," OR "Best regards,"
-
-Signature (REQUIRED - identical to primary email):
-{Sender Name}
-{Company Name}
-{Email}
-{Phone}
-{Website/LinkedIn}
+- End the generated body here. Do not add a closing or signature.
 
 Example Follow-up:
 "Hi Sarah,
 
 Quick note on the pipeline gaps we discussed. Three RevOps teams at your stage cut manual work by 40% using automated lead scoring.
 
-Want 15 minutes to see how it works for MetricFlow?
-
-Best,
-
-John Smith
-DataFlow Solutions
-john@dataflow.com
-(555) 123-4567"
+Want 15 minutes to see how it works for MetricFlow?"
 
 Follow-up Timing and Angles:
 
@@ -1169,7 +1102,6 @@ Email 1 (3-5 days after primary):
 - Value-added content or resource
 - Different CTA
 - NO hyphens in subject or body
-- MUST include closing + full signature
 
 Email 2 (1 week after Email 1):
 - Another unique curiosity-driven subject line (no hyphens)
@@ -1178,7 +1110,6 @@ Email 2 (1 week after Email 1):
 - Different value angle
 - Collaborative next step CTA
 - NO hyphens anywhere
-- MUST include closing + full signature
 
 
 MANDATORY Requirements for ALL follow-ups:
@@ -1191,10 +1122,9 @@ LENGTH REQUIREMENTS (CRITICAL):
 - If longer than 120 words (excluding signature), you have FAILED
 
 FORMAT REQUIREMENTS (CRITICAL):
-- MUST include professional closing: "Best,", "Cheers,", or "Best regards,"
-- MUST include COMPLETE signature (identical format to primary email)
-- Signature must include: Name, Company, Email, Phone, Website/LinkedIn
-- Signature format must be IDENTICAL across entire sequence
+- Do NOT include a professional closing in the generated body
+- Do NOT include a signature in the generated body
+- End the generated body with the CTA
 
 CONTENT REQUIREMENTS:
 - Each must have UNIQUE subject line following "Hi {contact_first_name}, " or "Hi {contact_first_name}: " format
@@ -1209,7 +1139,6 @@ CONTENT REQUIREMENTS:
 
 CONSISTENCY REQUIREMENTS:
 - Maintain professional tone throughout sequence
-- Use consistent signature formatting
 - Match primary email's level of personalization
 - Keep brand voice consistent
 
@@ -1246,7 +1175,7 @@ DON'T:
 - Use specific numbers in P.S. without real data
 
 FINAL INSTRUCTION:
-Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excluding signature). MANDATORY: Start the email body with "Hi {contact_first_name}," - this is non-negotiable. Every sentence must justify its existence. Use ONLY real data from the business intelligence provided. Use real competitor names, never vague references. Never use hyphens anywhere. The subject line should make {contact_first_name} think "I need to read this" while the body gets straight to the value without wasting their time. Write like you're texting a colleague who respects research and specificity, not pitching a stranger. If your email is longer than 150 words, cut it down ruthlessly until it is. Base every claim on the business intelligence data provided.
+Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excluding the auto-appended signature). MANDATORY: Start the email body with "Hi {contact_first_name}," - this is non-negotiable. Do NOT include any closing or signature in the generated content. Every sentence must justify its existence. Use ONLY real data from the business intelligence provided. Use real competitor names, never vague references. Never use hyphens anywhere. The subject line should make {contact_first_name} think "I need to read this" while the body gets straight to the value without wasting their time. Write like you're texting a colleague who respects research and specificity, not pitching a stranger. If your email is longer than 150 words, cut it down ruthlessly until it is. Base every claim on the business intelligence data provided.
 """)
         ])
         
@@ -1344,15 +1273,6 @@ Target score: ≥0.65 for approval.
             include_case_study=requirements.include_case_study,
             personalization_level=requirements.personalization_level,
             follow_up_sequence=requirements.follow_up_sequence,
-
-            # Signature template variables (for follow-up signature examples in prompt)
-            **{
-                "Sender Name": sender_name or business_profile.company_name,
-                "Company Name": business_profile.company_name,
-                "Email": sender_email or "",
-                "Phone": sender_phone or "",
-                "Website/LinkedIn": sender_website or sender_linkedin or ""
-            }
         )
         email_sequence: EmailSequence = await llm.ainvoke(
             messages,
@@ -1368,7 +1288,7 @@ Target score: ≥0.65 for approval.
         # Create primary email content
         primary_email = EmailContent(
             subject=email_sequence.primary_subject,
-            body=f"{email_sequence.primary_opening}\n\n{email_sequence.primary_body}\n\n{email_sequence.primary_cta}\n\n{email_sequence.primary_closing}",
+            body=f"{email_sequence.primary_opening}\n\n{email_sequence.primary_body}\n\n{email_sequence.primary_cta}",
             personalization_notes=email_sequence.personalization_elements + email_sequence.business_context_usage,
             estimated_effectiveness=email_sequence.estimated_effectiveness
         )
