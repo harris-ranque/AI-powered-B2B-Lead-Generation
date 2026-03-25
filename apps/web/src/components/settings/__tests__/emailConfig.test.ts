@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSignature,
   hasSameEmailConfig,
+  resolveInitialEmailSignature,
   resolveSignature,
 } from "../emailConfig";
 
@@ -34,5 +35,59 @@ describe("emailConfig helpers", () => {
         signature: "Different signature",
       }),
     ).toBe(false);
+  });
+
+  it("prefers a dirty draft over the backend signature", () => {
+    expect(
+      resolveInitialEmailSignature({
+        savedSignature: "Old signature",
+        draft: {
+          value: "",
+          mode: "dirty",
+          updatedAt: 1_000,
+        },
+        now: 2_000,
+        reconciliationWindowMs: 15_000,
+      }),
+    ).toEqual({
+      signature: "",
+      clearStoredDraft: false,
+    });
+  });
+
+  it("keeps a recently saved draft during backend reconciliation", () => {
+    expect(
+      resolveInitialEmailSignature({
+        savedSignature: "Old signature",
+        draft: {
+          value: "",
+          mode: "saved",
+          updatedAt: 10_000,
+        },
+        now: 20_000,
+        reconciliationWindowMs: 15_000,
+      }),
+    ).toEqual({
+      signature: "",
+      clearStoredDraft: false,
+    });
+  });
+
+  it("clears a saved draft once the backend matches it", () => {
+    expect(
+      resolveInitialEmailSignature({
+        savedSignature: "",
+        draft: {
+          value: "",
+          mode: "saved",
+          updatedAt: 10_000,
+        },
+        now: 20_000,
+        reconciliationWindowMs: 15_000,
+      }),
+    ).toEqual({
+      signature: "",
+      clearStoredDraft: true,
+    });
   });
 });

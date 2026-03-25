@@ -25,7 +25,10 @@ import { toast } from "sonner";
 import { ProviderKeyManager } from "@/components/settings/ProviderKeyManager";
 import { InstantlySettings } from "@/components/settings/InstantlySettings";
 import {
-  resolveSignature,
+  clearEmailSignatureDraft,
+  readEmailSignatureDraft,
+  resolveInitialEmailSignature,
+  writeEmailSignatureDraft,
   type EmailConfigState,
 } from "@/components/settings/emailConfig";
 import {
@@ -55,6 +58,7 @@ type PreferencesState = {
 };
 
 export function Settings() {
+  const SIGNATURE_SAVE_RECONCILIATION_MS = 15000;
   const [isLoading, setIsLoading] = useState(false);
 
   // Fetch user data
@@ -114,6 +118,9 @@ export function Settings() {
           .replace(/[\u200B-\u200D\uFEFF]/g, "")
           .trim()
       : "";
+
+  const getSignatureDraftStorage = () =>
+    typeof window === "undefined" ? null : window.sessionStorage;
 
   const clampExpansionIterations = (value: number) =>
     Math.min(Math.max(Math.round(value), 0), 5);
@@ -194,14 +201,39 @@ export function Settings() {
   }, [businessProfile, userData]);
 
   // Initialize signature once from backend on first load.
-  // Never overwritten by unrelated profile saves — only "Save Email Settings" updates it.
+  // Preserve a local draft across remounts/query refreshes so Update Profile
+  // cannot restore an older backend signature over an unsaved local change.
   useEffect(() => {
-    if (signatureInitialized.current || businessProfile === undefined) return;
+    if (
+      signatureInitialized.current ||
+      businessProfile === undefined ||
+      userData === undefined
+    )
+      return;
+
     signatureInitialized.current = true;
     const savedSignature = (businessProfile?.contactInfo as { signature?: string } | null)
       ?.signature;
-    setEmailConfig((prev) => ({ ...prev, signature: resolveSignature(savedSignature) }));
-  }, [businessProfile]);
+    const localDraft = readEmailSignatureDraft(
+      getSignatureDraftStorage(),
+      userData?._id,
+    );
+    const initialSignature = resolveInitialEmailSignature({
+      savedSignature,
+      draft: localDraft,
+      now: Date.now(),
+      reconciliationWindowMs: SIGNATURE_SAVE_RECONCILIATION_MS,
+    });
+
+    if (initialSignature.clearStoredDraft) {
+      clearEmailSignatureDraft(getSignatureDraftStorage(), userData?._id);
+    }
+
+    setEmailConfig((prev) => ({
+      ...prev,
+      signature: initialSignature.signature,
+    }));
+  }, [businessProfile, userData]);
 
   const handlePreferencesUpdate = async (
     updates: Partial<PreferencesState>,
@@ -294,6 +326,12 @@ export function Settings() {
           linkedin: contactInfo.linkedin || "",
           signature: emailConfig.signature, // Persist user's custom signature
         },
+      });
+
+      writeEmailSignatureDraft(getSignatureDraftStorage(), userData?._id, {
+        value: emailConfig.signature,
+        mode: "saved",
+        updatedAt: Date.now(),
       });
 
       setEmailConfig((prev) => ({
@@ -531,12 +569,24 @@ export function Settings() {
                 </label>
                 <Textarea
                   value={emailConfig.signature}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const nextSignature = e.target.value;
+
                     setEmailConfig((prev) => ({
                       ...prev,
-                      signature: e.target.value,
-                    }))
-                  }
+                      signature: nextSignature,
+                    }));
+
+                    writeEmailSignatureDraft(
+                      getSignatureDraftStorage(),
+                      userData?._id,
+                      {
+                        value: nextSignature,
+                        mode: "dirty",
+                        updatedAt: Date.now(),
+                      },
+                    );
+                  }}
                   className="bg-input border-border min-h-[100px]"
                   placeholder={`e.g. Best regards,\n${emailConfig.fromName || "Your Name"}`}
                 />
