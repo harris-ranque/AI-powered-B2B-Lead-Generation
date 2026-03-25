@@ -189,7 +189,7 @@ export function Settings() {
     );
     const fromEmail = contactInfo?.email || userData?.email || "";
 
-    // Use saved signature from backend, or build default if none exists
+    // Use saved signature from backend, or build default if none has ever been saved
     const savedSignature = contactInfo?.signature;
     const nextEmailConfig = {
       fromName: normalizedName,
