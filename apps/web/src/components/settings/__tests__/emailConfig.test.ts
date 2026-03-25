@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSignature,
   hasSameEmailConfig,
+  readEmailSignatureDraft,
   resolveInitialEmailSignature,
   resolveSignature,
 } from "../emailConfig";
@@ -19,6 +20,25 @@ describe("emailConfig helpers", () => {
 
   it("returns empty string when no signature has been saved", () => {
     expect(resolveSignature(undefined)).toBe("");
+  });
+
+  it("defaults legacy drafts to signature enabled", () => {
+    const storage = {
+      getItem: () =>
+        JSON.stringify({
+          value: "Best regards,\nAlex Rivera",
+          mode: "dirty",
+          updatedAt: 1_000,
+        }),
+      removeItem: () => undefined,
+    } as Storage;
+
+    expect(readEmailSignatureDraft(storage, "user-1")).toEqual({
+      value: "Best regards,\nAlex Rivera",
+      signatureEnabled: true,
+      mode: "dirty",
+      updatedAt: 1_000,
+    });
   });
 
   it("compares email config snapshots accurately", () => {

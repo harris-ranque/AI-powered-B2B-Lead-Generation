@@ -105,6 +105,7 @@ export function Settings() {
     signature: "",
     signatureEnabled: true,
   });
+  const emailConfigRef = useRef(emailConfig);
   const signatureTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [isUpdatingSignatureToggle, setIsUpdatingSignatureToggle] =
@@ -129,6 +130,10 @@ export function Settings() {
     length: value?.length ?? null,
     empty: value === "",
   });
+
+  useEffect(() => {
+    emailConfigRef.current = emailConfig;
+  }, [emailConfig]);
 
   useEffect(() => {
     const textarea = signatureTextareaRef.current;
@@ -442,15 +447,17 @@ export function Settings() {
         },
       });
 
+      const latestSignature = emailConfigRef.current.signature;
       writeEmailSignatureDraft(getSignatureDraftStorage(), userData?._id, {
-        value: emailConfig.signature,
+        value: latestSignature,
         signatureEnabled: checked,
         mode: "saved",
         updatedAt: Date.now(),
       });
     } catch (error) {
+      const latestSignature = emailConfigRef.current.signature;
       writeEmailSignatureDraft(getSignatureDraftStorage(), userData?._id, {
-        value: emailConfig.signature,
+        value: latestSignature,
         signatureEnabled: previousValue,
         mode: "dirty",
         updatedAt: Date.now(),

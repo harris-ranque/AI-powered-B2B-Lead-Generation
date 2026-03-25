@@ -45,9 +45,12 @@ export const readEmailSignatureDraft = (
 
   try {
     const parsed = JSON.parse(rawDraft) as Partial<EmailSignatureDraft>;
+    const signatureEnabled =
+      typeof parsed.signatureEnabled === "boolean"
+        ? parsed.signatureEnabled
+        : true;
     if (
       typeof parsed.value !== "string" ||
-      typeof parsed.signatureEnabled !== "boolean" ||
       (parsed.mode !== "dirty" && parsed.mode !== "saved") ||
       typeof parsed.updatedAt !== "number"
     ) {
@@ -55,7 +58,12 @@ export const readEmailSignatureDraft = (
       return null;
     }
 
-    return parsed as EmailSignatureDraft;
+    return {
+      value: parsed.value,
+      signatureEnabled,
+      mode: parsed.mode,
+      updatedAt: parsed.updatedAt,
+    };
   } catch {
     storage.removeItem(getEmailSignatureDraftStorageKey(userId));
     return null;

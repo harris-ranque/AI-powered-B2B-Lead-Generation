@@ -481,7 +481,8 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
             if not signature_lines:
                 return body
 
-            return f"{body}\n\n" + "\n".join(signature_lines)
+            cleaned_body = strip_signature_like_tail(body)
+            return f"{cleaned_body}\n\nBest,\n" + "\n".join(signature_lines)
         
         # Initialize LLM for email generation
         # GPT-5-mini: 128K max output, optimized for fast generation with 3000 token budget
