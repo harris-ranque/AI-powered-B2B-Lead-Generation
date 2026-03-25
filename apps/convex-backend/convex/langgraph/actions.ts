@@ -111,6 +111,7 @@ export const generateEmail: unknown = action({
       website: profile.contactInfo?.website || "",
       linkedin: profile.contactInfo?.linkedin || "",
       signature: profile.contactInfo?.signature || "",
+      signatureEnabled: profile.contactInfo?.signatureEnabled ?? true,
     };
 
     // Create LangGraph-compatible request id: searchId_leadId_attempt
@@ -320,6 +321,7 @@ export const analyzeLead = action({
       website: profile.contactInfo?.website || "",
       linkedin: profile.contactInfo?.linkedin || "",
       signature: profile.contactInfo?.signature || "",
+      signatureEnabled: profile.contactInfo?.signatureEnabled ?? true,
     };
 
     // Create LangGraph request using scheduler

@@ -90,6 +90,7 @@ export default defineSchema({
       website: v.optional(v.string()),
       linkedin: v.optional(v.string()),
       signature: v.optional(v.string()),
+      signatureEnabled: v.optional(v.boolean()),
     }),
     isComplete: v.boolean(),
     createdAt: v.number(),

@@ -50,6 +50,7 @@ export const businessProfileValidator = v.object({
     website: v.optional(v.string()),
     linkedin: v.optional(v.string()),
     signature: v.optional(v.string()),
+    signatureEnabled: v.optional(v.boolean()),
   }),
 });
 

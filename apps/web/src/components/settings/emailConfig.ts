@@ -2,6 +2,7 @@ export type EmailConfigState = {
   fromName: string;
   fromEmail: string;
   signature: string;
+  signatureEnabled: boolean;
 };
 
 export type EmailSignatureDraft = {
@@ -113,4 +114,5 @@ export const hasSameEmailConfig = (
   !!left &&
   left.fromName === right.fromName &&
   left.fromEmail === right.fromEmail &&
-  left.signature === right.signature;
+  left.signature === right.signature &&
+  left.signatureEnabled === right.signatureEnabled;

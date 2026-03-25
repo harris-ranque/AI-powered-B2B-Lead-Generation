@@ -90,6 +90,7 @@ function createValidProfileData(overrides: Partial<any> = {}) {
       website: 'https://company.com',
       linkedin: 'https://linkedin.com/company/test',
       signature: 'Best regards,\nJohn Doe',
+      signatureEnabled: true,
     },
     ...overrides,
   };

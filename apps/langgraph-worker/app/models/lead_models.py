@@ -59,7 +59,7 @@ class BusinessProfile(BaseModel):
     target_markets: List[str] = Field(..., alias="targetMarkets", description="Our target markets")
     key_differentiators: List[str] = Field(..., alias="keyDifferentiators", description="What makes us unique")
     case_studies: List[Dict[str, Any]] = Field(default_factory=list, alias="caseStudies", description="Success stories")
-    contact_info: Dict[str, str] = Field(..., alias="contactInfo", description="Our contact information")
+    contact_info: Dict[str, Any] = Field(..., alias="contactInfo", description="Our contact information")
 
 
 class CompetitorInsight(BaseModel):

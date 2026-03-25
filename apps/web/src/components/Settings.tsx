@@ -103,6 +103,7 @@ export function Settings() {
     fromName: "",
     fromEmail: "",
     signature: "",
+    signatureEnabled: true,
   });
   const signatureTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
@@ -219,8 +220,12 @@ export function Settings() {
   // still protecting unsaved local edits and recent saves.
   useEffect(() => {
     if (businessProfile === undefined || userData === undefined) return;
-    const savedSignature = (businessProfile?.contactInfo as { signature?: string } | null)
-      ?.signature;
+    const contactInfo = businessProfile?.contactInfo as {
+      signature?: string;
+      signatureEnabled?: boolean;
+    } | null;
+    const savedSignature = contactInfo?.signature;
+    const savedSignatureEnabled = contactInfo?.signatureEnabled ?? true;
     const localDraft = readEmailSignatureDraft(
       getSignatureDraftStorage(),
       userData?._id,
@@ -234,6 +239,7 @@ export function Settings() {
 
     console.log("[Settings.signature.sync]", {
       backend: summarizeSignature(savedSignature),
+      signatureEnabled: savedSignatureEnabled,
       draft: localDraft
         ? {
             mode: localDraft.mode,
@@ -250,11 +256,13 @@ export function Settings() {
     }
 
     setEmailConfig((prev) =>
-      prev.signature === initialSignature.signature
+      prev.signature === initialSignature.signature &&
+      prev.signatureEnabled === savedSignatureEnabled
         ? prev
         : {
             ...prev,
             signature: initialSignature.signature,
+            signatureEnabled: savedSignatureEnabled,
           },
     );
   }, [businessProfile, userData]);
@@ -314,6 +322,7 @@ export function Settings() {
             website: businessProfile.contactInfo?.website || "",
             linkedin: businessProfile.contactInfo?.linkedin || "",
             signature: emailConfig.signature,
+            signatureEnabled: emailConfig.signatureEnabled,
           },
         });
       }
@@ -340,6 +349,7 @@ export function Settings() {
         phone?: string;
         website?: string;
         linkedin?: string;
+        signatureEnabled?: boolean;
       }) || {};
 
       console.log("[Settings.signature.save.start]", {
@@ -359,6 +369,7 @@ export function Settings() {
           website: contactInfo.website || "",
           linkedin: contactInfo.linkedin || "",
           signature: emailConfig.signature, // Persist user's custom signature
+          signatureEnabled: emailConfig.signatureEnabled,
         },
       });
 
@@ -606,6 +617,27 @@ export function Settings() {
               </div>
 
               <div>
+                <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-4 mb-4">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-foreground block">
+                      Append signature to generated emails
+                    </label>
+                    <p className="text-sm text-muted-foreground">
+                      When off, Genni keeps your saved signature but does not add
+                      any signature block to generated emails.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={emailConfig.signatureEnabled}
+                    onCheckedChange={(checked) =>
+                      setEmailConfig((prev) => ({
+                        ...prev,
+                        signatureEnabled: checked,
+                      }))
+                    }
+                  />
+                </div>
+
                 <label className="text-sm font-medium text-foreground mb-2 block">
                   Email Signature
                 </label>
@@ -637,6 +669,11 @@ export function Settings() {
                   className="bg-input border-border min-h-[100px]"
                   placeholder={`e.g. Best regards,\n${emailConfig.fromName || "Your Name"}`}
                 />
+                <p className="text-xs text-muted-foreground mt-2">
+                  {emailConfig.signatureEnabled
+                    ? "This signature will be appended by the backend."
+                    : "This signature is saved for later, but it will not be appended while the toggle is off."}
+                </p>
               </div>
 
               <Button

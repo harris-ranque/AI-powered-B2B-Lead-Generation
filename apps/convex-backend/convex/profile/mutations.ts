@@ -22,6 +22,7 @@ type ContactInfoInput = {
   website?: string;
   linkedin?: string;
   signature?: string;
+  signatureEnabled?: boolean;
 };
 
 const resolveContactInfo = ({
@@ -71,6 +72,10 @@ const resolveContactInfo = ({
     incoming?.signature !== undefined
       ? sanitizeString(incoming.signature)
       : existing?.signature || "",
+  signatureEnabled:
+    incoming?.signatureEnabled !== undefined
+      ? incoming.signatureEnabled
+      : existing?.signatureEnabled ?? true,
 });
 
 const summarizeContactInfo = (contactInfo: ContactInfoInput | null | undefined) => ({
@@ -82,6 +87,7 @@ const summarizeContactInfo = (contactInfo: ContactInfoInput | null | undefined) 
   hasSignature: contactInfo?.signature !== undefined,
   signatureLength: contactInfo?.signature?.length ?? null,
   signatureEmpty: contactInfo?.signature === "",
+  signatureEnabled: contactInfo?.signatureEnabled ?? true,
 });
 
 // Create or update business profile

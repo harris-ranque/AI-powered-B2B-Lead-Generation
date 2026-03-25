@@ -32,7 +32,7 @@ class FollowUpEmailPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     subject: str = Field(..., description="Subject line for the follow-up email")
-    body: str = Field(..., description="Full body content for the follow-up email. Do NOT include a closing or signature — they are appended automatically.")
+    body: str = Field(..., description="Full body content for the follow-up email. Do NOT include a closing or signature. Signature handling is managed separately.")
     objective: str = Field(
         default="",
         description="Goal or focus for this follow-up touch point",
@@ -344,9 +344,20 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         sender_website = contact_info.get("website", "")
         sender_linkedin = contact_info.get("linkedin", "")
         sender_signature = (contact_info.get("signature", "") or "").strip()
+        raw_signature_enabled = contact_info.get("signatureEnabled", True)
+        sender_signature_enabled = not (
+            raw_signature_enabled is False
+            or (
+                isinstance(raw_signature_enabled, str)
+                and raw_signature_enabled.strip().lower() in {"0", "false", "no", "off"}
+            )
+        )
 
         def append_signature(body: str) -> str:
             """Append sender signature details if they're not already present."""
+
+            if not sender_signature_enabled:
+                return body
 
             if sender_signature:
                 normalized_sig = "\n".join(
@@ -974,7 +985,7 @@ CRITICAL LENGTH REQUIREMENT:
 
 Signature Handling:
 - Do NOT include any closing or signature in the model output
-- A canonical closing and signature block is appended automatically after generation
+- Signature handling is managed separately after generation
 - Never include placeholder signature text such as [Your Name]
 
 1. PRIMARY EMAIL CREATION:
@@ -1070,7 +1081,7 @@ Focus areas:
 3. FOLLOW-UP SEQUENCE (if requested):
 
 CRITICAL: Follow-ups must be even MORE concise and punchy than primary email.
-Target: 80-120 words maximum (excluding auto-appended signature). Do NOT include a closing or signature in follow-up body content.
+Target: 80-120 words maximum (excluding any signature block if one is added later). Do NOT include a closing or signature in follow-up body content.
 
 Follow-up Email Structure Template:
 
@@ -1175,7 +1186,7 @@ DON'T:
 - Use specific numbers in P.S. without real data
 
 FINAL INSTRUCTION:
-Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excluding the auto-appended signature). MANDATORY: Start the email body with "Hi {contact_first_name}," - this is non-negotiable. Do NOT include any closing or signature in the generated content. Every sentence must justify its existence. Use ONLY real data from the business intelligence provided. Use real competitor names, never vague references. Never use hyphens anywhere. The subject line should make {contact_first_name} think "I need to read this" while the body gets straight to the value without wasting their time. Write like you're texting a colleague who respects research and specificity, not pitching a stranger. If your email is longer than 150 words, cut it down ruthlessly until it is. Base every claim on the business intelligence data provided.
+Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excluding any signature block if one is added later). MANDATORY: Start the email body with "Hi {contact_first_name}," - this is non-negotiable. Do NOT include any closing or signature in the generated content. Every sentence must justify its existence. Use ONLY real data from the business intelligence provided. Use real competitor names, never vague references. Never use hyphens anywhere. The subject line should make {contact_first_name} think "I need to read this" while the body gets straight to the value without wasting their time. Write like you're texting a colleague who respects research and specificity, not pitching a stranger. If your email is longer than 150 words, cut it down ruthlessly until it is. Base every claim on the business intelligence data provided.
 """)
         ])
         

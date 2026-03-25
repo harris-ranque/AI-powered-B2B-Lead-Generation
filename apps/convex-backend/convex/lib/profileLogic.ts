@@ -22,6 +22,7 @@ export interface ProfileData {
     website?: string;
     linkedin?: string;
     signature?: string;
+    signatureEnabled?: boolean;
   } | null;
   caseStudies?: Array<{
     title: string;
@@ -299,6 +300,7 @@ interface ContactInfo {
   website?: string;
   linkedin?: string;
   signature?: string;
+  signatureEnabled?: boolean;
 }
 
 /**
@@ -373,5 +375,9 @@ function mergeContactInfo(
       incoming.signature !== undefined
         ? incoming.signature
         : existing.signature || "",
+    signatureEnabled:
+      incoming.signatureEnabled !== undefined
+        ? incoming.signatureEnabled
+        : existing.signatureEnabled ?? true,
   };
 }

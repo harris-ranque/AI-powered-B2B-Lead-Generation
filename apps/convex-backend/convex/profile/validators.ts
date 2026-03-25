@@ -81,6 +81,7 @@ export const sectionUpdateValidator = v.union(
     website: v.optional(v.string()),
     linkedin: v.optional(v.string()),
     signature: v.optional(v.string()),
+    signatureEnabled: v.optional(v.boolean()),
   }),
 );
 

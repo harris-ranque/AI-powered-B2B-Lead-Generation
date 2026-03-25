@@ -97,6 +97,21 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
     lead_tier = state.get("lead_tier", "A")  # Default to A if not set
     lead_tier_reason = state.get("lead_tier_reason", "")
     approval_threshold = APPROVAL_THRESHOLDS.get(lead_tier, 0.60)
+    business_profile = state["business_profile"]
+    contact_info = getattr(business_profile, "contact_info", {}) or {}
+    raw_signature_enabled = contact_info.get("signatureEnabled", True)
+    signature_enabled = not (
+        raw_signature_enabled is False
+        or (
+            isinstance(raw_signature_enabled, str)
+            and raw_signature_enabled.strip().lower() in {"0", "false", "no", "off"}
+        )
+    )
+    signature_requirement = (
+        "A professional closing and complete signature are required for this request."
+        if signature_enabled
+        else "Signature appending is disabled for this request. Do not require a closing or signature, and do not flag their absence as an issue."
+    )
 
     logger.info(f"Starting quality assurance for {lead.company_name} (Tier: {lead_tier}, Threshold: {approval_threshold})")
     if lead_tier == "B":
@@ -263,13 +278,14 @@ CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
    - Body paragraph 2: Proof point with results (1-2 sentences)
    - Body paragraph 3: Specific offer (1 sentence)
    - CTA: One simple sentence, immediately following offer
-   - Closing + Signature: Professional and complete
+   - Signature expectation: {signature_requirement}
 
 9. SIGNATURE VALIDATION:
-   - MUST include professional closing ("Best,", "Cheers,", "Best regards,")
-   - MUST include complete signature (Name, Company, Email, Phone, Website)
+   - Signature mode for this request: {signature_requirement}
+   - If signatures are enabled: require a professional closing and complete signature (Name, Company, Email, Phone, Website)
+   - If signatures are disabled: do NOT require a closing or signature and do NOT flag them as missing
    - NO placeholder text like "[Your Name]", "Company Name"
-   - For sequences: ALL emails MUST have identical signature format
+   - For sequences with signatures enabled: ALL emails MUST have identical signature format
 
 Quality Scoring Standards (RESEARCH VALIDATION TEMPORARILY DISABLED):
 - A-Tier Leads (rich research): ≥0.60 = Approved, 0.35-0.60 = Needs_Improvement, <0.35 = Rejected
@@ -285,7 +301,7 @@ B-TIER LEAD SPECIAL INSTRUCTIONS (if lead_tier is "B"):
 - DO NOT penalize for missing research-specific elements
 - DO NOT penalize for using generic competitor references
 - DO NOT penalize for lack of specific metrics/numbers
-- Focus validation ONLY on: grammar, structure, professional tone, signature
+- Focus validation ONLY on: grammar, structure, professional tone, and signature rules when enabled
 - Missing research elements are EXPECTED for B-tier and should NOT be flagged as issues
 
 Assessment Criteria (all 0-1 scale, FOCUS ON GRAMMAR/GUIDELINES ONLY):
@@ -304,7 +320,7 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
             - DO NOT reject or heavily penalize for poor business intelligence
             - DO NOT reject for generic competitor references or lack of specific data
             - Flag research issues in improvement_suggestions but give passing scores
-            - Apply STRICT validation only for: hyphens, length, grammar, structure, signature
+            - Apply STRICT validation only for: hyphens, length, grammar, structure, and signature rules when enabled
 
             PROSPECT CONTEXT:
             Company: {company_name}
@@ -441,6 +457,7 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
 
                 # Lead tier for tier-aware scoring
                 lead_tier=lead_tier,
+                signature_requirement=signature_requirement,
 
                 # Business intelligence
                 pain_points="; ".join(pain_points[:5]) if pain_points else "No pain points identified",

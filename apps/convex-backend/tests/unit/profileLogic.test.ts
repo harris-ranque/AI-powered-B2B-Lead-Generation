@@ -468,6 +468,40 @@ describe("profileLogic", () => {
       expect(result.contactInfo?.signature).toBe("");
     });
 
+    it("should default signatureEnabled to true when missing", () => {
+      const result = mergeProfileData(existingProfile, {
+        contactInfo: {
+          email: "updated@example.com",
+        },
+      });
+
+      expect(result.contactInfo?.signatureEnabled).toBe(true);
+    });
+
+    it("should preserve or update signatureEnabled explicitly", () => {
+      const existing = {
+        ...existingProfile,
+        contactInfo: {
+          ...existingProfile.contactInfo,
+          signatureEnabled: false,
+        },
+      };
+
+      const preserved = mergeProfileData(existing, {
+        contactInfo: {
+          email: "updated@example.com",
+        },
+      });
+      expect(preserved.contactInfo?.signatureEnabled).toBe(false);
+
+      const enabled = mergeProfileData(existing, {
+        contactInfo: {
+          signatureEnabled: true,
+        },
+      });
+      expect(enabled.contactInfo?.signatureEnabled).toBe(true);
+    });
+
     it("should handle empty existing profile", () => {
       const incoming = {
         companyName: "New Corp",

@@ -73,6 +73,7 @@ export const createUserInternal = internalMutation({
       contactInfo: {
         name: args.name,
         email: args.email,
+        signatureEnabled: true,
       },
       isComplete: false,
       createdAt: Date.now(),
@@ -319,6 +320,7 @@ export const createUserForSubscription = internalMutation({
       contactInfo: {
         name: args.name,
         email: args.email,
+        signatureEnabled: true,
       },
       isComplete: false,
       createdAt: Date.now(),
