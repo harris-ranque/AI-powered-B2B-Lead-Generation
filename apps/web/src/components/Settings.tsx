@@ -121,6 +121,11 @@ export function Settings() {
   const getSignatureDraftStorage = () =>
     typeof window === "undefined" ? null : window.sessionStorage;
 
+  const summarizeSignature = (value: string | undefined) => ({
+    length: value?.length ?? null,
+    empty: value === "",
+  });
+
   const clampExpansionIterations = (value: number) =>
     Math.min(Math.max(Math.round(value), 0), 5);
   const clampExpansionMultiplier = (value: number) =>
@@ -215,6 +220,19 @@ export function Settings() {
       draft: localDraft,
       now: Date.now(),
       reconciliationWindowMs: SIGNATURE_SAVE_RECONCILIATION_MS,
+    });
+
+    console.log("[Settings.signature.sync]", {
+      backend: summarizeSignature(savedSignature),
+      draft: localDraft
+        ? {
+            mode: localDraft.mode,
+            updatedAt: localDraft.updatedAt,
+            ...summarizeSignature(localDraft.value),
+          }
+        : null,
+      chosen: summarizeSignature(initialSignature.signature),
+      clearStoredDraft: initialSignature.clearStoredDraft,
     });
 
     if (initialSignature.clearStoredDraft) {
@@ -312,6 +330,14 @@ export function Settings() {
         linkedin?: string;
       }) || {};
 
+      console.log("[Settings.signature.save.start]", {
+        localState: summarizeSignature(emailConfig.signature),
+        backendBeforeSave: summarizeSignature(
+          (businessProfile?.contactInfo as { signature?: string } | null)
+            ?.signature,
+        ),
+      });
+
       await updateBusinessProfile({
         section: "contact_info",
         data: {
@@ -328,6 +354,14 @@ export function Settings() {
         value: emailConfig.signature,
         mode: "saved",
         updatedAt: Date.now(),
+      });
+
+      console.log("[Settings.signature.save.complete]", {
+        localState: summarizeSignature(emailConfig.signature),
+        persistedDraft: readEmailSignatureDraft(
+          getSignatureDraftStorage(),
+          userData?._id,
+        ),
       });
 
       setEmailConfig((prev) => ({
