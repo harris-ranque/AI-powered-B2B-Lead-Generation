@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@genni/convex-types";
 import { Card } from "@/components/ui/card";
@@ -104,7 +104,6 @@ export function Settings() {
     fromEmail: "",
     signature: "",
   });
-  const signatureInitialized = useRef(false);
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [expansionIterationsSetting, setExpansionIterationsSetting] =
     useState(5);
@@ -200,18 +199,11 @@ export function Settings() {
     });
   }, [businessProfile, userData]);
 
-  // Initialize signature once from backend on first load.
-  // Preserve a local draft across remounts/query refreshes so Update Profile
-  // cannot restore an older backend signature over an unsaved local change.
+  // Sync signature from backend unless a local draft is present.
+  // This allows stale query snapshots to self-correct after remounts while
+  // still protecting unsaved local edits and recent saves.
   useEffect(() => {
-    if (
-      signatureInitialized.current ||
-      businessProfile === undefined ||
-      userData === undefined
-    )
-      return;
-
-    signatureInitialized.current = true;
+    if (businessProfile === undefined || userData === undefined) return;
     const savedSignature = (businessProfile?.contactInfo as { signature?: string } | null)
       ?.signature;
     const localDraft = readEmailSignatureDraft(
@@ -229,10 +221,14 @@ export function Settings() {
       clearEmailSignatureDraft(getSignatureDraftStorage(), userData?._id);
     }
 
-    setEmailConfig((prev) => ({
-      ...prev,
-      signature: initialSignature.signature,
-    }));
+    setEmailConfig((prev) =>
+      prev.signature === initialSignature.signature
+        ? prev
+        : {
+            ...prev,
+            signature: initialSignature.signature,
+          },
+    );
   }, [businessProfile, userData]);
 
   const handlePreferencesUpdate = async (
