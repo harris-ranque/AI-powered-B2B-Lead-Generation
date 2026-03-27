@@ -698,44 +698,6 @@ if (import.meta.env.MODE === 'development') {
 
 ---
 
-## Implementation Checklist
-
-### Phase 1: Foundation ✅
-- [x] PostHog provider configured
-- [x] useAnalytics hook created with correct `$set`/`$set_once` support
-- [x] Documentation in CLAUDE.md
-- [x] User identification implemented (AuthAnalyticsProvider + Dashboard)
-- [x] Dashboard navigation tracking
-
-### Phase 2: Core Product ✅
-- [x] Search creation tracking
-- [x] Search completion tracking
-- [x] Search cancellation tracking
-- [x] Export initiated tracking
-- [x] Export completed tracking
-- [x] Export failed tracking
-- [ ] Pipeline stage completion tracking
-
-### Phase 3: Conversion Funnel 🟡
-- [x] Authentication events (sign up, sign in, sign out) - via AuthAnalyticsProvider
-- [ ] Onboarding flow tracking
-- [ ] Credit purchase events
-- [ ] Subscription upgrade/downgrade events
-
-### Phase 4: Engagement & Polish 🟢
-- [ ] Settings change tracking
-- [ ] Help widget interaction
-- [ ] Research tier selection
-- [ ] Error event tracking
-- [ ] Performance metrics
-
-### Phase 5: Advanced Analytics ✅
-- [x] LangGraph worker integration
-- [x] AI agent performance tracking (LangChain callback handler)
-- [x] API call tracking (Tavily, Perplexity Sonar, Deep Research)
-- [ ] Research tier A/B testing
-- [ ] Correlation with user outcomes
-
 ---
 
 ## Success Metrics

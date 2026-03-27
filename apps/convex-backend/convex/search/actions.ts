@@ -2069,23 +2069,6 @@ export const completeSearch: any = action({
         },
       );
 
-      // Send completion notification
-      try {
-        await ctx.runAction(
-          internal.notifications.actions.sendSearchCompletedEmail,
-          {
-            searchId: args.searchId,
-            results: results,
-          },
-        );
-      } catch (error) {
-        // Don't fail the completion if email fails
-        console.warn(
-          `Failed to send completion email for search ${args.searchId}:`,
-          error,
-        );
-      }
-
       const performanceData = endPerformanceTracking(performanceTracker);
       
       logWithCorrelation(

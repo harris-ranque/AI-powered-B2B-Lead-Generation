@@ -144,15 +144,6 @@ export interface EmailGenerationResult {
 export type Billing = Doc<"billing">;
 export type CreditTransaction = Doc<"creditTransactions">;
 
-// Notification types
-export type Notification = Doc<"notifications">;
-export type NotificationType =
-  | "search_completed"
-  | "credits_low"
-  | "plan_upgraded"
-  | "system_alert"
-  | "email_sent";
-
 // Analytics types
 export interface UserStats {
   totalSearches: number;

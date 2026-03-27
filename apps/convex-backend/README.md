@@ -1,6 +1,6 @@
 # Genni Convex Backend
 
-This is the Convex backend for Genni, an AI-powered lead generation platform that combines Google Maps search, contact enrichment, and CrewAI-powered email personalization.
+This is the Convex backend for Genni, an AI-powered lead generation platform that combines Google Maps search, contact enrichment, and LangGraph-powered email personalization.
 
 ## Overview
 
@@ -14,7 +14,7 @@ The backend is built on Convex, providing real-time data synchronization, server
 - **Business Profiles**: Company information for AI personalization
 - **Search & Discovery**: Google Maps API integration for lead discovery
 - **Lead Management**: Contact storage, enrichment, and AI analysis
-- **Email Generation**: CrewAI integration for personalized emails
+- **Email Generation**: LangGraph integration for personalized emails
 - **Billing**: Stripe integration with credit-based usage
 - **Admin**: Dashboard and user management
 - **Notifications**: Real-time alerts and email notifications
@@ -23,7 +23,7 @@ The backend is built on Convex, providing real-time data synchronization, server
 
 - **Google Maps API**: Business discovery and location data
 - **FindyMail API**: Contact information enrichment
-- **CrewAI Worker**: AI-powered email generation and analysis
+- **LangGraph Worker**: AI-powered email generation and analysis
 - **Stripe**: Payment processing and subscription management
 - **Email Services**: Transactional email delivery
 
@@ -90,9 +90,9 @@ GOOGLE_MAPS_API_KEY=your-api-key
 # FindyMail API (for contact enrichment)
 FINDYMAIL_API_KEY=your-api-key
 
-# CrewAI Worker (for AI email generation)
-CREWAI_URL=http://your-worker-url
-CREWAI_API_KEY=your-secure-key
+# LangGraph Worker (for AI email generation)
+LANGGRAPH_URL=http://your-worker-url
+LANGGRAPH_API_KEY=your-secure-key
 
 # Stripe (for payments)
 STRIPE_SECRET_KEY=sk_your-key
@@ -143,8 +143,8 @@ ENABLE_WEBHOOK_RETRIES=true
 
 ### Webhooks
 
-- `POST /webhooks/crewai/email-completed` - CrewAI email generation
-- `POST /webhooks/crewai/analysis-completed` - CrewAI lead analysis
+- `POST /webhooks/langgraph/email-completed` - LangGraph email generation
+- `POST /webhooks/langgraph/analysis-completed` - LangGraph lead analysis
 - `POST /webhooks/stripe` - Stripe payment events
 - `POST /webhooks/findymail/enrichment-completed` - Contact enrichment
 
@@ -161,7 +161,7 @@ ENABLE_WEBHOOK_RETRIES=true
 1. **Search Creation**: User defines search parameters
 2. **Google Maps Discovery**: Find businesses using Places API with spatial tiling
 3. **Contact Enrichment**: Enhance leads with FindyMail
-4. **AI Analysis**: CrewAI analyzes leads for relevance
+4. **AI Analysis**: LangGraph analyzes leads for relevance
 5. **Email Generation**: Personalized emails created by AI
 6. **Real-time Updates**: Progress tracked and displayed live
 

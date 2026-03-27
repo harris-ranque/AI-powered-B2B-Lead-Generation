@@ -22,8 +22,6 @@ This guide provides step-by-step instructions to implement the testing framework
 # Check frontend testing works
 cd apps/web
 pnpm test
-
-# Expected: 2 tests pass (GenniApp, PipelineProgressPanel)
 ```
 
 ### 2. Install Additional Dependencies

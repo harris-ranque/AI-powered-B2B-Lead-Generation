@@ -843,47 +843,6 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_lead", ["leadId"]),
 
-  // Notifications - System notifications and emails
-  notifications: defineTable({
-    userId: v.id("users"),
-    type: v.union(
-      v.literal("search_completed"),
-      v.literal("credits_low"),
-      v.literal("plan_upgraded"),
-      v.literal("plan_updated"),
-      v.literal("credit_alert"),
-      v.literal("system_alert"),
-      v.literal("email_sent"),
-    ),
-    title: v.string(),
-    message: v.string(),
-    data: v.optional(v.any()),
-
-    // Status
-    read: v.boolean(),
-    sent: v.boolean(),
-
-    // Email details (if applicable)
-    emailSent: v.optional(
-      v.object({
-        to: v.string(),
-        subject: v.string(),
-        sentAt: v.number(),
-        provider: v.string(),
-      }),
-    ),
-
-    createdAt: v.number(),
-    readAt: v.optional(v.number()),
-  })
-    .index("by_user", ["userId"])
-    .index("by_type", ["type"])
-    .index("by_read", ["read"])
-    .index("by_created", ["createdAt"])
-    // Compound indexes for notification queries
-    .index("by_user_read", ["userId", "read"])
-    .index("by_user_read_created", ["userId", "read", "createdAt"]),
-
   // Admin Metrics - Aggregated data for admin dashboard
   adminMetrics: defineTable({
     date: v.string(), // YYYY-MM-DD format
