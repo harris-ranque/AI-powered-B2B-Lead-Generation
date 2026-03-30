@@ -110,10 +110,10 @@ FROM nginx:alpine
 COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
 
 # Copy comprehensive nginx config as template
-COPY apps/web/nginx.conf /etc/nginx/nginx.conf.template
+COPY --from=builder /app/apps/web/nginx.conf /etc/nginx/nginx.conf.template
 
 # Copy and setup startup script that substitutes PORT and starts nginx
-COPY apps/web/docker-entrypoint.sh /docker-entrypoint.sh
+COPY --from=builder /app/apps/web/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 # Railway will set PORT environment variable
