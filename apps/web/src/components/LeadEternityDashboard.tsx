@@ -53,6 +53,7 @@ import {
 import { ToastAction } from "@/components/ui/toast";
 import { ClerkUserButton } from "@/components/auth/ClerkAuthWrapper";
 import { withErrorBoundary } from "@/utils/errorHandling";
+import { ConvexErrorBoundary } from "./ConvexErrorBoundary";
 import { createLogger } from "@/utils/logger";
 import { applyAppTheme, getStoredAppTheme, type AppThemeKey } from "@/lib/appTheme";
 import { useAnalytics } from "@/hooks/useAnalytics";
@@ -850,13 +851,17 @@ function LeadEternityDashboardContent() {
                   Configure your Genni platform preferences and AI settings.
                 </p>
               </div>
-              <SettingsComponent />
+              <ConvexErrorBoundary>
+                <SettingsComponent />
+              </ConvexErrorBoundary>
             </div>
           )}
 
           {currentTab === "admin" && isAdmin && (
             <div>
-              <AdminDashboard isAdmin={isAdmin} />
+              <ConvexErrorBoundary>
+                <AdminDashboard isAdmin={isAdmin} />
+              </ConvexErrorBoundary>
             </div>
           )}
         </div>

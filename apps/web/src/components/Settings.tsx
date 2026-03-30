@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
+import { useSafeQuery } from "@/hooks/useSafeQuery";
 import { api } from "@genni/convex-types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -65,7 +66,7 @@ export function Settings() {
   const userData = useQuery(api.users.queries.getCurrentUserData);
   const userPreferences = useQuery(api.users.queries.getUserPreferences);
   const businessProfile = useQuery(api.profile.queries.getCurrentProfile);
-  const notificationCounts = useQuery(
+  const notificationCounts = useSafeQuery(
     api.notifications.queries.getNotificationCounts,
   );
 
