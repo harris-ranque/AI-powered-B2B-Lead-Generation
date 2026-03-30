@@ -1,11 +1,7 @@
 # Railway Frontend Configuration - Build from monorepo root
 [build]
 builder = "DOCKERFILE"
-# Build from monorepo root to access convex-backend for codegen
-context = "../.."
-dockerfile = "apps/web/Dockerfile"
-# Exit on test failures to prevent deployment of broken code
-buildCommand = "echo 'Starting build with integrated testing...'"
+dockerfilePath = "apps/web/Dockerfile"
 
 [deploy]
 healthcheckPath = "/"
