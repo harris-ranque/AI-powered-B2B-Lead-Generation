@@ -999,6 +999,29 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_timestamp", ["timestamp"]),
 
+  // Notifications - User notification records
+  notifications: defineTable({
+    userId: v.id("users"),
+    type: v.union(
+      v.literal("search_completed"),
+      v.literal("credits_low"),
+      v.literal("plan_upgraded"),
+      v.literal("plan_updated"),
+      v.literal("credit_alert"),
+      v.literal("system_alert"),
+      v.literal("email_sent"),
+    ),
+    title: v.string(),
+    message: v.string(),
+    data: v.optional(v.any()),
+    read: v.boolean(),
+    readAt: v.optional(v.number()),
+    sent: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_read", ["userId", "read"]),
+
   // Retry tracking for failed operations
   retryRecords: defineTable({
     operationType: v.union(
