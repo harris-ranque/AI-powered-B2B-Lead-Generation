@@ -1467,6 +1467,23 @@ class ResearchOrchestrator:
         tavily_data_points = 0
         tavily_sources = 0
 
+        # TEMPORARY: Skip Perplexity when quota is exhausted — return empty result
+        # to allow email generation testing without research. Remove when quota is restored.
+        _skip_perplexity = os.getenv("SKIP_PERPLEXITY_RESEARCH", "").lower() in ("true", "1", "yes")
+        if _skip_perplexity:
+            logger.warning(f"SKIP_PERPLEXITY_RESEARCH enabled — returning empty research for {company_name}")
+            empty_result = ResearchResult(
+                query=company_name,
+                tier=ResearchTier.PERPLEXITY,
+                confidence_score=0.2,
+                data_points=0,
+                sources_analyzed=0,
+                company_overview=f"{company_name} is a business.",
+                error="Skipped - SKIP_PERPLEXITY_RESEARCH enabled",
+            )
+            _emit_summary(empty_result, validation_score=0.0, missing_data_points=[])
+            return empty_result
+
         # Tier 2: Sonar Pro (PRIMARY research tier - runs for ALL leads)
         logger.info(f"Running Sonar Pro research for {company_name}")
         perplexity_client = self.client_registry.get_perplexity_client(
