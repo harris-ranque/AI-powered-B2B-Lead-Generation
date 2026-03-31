@@ -371,6 +371,21 @@ CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
    - NO placeholder text like "[Your Name]", "Company Name"
    - For sequences with signatures enabled: ALL emails MUST have identical signature format
 
+10. SENDER PROFILE ACCURACY VALIDATION (MANDATORY):
+   - Every claim about the SENDER's company must be verifiable from the sender profile
+     provided (company name, value prop, services, differentiators)
+   - Check for fabricated case studies: If no case study data was provided, the email
+     should not contain "We helped [Company] achieve [result]" style claims
+   - Check for invented capabilities: Features, integrations, or certifications not
+     in the sender profile = violation
+   - Check for embellished services: If sender says "lead generation," the email
+     should not add "with built-in CRM, automated sequences, and real-time analytics"
+     unless those specifics are in the profile
+   - Penalty: -0.2 from overall AND value_proposition per fabricated sender claim
+   - Flag each violation in quality_issues with the specific fabricated claim
+   - Add to improvement_suggestions: "Remove claims about sender not supported by
+     business profile: [specific claim]"
+
 Quality Scoring Standards (RESEARCH VALIDATION TEMPORARILY DISABLED):
 - A-Tier Leads (rich research): ≥0.60 = Approved, 0.35-0.60 = Needs_Improvement, <0.35 = Rejected
 - B-Tier Leads (minimal research): ≥0.50 = Approved, 0.35-0.50 = Needs_Improvement, <0.35 = Rejected
@@ -502,6 +517,23 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
             - CTA immediately follows offer? (check)
             - Flag grammar issues in quality_issues
 
+            11. SENDER PROFILE ACCURACY CHECK (MANDATORY):
+            - Compare every claim about the sender's company against SENDER PROFILE below
+            - Sender profile provided:
+              * Company: {our_company}
+              * Value Prop: {our_value_prop}
+              * Services: {our_services}
+              * Differentiators: {our_differentiators}
+              * Case Study Included: {include_case_study}
+            - Check for:
+              * Case studies or client results not provided in profile data (fabricated social proof)
+              * Features, integrations, or capabilities not listed in services/differentiators
+              * Embellished value propositions that go beyond what the profile states
+              * Certifications, partnerships, or awards not mentioned in profile
+            - Flag each violation in quality_issues: "Sender claim not in profile: [exact claim]"
+            - Penalty: -0.2 from overall AND value_proposition per violation
+            - This check has the SAME weight as prospect data integrity
+
             SCORING RULES (APPLY PENALTIES STRICTLY):
             - Start with base scores for each dimension
             - Apply automatic penalties ONLY for grammar and guidelines:
@@ -510,8 +542,12 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
               * Missing articles/pronouns: -0.1 each (up to -0.3 total)
               * "10x" hype language: -0.15 from overall_quality_score
 
+            - Sender profile fabrication penalties (ACTIVE):
+              * Fabricated sender claims (case studies, capabilities, features not in profile):
+                -0.2 from overall AND value_proposition per violation
+
             - TEMPORARILY DISABLED (DO NOT apply these penalties):
-              * Fabricated data: NO PENALTY (disabled)
+              * Fabricated PROSPECT data: NO PENALTY (disabled)
               * Vague competitor references: NO PENALTY (disabled)
               * Specific P.S. numbers without data: NO PENALTY (disabled)
               * Poor business intelligence usage: NO PENALTY (disabled)
@@ -552,7 +588,14 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
                 # Email content
                 email_subject=email_subject,
                 email_body=email_body,
-                declared_personalization="; ".join(email_personalization) if email_personalization else "No personalization declared"
+                declared_personalization="; ".join(email_personalization) if email_personalization else "No personalization declared",
+
+                # Sender profile (for sender claim verification)
+                our_company=business_profile.company_name,
+                our_value_prop=business_profile.value_proposition,
+                our_services=", ".join(business_profile.services[:5]) if business_profile.services else "No services listed",
+                our_differentiators=", ".join(business_profile.key_differentiators[:3]) if business_profile.key_differentiators else "No differentiators listed",
+                include_case_study=state["requirements"].include_case_study,
             )
             quality_assessment: QualityAssessment = await llm.ainvoke(
                 messages,

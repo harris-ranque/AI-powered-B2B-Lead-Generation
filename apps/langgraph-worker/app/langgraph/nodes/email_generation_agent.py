@@ -702,6 +702,41 @@ B-tier email priorities:
 - Generic industry value propositions over specific competitor insights
 - Clear CTA and concise body over research-heavy content
 
+SENDER PROFILE INTEGRITY (SAME PRIORITY AS PROSPECT DATA):
+
+The sender's business profile is the ONLY source of truth for what they offer.
+Apply the same zero-fabrication standard you use for prospect data.
+
+Rules:
+- Only reference services listed in {our_services}. If it's not listed, don't pitch it.
+- Only reference differentiators listed in {our_differentiators}. Don't invent advantages.
+- Only reference capabilities implied by {our_value_prop}. Don't add features.
+- Case studies and proof points: ONLY include if {include_case_study} is true AND specific
+  results are provided in the business intelligence or sender profile. Never invent a case
+  study, client name, or result metric on behalf of the sender.
+- Integrations, partnerships, certifications: Only mention if explicitly stated in the
+  sender profile. "Works with your existing HubSpot" is only valid if the sender's profile
+  mentions HubSpot compatibility.
+- If the sender profile is vague (e.g., "we help businesses grow"), keep the email's claims
+  equally vague. Don't sharpen a vague profile into specific capabilities.
+
+What this looks like in practice:
+- Sender profile says "AI-powered lead generation" → You can say "AI-powered lead generation."
+  You cannot say "AI-powered lead generation with built-in CRM integration and automated
+  follow-up sequences" unless those specifics are in the profile.
+- Sender profile lists no case studies → You cannot write "We helped [Company] achieve [result]."
+  Use the offer framing instead: "I built a demo showing how this would work for [prospect]."
+- Sender profile says "smart locks for real estate" → You can pitch smart locks to real estate
+  leads. You cannot add "with biometric scanning and cloud-based access management" unless
+  those features are stated.
+
+SERVICE-TO-VERTICAL MATCHING:
+When the sender's profile lists multiple services for different verticals:
+- Match the service most relevant to this lead's industry, size, and pain points.
+- Pitch only that service. Don't list the full catalog.
+- If no clear match exists, lead with the service closest to the lead's industry and
+  keep the pitch general.
+
 CALL TO ACTION:
 - One simple sentence
 - Specific time ask (15-30 minutes)
@@ -1021,6 +1056,17 @@ You have access to comprehensive business intelligence. USE IT EXCLUSIVELY.
      BAD: "I mapped out 3 quick wins for CloudCo's setup - works with your existing HubSpot data, zero workflow disruption."
      GOOD: "Three marketing automation companies at your stage cut churn from 8% to under 5%."
      BAD: "Three companies at your stage - marketing automation - cut churn from 8% to under 5%."
+
+10. Sender Profile Accuracy (SAME STANDARD AS PROSPECT DATA):
+    - Only pitch services listed in OUR COMPANY PROFILE above
+    - Never invent case studies, client names, results, or capabilities not in the profile
+    - Never add integrations, features, or certifications the sender didn't list
+    - If {include_case_study} is false or no case study data is provided, don't fabricate one
+    - If the sender profile is vague, keep your claims vague to match
+    - When multiple services are listed, pitch ONLY the one most relevant to this lead's
+      {industry} and pain points — not the full catalog
+    - The sender's profile deserves the same respect as the prospect's research:
+      if it's not in the data, it's not in the email
 
 SUBJECT LINE REQUIREMENTS (HIGHEST PRIORITY):
 
@@ -1362,8 +1408,8 @@ Target score: ≥0.65 for approval.
             our_contact_phone=sender_phone or "",
             our_contact_website=sender_website or sender_linkedin or "",
             our_value_prop=business_profile.value_proposition,
-            our_services=", ".join(business_profile.services[:5]),
-            our_differentiators=", ".join(business_profile.key_differentiators[:3]),
+            our_services=", ".join(business_profile.services[:5]) if business_profile.services else "No services listed",
+            our_differentiators=", ".join(business_profile.key_differentiators[:3]) if business_profile.key_differentiators else "No differentiators listed",
 
             # Requirements
             tone=requirements.tone,
