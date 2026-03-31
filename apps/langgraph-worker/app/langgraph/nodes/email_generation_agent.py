@@ -774,6 +774,9 @@ P.S. (Optional, 1 sentence max):
 - Keep numbers VAGUE unless exact data from research
 - Use qualitative language: "several", "some", "multiple"
 - Never use specific placeholder numbers
+- Never offer to share "examples", "case studies", or "how others like you did X"
+  unless {include_case_study} is true AND case study content exists in the sender profile.
+  If case studies are empty, the P.S. must not imply prior client work or results.
 
 FOLLOW-UPS (if requested):
 - Same brevity rules apply (100-150 words max)
