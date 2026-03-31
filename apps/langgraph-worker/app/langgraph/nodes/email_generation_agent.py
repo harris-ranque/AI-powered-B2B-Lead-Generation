@@ -489,14 +489,18 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         openai_api_key = provider_key_map.get("openai") if using_user_keys else None
         email_model = settings.email_generation_model or settings.default_model
         email_token_budget = settings.clamp_tokens(settings.email_generation_max_tokens)
-        llm = registry.get_openai_client(
-            api_key=openai_api_key,
-            model=email_model,
-            temperature=0.4,
-            max_completion_tokens=email_token_budget,
-            reasoning_effort="low",  # GPT-5.1 supports: low, medium, high
-            require_user_key=using_user_keys,
-        ).with_structured_output(EmailSequence)
+        email_model_lower = email_model.lower()
+        is_reasoning_model = "o1" in email_model_lower or "gpt-5" in email_model_lower
+        email_llm_kwargs = {
+            "api_key": openai_api_key,
+            "model": email_model,
+            "temperature": 0.4,
+            "max_completion_tokens": email_token_budget,
+            "require_user_key": using_user_keys,
+        }
+        if is_reasoning_model:
+            email_llm_kwargs["reasoning_effort"] = "low"
+        llm = registry.get_openai_client(**email_llm_kwargs).with_structured_output(EmailSequence)
         
         # Create comprehensive email generation prompt - EXACT VERBATIM from master prompt
         prompt = ChatPromptTemplate.from_messages([

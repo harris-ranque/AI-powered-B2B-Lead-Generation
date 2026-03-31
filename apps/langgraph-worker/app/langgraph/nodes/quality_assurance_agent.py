@@ -283,14 +283,18 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         openai_api_key = provider_key_map.get("openai") if using_user_keys else None
         qa_model = settings.quality_assurance_model or settings.default_model
         qa_token_budget = settings.clamp_tokens(settings.quality_assurance_max_tokens)
-        llm = registry.get_openai_client(
-            api_key=openai_api_key,
-            model=qa_model,
-            temperature=0.2,
-            max_completion_tokens=qa_token_budget,
-            reasoning_effort="low",  # GPT-5.1 supports: low, medium, high
-            require_user_key=using_user_keys,
-        ).with_structured_output(QualityAssessment)
+        qa_model_lower = qa_model.lower()
+        is_reasoning_model = "o1" in qa_model_lower or "gpt-5" in qa_model_lower
+        qa_llm_kwargs = {
+            "api_key": openai_api_key,
+            "model": qa_model,
+            "temperature": 0.2,
+            "max_completion_tokens": qa_token_budget,
+            "require_user_key": using_user_keys,
+        }
+        if is_reasoning_model:
+            qa_llm_kwargs["reasoning_effort"] = "low"
+        llm = registry.get_openai_client(**qa_llm_kwargs).with_structured_output(QualityAssessment)
         
         # Create comprehensive quality assessment prompt - ALIGNED WITH EXACT EMAIL GENERATION STANDARDS
         prompt = ChatPromptTemplate.from_messages([
