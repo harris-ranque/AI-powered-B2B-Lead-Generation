@@ -1217,6 +1217,15 @@ class ClientRegistry:
             raise ValueError("OpenAI API key is required to create a client")
 
         model_name = model or settings.default_model
+
+        # Detect OpenRouter models (e.g. "google/gemini-3-flash-preview")
+        # and route through OpenRouter's OpenAI-compatible API
+        is_openrouter = "/" in model_name and not model_name.startswith("ft:")
+        if is_openrouter:
+            openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+            if openrouter_key:
+                resolved_key = openrouter_key
+
         identifier = self._build_identifier(resolved_key, model_name, tuple(sorted(kwargs.items())))
         cache_key = CacheKey("openai", identifier)
 
@@ -1225,6 +1234,8 @@ class ClientRegistry:
                 "model": model_name,
                 "openai_api_key": resolved_key,
             }
+            if is_openrouter:
+                client_kwargs["openai_api_base"] = "https://openrouter.ai/api/v1"
             client_kwargs.update(kwargs)
             return ChatOpenAI(**client_kwargs)
 
