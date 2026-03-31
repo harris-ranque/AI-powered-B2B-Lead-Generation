@@ -341,13 +341,14 @@ CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
      GOOD: "I noticed RevCo closed a Series A last month"
      BAD: "Noticed RevCo closed Series A last month"
 
-5. DATA INTEGRITY VALIDATION (TEMPORARILY DISABLED):
-   - SKIP all research quality checks for now
-   - DO NOT penalize for poor business intelligence
-   - DO NOT penalize for generic competitor references
-   - DO NOT penalize for lack of specific numbers
-   - Focus ONLY on grammar, structure, and guidelines
-   - Research quality issues: flag but don't reject
+5. DATA INTEGRITY VALIDATION (TEMPORARILY DISABLED — PROSPECT DATA ONLY):
+   - SKIP research quality checks for PROSPECT data only
+   - DO NOT penalize for poor business intelligence about the prospect
+   - DO NOT penalize for generic competitor references about the prospect
+   - DO NOT penalize for lack of specific prospect numbers
+   - Focus ONLY on grammar, structure, and guidelines for prospect claims
+   - NOTE: This disable does NOT apply to SENDER data — check #11 (sender profile
+     accuracy) is FULLY ACTIVE and mandatory. Sender fabrications MUST be flagged.
 
 6. P.S. VALIDATION (if present):
    - Numbers MUST be VAGUE unless exact data from research
@@ -529,11 +530,19 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
               * Services: {our_services}
               * Differentiators: {our_differentiators}
               * Case Study Included: {include_case_study}
-            - Check for:
-              * Case studies or client results not provided in profile data (fabricated social proof)
-              * Features, integrations, or capabilities not listed in services/differentiators
-              * Embellished value propositions that go beyond what the profile states
-              * Certifications, partnerships, or awards not mentioned in profile
+            - Check for ALL of the following violations:
+              a) Services pitched that are not in {our_services} — e.g., if services = "marketing
+                 consulting" but email says "workshops", "funnels", "campaigns", or "CRM setup",
+                 that is a violation. Use the exact term from the profile, not invented sub-services.
+              b) ROI numbers, percentages, or outcome metrics not present in the sender profile —
+                 even if framed as "typical results" or "industry average" (e.g., "5-15x ROI",
+                 "raise inquiry rates to 3-5%"). If the number isn't in the profile, it's fabricated.
+              c) Specific methodologies or deliverables invented to flesh out a vague value prop
+                 (e.g., value prop = "get more customers" but email describes "a spotlight and offer
+                 code program" — that specific mechanism is not in the profile)
+              d) Case studies or client results not provided in profile data (fabricated social proof)
+              e) Features, integrations, or certifications not listed in services/differentiators
+              f) Embellished value propositions that go beyond what the profile states
             - Flag each violation in quality_issues: "Sender claim not in profile: [exact claim]"
             - Penalty: -0.2 from overall AND value_proposition per violation
             - This check has the SAME weight as prospect data integrity
@@ -546,15 +555,10 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
               * Missing articles/pronouns: -0.1 each (up to -0.3 total)
               * "10x" hype language: -0.15 from overall_quality_score
 
-            - Sender profile fabrication penalties (ACTIVE):
-              * Fabricated sender claims (case studies, capabilities, features not in profile):
-                -0.2 from overall AND value_proposition per violation
-
-            - TEMPORARILY DISABLED (DO NOT apply these penalties):
-              * Fabricated PROSPECT data: NO PENALTY (disabled)
-              * Vague competitor references: NO PENALTY (disabled)
-              * Specific P.S. numbers without data: NO PENALTY (disabled)
-              * Poor business intelligence usage: NO PENALTY (disabled)
+            - Sender profile fabrication penalties (ACTIVE — enforced in Python after scoring):
+              * Each "Sender claim not in profile:" entry in quality_issues:
+                -0.2 from overall AND value_proposition per entry
+              * These penalties are applied deterministically in code — score them accurately
 
             APPROVAL DECISION:
             - Calculate final overall_quality_score after all penalties
@@ -637,6 +641,31 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
         except Exception as llm_error:
             logger.error(f"LLM quality assessment failed for {lead.company_name}: {str(llm_error)}")
             raise
+
+        # Programmatic sender profile penalty enforcement
+        # The LLM is instructed to prefix sender violations with "Sender claim not in profile:"
+        # We count them here and apply -0.2 per violation deterministically in Python,
+        # so the penalty cannot be rationalized away by soft LLM scoring.
+        sender_violations = [
+            issue for issue in quality_assessment.quality_issues
+            if issue.lower().startswith("sender claim not in profile")
+        ]
+        if sender_violations:
+            violation_count = len(sender_violations)
+            penalty = violation_count * 0.2
+            new_overall = max(0.0, quality_assessment.overall_quality_score - penalty)
+            new_value_prop = max(0.0, quality_assessment.value_proposition_score - penalty)
+            logger.warning(
+                f"Sender profile violations for {lead.company_name}: "
+                f"{violation_count} violation(s), applying -{penalty:.1f} penalty "
+                f"(overall: {quality_assessment.overall_quality_score:.2f} → {new_overall:.2f})"
+            )
+            for v in sender_violations:
+                logger.warning(f"  Violation: {v}")
+            quality_assessment = quality_assessment.model_copy(update={
+                "overall_quality_score": new_overall,
+                "value_proposition_score": new_value_prop,
+            })
 
         placeholder_patterns = [
             re.compile(r"\[[^\]]*(?:your|company|insert|name|title|placeholder)[^\]]*\]", re.IGNORECASE),
@@ -896,7 +925,7 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
             "previous_quality_feedback": updated_feedback,
             "quality_assessment": {
                 "overall_quality_score": quality_assessment.overall_quality_score,
-                "approval_status": quality_assessment.approval_status,
+                "approval_status": approval_status,  # Use tier-aware value, not LLM's raw value
                 "personalization_score": quality_assessment.personalization_score,
                 "business_context_score": quality_assessment.business_context_score,
                 "professional_tone_score": quality_assessment.professional_tone_score,

@@ -714,23 +714,38 @@ Apply the same zero-fabrication standard you use for prospect data.
 Rules:
 - Only reference services listed in {our_services}. If it's not listed, don't pitch it.
 - Only reference differentiators listed in {our_differentiators}. Don't invent advantages.
-- Only reference capabilities implied by {our_value_prop}. Don't add features.
-- Case studies and proof points: ONLY include if {include_case_study} is true AND specific
-  results are provided in the business intelligence or sender profile. Never invent a case
-  study, client name, or result metric on behalf of the sender.
+- Describe the sender's offering using the SAME words and SAME level of specificity as
+  {our_value_prop}. Do NOT invent the mechanism, methodology, or specific deliverable.
+  If the profile says "marketing consulting", say "marketing consulting" — not "workshops",
+  "funnels", "campaigns", "CRM tracking", or any other specific tactic unless it is
+  explicitly in {our_services} or {our_value_prop}.
+- ROI numbers, percentages, and outcome metrics: NEVER cite these unless they appear
+  verbatim in {our_differentiators} or a verified case study. This includes numbers
+  framed as "typical", "achievable", or "industry average" — if the sender's profile
+  does not contain the number, it must not appear in the email. Do NOT borrow numbers
+  from the prospect's industry research to imply the sender's results (e.g., "companies
+  like yours achieve X%" from research data cannot be rephrased as a sender outcome).
+- Case studies and proof points: ONLY include if {include_case_study} is true AND actual
+  case study content is listed in the sender profile below. If {include_case_study} is
+  true but no case study data appears in the profile, treat it as false — do not fabricate
+  a case study. Never invent a case study, client name, or result metric.
 - Integrations, partnerships, certifications: Only mention if explicitly stated in the
   sender profile. "Works with your existing HubSpot" is only valid if the sender's profile
   mentions HubSpot compatibility.
 - If the sender profile is vague (e.g., "we help businesses grow"), keep the email's claims
-  equally vague. Don't sharpen a vague profile into specific capabilities.
+  equally vague. Do NOT sharpen a vague profile into specific tactics, tools, or numbers.
 
 What this looks like in practice:
-- Sender profile says "AI-powered lead generation" → You can say "AI-powered lead generation."
-  You cannot say "AI-powered lead generation with built-in CRM integration and automated
-  follow-up sequences" unless those specifics are in the profile.
-- Sender profile lists no case studies → You cannot write "We helped [Company] achieve [result]."
-  Use the offer framing instead: "I built a demo showing how this would work for [prospect]."
-- Sender profile says "smart locks for real estate" → You can pitch smart locks to real estate
+- Profile services = "marketing consulting" → Say "marketing consulting." You cannot say
+  "marketing workshops", "traffic campaigns", "lead funnels", or "CRM setup" — those are
+  invented specifics not in the profile.
+- Profile value prop = "get more customers into their space" → You can echo that framing.
+  You cannot translate it into "boost inquiry rates to 3-5%" or "5-15x ROI" — those numbers
+  don't exist in the profile.
+- Profile lists no case studies → You cannot write "We helped [Company] achieve [result]"
+  and you cannot write "typical results are X%" either. Use the offer framing instead:
+  "I built a quick plan showing how this could work for [prospect]."
+- Profile says "smart locks for real estate" → You can pitch smart locks to real estate
   leads. You cannot add "with biometric scanning and cloud-based access management" unless
   those features are stated.
 
@@ -1062,11 +1077,16 @@ You have access to comprehensive business intelligence. USE IT EXCLUSIVELY.
      BAD: "Three companies at your stage - marketing automation - cut churn from 8% to under 5%."
 
 10. Sender Profile Accuracy (SAME STANDARD AS PROSPECT DATA):
-    - Only pitch services listed in OUR COMPANY PROFILE above
+    - Only pitch services listed in OUR COMPANY PROFILE above — use the same words, not
+      invented sub-services (e.g., if profile says "marketing consulting", say that — not
+      "workshops", "funnels", "campaigns", or "CRM setup")
+    - Never cite ROI numbers, percentages, or outcome metrics that are not explicitly in
+      the sender profile — this includes numbers framed as "typical" or "industry average"
     - Never invent case studies, client names, results, or capabilities not in the profile
     - Never add integrations, features, or certifications the sender didn't list
     - If {include_case_study} is false or no case study data is provided, don't fabricate one
-    - If the sender profile is vague, keep your claims vague to match
+    - If the sender profile is vague, keep your claims vague to match — do not translate a
+      vague value prop into specific tactics or specific measurable outcomes
     - When multiple services are listed, pitch ONLY the one most relevant to this lead's
       {industry} and pain points — not the full catalog
     - The sender's profile deserves the same respect as the prospect's research:

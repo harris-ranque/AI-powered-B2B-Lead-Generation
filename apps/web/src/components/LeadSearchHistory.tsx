@@ -154,7 +154,10 @@ export function LeadSearchHistory() {
 
       setDownloadingId(searchId);
       const res = await fetch(exportUrl, { method: "GET" });
-      if (!res.ok) throw new Error("Export failed");
+      if (!res.ok) {
+        const message = await res.text().catch(() => "Export failed");
+        throw new Error(message);
+      }
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -169,9 +172,10 @@ export function LeadSearchHistory() {
       toast({ title: "Export Complete", description: "CSV download started." });
     } catch (err) {
       console.error("CSV export error", err);
+      const message = err instanceof Error ? err.message : "Could not download CSV. Please try again.";
       toast({
         title: "Export Failed",
-        description: "Could not download CSV. Please try again.",
+        description: message,
         variant: "destructive",
       });
     } finally {
