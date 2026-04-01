@@ -66,7 +66,9 @@ export const checkAddressDuplicatePage = internalQuery({
     const duplicate = await ctx.db
       .query("leads")
       .withIndex("by_user_normalized_address", (q) =>
-        q.eq("userId", args.userId).eq("normalizedAddress", args.normalizedAddress)
+        q
+          .eq("userId", args.userId)
+          .eq("normalizedAddress", args.normalizedAddress),
       )
       .first();
 
@@ -110,13 +112,13 @@ export const checkEmailDuplicatePage = internalQuery({
     const duplicates = await ctx.db
       .query("leads")
       .withIndex("by_user_primary_email", (q) =>
-        q.eq("userId", args.userId).eq("primaryEmail", targetEmail)
+        q.eq("userId", args.userId).eq("primaryEmail", targetEmail),
       )
       .take(2); // Take 2 to handle excludeLeadId case
 
     // Find first match that isn't the excluded lead
     const duplicate = duplicates.find(
-      (lead) => !args.excludeLeadId || lead._id !== args.excludeLeadId
+      (lead) => !args.excludeLeadId || lead._id !== args.excludeLeadId,
     );
 
     if (duplicate) {
@@ -188,7 +190,11 @@ export const updateEnrichmentStatus = internalMutation({
 
     // Clear contactInfo for failed enrichments to prevent false positives in UI
     // Note: no_contacts_found keeps the lead but without contact info
-    if (args.status === "failed" || args.status === "completed_fallback" || args.status === "no_contacts_found") {
+    if (
+      args.status === "failed" ||
+      args.status === "completed_fallback" ||
+      args.status === "no_contacts_found"
+    ) {
       updateData.contactInfo = {
         emails: [],
         contacts: [],
@@ -261,7 +267,7 @@ export const markLeadAsEmailDuplicate = internalMutation({
     const search = await ctx.db.get(args.searchId);
 
     console.log(
-      `Duplicate email detected after enrichment: ${args.duplicateEmail} for lead ${args.leadId}, marking as duplicate`
+      `Duplicate email detected after enrichment: ${args.duplicateEmail} for lead ${args.leadId}, marking as duplicate`,
     );
 
     // Track duplicate prevention for analytics
@@ -351,7 +357,7 @@ export const checkEmailDuplication = internalMutation({
     // 2. checkEmailDuplicatePage query in a loop
     // 3. markLeadAsEmailDuplicate mutation if duplicate found
     console.warn(
-      "DEPRECATED: checkEmailDuplication mutation called. Use action-based approach for >5000 leads."
+      "DEPRECATED: checkEmailDuplication mutation called. Use action-based approach for >5000 leads.",
     );
 
     // Get the lead with enrichment data
@@ -393,7 +399,10 @@ export const checkEmailDuplication = internalMutation({
         continue;
       }
       const existingEmail = extractPrimaryEmail(existingLead.contactInfo);
-      if (existingEmail && existingEmail.toLowerCase() === primaryEmail.toLowerCase()) {
+      if (
+        existingEmail &&
+        existingEmail.toLowerCase() === primaryEmail.toLowerCase()
+      ) {
         duplicateLeadId = existingLead._id;
         break;
       }
@@ -401,7 +410,7 @@ export const checkEmailDuplication = internalMutation({
 
     if (duplicateLeadId) {
       console.log(
-        `Duplicate email detected after enrichment: ${primaryEmail} for lead ${args.leadId}, marking as duplicate`
+        `Duplicate email detected after enrichment: ${primaryEmail} for lead ${args.leadId}, marking as duplicate`,
       );
 
       await ctx.db.insert("duplicateMetrics", {
@@ -468,7 +477,8 @@ export const updateLeadEnrichment = internalMutation({
       if (args.status === "completed_fallback") {
         contactInfo.fallbackUsed = true;
         contactInfo.fallbackReason =
-          args.enrichmentData.fallbackReason || `${args.enrichmentProvider || "Enrichment provider"} unavailable`;
+          args.enrichmentData.fallbackReason ||
+          `${args.enrichmentProvider || "Enrichment provider"} unavailable`;
       }
 
       updateData.contactInfo = contactInfo;
@@ -535,13 +545,13 @@ export const createLeadInternal = internalMutation({
     const duplicateInSearch = await ctx.db
       .query("leads")
       .withIndex("by_search_place", (q) =>
-        q.eq("searchId", args.searchId).eq("placeId", args.leadData.placeId)
+        q.eq("searchId", args.searchId).eq("placeId", args.leadData.placeId),
       )
       .first();
 
     if (duplicateInSearch) {
       console.log(
-        `Duplicate tile detected for placeId ${args.leadData.placeId} in search ${args.searchId}, skipping to prevent duplicate tiles`
+        `Duplicate tile detected for placeId ${args.leadData.placeId} in search ${args.searchId}, skipping to prevent duplicate tiles`,
       );
 
       // Track duplicate prevention for analytics
@@ -562,46 +572,50 @@ export const createLeadInternal = internalMutation({
       };
     }
 
-    // SECOND: Check for duplicate at USER level (across all searches)
-    const duplicateAcrossSearches = await ctx.db
-      .query("leads")
-      .withIndex("by_user_place", (q) =>
-        q.eq("userId", args.userId).eq("placeId", args.leadData.placeId)
-      )
-      .first();
-
-    if (duplicateAcrossSearches) {
-      console.log(
-        `Duplicate lead detected for placeId ${args.leadData.placeId} for user ${args.userId} (existing in search ${duplicateAcrossSearches.searchId}), skipping to prevent re-processing`
-      );
-
-      // Track duplicate prevention for analytics
-      await ctx.db.insert("duplicateMetrics", {
-        userId: args.userId,
-        searchId: args.searchId,
-        placeId: args.leadData.placeId,
-        duplicateType: "user_level",
-        originalLeadId: duplicateAcrossSearches._id,
-        businessName: args.leadData.businessName,
-        preventedAt: Date.now(),
-      });
-
-      return {
-        status: "skipped" as const,
-        reason: "user_level" as const,
-        duplicateLeadId: duplicateAcrossSearches._id,
-      };
-    }
-
     // ============================================================================
     // NEW: Additional Deduplication Checks Based on User Preferences
     // ============================================================================
 
     // Use deduplication settings from caller (already resolved with fallback chain in search/actions.ts)
     // This ensures per-search overrides are properly respected
-    const enablePlaceNameDedup = args.deduplication?.enablePlaceNameDedup ?? false;
-    const enableEmailDedup = args.deduplication?.enableEmailDedup ?? true; // Default ON
+    const enablePlaceNameDedup =
+      args.deduplication?.enablePlaceNameDedup ?? false;
     const enableAddressDedup = args.deduplication?.enableAddressDedup ?? true; // Default ON
+
+    // SECOND: Check for duplicate at USER level (across all searches)
+    // Gated by enableAddressDedup — placeId and address represent the same
+    // location-based concern: "have I already found this place in a prior search?"
+    if (enableAddressDedup) {
+      const duplicateAcrossSearches = await ctx.db
+        .query("leads")
+        .withIndex("by_user_place", (q) =>
+          q.eq("userId", args.userId).eq("placeId", args.leadData.placeId),
+        )
+        .first();
+
+      if (duplicateAcrossSearches) {
+        console.log(
+          `Duplicate lead detected for placeId ${args.leadData.placeId} for user ${args.userId} (existing in search ${duplicateAcrossSearches.searchId}), skipping to prevent re-processing`,
+        );
+
+        // Track duplicate prevention for analytics
+        await ctx.db.insert("duplicateMetrics", {
+          userId: args.userId,
+          searchId: args.searchId,
+          placeId: args.leadData.placeId,
+          duplicateType: "user_level",
+          originalLeadId: duplicateAcrossSearches._id,
+          businessName: args.leadData.businessName,
+          preventedAt: Date.now(),
+        });
+
+        return {
+          status: "skipped" as const,
+          reason: "user_level" as const,
+          duplicateLeadId: duplicateAcrossSearches._id,
+        };
+      }
+    }
 
     // THIRD: Check for duplicate place name within THIS search (if enabled)
     if (enablePlaceNameDedup && args.leadData.businessName) {
@@ -613,13 +627,13 @@ export const createLeadInternal = internalMutation({
         .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
         .collect();
 
-      const duplicateByName = allSearchLeads.find(lead =>
-        normalizePlaceName(lead.businessName) === normalizedName
+      const duplicateByName = allSearchLeads.find(
+        (lead) => normalizePlaceName(lead.businessName) === normalizedName,
       );
 
       if (duplicateByName) {
         console.log(
-          `Duplicate place name detected: "${args.leadData.businessName}" in search ${args.searchId}, skipping`
+          `Duplicate place name detected: "${args.leadData.businessName}" in search ${args.searchId}, skipping`,
         );
 
         // Track duplicate prevention for analytics
@@ -686,20 +700,20 @@ export const createLeadInternal = internalMutation({
       // Handle potential race condition - if duplicate was created between check and insert
       console.warn(
         `Potential race condition during lead creation for placeId ${args.leadData.placeId}`,
-        error
+        error,
       );
 
       // Double-check for duplicate that might have been created concurrently
       const raceDuplicate = await ctx.db
         .query("leads")
         .withIndex("by_user_place", (q) =>
-          q.eq("userId", args.userId).eq("placeId", args.leadData.placeId)
+          q.eq("userId", args.userId).eq("placeId", args.leadData.placeId),
         )
         .first();
 
-      if (raceDuplicate) {
+      if (raceDuplicate && enableAddressDedup) {
         console.log(
-          `Race condition detected: duplicate created concurrently for placeId ${args.leadData.placeId}`
+          `Race condition detected: duplicate created concurrently for placeId ${args.leadData.placeId}`,
         );
 
         // Track the race condition duplicate
@@ -744,7 +758,7 @@ export const backfillDenormalizedFields = internalMutation({
 
     const result = await ctx.db
       .query("leads")
-      .paginate({ numItems: pageSize, cursor: args.cursor as any ?? null });
+      .paginate({ numItems: pageSize, cursor: (args.cursor as any) ?? null });
 
     for (const lead of result.page) {
       const updates: {
@@ -1019,7 +1033,7 @@ export const getUserLeadsInternal = internalQuery({
       .query("leads")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .order("desc")
-      .paginate({ numItems: pageSize, cursor: args.cursor as any ?? null });
+      .paginate({ numItems: pageSize, cursor: (args.cursor as any) ?? null });
 
     return {
       leads: result.page,
@@ -1062,7 +1076,8 @@ export const getLeadsForAnalysis = internalQuery({
     // Filter to only leads with valid email (contact name not required —
     // LangGraph worker handles missing names with fallbacks like "Unknown"/"there")
     return leads.filter((lead) => {
-      const hasEmail = lead.contactInfo?.emails?.length && lead.contactInfo.emails.length > 0;
+      const hasEmail =
+        lead.contactInfo?.emails?.length && lead.contactInfo.emails.length > 0;
       return hasEmail;
     });
   },
@@ -1080,7 +1095,8 @@ export const markLeadAnalysisScheduled = internalMutation({
       return;
     }
 
-    const attempts = typeof lead.analysisAttempts === "number" ? lead.analysisAttempts : 0;
+    const attempts =
+      typeof lead.analysisAttempts === "number" ? lead.analysisAttempts : 0;
 
     await ctx.db.patch(args.leadId, {
       analysisStatus: "scheduled",
@@ -1175,12 +1191,16 @@ export const getStuckLeads = internalQuery({
     // Get leads in "scheduled" or "processing" status that are older than timeout
     const allLeads = await ctx.db
       .query("leads")
-      .withIndex("by_analysis_status", (q) => q.eq("analysisStatus", "scheduled"))
+      .withIndex("by_analysis_status", (q) =>
+        q.eq("analysisStatus", "scheduled"),
+      )
       .collect();
 
     const processingLeads = await ctx.db
       .query("leads")
-      .withIndex("by_analysis_status", (q) => q.eq("analysisStatus", "processing"))
+      .withIndex("by_analysis_status", (q) =>
+        q.eq("analysisStatus", "processing"),
+      )
       .collect();
 
     const allPotentiallyStuck = [...allLeads, ...processingLeads];
@@ -1261,16 +1281,17 @@ export const tryTriggerAnalysisPhase = internalMutation({
 
     console.log(
       `[Analysis Trigger] Search ${args.searchId} analysis status counts`,
-      analysisStatusCounts
+      analysisStatusCounts,
     );
 
     // Check if ALL enrichment is complete
     // Note: "no_contacts_found" is also a terminal state (API succeeded but no contacts)
-    const allEnrichmentComplete = allLeads.every((lead) =>
-      lead.enrichmentStatus === "completed" ||
-      lead.enrichmentStatus === "completed_fallback" ||
-      lead.enrichmentStatus === "no_contacts_found" ||
-      lead.enrichmentStatus === "failed"
+    const allEnrichmentComplete = allLeads.every(
+      (lead) =>
+        lead.enrichmentStatus === "completed" ||
+        lead.enrichmentStatus === "completed_fallback" ||
+        lead.enrichmentStatus === "no_contacts_found" ||
+        lead.enrichmentStatus === "failed",
     );
 
     if (!allEnrichmentComplete) {
@@ -1278,8 +1299,10 @@ export const tryTriggerAnalysisPhase = internalMutation({
     }
 
     // Block only when analysis is actively in-flight
-    const analysisInFlight = allLeads.some((lead) =>
-      lead.analysisStatus === "scheduled" || lead.analysisStatus === "processing"
+    const analysisInFlight = allLeads.some(
+      (lead) =>
+        lead.analysisStatus === "scheduled" ||
+        lead.analysisStatus === "processing",
     );
 
     if (analysisInFlight) {
@@ -1316,8 +1339,7 @@ export const tryTriggerAnalysisPhase = internalMutation({
     // This provides clear UI feedback about why analysis wasn't performed
     const leadsToSkip = allLeads.filter((lead) => {
       const wasNotAnalyzed =
-        lead.analysisStatus === undefined ||
-        lead.analysisStatus === "pending";
+        lead.analysisStatus === undefined || lead.analysisStatus === "pending";
 
       return (
         (lead.enrichmentStatus === "no_contacts_found" ||
@@ -1327,9 +1349,10 @@ export const tryTriggerAnalysisPhase = internalMutation({
     });
 
     for (const lead of leadsToSkip) {
-      const skipReason = lead.enrichmentStatus === "no_contacts_found"
-        ? "No email contacts found for this business"
-        : "Enrichment failed - unable to find contact information";
+      const skipReason =
+        lead.enrichmentStatus === "no_contacts_found"
+          ? "No email contacts found for this business"
+          : "Enrichment failed - unable to find contact information";
 
       await ctx.db.patch(lead._id, {
         analysisStatus: "skipped",
@@ -1339,7 +1362,7 @@ export const tryTriggerAnalysisPhase = internalMutation({
     }
 
     console.log(
-      `[Analysis Trigger] Search ${args.searchId}: ${leadsToAnalyze.length} leads pending analysis, ${leadsToSkip.length} leads skipped (no contacts)`
+      `[Analysis Trigger] Search ${args.searchId}: ${leadsToAnalyze.length} leads pending analysis, ${leadsToSkip.length} leads skipped (no contacts)`,
     );
 
     return true; // Caller should now trigger analyzeLeads
@@ -1390,7 +1413,7 @@ export const resetStuckAnalysisForSearch = internalMutation({
     }
 
     console.log(
-      `[Recovery] Reset ${resetCount}/${leads.length} stuck analysis leads for search ${args.searchId}`
+      `[Recovery] Reset ${resetCount}/${leads.length} stuck analysis leads for search ${args.searchId}`,
     );
 
     return { resetCount, totalLeads: leads.length };
@@ -1401,10 +1424,7 @@ export const resetStuckAnalysisForSearch = internalMutation({
 export const updateEnrichmentProvider = internalMutation({
   args: {
     leadId: v.id("leads"),
-    provider: v.union(
-      v.literal("findymail"),
-      v.literal("csv_import")
-    ),
+    provider: v.union(v.literal("findymail"), v.literal("csv_import")),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.leadId, {
@@ -1520,7 +1540,7 @@ export const queueLeadForEnrichment = internalMutation({
     });
 
     console.log(
-      `[EnrichmentQueue] Queued lead ${args.leadId} for API key ${args.apiKeyHash.substring(0, 8)}...`
+      `[EnrichmentQueue] Queued lead ${args.leadId} for API key ${args.apiKeyHash.substring(0, 8)}...`,
     );
 
     return { queued: true };
@@ -1554,7 +1574,7 @@ export const requeueLeadForEnrichment = internalMutation({
     });
 
     console.log(
-      `[EnrichmentQueue] Re-queued lead ${args.leadId} for API key ${args.apiKeyHash.substring(0, 8)}...`
+      `[EnrichmentQueue] Re-queued lead ${args.leadId} for API key ${args.apiKeyHash.substring(0, 8)}...`,
     );
 
     return { queued: true };
@@ -1577,8 +1597,8 @@ export const cancelQueuedLeadsForSearchV2 = internalMutation({
       .filter((q) =>
         q.and(
           q.eq(q.field("enrichmentStatus"), "pending"),
-          q.neq(q.field("enrichmentQueuedAt"), undefined)
-        )
+          q.neq(q.field("enrichmentQueuedAt"), undefined),
+        ),
       )
       .collect();
 
@@ -1593,7 +1613,7 @@ export const cancelQueuedLeadsForSearchV2 = internalMutation({
     }
 
     console.log(
-      `[EnrichmentQueue] Cancelled ${queuedLeads.length} queued leads for search ${args.searchId}`
+      `[EnrichmentQueue] Cancelled ${queuedLeads.length} queued leads for search ${args.searchId}`,
     );
 
     return { cancelled: queuedLeads.length };
@@ -1608,8 +1628,11 @@ export const getEnrichmentQueueStats = internalQuery({
     apiKeyHash: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    let query = ctx.db.query("leads")
-      .withIndex("by_enrichment_status", (q) => q.eq("enrichmentStatus", "pending"))
+    let query = ctx.db
+      .query("leads")
+      .withIndex("by_enrichment_status", (q) =>
+        q.eq("enrichmentStatus", "pending"),
+      )
       .filter((q) => q.neq(q.field("enrichmentQueuedAt"), undefined));
 
     const queuedLeads = await query.collect();
