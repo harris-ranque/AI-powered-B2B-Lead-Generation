@@ -1,3 +1,7 @@
+import type { GenericDatabaseReader } from "convex/server";
+import type { DataModel } from "../_generated/dataModel";
+import type { Id } from "../_generated/dataModel";
+
 export type ExportableLead = {
   email?: string;
   analysisStatus?: string;
@@ -75,6 +79,29 @@ export function isLeadExportable(lead: ExportableLead): boolean {
   const { email } = extractContactDetails(lead);
   const analysisFailed = lead.analysisStatus === "failed";
   return email.length > 0 && !analysisFailed;
+}
+
+// ---------------------------------------------------------------------------
+// DB-level helper — call from within a query or mutation context.
+// Mirrors isLeadExportable: enrichmentStatus "completed" + analysisStatus not "failed".
+// enrichmentStatus "completed" is only ever set when emails were actually stored,
+// so we do not need a separate email-presence check at the DB level.
+// ---------------------------------------------------------------------------
+export async function countExportableLeads(
+  ctx: { db: GenericDatabaseReader<DataModel> },
+  searchId: Id<"searches">,
+): Promise<number> {
+  const leads = await ctx.db
+    .query("leads")
+    .withIndex("by_search", (q) => q.eq("searchId", searchId))
+    .filter((q) =>
+      q.and(
+        q.eq(q.field("enrichmentStatus"), "completed"),
+        q.neq(q.field("analysisStatus"), "failed"),
+      ),
+    )
+    .collect();
+  return leads.length;
 }
 
 export function noExportableLeadsMessage(stats: {

@@ -1,6 +1,7 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth, getCurrentUser } from "../auth";
+import { countExportableLeads } from "../lib/exportEligibility";
 
 // Get leads for a search (FULL documents - use sparingly, prefer getLeadsListView)
 export const getLeadsBySearch = query({
@@ -419,6 +420,29 @@ export const getEnrichmentProgress = query({
   },
 });
 
+// Get live exportable lead counts for a list of searches (up to one page worth).
+// Mirrors isLeadExportable(): enrichmentStatus === "completed" AND analysisStatus !== "failed".
+// Returns a Record<searchId, count> so the caller can look up by search ID.
+export const getLeadCountsBySearchIds = query({
+  args: { searchIds: v.array(v.id("searches")) },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    if (!user) return {};
+
+    // Cap to prevent runaway query cost (each call is a full index scan per search)
+    const idsToProcess = args.searchIds.slice(0, 50);
+
+    const counts: Record<string, number> = {};
+    for (const searchId of idsToProcess) {
+      // Ownership check: silently skip searches that don't belong to this user
+      const search = await ctx.db.get(searchId);
+      if (!search || search.userId !== user._id) continue;
+      counts[String(searchId)] = await countExportableLeads(ctx, searchId);
+    }
+    return counts;
+  },
+});
+
 // Get lead statistics for user
 // OPTIMIZED: Aggregates from searches table (much lighter than leads)
 // Searches already have pre-computed stats in progress/results fields
@@ -439,7 +463,10 @@ export const getLeadStats = query({
       .collect();
 
     // Aggregate stats from all searches
+    // totalLeads = all businesses discovered by Google Maps (with + without email)
+    // verifiedEmails = exportable leads (email found AND analysis succeeded)
     let totalLeads = 0;
+    let verifiedEmails = 0;
     let enrichedLeads = 0;
     let analyzedLeads = 0;
     let relevanceSum = 0;
@@ -449,13 +476,18 @@ export const getLeadStats = query({
     const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
     for (const search of searches) {
-      // Use pre-computed stats from search.results
-      const searchTotal = search.results?.totalFound || 0;
+      const searchDiscovered = search.results?.totalFound || 0;
+      // exportableCount = verified emails (email found + analysis not failed)
+      const searchExportable =
+        search.results?.exportableCount ?? search.results?.enrichedCount ?? 0;
       const searchEnriched = search.results?.enrichedCount || 0;
       const searchAnalyzed = search.results?.analyzedCount || 0;
       const searchAvgRelevance = search.results?.avgRelevanceScore;
 
-      totalLeads += searchTotal;
+      // totalLeads = all discovered (with + without email) = Google Maps count
+      totalLeads += searchDiscovered;
+      // verifiedEmails = leads ready to export/email
+      verifiedEmails += searchExportable;
       enrichedLeads += searchEnriched;
       analyzedLeads += searchAnalyzed;
 
@@ -467,27 +499,31 @@ export const getLeadStats = query({
 
       // Count leads created this week (use search creation time as proxy)
       if (search._creationTime >= oneWeekAgo) {
-        thisWeekLeads += searchTotal;
+        thisWeekLeads += searchDiscovered;
       }
     }
 
     const avgRelevanceScore =
       relevanceCount > 0 ? relevanceSum / relevanceCount : 0;
 
+    // Rates use totalLeads (all discovered) as denominator — bounded to 0–100%
+    const rateBase = totalLeads > 0 ? totalLeads : 1;
+
     return {
       // Primary stats (from search aggregation)
+      // totalLeads = all discovered businesses (with + without email)
       totalLeads,
       enrichedLeads,
       analyzedLeads,
-      // withEmails is same as enrichedLeads (leads with contact info)
-      withEmails: enrichedLeads,
+      // withEmails = verified emails (exportable: email found + analysis not failed)
+      withEmails: verifiedEmails,
       // thisWeek is approximate based on search creation dates
       thisWeek: thisWeekLeads,
-      // Rates
+      // Rates — denominator is totalLeads (all discovered) so results are bounded to 0–100%
       enrichmentRate:
-        totalLeads > 0 ? Math.round((enrichedLeads / totalLeads) * 100) : 0,
+        rateBase > 0 ? Math.round((enrichedLeads / rateBase) * 100) : 0,
       analysisRate:
-        totalLeads > 0 ? Math.round((analyzedLeads / totalLeads) * 100) : 0,
+        rateBase > 0 ? Math.round((analyzedLeads / rateBase) * 100) : 0,
       avgRelevanceScore: Math.round(avgRelevanceScore * 100),
       // Note: qualifiedLeads/contactedLeads/conversionRate not available from search aggregation
       // These would require scanning leads or pre-computing on status changes

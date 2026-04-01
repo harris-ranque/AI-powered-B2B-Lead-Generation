@@ -353,10 +353,10 @@ function LeadEternityDashboardContent() {
       totalCreditsUsed: usage?.totalCreditsUsed || 0,
       searchesThisMonth: monthlySearchCount,
       leadsGenerated: leadStats?.totalLeads || 0,
-      emailsGenerated: pipelineEmails.length,
-      avgCostPerLead: usage?.avgCostPerLead || 0,
+      emailsGenerated: leadStats?.withEmails ?? 0,
+      avgCostPerLead: usage?.avgCreditsPerLead || 0,
     }),
-    [leadStats?.totalLeads, monthlySearchCount, pipelineEmails.length, usage],
+    [leadStats?.totalLeads, leadStats?.withEmails, monthlySearchCount, usage],
   );
 
   const leadStatsSummary: LeadStatsSummary | null = useMemo(() => {

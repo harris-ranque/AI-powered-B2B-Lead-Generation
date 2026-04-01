@@ -40,7 +40,7 @@ export const sendSearchCompletedEmail = internalAction({
           userId: search.userId,
           type: "search_completed",
           title: "Search Completed",
-          message: `Your search "${search.name}" has completed with ${args.results.totalFound} leads found, ${args.results.enrichedCount} enriched, and ${args.results.analyzedCount} analyzed.`,
+          message: `Your search "${search.name}" has completed with ${args.results.exportableCount ?? args.results.enrichedCount} leads found (with verified emails), ${args.results.analyzedCount} analyzed.`,
           data: {
             searchId: args.searchId,
             searchName: search.name,

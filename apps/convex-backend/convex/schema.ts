@@ -145,6 +145,7 @@ export default defineSchema({
     results: v.object({
       totalFound: v.number(),
       enrichedCount: v.number(),
+      exportableCount: v.optional(v.number()),
       analyzedCount: v.optional(v.number()),
       avgRelevanceScore: v.optional(v.number()),
     }),

@@ -262,10 +262,10 @@ export const calculateCheckpointStats = internalQuery({
     leads.forEach((lead, index) => {
       switch (lead.enrichmentStatus) {
         case "completed":
-        case "completed_fallback":
           enrichedCount++;
           lastProcessedIndex = Math.max(lastProcessedIndex, index);
           break;
+        case "completed_fallback":
         case "no_contacts_found":
           noContactsCount++;
           lastProcessedIndex = Math.max(lastProcessedIndex, index);

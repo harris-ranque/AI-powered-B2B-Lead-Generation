@@ -272,7 +272,8 @@ export function SearchProgressTracker({
       id: "completion",
       label: "Download Results",
       icon: CheckCircle,
-      count: search.results?.totalFound ?? (search.status === "completed" ? totalCount : undefined),
+      // Completed: show accurate exportable count. In-progress: show discovered count as ceiling estimate.
+      count: search.results?.exportableCount ?? search.results?.enrichedCount ?? (search.status === "completed" ? enrichedCount : (discoveredCount > 0 ? discoveredCount : undefined)),
     },
   ];
 
@@ -292,7 +293,7 @@ export function SearchProgressTracker({
     },
     {
       label: "Personalized",
-      value: analyzedCount,
+      value: search.results?.exportableCount ?? search.results?.enrichedCount ?? analyzedCount,
       stageIndex: STAGE_ORDER.indexOf("analysis"),
     },
     {
@@ -814,10 +815,16 @@ export function SearchProgressTracker({
                       total: "Total",
                     };
                     const displayLabel = labelMap[key] || key;
+                    // "analyzed" from the broadcast counts all leads that went through AI analysis
+                    // including those with failed analysis. Once completed, use exportableCount instead.
+                    const displayValue =
+                      key === "analyzed" && search.status === "completed"
+                        ? (search.results?.exportableCount ?? search.results?.enrichedCount ?? value ?? 0)
+                        : (value ?? 0);
                     return (
                       <div key={key} className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
                         <span className="uppercase tracking-wide">{displayLabel}</span>
-                        <span className="font-semibold text-foreground">{value ?? 0}</span>
+                        <span className="font-semibold text-foreground">{displayValue}</span>
                       </div>
                     );
                   })}
@@ -975,7 +982,7 @@ export function SearchProgressTracker({
                 </div>
                 <div className="space-y-1">
                   <span className="text-xs uppercase tracking-wide text-muted-foreground">Results</span>
-                  <p className="font-medium text-foreground">{search.results?.totalFound ?? 0} leads</p>
+                  <p className="font-medium text-foreground">{search.results?.exportableCount ?? search.results?.enrichedCount ?? 0} leads</p>
                 </div>
               </div>
 

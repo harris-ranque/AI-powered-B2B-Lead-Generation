@@ -2,6 +2,7 @@ import { internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { Doc } from "../_generated/dataModel";
 import { withUpdatedAtIfSupported, isUpdatedAtSchemaError } from "./utils";
+import { countExportableLeads } from "../lib/exportEligibility";
 
 // Internal query to get search without auth check
 export const getSearchInternal = internalQuery({
@@ -31,9 +32,7 @@ export const getSearchResults = internalQuery({
       .collect();
 
     const enrichedLeads = leads.filter(
-      (l) =>
-        l.enrichmentStatus === "completed" ||
-        l.enrichmentStatus === "completed_fallback",
+      (l) => l.enrichmentStatus === "completed",
     );
 
     const analyzedLeads = leads.filter((l) => l.aiAnalysis !== undefined);
@@ -50,6 +49,14 @@ export const getSearchResults = internalQuery({
             ) / analyzedLeads.length
           : 0,
     };
+  },
+});
+
+// Count exportable leads for a search — used at completion to write results.exportableCount
+export const getExportableCount = internalQuery({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    return countExportableLeads(ctx, args.searchId);
   },
 });
 

@@ -18,6 +18,7 @@ import {
   Place,
 } from "./googlePlaces";
 import { getSingleProviderError } from "../lib/errorMessages";
+import { countExportableLeads } from "../lib/exportEligibility";
 import {
   createApiConvexError,
   shouldBlockPipeline,
@@ -1929,6 +1930,13 @@ export const completeSearch: any = action({
       const analyzedCount =
         typeof results.analyzedCount === "number" ? results.analyzedCount : 0;
 
+      // Exportable count: the single source of truth for "leads" shown to users.
+      // Matches isLeadExportable: enrichmentStatus "completed" + analysisStatus not "failed".
+      const exportableCount = await ctx.runQuery(
+        internal.search.internal.getExportableCount,
+        { searchId: args.searchId },
+      );
+
       // Get all leads to count tier 2 vs tier 3 usage
       const allLeads = await ctx.runQuery(internal.leads.internal.getSearchLeadsInternal, {
         searchId: args.searchId,
@@ -2016,6 +2024,7 @@ export const completeSearch: any = action({
         results: {
           totalFound,
           enrichedCount,
+          exportableCount,
           analyzedCount,
           avgRelevanceScore: results.avgRelevanceScore,
         },
@@ -2052,6 +2061,7 @@ export const completeSearch: any = action({
             results: {
               totalFound,
               enrichedCount,
+              exportableCount,
               analyzedCount,
               avgRelevanceScore: results.avgRelevanceScore,
             },

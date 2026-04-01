@@ -266,14 +266,22 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
       leads.filter(
         (lead) =>
           lead.contactInfo?.emails?.length &&
-          !emailDetailsByLead.has(String(lead._id)),
+          !emailDetailsByLead.has(String(lead._id)) &&
+          lead.analysisStatus !== "failed",
       ),
     [emailDetailsByLead, leads],
   );
 
   const missingContact = useMemo(
-    () => leads.filter((lead) => !lead.contactInfo?.emails?.length),
-    [leads],
+    () =>
+      leads.filter(
+        (lead) =>
+          !lead.contactInfo?.emails?.length ||
+          // Failed analysis — exclude if the lead still has usable emailContent from a
+          // prior successful run (it will appear in readyToSendLeads instead).
+          (lead.analysisStatus === "failed" && !emailDetailsByLead.has(String(lead._id))),
+      ),
+    [leads, emailDetailsByLead],
   );
 
   const discoveredCount = Math.max(
@@ -282,18 +290,20 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
     leads.length,
   );
 
+  // enrichedCount: leads with a verified email.
+  // Intentionally excludes search?.progress?.enriched — that live counter includes
+  // completed_fallback leads (no email found) which inflates the figure.
   const enrichedCount = Math.max(
-    search?.progress?.enriched ?? 0,
     search?.results?.enrichedCount ?? 0,
     leadsWithEmails.length,
     state.enrichedLeads.length,
   );
 
-  const personalizedCount = Math.max(
-    search?.progress?.analyzed ?? 0,
-    state.generatedEmails.length,
-    emailDetailsByLead.size,
-  );
+  // personalizedCount: leads with actual email content generated (analysis succeeded).
+  // emailDetailsByLead already merges DB-loaded leads and session-generated emails accurately.
+  // Excluding state.generatedEmails.length — it retains stale counts across search switches
+  // until resetPipeline() is called, which can inflate this figure.
+  const personalizedCount = emailDetailsByLead.size;
 
   const enrichmentRate =
     discoveredCount > 0 ? (enrichedCount / discoveredCount) * 100 : 0;
@@ -895,7 +905,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
 
                 <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-4">
                   <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wider text-rose-200">
-                    Missing Contacts
+                    Missing / Failed Contacts
                     <MailX className="h-4 w-4" />
                   </div>
                   <div className="mt-2 text-2xl font-semibold text-rose-100">

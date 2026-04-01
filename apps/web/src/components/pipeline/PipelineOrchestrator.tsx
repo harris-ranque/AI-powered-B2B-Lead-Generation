@@ -44,6 +44,8 @@ import { cn } from "@/lib/utils";
 import type { PipelineStage } from "@/pipeline/types";
 import type { Id } from "@genni/convex-types/dataModel";
 import { SearchSwitcher } from "./SearchSwitcher";
+import { useQuery } from "convex/react";
+import { api } from "@genni/convex-types";
 import { useSearch, useSearches } from "@/hooks/useSearches";
 import { useLeads } from "@/hooks/useLeads";
 import { useSearchBroadcasts } from "@/hooks/useStatusBroadcasts";
@@ -97,6 +99,18 @@ export function PipelineOrchestrator({
   const activeSearchId = (search?._id ?? state.searchId) ?? null;
   const totalFound = search?.results?.totalFound ?? 0;
   const enrichedCount = search?.results?.enrichedCount ?? 0;
+
+  // Live exportable count — used in completion dialog so old searches without
+  // results.exportableCount stored still show the accurate verified-email count.
+  const completionSearchIds = activeSearchId ? [activeSearchId as Id<"searches">] : [];
+  const liveExportableCounts = useQuery(
+    api.leads.queries.getLeadCountsBySearchIds,
+    completionSearchIds.length > 0 ? { searchIds: completionSearchIds } : "skip",
+  );
+  const exportableCount =
+    liveExportableCounts?.[String(activeSearchId)] ??
+    search?.results?.exportableCount ??
+    enrichedCount;
 
   const openLeadHistory = useCallback(() => {
     setShowCompletionDialog(false);
@@ -170,7 +184,7 @@ export function PipelineOrchestrator({
     ? SourceRegistry.getSource(state.selectedSource)
     : undefined;
 
-  const { leads: searchLeads } = useLeads(state.searchId || undefined);
+  const { leads: searchLeads, isLoading: leadsLoading } = useLeads(state.searchId || undefined);
 
   const leadsFromPipeline = useMemo(() => {
     if (state.searchId && searchLeads) {
@@ -388,6 +402,16 @@ export function PipelineOrchestrator({
       .length;
   }, [leadsFromPipeline]);
 
+  // "Personalized" = leads that actually have AI-written email content.
+  // More accurate than progress?.analyzed (counts all analysis attempts including failures)
+  // and more accurate than exportableCount (doesn't require emailContent to exist).
+  const personalizedFromLeads = useMemo(() => {
+    if (!leadsFromPipeline?.length) return 0;
+    return leadsFromPipeline.filter(
+      (lead) => lead.contactInfo?.emails?.length && lead.emailContent,
+    ).length;
+  }, [leadsFromPipeline]);
+
   const optimisticMetrics = useMemo(() => {
     const discoveredMetric = Math.max(
       discoveredFromSearch,
@@ -398,10 +422,13 @@ export function PipelineOrchestrator({
       enrichedFromLeads,
       state.enrichedLeads.length,
     );
-    const analyzedMetric = Math.max(
-      analyzedFromSearch,
-      state.generatedEmails.length,
-    );
+    // When leads are loaded from DB: use the accurate count directly (leads with email + emailContent).
+    // Don't Math.max against state/progress counters — they can include failed attempts.
+    // leadsLoading === true means the query is still in-flight; 0 could mean "not loaded yet" rather
+    // than "none personalized." Use the progress counter only while loading.
+    const analyzedMetric = leadsLoading
+      ? Math.max(analyzedFromSearch, state.generatedEmails.length)
+      : personalizedFromLeads;
     const totalMetric = Math.max(
       search?.progress?.total ?? 0,
       search?.results?.totalFound ?? 0,
@@ -421,7 +448,9 @@ export function PipelineOrchestrator({
     discoveredFromSearch,
     enrichedFromLeads,
     enrichedFromSearch,
+    leadsLoading,
     leadsFromPipeline?.length,
+    personalizedFromLeads,
     search?.progress?.total,
     search?.results?.totalFound,
     state.enrichedLeads.length,
@@ -498,7 +527,7 @@ export function PipelineOrchestrator({
                     </div>
                     <div className="flex flex-col items-center justify-center rounded-lg border border-ring/40 bg-ring/5 p-3 transition-all hover:border-ring/60 hover:bg-ring/10">
                       <div className="text-2xl font-bold text-foreground">
-                        {search?.results?.analyzedCount || 0}
+                        {exportableCount}
                       </div>
                       <div className="text-xs font-medium text-muted-foreground">Analyzed</div>
                     </div>

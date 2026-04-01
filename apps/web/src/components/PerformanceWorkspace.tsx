@@ -50,11 +50,6 @@ import type { PlanType } from "@/lib/runtime-config";
 
 const performanceLogger = createLogger("PerformanceWorkspace");
 
-const currencyFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 2,
-});
 
 interface PerformanceWorkspaceProps {
   userCredits: number;
@@ -140,14 +135,14 @@ function PerformanceWorkspaceComponent({
         icon: CreditCard,
       },
       {
-        title: "Avg cost per lead",
+        title: "Avg credits per lead",
         value:
           usageSummary.avgCostPerLead > 0
-            ? currencyFormatter.format(usageSummary.avgCostPerLead)
+            ? `${usageSummary.avgCostPerLead.toFixed(1)} cr`
             : "Optimizing",
         helper:
           usageSummary.totalCreditsUsed > 0
-            ? `${usageSummary.totalCreditsUsed} credits lifetime`
+            ? `${usageSummary.totalCreditsUsed} credits this period`
             : "Drive costs down by refining filters",
         icon: LineChart,
       },
@@ -420,7 +415,7 @@ function PerformanceWorkspaceComponent({
                       <span className="text-sm font-semibold text-foreground">
                         {search.name || search.parameters?.keywords?.join(", ") || "Untitled search"}
                       </span>
-                      <Badge variant="outline">{search.results?.totalFound ?? 0} leads</Badge>
+                      <Badge variant="outline">{search.results?.exportableCount ?? search.results?.enrichedCount ?? 0} leads</Badge>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Completed {search.completedAt ? format(search.completedAt, "MMM d, yyyy h:mma") : "recently"}

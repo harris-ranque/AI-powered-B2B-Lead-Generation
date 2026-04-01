@@ -55,10 +55,17 @@ interface PipelineProgressPanelProps {
 }
 
 // Live, active user-facing metrics only - no internal implementation details
-const METRIC_LABELS: Record<string, { label: string; icon: LucideIcon; accent: string }> = {
+const METRIC_LABELS: Record<
+  string,
+  { label: string; icon: LucideIcon; accent: string }
+> = {
   discovered: { label: "Businesses", icon: Search, accent: "text-blue-500" },
   enriched: { label: "Checked", icon: Mail, accent: "text-emerald-500" },
-  analyzed: { label: "Personalized", icon: Sparkles, accent: "text-purple-500" },
+  analyzed: {
+    label: "Personalized",
+    icon: Sparkles,
+    accent: "text-purple-500",
+  },
   total: { label: "Total", icon: Activity, accent: "text-slate-500" },
 };
 
@@ -78,9 +85,8 @@ const StageMarker = ({
   onClick?: () => void;
   interactive: boolean;
 }) => {
-  const IconComponent = STAGE_ICONS[
-    STAGE_CONFIGS[stage].icon as keyof typeof STAGE_ICONS
-  ];
+  const IconComponent =
+    STAGE_ICONS[STAGE_CONFIGS[stage].icon as keyof typeof STAGE_ICONS];
 
   return (
     <div className="flex min-w-[70px] flex-col items-center gap-2 text-center">
@@ -102,7 +108,8 @@ const StageMarker = ({
           "relative flex h-12 w-12 items-center justify-center rounded-full border-2 bg-muted/60 text-sm font-semibold text-muted-foreground shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-default",
           status === "completed" &&
             "border-emerald-500 bg-emerald-500/20 text-emerald-600 dark:border-emerald-400 dark:text-emerald-300",
-          status === "current" && "border-primary bg-primary/10 text-primary shadow-[0_0_12px_rgba(var(--primary)/0.25)]",
+          status === "current" &&
+            "border-primary bg-primary/10 text-primary shadow-[0_0_12px_rgba(var(--primary)/0.25)]",
           status === "upcoming" && "border-border text-muted-foreground/60",
           interactive && "cursor-pointer hover:scale-[1.04]",
         )}
@@ -156,7 +163,8 @@ function StageRail({ inlinePanel }: { inlinePanel?: React.ReactNode }) {
                 ? "completed"
                 : "upcoming";
           const isAvailable = availableStages.includes(stage);
-          const isInteractive = Boolean(onStageSelect) &&
+          const isInteractive =
+            Boolean(onStageSelect) &&
             (status === "completed" || status === "current" || isAvailable);
 
           const connectorActive =
@@ -186,7 +194,9 @@ function StageRail({ inlinePanel }: { inlinePanel?: React.ReactNode }) {
         })}
       </div>
       {inlinePanel && (
-        <div className="flex flex-col gap-3 md:pl-16 lg:pl-20">{inlinePanel}</div>
+        <div className="flex flex-col gap-3 md:pl-16 lg:pl-20">
+          {inlinePanel}
+        </div>
       )}
     </div>
   );
@@ -219,11 +229,17 @@ function Timeline({
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Badge variant="outline" className="text-[10px] uppercase">
-                  {event.stageId ? accessibleStageName(event.stageId) : "Update"}
+                  {event.stageId
+                    ? accessibleStageName(event.stageId)
+                    : "Update"}
                 </Badge>
                 {event.priority && (
                   <Badge
-                    variant={event.priority === "critical" ? "destructive" : "secondary"}
+                    variant={
+                      event.priority === "critical"
+                        ? "destructive"
+                        : "secondary"
+                    }
                     className="text-[10px]"
                   >
                     {event.priority}
@@ -238,7 +254,9 @@ function Timeline({
               {event.title}
             </p>
             {event.description && (
-              <p className="text-xs text-muted-foreground">{event.description}</p>
+              <p className="text-xs text-muted-foreground">
+                {event.description}
+              </p>
             )}
           </li>
         ))}
@@ -255,12 +273,8 @@ export function PipelineProgressPanel({
   actions,
   stageContent,
 }: PipelineProgressPanelProps) {
-  const {
-    progress,
-    isCollapsed,
-    toggleCollapsed,
-    currentStage,
-  } = usePipelineProgress();
+  const { progress, isCollapsed, toggleCollapsed, currentStage } =
+    usePipelineProgress();
 
   const previousStageRef = useRef<string | null>(null);
   const stageName = accessibleStageName(currentStage);
@@ -276,7 +290,8 @@ export function PipelineProgressPanel({
       case "error":
         return {
           label: "Attention",
-          className: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-200",
+          className:
+            "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-200",
         };
       case "warning":
         return {
@@ -296,14 +311,21 @@ export function PipelineProgressPanel({
   const metrics = useMemo(() => {
     // Filter to only live/active user-facing metrics
     // Exclude internal implementation details and non-live status indicators
-    const EXCLUDED_METRICS = ['scheduledBatches', 'totalBatches', 'sourcesAnalyzed', 'confidence', 'creditsReserved'];
+    const EXCLUDED_METRICS = [
+      "scheduledBatches",
+      "totalBatches",
+      "sourcesAnalyzed",
+      "confidence",
+      "creditsReserved",
+    ];
 
     return Object.entries(progress.metrics)
-      .filter(([key, value]) =>
-        typeof value === "number" &&
-        value >= 0 &&
-        !EXCLUDED_METRICS.includes(key) &&
-        key in METRIC_LABELS  // Only show explicitly defined user-facing metrics
+      .filter(
+        ([key, value]) =>
+          typeof value === "number" &&
+          value >= 0 &&
+          !EXCLUDED_METRICS.includes(key) &&
+          key in METRIC_LABELS, // Only show explicitly defined user-facing metrics
       )
       .map(([key, value]) => {
         const meta = METRIC_LABELS[key];
@@ -321,9 +343,8 @@ export function PipelineProgressPanel({
   const showStageContent = !isCollapsed && Boolean(stageContent);
 
   if (layout === "compact") {
-    const StageIcon = STAGE_ICONS[
-      STAGE_CONFIGS[currentStage].icon as keyof typeof STAGE_ICONS
-    ];
+    const StageIcon =
+      STAGE_ICONS[STAGE_CONFIGS[currentStage].icon as keyof typeof STAGE_ICONS];
 
     return (
       <Card className={cn("w-full", className)}>
@@ -406,7 +427,8 @@ export function PipelineProgressPanel({
       <CardContent className="space-y-6 pt-0">
         {isCollapsed ? (
           <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-            Pipeline details are collapsed. Expand to view stage flow, metrics, and activity.
+            Pipeline details are collapsed. Expand to view stage flow, metrics,
+            and activity.
           </div>
         ) : (
           <StageRail inlinePanel={inlinePanel} />
@@ -423,7 +445,12 @@ export function PipelineProgressPanel({
                   key={metric.key}
                   className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 p-3"
                 >
-                  <span className={cn("rounded-full bg-background p-2", metric.accent)}>
+                  <span
+                    className={cn(
+                      "rounded-full bg-background p-2",
+                      metric.accent,
+                    )}
+                  >
                     <metric.icon className="h-4 w-4" />
                   </span>
                   <div>
@@ -461,7 +488,8 @@ export function PipelineProgressPanel({
                 Recent activity
               </div>
               <span className="text-xs text-muted-foreground">
-                Showing latest {Math.min(progress.timeline?.length ?? 0, 12)} updates
+                Showing latest {Math.min(progress.timeline?.length ?? 0, 12)}{" "}
+                updates
               </span>
             </div>
             <Separator />

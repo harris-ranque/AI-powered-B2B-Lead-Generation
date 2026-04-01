@@ -1,4 +1,6 @@
 import { useMemo } from "react";
+import { useQuery } from "convex/react";
+import { api } from "@genni/convex-types";
 import {
   Card,
   CardContent,
@@ -40,6 +42,15 @@ export interface LeadStatsSummary {
   totalLeads?: number;
   withEmails?: number;
   thisWeek?: number;
+}
+
+export interface UsageSummary {
+  currentPeriodUsage: number;
+  totalCreditsUsed: number;
+  searchesThisMonth: number;
+  leadsGenerated: number;
+  emailsGenerated: number;
+  avgCostPerLead: number;
 }
 
 interface DashboardOverviewProps {
@@ -97,16 +108,23 @@ export function DashboardOverview({
           search.parameters?.location ||
           "Untitled search",
         status: search.status,
-        totalFound: search.results?.totalFound ?? 0,
+        exportableFallback: search.results?.exportableCount ?? search.results?.enrichedCount ?? 0,
         createdAt: search._creationTime,
       }));
   }, [searches]);
+
+  const recentSearchIds = useMemo(() => recentSearches.map((s) => s.id), [recentSearches]);
+  const liveLeadCounts = useQuery(
+    api.leads.queries.getLeadCountsBySearchIds,
+    recentSearchIds.length > 0 ? { searchIds: recentSearchIds } : "skip",
+  );
 
   const planMeta = formatPlan(planId);
   const greetingName = userName || businessName || "there";
 
   const totalLeads = leadStats?.totalLeads ?? 0;
-  const targetedEmailsCount = totalLeads * 3;
+  const verifiedEmails = leadStats?.withEmails ?? 0;
+  const targetedEmailsCount = verifiedEmails;
 
   const stats = [
     {
@@ -284,7 +302,7 @@ export function DashboardOverview({
                   <div className="flex items-center justify-between text-sm text-muted-foreground">
                     <span className="text-xs">
                       <TrendingUp className="mr-1.5 inline h-3.5 w-3.5 text-primary" />
-                      {search.totalFound.toLocaleString()} leads found
+                      {(liveLeadCounts?.[String(search.id)] ?? search.exportableFallback).toLocaleString()} exportable leads
                     </span>
                     <Button
                       variant="ghost"

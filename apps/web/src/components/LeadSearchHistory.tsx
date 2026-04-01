@@ -56,6 +56,13 @@ export function LeadSearchHistory() {
 
   const items = useMemo<Doc<"searches">[]>(() => searches ?? [], [searches]);
 
+  const searchIds = useMemo(() => items.map((s) => s._id), [items]);
+  const liveLeadCounts = useQuery(
+    api.leads.queries.getLeadCountsBySearchIds,
+    searchIds.length > 0 ? { searchIds } : "skip",
+  );
+
+
   const formatStatus = (status: string) => {
     return status
       .split("_")
@@ -201,11 +208,14 @@ export function LeadSearchHistory() {
         items.map((s: Doc<"searches">) => {
           const isExpanded = expandedSearchId === String(s._id);
           const duration = formatDuration(s.startedAt, s.completedAt);
+          const liveCount =
+            liveLeadCounts?.[String(s._id)] ??
+            s.results?.exportableCount ??
+            s.results?.enrichedCount ??
+            0;
           const enrichmentRate =
             s.results?.totalFound && s.results.totalFound > 0
-              ? Math.round(
-                  ((s.results.enrichedCount || 0) / s.results.totalFound) * 100
-                )
+              ? Math.round((liveCount / s.results.totalFound) * 100)
               : 0;
           const analysisRate =
             s.results?.totalFound && s.results.totalFound > 0
@@ -291,7 +301,7 @@ export function LeadSearchHistory() {
                         <BarChart3 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
                         <div className="flex flex-col gap-0.5">
                           <span className="font-medium text-foreground" data-testid="results-count">
-                            {s.results?.enrichedCount ?? 0} leads found
+                            {liveCount} leads found
                           </span>
                         </div>
                       </div>
@@ -372,7 +382,7 @@ export function LeadSearchHistory() {
                         status={s.status}
                         totalLeads={s.results?.totalFound ?? 0}
                         analyzedCount={s.results?.analyzedCount ?? 0}
-                        enrichedCount={s.results?.enrichedCount ?? 0}
+                        enrichedCount={liveCount}
                       />
                     ) : (
                       <Button
@@ -540,14 +550,14 @@ export function LeadSearchHistory() {
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
                       <div className="space-y-1">
                         <div className="text-muted-foreground">
-                          Contact Rate
+                          Email Match Rate
                         </div>
                         <div className="flex items-baseline gap-2">
                           <div className="text-lg font-medium">
                             {enrichmentRate}%
                           </div>
                           <div className="text-muted-foreground">
-                            ({s.results?.enrichedCount || 0}/
+                            ({liveCount}/
                             {s.results?.totalFound || 0})
                           </div>
                         </div>

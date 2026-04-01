@@ -145,18 +145,16 @@ export function computeMetricsFromSearch(
     broadcastMetrics.discovered,
     optimisticMetrics.discovered,
   );
-  const enriched = maxMetricValue(
-    progressMetrics.enriched,
-    broadcastMetrics.enriched,
-    optimisticMetrics.enriched,
-    search?.results?.enrichedCount,
-  );
-  const analyzed = maxMetricValue(
-    progressMetrics.analyzed,
-    broadcastMetrics.analyzed,
-    optimisticMetrics.analyzed,
-    search?.results?.analyzedCount,
-  );
+  // For enriched and analyzed, optimisticMetrics is computed by the caller with accurate
+  // DB-level data (e.g. leads with actual emailContent). Raw progress counters and broadcast
+  // values include completed_fallback / failed-analysis leads and must not override via max.
+  // When optimisticMetrics provides these keys, use them directly.
+  const enriched = "enriched" in optimisticMetrics
+    ? optimisticMetrics.enriched
+    : maxMetricValue(progressMetrics.enriched, broadcastMetrics.enriched, search?.results?.enrichedCount);
+  const analyzed = "analyzed" in optimisticMetrics
+    ? optimisticMetrics.analyzed
+    : maxMetricValue(progressMetrics.analyzed, broadcastMetrics.analyzed, search?.results?.analyzedCount);
   const totalCandidates = maxMetricValue(
     progressMetrics.total,
     broadcastMetrics.total,

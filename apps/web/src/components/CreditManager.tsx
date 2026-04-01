@@ -99,7 +99,7 @@ export function CreditManager({
       searchesThisMonth: usage?.searchesThisMonth || 0,
       leadsGenerated: usage?.leadsGenerated || 0,
       emailsGenerated: usage?.emailsGenerated || 0,
-      avgCostPerLead: usage?.avgCostPerLead || 0,
+      avgCostPerLead: usage?.avgCreditsPerLead || 0,
     };
 
   const showLoadingState = creditsLoading && currentCreditsOverride === undefined;
@@ -387,9 +387,9 @@ export function CreditManager({
           </div>
           <div className="text-center">
             <div className="text-2xl font-bold text-orange-600">
-              ${usageStats.avgCostPerLead.toFixed(2)}
+              {usageStats.avgCostPerLead > 0 ? `${usageStats.avgCostPerLead.toFixed(1)} cr` : "—"}
             </div>
-            <div className="text-sm text-muted-foreground">Avg Cost/Lead</div>
+            <div className="text-sm text-muted-foreground">Avg Credits/Lead</div>
           </div>
         </div>
       </Card>

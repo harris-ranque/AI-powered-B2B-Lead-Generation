@@ -124,6 +124,17 @@ export const getUsageStats = query({
       0,
     );
 
+    // emailsGenerated = sum of exportable leads across searches in period
+    // Uses stored exportableCount (new field) with fallback to enrichedCount for older searches
+    const emailsGenerated = searches.reduce(
+      (sum, search) =>
+        sum +
+        (search.results?.exportableCount ??
+          search.results?.enrichedCount ??
+          0),
+      0,
+    );
+
     const completedSearches = searches.filter(
       (s) => s.status === "completed",
     ).length;
@@ -136,6 +147,7 @@ export const getUsageStats = query({
       searchesCompleted: completedSearches,
       totalSearches: searches.length,
       leadsGenerated,
+      emailsGenerated,
       avgCreditsPerSearch:
         completedSearches > 0
           ? Math.round(creditsSpent / completedSearches)
@@ -143,6 +155,14 @@ export const getUsageStats = query({
       avgLeadsPerSearch:
         completedSearches > 0
           ? Math.round(leadsGenerated / completedSearches)
+          : 0,
+      // Aliased fields for frontend UsageSummary compatibility
+      currentPeriodUsage: creditsSpent,
+      totalCreditsUsed: creditsSpent,
+      searchesThisMonth: searches.length,
+      avgCreditsPerLead:
+        leadsGenerated > 0 && creditsSpent > 0
+          ? Math.round((creditsSpent / leadsGenerated) * 10) / 10
           : 0,
     };
   },
