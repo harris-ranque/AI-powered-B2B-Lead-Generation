@@ -1033,6 +1033,7 @@ PRIMARY EMAIL SELF-CHECK:
 - Does the body avoid sounding like AI-services copy
 - Does the subject avoid defaulting to a repetitive template
 - Do the follow-ups stay inside the same use-case family
+- Do the follow-ups reference the company by its recognizable trade name, not a street address or location label
 - If any answer is no, rewrite before finalizing
 
 SUBJECT LINE SELF-CHECK:
@@ -1413,7 +1414,7 @@ Example Follow-up:
 
 Quick note on the pipeline gaps we discussed. Three RevOps teams at your stage cut manual work by 40% using automated lead scoring.
 
-Want 15 minutes to see how it works for MetricFlow?"
+Want 15 minutes to see how it works for {company_name}?"
 
 Follow-up Timing and Angles:
 
@@ -1458,11 +1459,13 @@ CONTENT REQUIREMENTS:
 - Every follow-up should feel fresh and provide new value
 - Keep the same tight, punchy writing style
 - All information must come from business intelligence
+- COMPANY NAME ANCHORING (CRITICAL): Every follow-up body MUST reference the prospect's company by its recognizable trade name ({company_name}). Never substitute a street address, neighborhood name, sub-location label, or Google Maps place descriptor for the company name. If the company name is long, use a natural short form (e.g., "Ascend" for "Ascend Cannabis Dispensary - Boston") but NEVER an address like "Friend St"
 
 CONSISTENCY REQUIREMENTS:
 - Maintain professional tone throughout sequence
 - Match primary email's level of personalization
 - Keep brand voice consistent
+- Always use {company_name} as the company identifier across all follow-ups, matching how the primary email refers to the company
 
 4. QUALITY STANDARDS:
 

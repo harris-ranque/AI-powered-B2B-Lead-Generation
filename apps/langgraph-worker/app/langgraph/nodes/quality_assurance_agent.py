@@ -412,6 +412,13 @@ CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
    - Add to improvement_suggestions: "Remove claims about sender not supported by
      business profile: [specific claim]"
 
+11. COMPANY NAME CONSISTENCY VALIDATION:
+   - Every follow-up email MUST refer to the prospect's company by its recognizable trade name ({company_name})
+   - NEVER allow street addresses, neighborhood names, sub-location labels, or Google Maps descriptors as substitutes for the company name
+   - A natural short form is acceptable (e.g., "Ascend" for "Ascend Cannabis Dispensary - Boston") but NOT an address (e.g., "Friend St")
+   - Penalty: -0.1 per follow-up that uses an address or location label instead of the company name
+   - Flag in quality_issues: "Follow-up [N] identifies company by address/location instead of trade name"
+
 Quality Scoring Standards (RESEARCH VALIDATION TEMPORARILY DISABLED):
 - A-Tier Leads (rich research): ≥0.60 = Approved, 0.35-0.60 = Needs_Improvement, <0.35 = Rejected
 - B-Tier Leads (minimal research): ≥0.50 = Approved, 0.35-0.50 = Needs_Improvement, <0.35 = Rejected
@@ -419,6 +426,7 @@ Quality Scoring Standards (RESEARCH VALIDATION TEMPORARILY DISABLED):
 - NO HYPHENS violation = Auto-deduct 0.3 from overall score minimum
 - Length over 140 words = Auto-deduct 0.2 from overall score
 - Missing articles/pronouns = Deduct 0.1 per occurrence (up to 0.3 total)
+- Company name replaced by address/location = Auto-deduct 0.1 per follow-up
 - Research quality issues = Flag in suggestions but DO NOT reject or deduct points
 
 B-TIER LEAD SPECIAL INSTRUCTIONS (if lead_tier is "B"):
