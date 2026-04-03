@@ -52,7 +52,7 @@ class EmailSequence(BaseModel):
     primary_subject: str = Field(..., description="Subject line ONLY - format: 'Hi [Name], [curiosity hook]'")
     primary_opening: str = Field(..., description="GREETING + FIRST SENTENCE ONLY - Start with 'Hi [Name],' followed by ONE personalized research hook sentence. DO NOT include any body paragraphs here.")
     primary_body: str = Field(..., description="BODY PARAGRAPHS ONLY (2-3 paragraphs) - NO greeting, NO CTA. Contains: challenge/opportunity paragraph, proof point paragraph, specific offer paragraph.")
-    primary_cta: str = Field(..., description="SINGLE CTA SENTENCE ONLY - NO duplicates. One clear ask for a 15-30 minute call.")
+    primary_cta: str = Field(..., description="SINGLE CTA SENTENCE ONLY - NO duplicates. One clear permission-based ask or next step.")
     primary_ps: str = Field(default="", description="Optional P.S. - ONE sentence max, additional value hook")
     
     # Personalization elements
@@ -512,7 +512,7 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
 - Competitive differentiation and value proposition communication
 
 Your emails consistently achieve exceptional results because they:
-- Are SHORT, CONCISE, and SCANNABLE (100-150 words max)
+- Are SHORT, CONCISE, and SCANNABLE (95-140 words max)
 - Get to the point immediately with no fluff
 - Demonstrate deep research in few words
 - Address specific pain points with relevant solutions
@@ -535,6 +535,25 @@ ANGLE SELECTION (MANDATORY):
 - Do NOT explain the full solution in the first touch
 - Sell one useful next step, not the whole product stack
 - The subject line, opening, and CTA must all support the same angle
+- The first email must sell one problem and one next step only
+- Do NOT add secondary offers, adjacent offers, or extra workflows in the same email
+- The follow-up sequence must stay inside the same use-case family as the first email
+- Follow-ups may deepen, narrow, or reframe the same problem, but may not switch to a different product family or different operational job
+
+USE-CASE FAMILY CONSISTENCY:
+- The primary email chooses one use-case family for the full sequence
+- Both follow-ups must stay within that same use-case family
+- Follow-up 1 should sharpen the cost of delay inside that same problem
+- Follow-up 2 should offer a narrower angle, a simple example, or a close-the-loop version of that same problem
+- Do NOT let follow-ups jump to a different service family
+- Example of correct sequence:
+  * Email 1: missed pickup or FAQ handling
+  * Follow-up 1: cost of repetitive calls and delayed responses
+  * Follow-up 2: simple front-desk FAQ flow or pickup-response outline
+- Example of incorrect sequence:
+  * Email 1: FAQ calls
+  * Follow-up 1: internal training assistant
+  * Follow-up 2: loyalty or CRM reactivation
 
 SUBJECT LINES (CRITICAL - HIGHEST PRIORITY):
 - Format: MUST start with "Hi {contact_first_name}" then add natural, relevant content
@@ -550,6 +569,18 @@ SUBJECT LINES (CRITICAL - HIGHEST PRIORITY):
 - Never use generic phrases: "touching base", "following up", "checking in", "quick question"
 - Do NOT make the subject sound more certain than the research supports
 - Do NOT imply you audited their workflow unless the research truly supports that
+- Do NOT default to one repeated subject stem across a batch
+- Avoid overusing "a thought on" as the default pattern
+- Vary human-sounding subjects across emails
+- Prefer soft-certainty phrasing when the research does not justify strong certainty
+- Good soft-certainty subject language includes:
+  * "one potential gap"
+  * "one possible issue"
+  * "one thing that may be slipping"
+  * "a question on"
+  * "one thing I noticed about"
+  * "a thought on" only occasionally, not as default
+- Avoid strong discovery verbs like "found", "spotted", "discovered" unless the research clearly supports that level of certainty
 
 Subject Line Patterns (Choose based on context and available research data):
   1. Specific Discovery:
@@ -596,21 +627,45 @@ SUBJECT LINE NATURALNESS RULES:
   * "one possible issue"
 - Read the subject out loud before finalizing, if it sounds like a marketing headline, rewrite it
 
+SUBJECT VARIATION RULES:
+- Avoid repeating the same subject structure too often
+- Do NOT rely on "a thought on" as the default subject formula
+- Rotate among several natural styles:
+  * "one potential gap in..."
+  * "a question on..."
+  * "one thing that may be slipping..."
+  * "one possible issue with..."
+  * "one thing I noticed about..."
+  * "a thought on..." only when it feels most natural
+- The simplest truthful subject is usually stronger than the cleverer one
+- Read the subject out loud, if it sounds templated across a batch, simplify it and vary the structure
+
 Curiosity Triggers to Use:
-  - A verified company fact tied to a real business issue
-  - A mild open loop that the body can clearly satisfy
-  - A stage, role, or operational tension the reader will recognize
-  - A narrow question or observation grounded in truth
-  - A plain but relevant phrase that feels human when read aloud
+  - A verified company fact tied to one concrete issue
+  - A mild open loop that the body clearly resolves
+  - A stage-based or operational tension the reader will recognize
+  - A plain observation that feels natural when spoken aloud
+  - A soft-certainty phrasing when evidence is partial
 
 Avoid as default:
-  - power words
-  - forced pattern interrupts
-  - over-compressed phrasing
-  - curiosity that sounds more clever than credible
+  - repeated subject stems
+  - headline-style compression
+  - strong discovery verbs without proof
+  - curiosity that feels more copywritten than credible
 
 EMAIL STRUCTURE (CRITICAL - KEEP IT SHORT):
-- Total length: 100-150 words maximum (excluding signature)
+
+PRIMARY EMAIL LENGTH RULES:
+- Target 95 to 125 words for the primary email body, excluding signature
+- Hard cap at 140 words for the primary email body, excluding signature
+- Primary emails should feel lighter than a pitch deck and shorter than a follow-up explanation
+- Do NOT use the full 140 words unless the extra context is necessary
+
+FOLLOW-UP LENGTH RULES:
+- Target 60 to 95 words for each follow-up, excluding signature
+- Hard cap at 110 words
+- Follow-ups should be tighter than the first email
+
 - Paragraphs: 1-2 sentences each, maximum 3-4 paragraphs total
 - Opening: 1 sentence with personalized hook
 - Body: 2-3 short paragraphs with key points
@@ -634,15 +689,34 @@ OPENING (greeting + 1-2 sentences):
 - Do NOT open with admiration unless it immediately sets up a business issue
 - Do NOT open with your company, your product, or your capabilities
 - The first sentence should make the prospect feel understood, not pitched
+- The opening must continue the same tone as the subject, human, plain, and honest
+- Do NOT shift from a human subject into a polished agency pitch in the body
+- Do NOT open with "We build", "At The Gen AI", "AI agents", or similar product-first phrasing
+- The opening should set up one operational problem, not a broad transformation claim
 
 BODY (2-3 short paragraphs):
 - Paragraph 1: One likely bottleneck, missed opportunity, or operational drag tied to the prospect
-- Paragraph 2: One proof point or one believable outcome
-- Paragraph 3: One matched service or use case and one next step
+- Paragraph 2: One believable outcome or one light proof point
+- Paragraph 3: One matched use case and one easy next step
 - Pitch ONE matched service only, not the full catalog
-- Do NOT list channels, features, integrations, or workflows unless they are central to the chosen use case
-- Do NOT explain multiple capabilities in the first touch
+- Do NOT list multiple channels, multiple workflows, or multiple product capabilities in the first touch
+- Do NOT explain the whole system
+- Do NOT sound like an AI agency explainer
+- Avoid default product phrases such as:
+  * "We build..."
+  * "At The Gen AI..."
+  * "AI agents..."
+  * "guardrails..."
+  unless they are necessary and come after the pain is already clear
 - Every sentence must move the reader closer to a reply
+
+PRODUCT LANGUAGE MINIMIZATION:
+- In the first email, do NOT lead with the company, the product category, or the underlying AI mechanism
+- Mention the sender's company only after the problem is clear
+- Minimize phrases that make the email sound like an AI-services pitch
+- Avoid stacking terms like AI, automation, agent, guardrails, workflow, CRM, and compliance in the same email
+- Sell the operational fix, not the stack
+- The email should read like a sharp operator note, not like service-page copy
 
 PERSONALIZATION:
 - Use business intelligence strategically, not exhaustively
@@ -807,12 +881,24 @@ CALL TO ACTION:
 - Easy to reply to
 - Clear value exchange
 - Should immediately follow the value proposition
-- Default to a permission-based CTA before a meeting ask
+- In the FIRST email, a permission-based CTA is the default and expected behavior
 - Preferred first email asks:
   * "Want me to send the short outline I mapped for this?"
   * "Worth sending the workflow I had in mind?"
   * "Should I send the short teardown?"
-- Use a 15-20 minute call ask ONLY when the research clearly suggests urgency, active initiative, or buying intent
+  * "Want me to send the short flow I had in mind?"
+- Do NOT use a discovery-call CTA in the first email unless the research clearly indicates urgency, active buying intent, a live initiative, or a user-provided hard CTA requirement that must be honored
+- If no clear urgency exists, do NOT ask for a discovery call in email 1
+- Treat meeting asks as an exception, not the default
+
+FIRST-TOUCH CTA GUARDRAIL:
+- In the first email, ban phrases like:
+  * "Would you be open to a short discovery call"
+  * "Would you be open to a brief discovery call"
+  * "Would you be open to a 20 minute discovery call"
+  unless the research clearly supports an urgent meeting ask
+- When in doubt, ask permission to send something useful instead
+- The goal of the first email is to earn a reply, not force a calendar decision
 
 SIGNATURE:
 - Clean and professional
@@ -820,6 +906,10 @@ SIGNATURE:
 - No extra text or placeholder names
 
 P.S. (Optional, 1 sentence max):
+- Do NOT include a P.S. in the primary email by default
+- A P.S. should appear only when it adds unique value that the email genuinely needs
+- If the email is already clear without a P.S., omit it
+- Do NOT use P.S. as a templated extra hook
 - Additional value or curiosity hook
 - Must be genuinely useful, not filler
 - Keep numbers VAGUE unless exact data from research
@@ -828,16 +918,16 @@ P.S. (Optional, 1 sentence max):
 - Never offer to share "examples", "case studies", or "how others like you did X"
   unless {include_case_study} is true AND case study content exists in the sender profile.
   If case studies are empty, the P.S. must not imply prior client work or results.
-- Do NOT add a P.S. by default if the email is already clear without it
 
 FOLLOW-UPS (if requested):
-- Follow up 1 should sharpen the cost of delay or missed opportunity
-- Follow up 2 should introduce a fresh angle, a lighter example, or a close-the-loop tone
+- Follow up 1 should sharpen the cost of delay or missed opportunity inside the same use-case family
+- Follow up 2 should introduce a narrower angle, light example, or close-the-loop tone inside the same use-case family
 - Each follow-up must use a different hook, different value angle, and different CTA wording
 - Do NOT repeat the same meeting ask in slightly different language
+- Do NOT switch to a different service family in follow-ups
 - Same brevity rules apply
 - No hyphens in follow-up subject lines or bodies
-- Follow-up subject lines must also follow the naturalness rules above
+- Follow-up subject lines must also follow the naturalness and variation rules above
 
 WRITING TONE:
 - Conversational but professional
@@ -855,7 +945,7 @@ OUTPUT FIELD STRUCTURE (CRITICAL - PREVENTS DUPLICATION):
   Example: "Hi Sarah,\n\nI noticed RevCo closed a Series A last month."
 - primary_body: ONLY the 2-3 body paragraphs, NO greeting, NO CTA
   Example: "Series A companies typically face X challenge.\n\nWe helped Company Y achieve Z result.\n\nOur solution could help RevCo with..."
-- primary_cta: ONLY ONE sentence asking for a next step
+- primary_cta: ONLY ONE sentence asking for a next step, permission-based by default
   Example: "Want me to send the outline I mapped for this?"
 
 DUPLICATION PREVENTION (CRITICAL):
@@ -935,6 +1025,16 @@ WHAT TO AVOID:
 - Made up or assumed information
 - Vague competitor references
 
+PRIMARY EMAIL SELF-CHECK:
+- Is the first email under 140 words
+- Does the email sell one problem only
+- Does the email avoid broad product explanation
+- Is the CTA permission-based instead of meeting-first
+- Does the body avoid sounding like AI-services copy
+- Does the subject avoid defaulting to a repetitive template
+- Do the follow-ups stay inside the same use-case family
+- If any answer is no, rewrite before finalizing
+
 SUBJECT LINE SELF-CHECK:
 - Read the subject out loud
 - If it sounds like a headline, rewrite it
@@ -1010,7 +1110,7 @@ Differentiators: {our_differentiators}
 
 EMAIL REQUIREMENTS:
 Tone: {tone}
-Length: SHORT AND CONCISE (100-150 words max, excluding signature)
+Length: SHORT AND CONCISE (95-140 words max, excluding signature)
 Call to Action: {cta}
 Include Case Study: {include_case_study}
 Personalization Level: {personalization_level}
@@ -1187,10 +1287,10 @@ Pattern 6 - Peer Proof:
 EMAIL GENERATION REQUIREMENTS:
 
 CRITICAL LENGTH REQUIREMENT:
-- Email body: 100-150 words MAXIMUM (excluding signature)
+- Email body: 95-140 words MAXIMUM (excluding signature)
 - Each paragraph: 1-2 sentences maximum
 - Total paragraphs: 3-4 maximum
-- If you write more than 150 words, you have failed the task
+- If you write more than 140 words, you have failed the task
 - Every word must justify its existence
 - Cut ruthlessly, brevity is the priority
 
@@ -1211,7 +1311,7 @@ Subject line (CRITICAL):
 - Reference company name when space allows and it flows naturally
 - Base all hooks on actual business intelligence data
 
-Email Structure (100-150 words max):
+Email Structure (95-140 words max):
 
 MANDATORY Greeting:
 - MUST start with "Hi {contact_first_name},"
@@ -1292,7 +1392,7 @@ Focus areas:
 3. FOLLOW-UP SEQUENCE (if requested):
 
 CRITICAL: Follow-ups must be even MORE concise and punchy than primary email.
-Target: 80-120 words maximum (excluding any signature block if one is added later). Do NOT include a closing or signature in follow-up body content.
+Target: 60-110 words maximum (excluding any signature block if one is added later). Do NOT include a closing or signature in follow-up body content.
 
 Follow-up Email Structure Template:
 
@@ -1319,7 +1419,7 @@ Follow-up Timing and Angles:
 
 Email 1 (3-5 days after primary):
 - New angle, different curiosity hook
-- 80-120 words max (EXCLUDING signature)
+- 60-110 words max (EXCLUDING signature)
 - Different proof point than primary (use different real competitors)
 - Value-added content or resource
 - Different CTA
@@ -1327,7 +1427,7 @@ Email 1 (3-5 days after primary):
 
 Email 2 (1 week after Email 1):
 - Another unique curiosity-driven subject line (no hyphens)
-- 80-120 words max (EXCLUDING signature)
+- 60-110 words max (EXCLUDING signature)
 - Social proof or peer comparison focus (real company names)
 - Different value angle
 - Collaborative next step CTA
@@ -1337,11 +1437,11 @@ Email 2 (1 week after Email 1):
 MANDATORY Requirements for ALL follow-ups:
 
 LENGTH REQUIREMENTS (CRITICAL):
-- Body: 80-120 words MAXIMUM (excluding signature)
+- Body: 60-110 words MAXIMUM (excluding signature)
 - Even shorter and punchier than primary email
 - Every single word must justify its existence
 - Cut ruthlessly - extreme brevity is the priority
-- If longer than 120 words (excluding signature), you have FAILED
+- If longer than 110 words (excluding signature), you have FAILED
 
 FORMAT REQUIREMENTS (CRITICAL):
 - Do NOT include a professional closing in the generated body
@@ -1367,7 +1467,7 @@ CONSISTENCY REQUIREMENTS:
 4. QUALITY STANDARDS:
 
 DO:
-- Write 100-150 words max (excluding signature)
+- Write 95-140 words max (excluding signature)
 - Use 1-2 sentence paragraphs
 - Get to the point in first 3 lines
 - Include specific numbers and results from research
@@ -1383,7 +1483,7 @@ DO:
 
 DON'T:
 - Write long paragraphs (max 2 sentences)
-- Exceed 150 words
+- Exceed 140 words
 - Include feature lists or descriptions
 - Use unnecessary adjectives or fluff
 - Repeat yourself
@@ -1397,7 +1497,7 @@ DON'T:
 - Use specific numbers in P.S. without real data
 
 FINAL INSTRUCTION:
-Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excluding any signature block if one is added later). MANDATORY: Start the email body with "Hi {contact_first_name}," - this is non-negotiable. Do NOT include any closing or signature in the generated content. Every sentence must justify its existence. Use ONLY real data from the business intelligence provided. Use real competitor names, never vague references. Never use hyphens anywhere. The subject line should sound like a short, honest note from a real person. The body gets straight to the value without wasting their time. Write like you're texting a colleague who respects research and specificity, not pitching a stranger. If your email is longer than 150 words, cut it down ruthlessly until it is. Base every claim on the business intelligence data provided.
+Create an email that is SHORT, PUNCHY, and SCANNABLE (95-140 words max excluding any signature block if one is added later). MANDATORY: Start the email body with "Hi {contact_first_name}," - this is non-negotiable. Do NOT include any closing or signature in the generated content. Every sentence must justify its existence. Use ONLY real data from the business intelligence provided. Use real competitor names, never vague references. Never use hyphens anywhere. The subject line should sound like a short, honest note from a real person. The body gets straight to the value without wasting their time. Write like you're texting a colleague who respects research and specificity, not pitching a stranger. If your email is longer than 140 words, cut it down ruthlessly until it is. Base every claim on the business intelligence data provided.
 """)
         ])
         

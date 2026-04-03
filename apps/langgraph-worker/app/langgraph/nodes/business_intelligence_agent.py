@@ -468,8 +468,24 @@ OUTPUT REQUIREMENTS:
 - Format for easy email insertion
 - Prioritize EMAIL-USABLE insights over generic analysis
 - When information is uncertain or inferred, prefer a safer, less specific output over an impressive one
+- Do NOT infer exact company-specific numbers from industry standards or general benchmarks
+- If exact numbers are not directly available from research, use qualitative language instead
+
+USE-CASE FAMILY SUPPORT:
+- Generate intelligence that can support one primary use-case family for the full email sequence
+- Prefer a narrow operational problem over a broad transformation narrative
+- The best output should help the writer stay on one problem for email 1 and both follow-ups
+
+SUBJECT-LINE-READY OBSERVATIONS:
 - Generate subject-line-ready observations that sound like a human email note, not like ad copy
 - Prefer operational tensions and stage-based observations over dramatic discovery framing
+- Prefer soft-certainty observations when evidence is partial
+- Avoid overusing the same generic phrasing pattern in suggested hooks
+
+SAFER OPENING HOOKS:
+- If no strong dated milestone exists, prefer a safe operational fact or stage-based tension
+- A weaker but truthful hook is better than a dramatic but shaky one
+- Feed the writer openings that can support a natural subject and a narrow body angle
             """),
             ("human", """Extract EMAIL-READY business intelligence (2 sentences max per text field, 3-5 items per list):
 
@@ -519,6 +535,10 @@ EXTRACT EMAIL-OPTIMIZED INTELLIGENCE:
    - Match our services to their needs with plausible business relevance
    - Include competitor examples ONLY when exact competitor names and exact results are present in research
    - If not available, use a generic industry pattern without invented numbers
+   - Value matches should help the writer choose one matched service only
+   - Do not encourage bundling multiple services into one email
+   - Do not frame the sender as a full-stack solution in first-touch cold outreach
+   - Prefer one believable fit over a richer but broader pitch
 
 10. Value alignment score (0-1)
 
@@ -531,8 +551,11 @@ EXTRACT EMAIL-OPTIMIZED INTELLIGENCE:
     - Technology stack: "uses [Specific Tool Names]"
     - Extract from recent_news first, then company_overview
     - If no dated milestone is available, prefer a safe operational or stage-based fact over a weak recent hook
+    - Generate observations that support a natural, human-sounding subject line
+    - Prefer soft-certainty framing when evidence is partial
 
 13. Messaging strategy (1 sentence with specific angle based on their situation)
+    - Focus the messaging strategy on one narrow use-case family, not a broad transformation pitch
 
 CRITICAL REQUIREMENTS:
 - Extract REAL competitor names from research (list actual company names)
@@ -542,6 +565,9 @@ CRITICAL REQUIREMENTS:
 - Use ACTUAL company/product names (never generic "similar companies")
 - Format insights for direct email insertion
 - When information is uncertain or inferred, prefer a safer, less specific output over an impressive one
+- Do NOT infer exact company-specific numbers from industry standards
+- Generate intelligence that supports one narrow use-case family for the full email sequence
+- Prefer a narrow operational problem over a broad transformation narrative
             """)
         ])
         

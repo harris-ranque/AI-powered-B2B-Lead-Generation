@@ -331,13 +331,22 @@ CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
      * Peer Proof: "Hi [name], what companies like [company]..."
      * Limited Data (Pattern 7): Company Insight, Stage/Size Focus, or Role/Industry Specific
    - If the subject is truthful, relevant, under 60 characters, aligned with the body, and sounds natural, it may pass even if it does not map perfectly to a legacy pattern
+   - Penalize subjects that rely on the same generic human-sounding stem without enough specificity
+   - Reward subjects that sound natural and specific without overclaiming certainty
+   - Penalize strong discovery language such as "found", "spotted", or "discovered" when unsupported
+   - Prefer softer phrasing such as "potential", "possible", "may be", "a question on", or "one thing I noticed" when evidence is limited
+   - A subject may be natural on its own and still feel templated if it relies on weak generic phrasing
+   - Flag subjects that feel too vague, too reusable, or too interchangeable with other emails
+   - Reward subjects that feel both human and specific to the same angle used in the body
 
 3. LENGTH VALIDATION (MANDATORY):
-   - Primary email body MUST be 95-150 words (excluding signature)
+   - Primary email body MUST be 95-140 words (excluding signature)
+   - If the primary email exceeds 140 words, flag it as a quality issue and apply a meaningful penalty
+   - Treat overlength primary emails as a real conversion problem, not a minor formatting problem
    - Follow-ups may be shorter if still complete and clear
    - Each paragraph MUST be 1-2 sentences maximum
    - Total paragraphs MUST be 3-4 maximum
-   - If over 150 words = FAILURE, significant score penalty
+   - If over 140 words = FAILURE, significant score penalty
    - Count words carefully, do not estimate
 
 4. NATURAL LANGUAGE VALIDATION (MANDATORY):
@@ -408,7 +417,7 @@ Quality Scoring Standards (RESEARCH VALIDATION TEMPORARILY DISABLED):
 - B-Tier Leads (minimal research): ≥0.50 = Approved, 0.35-0.50 = Needs_Improvement, <0.35 = Rejected
 - Current lead tier: {lead_tier}
 - NO HYPHENS violation = Auto-deduct 0.3 from overall score minimum
-- Length over 150 words = Auto-deduct 0.2 from overall score
+- Length over 140 words = Auto-deduct 0.2 from overall score
 - Missing articles/pronouns = Deduct 0.1 per occurrence (up to 0.3 total)
 - Research quality issues = Flag in suggestions but DO NOT reject or deduct points
 
@@ -426,9 +435,27 @@ Assessment Criteria (all 0-1 scale, FOCUS ON GRAMMAR/GUIDELINES ONLY):
 3. Professional Tone Score: Natural language, proper grammar, no hyphens (STRICT)
 4. Value Proposition Score: Clarity and structure (research accuracy not critical)
 5. Call-to-Action Score: Clear, specific, low-pressure, well-positioned (STRICT)
-   - Permission-based CTAs are preferred in first-touch cold emails
-   - A CTA does NOT need to ask for a call to score well
-   - Strong CTAs can ask permission to send an outline, workflow, teardown, benchmark, or example
+   - In first-touch cold emails, permission-based CTAs are preferred
+   - A first email does NOT need to ask for a call to score well
+   - Strong first-touch CTAs can ask permission to send an outline, workflow, teardown, benchmark, or example
+   - Penalize first-touch CTAs that jump to a discovery call without a clearly justified urgency signal
+   - Discovery-call CTAs in email 1 should be treated as exceptions, not defaults
+
+PRODUCT-HEAVINESS CHECKS:
+   - Flag product-heavy or AI-agency-style body language in the first email
+   - Flag first-touch emails that explain multiple capabilities, channels, workflows, or product layers
+   - Flag copy that sounds like a services pitch before the problem is clear
+   - Flag repeated phrases such as:
+     * "We build..."
+     * "At The Gen AI..."
+     * "AI agents..."
+     * "guardrails..."
+     when they appear too early or make the email feel like a product pitch
+
+USE-CASE FAMILY CONSISTENCY:
+   - For sequences, follow-ups must stay inside the same use-case family as the first email
+   - Flag follow-ups that introduce a new service family or new core product angle instead of deepening the first problem
+   - A sequence should feel like one conversation, not three separate offers
 
 Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per bullet).
 """),
@@ -485,15 +512,22 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
             - A subject should not claim direct discovery unless the email contains a clearly supported basis for that claim
             - Prefer "potential", "may be", "a thought on", or similar softening when the research does not justify certainty
             - If the subject is truthful, relevant, under 60 characters, aligned with the body, and sounds natural, it may pass even if it does not map perfectly to a legacy pattern
+            - Penalize subjects that rely on the same generic human-sounding stem without enough specificity
+            - Reward subjects that sound natural and specific without overclaiming certainty
+            - Penalize strong discovery language such as "found", "spotted", or "discovered" when unsupported
+            - Prefer softer phrasing such as "potential", "possible", "may be", "a question on", or "one thing I noticed" when evidence is limited
+            - Flag subjects that feel too vague, too reusable, or too interchangeable with other emails
+            - Reward subjects that feel both human and specific to the same angle used in the body
             - Flag violations in quality_issues with specific pattern it should use
 
             3. LENGTH VALIDATION (MANDATORY - COUNT CAREFULLY):
             - Count EXACT words in email body (excluding signature)
-            - Primary email body MUST be 95-150 words
+            - Primary email body MUST be 95-140 words
             - Follow-ups may be shorter if still complete and clear
             - Count paragraphs: MUST be 3-4 maximum
             - Count sentences per paragraph: MUST be 1-2 maximum
-            - If over 150 words = add to quality_issues: "Email exceeds 150 word limit ([ACTUAL_COUNT] words)" and deduct 0.2 from score
+            - If over 140 words = add to quality_issues: "Email exceeds 140 word limit ([ACTUAL_COUNT] words)" and deduct 0.2 from score
+            - Treat overlength primary emails as a real conversion problem, not a minor formatting problem
             - If under 95 words = add to quality_issues: "Email under 95 word minimum"
 
             4. NATURAL LANGUAGE CHECK (MANDATORY):
@@ -534,6 +568,16 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
             - Flag feature dumping or product-heavy explanations
             - Flag first-touch CTAs that jump to a meeting without first offering clear value
             - Flag openings built on generic praise instead of a business issue
+            - Flag product-heavy or AI-agency-style body language in the first email
+            - Flag first-touch emails that explain multiple capabilities, channels, workflows, or product layers
+            - Flag copy that sounds like a services pitch before the problem is clear
+            - Flag repeated product phrases such as "We build...", "At The Gen AI...", "AI agents...", "guardrails..." when they appear too early
+            - In first-touch cold emails, permission-based CTAs are preferred
+            - Penalize first-touch CTAs that jump to a discovery call without clearly justified urgency
+            - Discovery-call CTAs in email 1 should be treated as exceptions, not defaults
+            - For sequences, follow-ups must stay inside the same use-case family as the first email
+            - Flag follow-ups that introduce a new service family or new core product angle instead of deepening the first problem
+            - A sequence should feel like one conversation, not three separate offers
             - Flag any structure violations in quality_issues
 
             9. SIGNATURE VALIDATION:
@@ -579,12 +623,13 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
 
             SCORING RULES (APPLY PENALTIES STRICTLY):
             - Start with base scores for each dimension
-            - Permission-based CTAs are preferred in first-touch cold emails
-            - A CTA does NOT need to ask for a call to score well
-            - Strong CTAs can ask permission to send an outline, workflow, teardown, benchmark, or example
+            - In first-touch cold emails, permission-based CTAs are preferred
+            - A first email does NOT need to ask for a call to score well
+            - Strong first-touch CTAs can ask permission to send an outline, workflow, teardown, benchmark, or example
+            - Penalize first-touch CTAs that jump to a discovery call without clearly justified urgency
             - Apply automatic penalties ONLY for grammar and guidelines:
               * ANY hyphens found: -0.3 minimum from overall_quality_score
-              * Over 150 words: -0.2 from overall_quality_score
+              * Over 140 words: -0.2 from overall_quality_score
               * Missing articles/pronouns: -0.1 each (up to -0.3 total)
               * "10x" hype language: -0.15 from overall_quality_score
 
