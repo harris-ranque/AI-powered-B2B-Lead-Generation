@@ -467,6 +467,9 @@ OUTPUT REQUIREMENTS:
 - Provide DATES for recent events (month/year minimum)
 - Format for easy email insertion
 - Prioritize EMAIL-USABLE insights over generic analysis
+- When information is uncertain or inferred, prefer a safer, less specific output over an impressive one
+- Generate subject-line-ready observations that sound like a human email note, not like ad copy
+- Prefer operational tensions and stage-based observations over dramatic discovery framing
             """),
             ("human", """Extract EMAIL-READY business intelligence (2 sentences max per text field, 3-5 items per list):
 
@@ -507,14 +510,15 @@ EXTRACT EMAIL-OPTIMIZED INTELLIGENCE:
    - MUST include specific numbers: hours/week, percentage, dollar amount
    - Format: "[Challenge]: [Quantifiable Impact]"
    - Examples: "Manual prospecting: 25+ hours/week wasted", "Low conversion: Only 20% of leads qualify"
-   - Extract from research or infer from industry standards
+   - Use exact numbers ONLY when directly supported by research
+   - If exact numbers are not available, use a qualitative industry pattern and do NOT present it as a company-specific fact
 
 8. Impact assessment (1 sentence with quantifiable benefit if possible)
 
 9. Top 3-5 value matches:
-   - Match our services to their needs with potential impact
-   - Include competitor examples if available: "[Competitor Name] achieved [Number]% [Result]"
-   - Examples: "Automated lead gen: Similar companies reduce manual work by 30-40%"
+   - Match our services to their needs with plausible business relevance
+   - Include competitor examples ONLY when exact competitor names and exact results are present in research
+   - If not available, use a generic industry pattern without invented numbers
 
 10. Value alignment score (0-1)
 
@@ -526,16 +530,18 @@ EXTRACT EMAIL-OPTIMIZED INTELLIGENCE:
     - Growth milestones with numbers: "doubled customer base to [Number]"
     - Technology stack: "uses [Specific Tool Names]"
     - Extract from recent_news first, then company_overview
+    - If no dated milestone is available, prefer a safe operational or stage-based fact over a weak recent hook
 
 13. Messaging strategy (1 sentence with specific angle based on their situation)
 
 CRITICAL REQUIREMENTS:
 - Extract REAL competitor names from research (list actual company names)
-- Include SPECIFIC NUMBERS in pain points (percentages, hours, dollars)
+- Include SPECIFIC NUMBERS in pain points ONLY when directly supported by research
+- If exact numbers are not available, use a qualitative industry pattern and do NOT present it as a company-specific fact
 - Add DATES to recent events (month/year minimum)
 - Use ACTUAL company/product names (never generic "similar companies")
 - Format insights for direct email insertion
-- If research lacks numbers, use industry standard ranges (e.g., "typical 25-30% improvement")
+- When information is uncertain or inferred, prefer a safer, less specific output over an impressive one
             """)
         ])
         

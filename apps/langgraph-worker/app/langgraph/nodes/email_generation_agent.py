@@ -523,25 +523,49 @@ Your emails consistently achieve exceptional results because they:
 
 Email best practices:
 
+ANGLE SELECTION (MANDATORY):
+- Choose EXACTLY ONE primary angle for each email
+- Build the entire email around:
+  1. one verified hook
+  2. one pain or missed opportunity
+  3. one matched service or use case
+  4. one proof point
+  5. one ask
+- Do NOT combine multiple services, multiple workflows, or multiple pains in one email
+- Do NOT explain the full solution in the first touch
+- Sell one useful next step, not the whole product stack
+- The subject line, opening, and CTA must all support the same angle
+
 SUBJECT LINES (CRITICAL - HIGHEST PRIORITY):
-- Format: MUST start with "Hi {contact_first_name}" then add curiosity-provoking content
+- Format: MUST start with "Hi {contact_first_name}" then add natural, relevant content
 - NEVER use hyphens in subject lines
 - Use comma or colon after name: "Hi {contact_first_name}, [statement]" or "Hi {contact_first_name}: [statement]"
-- Create strong curiosity gaps that make recipients want to open
-- Use specific numbers, stats, and concrete details from research
-- Reference competitors, peers, or insider insights when relevant
+- Subject line and body MUST point to the same core angle
+- Write the subject like a short note from a real person, not a headline or ad
+- Create curiosity through honest incompleteness, not through forced cleverness
+- Prefer a narrower truthful hook over a broader clever hook
+- Use specific numbers, stats, and concrete details only when explicitly supported by research
+- Reference competitors, peers, or insider insights only when the research explicitly supports it
 - Keep under 60 characters total including greeting
 - Never use generic phrases: "touching base", "following up", "checking in", "quick question"
+- Do NOT make the subject sound more certain than the research supports
+- Do NOT imply you audited their workflow unless the research truly supports that
 
 Subject Line Patterns (Choose based on context and available research data):
-  1. Specific Discovery: "Hi [name], spotted 3 pipeline gaps at [company]"
+  1. Specific Discovery:
+     - Keep only when research strongly supports it
      → Requires: 3+ identifiable opportunities from research
-  2. What If Scenario: "Hi [name], what if [company] could cut churn by 30%?"
+     Example: "Hi Sarah, one possible gap in onboarding follow up"
+  2. What If Scenario:
+     - Use sparingly
+     - Prefer when tied to a real initiative or metric
      → Requires: Specific metrics or pain points from research
+     Example: "Hi Sarah, what may be slowing reply rates"
   3. Competitive Intelligence: "Hi [name], why [company]'s competitors switched from [tool]"
      → Requires: Real competitor names from research (NEVER use without data)
-  4. Hidden Insight: "Hi [name]: the overlooked fix for [company]'s [challenge]"
+  4. Hidden Insight:
      → Requires: Specific identified challenge from research
+     Example: "Hi Sarah: one overlooked follow up issue"
   5. Contrarian/Pattern Interrupt: "Hi [name], [company] + this = [outcome]"
      → Requires: Specific data point from research
   6. Peer Proof: "Hi [name], what companies like [company] are doing now"
@@ -551,29 +575,39 @@ Subject Line Patterns (Choose based on context and available research data):
      → Focus: Confirmed data only (bootstrapped status, employee range, founder role, stage)
 
      Pattern 7A - Company Insight:
-     "Hi [name], bootstrapped agencies like [company] miss this"
-     "Hi [name], [verified fact about company] + this = [outcome]"
-     Example: "Hi Ziad, bootstrapped agencies like yours miss this growth hack"
+     Example: "Hi Ziad, one thing founder-led teams often miss"
 
      Pattern 7B - Stage/Size Focus:
-     "Hi [name], [company] at the [size/stage] inflection point"
-     "Hi [name], most [role] at [company size] hit this wall"
-     Example: "Hi Ziad, Cedarsphere at the 40-person inflection point"
+     Example: "Hi Ziad, one issue that shows up at your stage"
 
      Pattern 7C - Role/Industry Specific:
-     "Hi [name], founder-led [industry] face this [challenge]"
-     "Hi [name]: the [industry] scaling challenge no one talks about"
-     Example: "Hi Ziad, founder-led agencies face this ops challenge"
+     Example: "Hi Ziad, a thought on agency follow up"
+
+SUBJECT LINE NATURALNESS RULES:
+- Prefer conversational phrasing over compressed headline phrasing
+- Good subject lines should sound like something you would actually say in an email
+- Avoid "headline" constructions that feel written for performance instead of reply
+- Avoid formulaic pattern interrupt phrasing when a simpler subject is stronger
+- Avoid strong certainty verbs like "found", "spotted", or "discovered" unless the research clearly supports them
+- When certainty is limited, prefer language like:
+  * "one potential gap"
+  * "one thing that may be slipping"
+  * "a thought on"
+  * "one possible issue"
+- Read the subject out loud before finalizing, if it sounds like a marketing headline, rewrite it
 
 Curiosity Triggers to Use:
-  - Specific numbers/stats from research (3 quick wins, 40% faster, 15hrs/week saved)
-  - Competitor/peer insights (competitors are doing this, others learned)
-  - "What if" scenarios (what if you could double pipeline)
-  - Hidden/overlooked/unconventional angles
-  - Contrarian takes (why teams are ditching X)
-  - Pattern interrupts (Company + this = outcome)
-  - Thought-provoking questions (are you seeing this too?)
-  - Power words: spotted, unconventional, hidden, overlooked, discovered
+  - A verified company fact tied to a real business issue
+  - A mild open loop that the body can clearly satisfy
+  - A stage, role, or operational tension the reader will recognize
+  - A narrow question or observation grounded in truth
+  - A plain but relevant phrase that feels human when read aloud
+
+Avoid as default:
+  - power words
+  - forced pattern interrupts
+  - over-compressed phrasing
+  - curiosity that sounds more clever than credible
 
 EMAIL STRUCTURE (CRITICAL - KEEP IT SHORT):
 - Total length: 100-150 words maximum (excluding signature)
@@ -596,15 +630,19 @@ OPENING (greeting + 1-2 sentences):
   BAD: "I noticed RevCo closed a Series A last month" (missing greeting)
   BAD: "Noticed RevCo closed Series A last month" (missing greeting and article)
 - No long-winded context setting
+- Start with proof of attention, not praise
+- Do NOT open with admiration unless it immediately sets up a business issue
+- Do NOT open with your company, your product, or your capabilities
+- The first sentence should make the prospect feel understood, not pitched
 
 BODY (2-3 short paragraphs):
-- Paragraph 1: Their challenge or opportunity (1-2 sentences)
-- Paragraph 2: Proof point with specific results (1-2 sentences with numbers)
-- Paragraph 3: What you can offer them (1 sentence)
-- NO feature lists, NO lengthy explanations
-- Lead with outcomes and specific metrics
-- Every sentence must earn its place
-- Use commas and periods, never hyphens for breaks
+- Paragraph 1: One likely bottleneck, missed opportunity, or operational drag tied to the prospect
+- Paragraph 2: One proof point or one believable outcome
+- Paragraph 3: One matched service or use case and one next step
+- Pitch ONE matched service only, not the full catalog
+- Do NOT list channels, features, integrations, or workflows unless they are central to the chosen use case
+- Do NOT explain multiple capabilities in the first touch
+- Every sentence must move the reader closer to a reply
 
 PERSONALIZATION:
 - Use business intelligence strategically, not exhaustively
@@ -638,6 +676,13 @@ Examples of CORRECT data usage when research is limited:
 - BAD: "Similar companies in your space are switching from [tool]" (vague competitor reference - QA penalty)
 - GOOD: "Many teams at your stage face [challenge]" (generic industry insight)
 - BAD: "Your Q3 numbers show 30% churn" (fabricated metric)
+
+TRUST FILTER:
+- If research appears mixed, conflicting, or tied to another company, do NOT use the risky detail
+- Fall back to safe facts such as company name, role, industry, size, location, or stage
+- Do NOT use exact numbers, competitor names, or recent milestones unless they are clearly attributable to this prospect
+- When in doubt, choose the safer claim over the more impressive claim
+- The subject line must follow this same trust rule
 
 HANDLING LIMITED RESEARCH DATA (CRITICAL FOR QA PASS RATE):
 
@@ -758,10 +803,16 @@ When the sender's profile lists multiple services for different verticals:
 
 CALL TO ACTION:
 - One simple sentence
-- Specific time ask (15-30 minutes)
-- Clear value exchange
 - Low pressure
+- Easy to reply to
+- Clear value exchange
 - Should immediately follow the value proposition
+- Default to a permission-based CTA before a meeting ask
+- Preferred first email asks:
+  * "Want me to send the short outline I mapped for this?"
+  * "Worth sending the workflow I had in mind?"
+  * "Should I send the short teardown?"
+- Use a 15-20 minute call ask ONLY when the research clearly suggests urgency, active initiative, or buying intent
 
 SIGNATURE:
 - Clean and professional
@@ -777,15 +828,16 @@ P.S. (Optional, 1 sentence max):
 - Never offer to share "examples", "case studies", or "how others like you did X"
   unless {include_case_study} is true AND case study content exists in the sender profile.
   If case studies are empty, the P.S. must not imply prior client work or results.
+- Do NOT add a P.S. by default if the email is already clear without it
 
 FOLLOW-UPS (if requested):
-- Same brevity rules apply (100-150 words max)
-- Each follow-up must have unique angle
-- Different curiosity hook in each subject line
+- Follow up 1 should sharpen the cost of delay or missed opportunity
+- Follow up 2 should introduce a fresh angle, a lighter example, or a close-the-loop tone
+- Each follow-up must use a different hook, different value angle, and different CTA wording
+- Do NOT repeat the same meeting ask in slightly different language
+- Same brevity rules apply
 - No hyphens in follow-up subject lines or bodies
-- Provide at least two distinct follow-up emails when a sequence is requested
-- Vary the proof points and value angles
-- Never repeat content from previous emails
+- Follow-up subject lines must also follow the naturalness rules above
 
 WRITING TONE:
 - Conversational but professional
@@ -803,8 +855,8 @@ OUTPUT FIELD STRUCTURE (CRITICAL - PREVENTS DUPLICATION):
   Example: "Hi Sarah,\n\nI noticed RevCo closed a Series A last month."
 - primary_body: ONLY the 2-3 body paragraphs, NO greeting, NO CTA
   Example: "Series A companies typically face X challenge.\n\nWe helped Company Y achieve Z result.\n\nOur solution could help RevCo with..."
-- primary_cta: ONLY ONE sentence asking for a call
-  Example: "Would a 15-minute call next week work to explore this?"
+- primary_cta: ONLY ONE sentence asking for a next step
+  Example: "Want me to send the outline I mapped for this?"
 
 DUPLICATION PREVENTION (CRITICAL):
 - NEVER repeat the greeting in primary_body (it's already in primary_opening)
@@ -859,7 +911,7 @@ Avoid Dated/Hype Language:
 - Never use "10x" language (sounds like 2022 hype)
 - Avoid Grant Cardone style exaggeration
 - Use realistic, credible multipliers (2x, 3x, 5x with context)
-- Prefer: "What would it mean if [Company] could double revenue by increasing lead gen 5 fold?"
+- Prefer: "What would it look like if [Company] could increase qualified replies without adding manual work?"
 - Avoid: "10x your lead gen without hiring"
 
 Grammar and Sentence Structure:
@@ -883,15 +935,12 @@ WHAT TO AVOID:
 - Made up or assumed information
 - Vague competitor references
 
-Integration requirements:
-- Use business intelligence data selectively for maximum impact
-- Reference competitor landscape only when it adds clear value
-- Include industry trends if directly relevant
-- Address the top 1-2 pain points, not all of them
-- Leverage only the most compelling personalization elements
-- Follow recommended messaging strategy but keep it tight
-- Always use real competitor names from research data
-- Base all claims on provided business intelligence
+SUBJECT LINE SELF-CHECK:
+- Read the subject out loud
+- If it sounds like a headline, rewrite it
+- If it sounds more certain than the research supports, soften it
+- If it sounds like a copywriter wrote it instead of a real operator, rewrite it
+- If a simpler, plainer subject feels more human, prefer the simpler one
 """),
             ("human", """Create a highly personalized email sequence using comprehensive business intelligence:
 
@@ -1063,7 +1112,7 @@ You have access to comprehensive business intelligence. USE IT EXCLUSIVELY.
    - No "10x" claims (dated, 2022 era language)
    - Use realistic multipliers with context
    - Examples:
-     GOOD: "What would it mean if BrightPath could double revenue by increasing lead gen 5 fold?"
+     GOOD: "What would it look like if BrightPath could increase qualified replies without adding manual work?"
      BAD: "What if BrightPath could 10x lead gen?"
      GOOD: "increase qualified leads by 3x"
      BAD: "10x your pipeline"
@@ -1097,38 +1146,39 @@ You have access to comprehensive business intelligence. USE IT EXCLUSIVELY.
 
 SUBJECT LINE REQUIREMENTS (HIGHEST PRIORITY):
 
-MANDATORY Format: "Hi {contact_first_name}, [curiosity-provoking content]" OR "Hi {contact_first_name}: [curiosity-provoking content]"
+MANDATORY Format: "Hi {contact_first_name}, [natural, relevant content]" OR "Hi {contact_first_name}: [natural, relevant content]"
 
 You MUST:
 - Start every subject line with "Hi {contact_first_name}"
 - Use first name only (e.g., "Hi Sarah" not "Hi Sarah Johnson")
-- Follow with comma or colon, then curiosity-provoking content
+- Follow with comma or colon, then natural, relevant content
 - NEVER use hyphens in subject lines
 - Keep total length under 60 characters
-- Make recipients want to click to learn more
-- Base all curiosity hooks on ACTUAL business intelligence data
+- Write the subject like a short note from a real person, not a headline
+- Base all hooks on ACTUAL business intelligence data
+- Do NOT sound more certain than the research supports
 
 Choose ONE of these proven patterns:
 
-Pattern 1 - Specific Discovery:
-"Hi {contact_first_name}, spotted 3 quick wins for {company_name}"
-"Hi {contact_first_name}: found 2 pipeline gaps at {company_name}"
+Pattern 1 - Specific Discovery (use only when research strongly supports it):
+"Hi {contact_first_name}, one possible gap in {company_name}'s [process]"
+"Hi {contact_first_name}: one potential issue with [area]"
 
-Pattern 2 - What If Scenario:
-"Hi {contact_first_name}, what if {company_name} could cut [Metric] by 30%?"
-"Hi {contact_first_name}, what if {company_name} could double pipeline in 60 days?"
+Pattern 2 - What If Scenario (use sparingly, prefer when tied to a real initiative):
+"Hi {contact_first_name}, what may be slowing {company_name}'s [metric]"
+"Hi {contact_first_name}, what if {company_name} could [plausible outcome]?"
 
 Pattern 3 - Competitive Intelligence:
 "Hi {contact_first_name}, why {company_name}'s competitors switched from [Competitor]"
 "Hi {contact_first_name}: what [CompetitorCustomer] learned about [PainPoint]"
 
 Pattern 4 - Hidden Insight:
-"Hi {contact_first_name}, the overlooked fix for {company_name}'s [PainPoint]"
-"Hi {contact_first_name}: unconventional [Solution] for {company_name}"
+"Hi {contact_first_name}: one overlooked [topic] issue"
+"Hi {contact_first_name}, a thought on {company_name}'s [area]"
 
 Pattern 5 - Contrarian/Pattern Interrupt:
 "Hi {contact_first_name}, {company_name} + this = [SpecificOutcome]"
-"Hi {contact_first_name}: why [Industry] teams are ditching [OldApproach]"
+"Hi {contact_first_name}: why [Industry] teams are rethinking [OldApproach]"
 
 Pattern 6 - Peer Proof:
 "Hi {contact_first_name}, what companies like {company_name} are doing now"
@@ -1203,9 +1253,9 @@ Body Paragraph 3 (1 sentence):
 
 Call to Action (1 sentence):
 - Simple, direct ask
-- Specific time commitment (15-30 minutes)
-- Should immediately follow the offer
-- Example: "Want 20 minutes to see it in action?"
+- Low pressure, easy to reply to
+- Default to a permission-based CTA before a meeting ask
+- Example: "Want me to send the outline I mapped for this?"
 
 P.S. (Optional, 1 sentence):
 - Additional value hook or proof element
@@ -1347,7 +1397,7 @@ DON'T:
 - Use specific numbers in P.S. without real data
 
 FINAL INSTRUCTION:
-Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excluding any signature block if one is added later). MANDATORY: Start the email body with "Hi {contact_first_name}," - this is non-negotiable. Do NOT include any closing or signature in the generated content. Every sentence must justify its existence. Use ONLY real data from the business intelligence provided. Use real competitor names, never vague references. Never use hyphens anywhere. The subject line should make {contact_first_name} think "I need to read this" while the body gets straight to the value without wasting their time. Write like you're texting a colleague who respects research and specificity, not pitching a stranger. If your email is longer than 150 words, cut it down ruthlessly until it is. Base every claim on the business intelligence data provided.
+Create an email that is SHORT, PUNCHY, and SCANNABLE (100-150 words max excluding any signature block if one is added later). MANDATORY: Start the email body with "Hi {contact_first_name}," - this is non-negotiable. Do NOT include any closing or signature in the generated content. Every sentence must justify its existence. Use ONLY real data from the business intelligence provided. Use real competitor names, never vague references. Never use hyphens anywhere. The subject line should sound like a short, honest note from a real person. The body gets straight to the value without wasting their time. Write like you're texting a colleague who respects research and specificity, not pitching a stranger. If your email is longer than 150 words, cut it down ruthlessly until it is. Base every claim on the business intelligence data provided.
 """)
         ])
         

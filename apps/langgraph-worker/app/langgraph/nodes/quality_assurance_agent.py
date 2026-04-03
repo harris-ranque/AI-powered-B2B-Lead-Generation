@@ -317,19 +317,27 @@ CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
    - Total length MUST be under 60 characters
    - MUST avoid generic phrases: "touching base", "following up", "checking in", "quick question"
    - MUST be based on ACTUAL business intelligence (no fabricated curiosity hooks)
-   - MUST use one of these proven patterns:
-     * Specific Discovery: "Hi [name], spotted 3 quick wins..."
-     * What If Scenario: "Hi [name], what if [company] could..."
+   - Subject should sound like a natural email note, not a marketing headline
+   - Penalize subjects that feel over-constructed, compressed, or overly clever
+   - Penalize subjects that sound more certain than the available research supports
+   - Penalize subjects that imply direct discovery or audit language without evidence, such as "I found" or "spotted" when unsupported
+   - Reward conversational subjects that feel honest, relevant, and human when read aloud
+   - MUST use one of these 7 proven patterns:
+     * Specific Discovery: "Hi [name], one possible gap in..."
+     * What If Scenario: "Hi [name], what may be slowing..."
      * Competitive Intelligence: "Hi [name], why [company]'s competitors..."
-     * Hidden Insight: "Hi [name]: the overlooked fix..."
+     * Hidden Insight: "Hi [name]: one overlooked..."
      * Contrarian/Pattern Interrupt: "Hi [name], [company] + this = ..."
      * Peer Proof: "Hi [name], what companies like [company]..."
+     * Limited Data (Pattern 7): Company Insight, Stage/Size Focus, or Role/Industry Specific
+   - If the subject is truthful, relevant, under 60 characters, aligned with the body, and sounds natural, it may pass even if it does not map perfectly to a legacy pattern
 
 3. LENGTH VALIDATION (MANDATORY):
-   - Email body MUST be 100-165 words (excluding signature)
+   - Primary email body MUST be 95-150 words (excluding signature)
+   - Follow-ups may be shorter if still complete and clear
    - Each paragraph MUST be 1-2 sentences maximum
    - Total paragraphs MUST be 3-4 maximum
-   - If over 165 words = FAILURE, significant score penalty
+   - If over 150 words = FAILURE, significant score penalty
    - Count words carefully, do not estimate
 
 4. NATURAL LANGUAGE VALIDATION (MANDATORY):
@@ -368,6 +376,10 @@ CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
    - Body paragraph 3: Specific offer (1 sentence)
    - CTA: One simple sentence, immediately following offer
    - Signature expectation: {signature_requirement}
+   - Flag emails that pitch multiple services, channels, or workflows in the first touch
+   - Flag feature dumping or product-heavy explanations
+   - Flag first-touch CTAs that jump to a meeting without first offering clear value
+   - Flag openings built on generic praise instead of a business issue
 
 9. SIGNATURE VALIDATION:
    - Signature mode for this request: {signature_requirement}
@@ -396,7 +408,7 @@ Quality Scoring Standards (RESEARCH VALIDATION TEMPORARILY DISABLED):
 - B-Tier Leads (minimal research): ≥0.50 = Approved, 0.35-0.50 = Needs_Improvement, <0.35 = Rejected
 - Current lead tier: {lead_tier}
 - NO HYPHENS violation = Auto-deduct 0.3 from overall score minimum
-- Length over 165 words = Auto-deduct 0.2 from overall score
+- Length over 150 words = Auto-deduct 0.2 from overall score
 - Missing articles/pronouns = Deduct 0.1 per occurrence (up to 0.3 total)
 - Research quality issues = Flag in suggestions but DO NOT reject or deduct points
 
@@ -414,6 +426,9 @@ Assessment Criteria (all 0-1 scale, FOCUS ON GRAMMAR/GUIDELINES ONLY):
 3. Professional Tone Score: Natural language, proper grammar, no hyphens (STRICT)
 4. Value Proposition Score: Clarity and structure (research accuracy not critical)
 5. Call-to-Action Score: Clear, specific, low-pressure, well-positioned (STRICT)
+   - Permission-based CTAs are preferred in first-touch cold emails
+   - A CTA does NOT need to ask for a call to score well
+   - Strong CTAs can ask permission to send an outline, workflow, teardown, benchmark, or example
 
 Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per bullet).
 """),
@@ -460,17 +475,26 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
             - Does it use comma or colon after name (NO HYPHENS)?
             - Is total length under 60 characters?
             - Does it avoid generic phrases ("touching base", "following up", "checking in", "quick question")?
-            - Is curiosity hook based on ACTUAL business intelligence data above?
-            - Does it match one of the 6 proven patterns (Specific Discovery, What If, Competitive Intelligence, Hidden Insight, Contrarian, Peer Proof)?
+            - Is the hook based on ACTUAL business intelligence data above?
+            - Does it match one of the 7 proven patterns (Specific Discovery, What If, Competitive Intelligence, Hidden Insight, Contrarian, Peer Proof, or Limited Data Pattern 7)?
+            - Subject should sound like a natural email note, not a marketing headline
+            - Penalize subjects that feel over-constructed, compressed, or overly clever
+            - Penalize subjects that sound more certain than the available research supports
+            - Penalize subjects that imply direct discovery or audit language without evidence, such as "I found" or "spotted" when unsupported
+            - Reward conversational subjects that feel honest, relevant, and human when read aloud
+            - A subject should not claim direct discovery unless the email contains a clearly supported basis for that claim
+            - Prefer "potential", "may be", "a thought on", or similar softening when the research does not justify certainty
+            - If the subject is truthful, relevant, under 60 characters, aligned with the body, and sounds natural, it may pass even if it does not map perfectly to a legacy pattern
             - Flag violations in quality_issues with specific pattern it should use
 
             3. LENGTH VALIDATION (MANDATORY - COUNT CAREFULLY):
             - Count EXACT words in email body (excluding signature)
-            - MUST be 100-165 words
+            - Primary email body MUST be 95-150 words
+            - Follow-ups may be shorter if still complete and clear
             - Count paragraphs: MUST be 3-4 maximum
             - Count sentences per paragraph: MUST be 1-2 maximum
-            - If over 165 words = add to quality_issues: "Email exceeds 165 word limit ([ACTUAL_COUNT] words)" and deduct 0.2 from score
-            - If under 100 words = add to quality_issues: "Email under 100 word minimum"
+            - If over 150 words = add to quality_issues: "Email exceeds 150 word limit ([ACTUAL_COUNT] words)" and deduct 0.2 from score
+            - If under 95 words = add to quality_issues: "Email under 95 word minimum"
 
             4. NATURAL LANGUAGE CHECK (MANDATORY):
             - Check for dropped pronouns or articles
@@ -506,11 +530,17 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
             - Body paragraph 2: Proof point with results in 1-2 sentences? (check)
             - Body paragraph 3: Specific offer in 1 sentence? (check)
             - CTA: One simple sentence immediately following offer? (check)
+            - Flag emails that pitch multiple services, channels, or workflows in the first touch
+            - Flag feature dumping or product-heavy explanations
+            - Flag first-touch CTAs that jump to a meeting without first offering clear value
+            - Flag openings built on generic praise instead of a business issue
             - Flag any structure violations in quality_issues
 
             9. SIGNATURE VALIDATION:
-            - Has professional closing ("Best,", "Cheers,", "Best regards,")? (check)
-            - Has complete signature (Name, Company, Email, Phone, Website)? (check)
+            - Signature mode for this request: validate based on the fully assembled email after signature injection
+            - If evaluating raw generated fields before assembly, skip signature presence checks (generator is instructed NOT to include closing/signature in generated fields)
+            - If signatures are enabled and present: Has professional closing? Has complete signature (Name, Company, Email, Phone, Website)? (check)
+            - If signatures are disabled: any closing or signature is a violation and should be flagged
             - NO placeholder text like "[Your Name]", "Company Name"? (check)
             - For sequences: ALL emails have identical signature? (check if follow-ups exist)
             - Flag any signature issues in quality_issues
@@ -549,9 +579,12 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
 
             SCORING RULES (APPLY PENALTIES STRICTLY):
             - Start with base scores for each dimension
+            - Permission-based CTAs are preferred in first-touch cold emails
+            - A CTA does NOT need to ask for a call to score well
+            - Strong CTAs can ask permission to send an outline, workflow, teardown, benchmark, or example
             - Apply automatic penalties ONLY for grammar and guidelines:
               * ANY hyphens found: -0.3 minimum from overall_quality_score
-              * Over 165 words: -0.2 from overall_quality_score
+              * Over 150 words: -0.2 from overall_quality_score
               * Missing articles/pronouns: -0.1 each (up to -0.3 total)
               * "10x" hype language: -0.15 from overall_quality_score
 
