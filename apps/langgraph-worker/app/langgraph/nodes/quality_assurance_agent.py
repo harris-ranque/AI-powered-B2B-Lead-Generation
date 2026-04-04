@@ -14,6 +14,7 @@ from ...utils.research_clients import ClientRegistry
 from ...utils.analytics import capture_event, capture_error
 from ...models.lead_models import AgentResult
 from ..state import EmailGenerationState
+from .email_generation_agent import derive_short_name
 
 logger = setup_logger(__name__)
 settings = get_settings()
@@ -413,11 +414,13 @@ CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
      business profile: [specific claim]"
 
 11. COMPANY NAME CONSISTENCY VALIDATION:
-   - Every follow-up email MUST refer to the prospect's company by its recognizable trade name ({company_name})
-   - NEVER allow street addresses, neighborhood names, sub-location labels, or Google Maps descriptors as substitutes for the company name
-   - A natural short form is acceptable (e.g., "Ascend" for "Ascend Cannabis Dispensary - Boston") but NOT an address (e.g., "Friend St")
-   - Penalty: -0.1 per follow-up that uses an address or location label instead of the company name
-   - Flag in quality_issues: "Follow-up [N] identifies company by address/location instead of trade name"
+   - Every follow-up subject line AND body MUST include the prospect's recognizable trade name (see Company Short Name field above)
+   - The acceptable short name for this prospect is provided in the Company Short Name field — use that as the reference
+   - NEVER allow street addresses, neighborhood names, sub-location labels, or Google Maps descriptors as substitutes
+   - Follow-up subjects like "Hi Juan: one possible issue with missed calls" FAIL because they omit the company name
+   - Correct example: "Hi Juan, one idea for Ascend after hours"
+   - Penalty: -0.1 total (capped) if ANY follow-up subject or body omits the company's recognizable name
+   - Flag in quality_issues: "Follow-up [N] subject/body missing company trade name"
 
 Quality Scoring Standards (RESEARCH VALIDATION TEMPORARILY DISABLED):
 - A-Tier Leads (rich research): ≥0.60 = Approved, 0.35-0.60 = Needs_Improvement, <0.35 = Rejected
@@ -426,7 +429,7 @@ Quality Scoring Standards (RESEARCH VALIDATION TEMPORARILY DISABLED):
 - NO HYPHENS violation = Auto-deduct 0.3 from overall score minimum
 - Length over 140 words = Auto-deduct 0.2 from overall score
 - Missing articles/pronouns = Deduct 0.1 per occurrence (up to 0.3 total)
-- Company name replaced by address/location = Auto-deduct 0.1 per follow-up
+- Company name missing from follow-up subject/body = Auto-deduct 0.1 total (capped, not per follow-up)
 - Research quality issues = Flag in suggestions but DO NOT reject or deduct points
 
 B-TIER LEAD SPECIAL INSTRUCTIONS (if lead_tier is "B"):
@@ -436,6 +439,7 @@ B-TIER LEAD SPECIAL INSTRUCTIONS (if lead_tier is "B"):
 - DO NOT penalize for lack of specific metrics/numbers
 - Focus validation ONLY on: grammar, structure, professional tone, and signature rules when enabled
 - Missing research elements are EXPECTED for B-tier and should NOT be flagged as issues
+- Company name consistency (rule #11) remains ACTIVE for B-tier — this is a structural requirement, not a personalization requirement
 
 Assessment Criteria (all 0-1 scale, FOCUS ON GRAMMAR/GUIDELINES ONLY):
 1. Personalization Score: Give generous scores (0.7+ baseline), note research issues but don't penalize
@@ -478,6 +482,7 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
 
             PROSPECT CONTEXT:
             Company: {company_name}
+            Company Short Name: {company_short_name}
             Contact: {contact_name} ({title})
             Industry: {industry}
 
@@ -665,6 +670,7 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
             messages = prompt.format_messages(
                 # Prospect context
                 company_name=lead.company_name,
+                company_short_name=derive_short_name(lead.company_name),
                 contact_name=lead.contact_name or "Unknown",
                 title=lead.title or "Professional",
                 industry=getattr(lead, 'industry', '') or "Not specified",

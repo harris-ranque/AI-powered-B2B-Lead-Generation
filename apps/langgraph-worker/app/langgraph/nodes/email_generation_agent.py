@@ -80,6 +80,54 @@ class EmailSequence(BaseModel):
     proof_points_included: List[str] = Field(..., description="Proof points and credibility elements")
 
 
+def derive_short_name(full_name: str) -> str:
+    """
+    Extract the recognizable trade name from a Google Maps-style full name.
+
+    Strategy: split on delimiters (' - ', ':', '|'), take the first segment,
+    then keep words until hitting a generic descriptor. Preserves original casing.
+
+    Examples:
+      "Ascend Cannabis Dispensary - Boston"  -> "Ascend"
+      "Happy Valley - Gloucester Recreational..." -> "Happy Valley"
+      "Bountiful Farms - Framingham - Medical..." -> "Bountiful Farms"
+      "Comm Ave Canna: Recreational Cannabis..." -> "Comm Ave Canna"
+      "DDM Cannabis | Blackstone, MA Dispensary" -> "DDM Cannabis"
+      "Primitiv"  -> "Primitiv"
+      "617 THC"   -> "617 THC"
+      "mello Cannabis" -> "mello Cannabis"
+      "reLeaf Alternative - Mansfield" -> "reLeaf Alternative"
+    """
+    DESCRIPTOR_WORDS = {
+        "dispensary", "recreational", "medical", "marijuana",
+        "pharmacy", "collective", "inc", "inc.", "llc", "corp",
+        "group", "store", "shop", "center", "centre", "weed",
+    }
+    # Split on common delimiters — take the first segment as the brand
+    for delimiter in [" - ", ": ", " | ", "(", ","]:
+        if delimiter in full_name:
+            full_name = full_name.split(delimiter)[0].strip()
+            break
+
+    # If the remaining segment is short enough, return as-is
+    if len(full_name) <= 20:
+        return full_name
+
+    words = full_name.split()
+    articles = {"the", "a", "an"}
+    max_words = 3 if (words and words[0].lower() in articles) else 2
+
+    kept: list[str] = []
+    for word in words:
+        if word.lower().rstrip(".,") in DESCRIPTOR_WORDS and kept:
+            break
+        kept.append(word)
+        if len(kept) >= max_words:
+            break
+
+    return " ".join(kept) if kept else full_name
+
+
 def _generate_fallback_followups(
     lead: Lead,
     business_profile: BusinessProfile,
@@ -928,6 +976,7 @@ FOLLOW-UPS (if requested):
 - Same brevity rules apply
 - No hyphens in follow-up subject lines or bodies
 - Follow-up subject lines must also follow the naturalness and variation rules above
+- EVERY follow-up subject line MUST include {company_short_name}. This is non-negotiable
 
 WRITING TONE:
 - Conversational but professional
@@ -1049,6 +1098,7 @@ SUBJECT LINE SELF-CHECK:
 
 PROSPECT INFORMATION:
 Company: {company_name}
+Company Short Name (USE THIS in subject lines and body references): {company_short_name}
 Contact: {contact_name} ({title})
 Contact First Name: {contact_first_name}
 Industry: {industry}
@@ -1414,7 +1464,7 @@ Example Follow-up:
 
 Quick note on the pipeline gaps we discussed. Three RevOps teams at your stage cut manual work by 40% using automated lead scoring.
 
-Want 15 minutes to see how it works for {company_name}?"
+Want 15 minutes to see how it works for {company_short_name}?"
 
 Follow-up Timing and Angles:
 
@@ -1450,7 +1500,7 @@ FORMAT REQUIREMENTS (CRITICAL):
 - End the generated body with the CTA
 
 CONTENT REQUIREMENTS:
-- Each must have UNIQUE subject line following "Hi {contact_first_name}, " or "Hi {contact_first_name}: " format
+- Each must have UNIQUE subject line following "Hi {contact_first_name}, [content mentioning {company_short_name}]" or "Hi {contact_first_name}: [content mentioning {company_short_name}]" format
 - NEVER use hyphens in any follow-up subject lines or bodies
 - Each must use DIFFERENT curiosity pattern from primary and other follow-ups
 - No repeated content or angles
@@ -1459,13 +1509,13 @@ CONTENT REQUIREMENTS:
 - Every follow-up should feel fresh and provide new value
 - Keep the same tight, punchy writing style
 - All information must come from business intelligence
-- COMPANY NAME ANCHORING (CRITICAL): Every follow-up body MUST reference the prospect's company by its recognizable trade name ({company_name}). Never substitute a street address, neighborhood name, sub-location label, or Google Maps place descriptor for the company name. If the company name is long, use a natural short form (e.g., "Ascend" for "Ascend Cannabis Dispensary - Boston") but NEVER an address like "Friend St"
+- COMPANY NAME ANCHORING (CRITICAL): Every follow-up subject line AND body MUST include "{company_short_name}". Never substitute a street address, neighborhood name, sub-location label, or Google Maps place descriptor. Examples of CORRECT follow-up subjects: "Hi Juan, one idea for {company_short_name} after hours" / "Hi Juan: simple {company_short_name} FAQ flow". Examples of WRONG subjects: "Hi Juan, one possible issue with missed calls" / "Hi Juan, Friend Street peak hour questions"
 
 CONSISTENCY REQUIREMENTS:
 - Maintain professional tone throughout sequence
 - Match primary email's level of personalization
 - Keep brand voice consistent
-- Always use {company_name} as the company identifier across all follow-ups, matching how the primary email refers to the company
+- Always use {company_short_name} as the company identifier across all follow-ups, matching how the primary email refers to the company
 
 4. QUALITY STANDARDS:
 
@@ -1551,6 +1601,7 @@ Target score: ≥0.65 for approval.
 
             # Prospect information
             company_name=lead.company_name,
+            company_short_name=derive_short_name(lead.company_name),
             contact_name=lead.contact_name or "there",
             contact_first_name=contact_first_name,
             title=lead.title or "professional",
