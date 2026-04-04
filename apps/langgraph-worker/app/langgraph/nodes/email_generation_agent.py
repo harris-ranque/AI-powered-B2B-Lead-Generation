@@ -607,15 +607,28 @@ SUBJECT LINES (CRITICAL - HIGHEST PRIORITY):
 - Format: MUST start with "Hi {contact_first_name}" then add natural, relevant content
 - NEVER use hyphens in subject lines
 - Use comma or colon after name: "Hi {contact_first_name}, [statement]" or "Hi {contact_first_name}: [statement]"
-- Subject line and body MUST point to the same core angle
+- Keep under 60 characters total including greeting
+- Never use generic phrases: "touching base", "following up", "checking in", "quick question"
+- Do NOT make the subject sound more certain than the research supports
 - Write the subject like a short note from a real person, not a headline or ad
 - Create curiosity through honest incompleteness, not through forced cleverness
 - Prefer a narrower truthful hook over a broader clever hook
 - Use specific numbers, stats, and concrete details only when explicitly supported by research
 - Reference competitors, peers, or insider insights only when the research explicitly supports it
-- Keep under 60 characters total including greeting
-- Never use generic phrases: "touching base", "following up", "checking in", "quick question"
-- Do NOT make the subject sound more certain than the research supports
+
+SUBJECT IDENTITY RULE (MANDATORY - APPLIES TO PRIMARY AND ALL FOLLOW-UPS):
+- Every subject line MUST include at least one of: {company_short_name}, an approved alias, or an approved location tied to that exact lead
+- Subjects that omit the business identity are too generic and too reusable. They FAIL.
+- Examples of FAILING subjects: "one thing that may be slipping", "one thing about calls", "one possible gap in patient reactivation"
+- Examples of PASSING subjects: "Hi Juan, one idea for Ascend after hours", "Hi Jeff, RISE Chelsea FAQ calls", "Hi Emma, reLeaf Natick phone lines"
+
+SUBJECT-BODY ALIGNMENT RULE (MANDATORY):
+- The subject MUST preview the exact problem angle the body discusses
+- Subject = same entity + same use case + same problem family as the body
+- If the body is about phone FAQ handling, the subject must signal phone FAQ handling
+- If the body is about patient reactivation, the subject must signal patient reactivation
+- Vague human-sounding subjects that could apply to any email are NOT acceptable
+- The subject and body must feel like they belong to the same email, not just the same company
 - Do NOT imply you audited their workflow unless the research truly supports that
 - Do NOT default to one repeated subject stem across a batch
 - Avoid overusing "a thought on" as the default pattern
@@ -630,37 +643,39 @@ SUBJECT LINES (CRITICAL - HIGHEST PRIORITY):
   * "a thought on" only occasionally, not as default
 - Avoid strong discovery verbs like "found", "spotted", "discovered" unless the research clearly supports that level of certainty
 
-Subject Line Patterns (Choose based on context and available research data):
+Subject Line Patterns (ALL patterns MUST include {company_short_name}):
   1. Specific Discovery:
      - Keep only when research strongly supports it
      → Requires: 3+ identifiable opportunities from research
-     Example: "Hi Sarah, one possible gap in onboarding follow up"
+     Example: "Hi Sarah, one possible gap in RevCo onboarding"
   2. What If Scenario:
      - Use sparingly
      - Prefer when tied to a real initiative or metric
      → Requires: Specific metrics or pain points from research
-     Example: "Hi Sarah, what may be slowing reply rates"
-  3. Competitive Intelligence: "Hi [name], why [company]'s competitors switched from [tool]"
+     Example: "Hi Sarah, what may be slowing RevCo replies"
+  3. Competitive Intelligence: "Hi [name], why {company_short_name} competitors switched from [tool]"
      → Requires: Real competitor names from research (NEVER use without data)
   4. Hidden Insight:
      → Requires: Specific identified challenge from research
-     Example: "Hi Sarah: one overlooked follow up issue"
-  5. Contrarian/Pattern Interrupt: "Hi [name], [company] + this = [outcome]"
+     Example: "Hi Sarah: one overlooked RevCo follow up issue"
+  5. Contrarian/Pattern Interrupt: "Hi [name], {company_short_name} + this = [outcome]"
      → Requires: Specific data point from research
-  6. Peer Proof: "Hi [name], what companies like [company] are doing now"
+  6. Peer Proof: "Hi [name], what companies like {company_short_name} are doing now"
      → Requires: Peer examples from research
   7. Limited Data Approach (USE WHEN RESEARCH IS SPARSE):
      → Use when: Missing competitor names, metrics, or recent news
      → Focus: Confirmed data only (bootstrapped status, employee range, founder role, stage)
 
      Pattern 7A - Company Insight:
-     Example: "Hi Ziad, one thing founder-led teams often miss"
+     Example: "Hi Ziad, one thing {company_short_name} teams often miss"
 
      Pattern 7B - Stage/Size Focus:
-     Example: "Hi Ziad, one issue that shows up at your stage"
+     Example: "Hi Ziad, one {company_short_name} issue at your stage"
 
      Pattern 7C - Role/Industry Specific:
-     Example: "Hi Ziad, a thought on agency follow up"
+     Example: "Hi Ziad, a thought on {company_short_name} follow up"
+
+     REMINDER: Even Pattern 7 subjects MUST include the company name ({company_short_name})
 
 SUBJECT LINE NATURALNESS RULES:
 - Prefer conversational phrasing over compressed headline phrasing
@@ -703,11 +718,13 @@ Avoid as default:
 
 EMAIL STRUCTURE (CRITICAL - KEEP IT SHORT):
 
-PRIMARY EMAIL LENGTH RULES:
-- Target 95 to 125 words for the primary email body, excluding signature
-- Hard cap at 140 words for the primary email body, excluding signature
+PRIMARY EMAIL LENGTH RULES (STRICT):
+- Target 95 to 120 words for the primary email body, excluding signature
+- Hard cap at 130 words for the primary email body, excluding signature
+- If you exceed 130 words, you have FAILED. Rewrite shorter.
 - Primary emails should feel lighter than a pitch deck and shorter than a follow-up explanation
-- Do NOT use the full 140 words unless the extra context is necessary
+- Do NOT use the full 130 words unless the extra context is necessary
+- Cold outbound that is too long gets ignored. Shorter is better.
 
 FOLLOW-UP LENGTH RULES:
 - Target 60 to 95 words for each follow-up, excluding signature
@@ -741,10 +758,17 @@ OPENING (greeting + 1-2 sentences):
 - Do NOT shift from a human subject into a polished agency pitch in the body
 - Do NOT open with "We build", "At The Gen AI", "AI agents", or similar product-first phrasing
 - The opening should set up one operational problem, not a broad transformation claim
+- COMPLETE SENTENCE RULE: Every opening sentence MUST start with a proper subject+verb. Use "I saw...", "I noticed...", "I was looking at...". NEVER start with "Saw...", "Noticed...", "Looking at..." without the pronoun "I".
+
+SENDER INTRODUCTION PLACEMENT (CRITICAL):
+- "At The Gen AI..." or any sender company introduction is BANNED in paragraph 1 of the primary email
+- The first paragraph must be 100% about the prospect's situation. No seller mentions.
+- The sender company may be introduced in paragraph 2 or later, after the prospect's problem is already clear
+- If you find yourself writing "At The Gen AI, we..." in the first two paragraphs, you are writing a pitch, not a cold email. Rewrite.
 
 BODY (2-3 short paragraphs):
-- Paragraph 1: One likely bottleneck, missed opportunity, or operational drag tied to the prospect
-- Paragraph 2: One believable outcome or one light proof point
+- Paragraph 1: One likely bottleneck, missed opportunity, or operational drag tied to the prospect. NO seller introduction here.
+- Paragraph 2: One believable outcome or one light proof point. Sender company may be introduced here briefly.
 - Paragraph 3: One matched use case and one easy next step
 - Pitch ONE matched service only, not the full catalog
 - Do NOT list multiple channels, multiple workflows, or multiple product capabilities in the first touch
@@ -929,23 +953,26 @@ CALL TO ACTION:
 - Easy to reply to
 - Clear value exchange
 - Should immediately follow the value proposition
-- In the FIRST email, a permission-based CTA is the default and expected behavior
-- Preferred first email asks:
-  * "Want me to send the short outline I mapped for this?"
-  * "Worth sending the workflow I had in mind?"
-  * "Should I send the short teardown?"
-  * "Want me to send the short flow I had in mind?"
-- Do NOT use a discovery-call CTA in the first email unless the research clearly indicates urgency, active buying intent, a live initiative, or a user-provided hard CTA requirement that must be honored
-- If no clear urgency exists, do NOT ask for a discovery call in email 1
-- Treat meeting asks as an exception, not the default
 
-FIRST-TOUCH CTA GUARDRAIL:
-- In the first email, ban phrases like:
-  * "Would you be open to a short discovery call"
-  * "Would you be open to a brief discovery call"
-  * "Would you be open to a 20 minute discovery call"
-  unless the research clearly supports an urgent meeting ask
-- When in doubt, ask permission to send something useful instead
+FIRST-TOUCH CTA RULE (CRITICAL - THIS IS THE MOST IMPORTANT CTA RULE):
+- In the FIRST email, a discovery call CTA is a FAILURE unless ALL of these are true:
+  * Research shows active buying signal, urgent initiative, recent funding, or live rollout
+  * OR the user explicitly provided a hard CTA requirement that must be honored
+- If neither condition is met, the first email MUST use a permission-based CTA:
+  * "Want me to send the outline I had in mind?"
+  * "Worth sending the short flow?"
+  * "Should I send the teardown?"
+  * "Want me to send the workflow I mapped for this?"
+- BANNED phrases in email 1 (unless urgency condition is met):
+  * "Would you be open to a discovery call"
+  * "Would you be open to a 20 minute call"
+  * "Would you be open to a brief call"
+  * "Would you be open to a short call"
+  * "Could we set up a call"
+  * "Can we schedule"
+  * Any variation of asking for a meeting, call, or conversation
+- The first email must earn the reply BEFORE asking for time
+- Discovery call CTAs are acceptable in follow-up 1 and follow-up 2, but not email 1
 - The goal of the first email is to earn a reply, not force a calendar decision
 
 SIGNATURE:
@@ -1075,14 +1102,17 @@ WHAT TO AVOID:
 - Vague competitor references
 
 PRIMARY EMAIL SELF-CHECK:
-- Is the first email under 140 words
+- Is the first email under 130 words (hard cap)
+- Does the subject include {company_short_name} or an approved location
+- Does the subject preview the same specific problem angle as the body
 - Does the email sell one problem only
 - Does the email avoid broad product explanation
-- Is the CTA permission-based instead of meeting-first
+- Is the CTA permission-based (NOT a discovery call) unless urgency exists
+- Does paragraph 1 avoid mentioning the sender company ("At The Gen AI...")
+- Does the opening use complete sentences with "I" (not "Saw..." or "Noticed...")
 - Does the body avoid sounding like AI-services copy
-- Does the subject avoid defaulting to a repetitive template
 - Do the follow-ups stay inside the same use-case family
-- Do the follow-ups reference the company by its recognizable trade name, not a street address or location label
+- Do the follow-up subjects include {company_short_name} and match their body angle
 - If any answer is no, rewrite before finalizing
 
 SUBJECT LINE SELF-CHECK:
@@ -1309,39 +1339,37 @@ You MUST:
 - Base all hooks on ACTUAL business intelligence data
 - Do NOT sound more certain than the research supports
 
-Choose ONE of these proven patterns:
+Choose ONE of these proven patterns (EVERY pattern MUST include {company_short_name}):
 
 Pattern 1 - Specific Discovery (use only when research strongly supports it):
-"Hi {contact_first_name}, one possible gap in {company_name}'s [process]"
-"Hi {contact_first_name}: one potential issue with [area]"
+"Hi {contact_first_name}, one possible gap in {company_short_name} [process]"
+"Hi {contact_first_name}: one potential {company_short_name} issue with [area]"
 
 Pattern 2 - What If Scenario (use sparingly, prefer when tied to a real initiative):
-"Hi {contact_first_name}, what may be slowing {company_name}'s [metric]"
-"Hi {contact_first_name}, what if {company_name} could [plausible outcome]?"
+"Hi {contact_first_name}, what may be slowing {company_short_name} [metric]"
 
 Pattern 3 - Competitive Intelligence:
-"Hi {contact_first_name}, why {company_name}'s competitors switched from [Competitor]"
-"Hi {contact_first_name}: what [CompetitorCustomer] learned about [PainPoint]"
+"Hi {contact_first_name}, why {company_short_name} competitors switched from [Competitor]"
 
 Pattern 4 - Hidden Insight:
-"Hi {contact_first_name}: one overlooked [topic] issue"
-"Hi {contact_first_name}, a thought on {company_name}'s [area]"
+"Hi {contact_first_name}: one overlooked {company_short_name} [topic] issue"
+"Hi {contact_first_name}, a thought on {company_short_name} [area]"
 
 Pattern 5 - Contrarian/Pattern Interrupt:
-"Hi {contact_first_name}, {company_name} + this = [SpecificOutcome]"
-"Hi {contact_first_name}: why [Industry] teams are rethinking [OldApproach]"
+"Hi {contact_first_name}, {company_short_name} + this = [SpecificOutcome]"
 
 Pattern 6 - Peer Proof:
-"Hi {contact_first_name}, what companies like {company_name} are doing now"
-"Hi {contact_first_name}: how teams like {company_name} solved [PainPoint]"
+"Hi {contact_first_name}, what companies like {company_short_name} are doing now"
+
+REMINDER: If your subject line does not contain {company_short_name}, it will FAIL QA. No exceptions.
 
 EMAIL GENERATION REQUIREMENTS:
 
 CRITICAL LENGTH REQUIREMENT:
-- Email body: 95-140 words MAXIMUM (excluding signature)
+- Email body: 95-130 words MAXIMUM (excluding signature)
 - Each paragraph: 1-2 sentences maximum
 - Total paragraphs: 3-4 maximum
-- If you write more than 140 words, you have failed the task
+- If you write more than 130 words, you have failed the task
 - Every word must justify its existence
 - Cut ruthlessly, brevity is the priority
 

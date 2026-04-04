@@ -319,35 +319,24 @@ CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
    - MUST avoid generic phrases: "touching base", "following up", "checking in", "quick question"
    - MUST be based on ACTUAL business intelligence (no fabricated curiosity hooks)
    - Subject should sound like a natural email note, not a marketing headline
+   - SUBJECT IDENTITY CHECK (CRITICAL): The primary subject MUST include at least one of: the company short name ({company_short_name}), an approved alias, or an approved location tied to that exact lead. Subjects that omit the business identity = deduct 0.15 from overall score
+   - SUBJECT-BODY ALIGNMENT CHECK: The subject must preview the same specific problem angle as the body. If the body discusses FAQ call handling but the subject just says "one thing that may be slipping" = deduct 0.1. The subject must signal the same issue the body covers.
+   - VAGUE SUBJECT PENALTY: Generic subject stems that could apply to any email = deduct 0.1. Examples of vague stems: "one thing that may be slipping", "one thing about calls", "one possible gap", "one thing that may be slowing". These only pass if they ALSO include the company name AND a specific problem indicator.
    - Penalize subjects that feel over-constructed, compressed, or overly clever
    - Penalize subjects that sound more certain than the available research supports
-   - Penalize subjects that imply direct discovery or audit language without evidence, such as "I found" or "spotted" when unsupported
-   - Reward conversational subjects that feel honest, relevant, and human when read aloud
-   - MUST use one of these 7 proven patterns:
-     * Specific Discovery: "Hi [name], one possible gap in..."
-     * What If Scenario: "Hi [name], what may be slowing..."
-     * Competitive Intelligence: "Hi [name], why [company]'s competitors..."
-     * Hidden Insight: "Hi [name]: one overlooked..."
-     * Contrarian/Pattern Interrupt: "Hi [name], [company] + this = ..."
-     * Peer Proof: "Hi [name], what companies like [company]..."
-     * Limited Data (Pattern 7): Company Insight, Stage/Size Focus, or Role/Industry Specific
-   - If the subject is truthful, relevant, under 60 characters, aligned with the body, and sounds natural, it may pass even if it does not map perfectly to a legacy pattern
-   - Penalize subjects that rely on the same generic human-sounding stem without enough specificity
-   - Reward subjects that sound natural and specific without overclaiming certainty
-   - Penalize strong discovery language such as "found", "spotted", or "discovered" when unsupported
-   - Prefer softer phrasing such as "potential", "possible", "may be", "a question on", or "one thing I noticed" when evidence is limited
-   - A subject may be natural on its own and still feel templated if it relies on weak generic phrasing
-   - Flag subjects that feel too vague, too reusable, or too interchangeable with other emails
    - Reward subjects that feel both human and specific to the same angle used in the body
+   - Penalize strong discovery language such as "found", "spotted", or "discovered" when unsupported
+   - Prefer softer phrasing such as "potential", "possible", "may be" when evidence is limited
 
 3. LENGTH VALIDATION (MANDATORY):
-   - Primary email body MUST be 95-140 words (excluding signature)
-   - If the primary email exceeds 140 words, flag it as a quality issue and apply a meaningful penalty
+   - Primary email body MUST be 95-130 words (excluding signature)
+   - Target: 95-120 words. Hard cap: 130 words.
+   - If over 130 words = FAILURE, deduct 0.2 from overall score
+   - If over 120 words but under 130 = flag as quality issue, deduct 0.1
    - Treat overlength primary emails as a real conversion problem, not a minor formatting problem
    - Follow-ups may be shorter if still complete and clear
    - Each paragraph MUST be 1-2 sentences maximum
    - Total paragraphs MUST be 3-4 maximum
-   - If over 140 words = FAILURE, significant score penalty
    - Count words carefully, do not estimate
 
 4. NATURAL LANGUAGE VALIDATION (MANDATORY):
@@ -355,9 +344,12 @@ CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
    - MUST include articles (a, an, the) appropriately
    - MUST include pronouns (I, we, our) naturally
    - MUST NOT drop pronouns or articles
+   - COMPLETE SENTENCE OPENING CHECK: The first content sentence (after greeting) MUST start with a proper subject+verb. "I saw...", "I noticed..." = GOOD. "Saw...", "Noticed...", "Looking at..." without "I" = FAILURE, deduct 0.1
    - Examples:
      GOOD: "I noticed RevCo closed a Series A last month"
      BAD: "Noticed RevCo closed Series A last month"
+     BAD: "Saw Pure Oasis highlighted..."
+     GOOD: "I saw Pure Oasis highlighted..."
 
 5. DATA INTEGRITY VALIDATION (TEMPORARILY DISABLED — PROSPECT DATA ONLY):
    - SKIP research quality checks for PROSPECT data only
@@ -390,6 +382,20 @@ CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
    - Flag feature dumping or product-heavy explanations
    - Flag first-touch CTAs that jump to a meeting without first offering clear value
    - Flag openings built on generic praise instead of a business issue
+
+8b. FIRST-TOUCH CTA VALIDATION (CRITICAL - AUTO-PENALIZE):
+   - In the PRIMARY email, a discovery call CTA is a FAILURE unless research shows active buying signal, urgent initiative, recent funding, or the user explicitly required it
+   - Check for banned phrases: "Would you be open to a discovery call", "Would you be open to a 20 minute call", "Would you be open to a brief call", "Could we set up a call", "Can we schedule", any meeting/call/conversation request
+   - If a discovery call CTA is found in email 1 without clear urgency justification: deduct 0.2 from overall score
+   - Acceptable first-touch CTAs: "Want me to send the outline?", "Worth sending the short flow?", "Should I send the teardown?"
+   - Discovery call CTAs are acceptable in follow-up 1 and follow-up 2
+
+8c. SENDER INTRODUCTION PLACEMENT VALIDATION (CRITICAL):
+   - "At The Gen AI..." or any sender company introduction in paragraph 1 of the primary email = FAILURE
+   - Paragraph 1 must be 100% about the prospect's situation
+   - Check if the first paragraph (after greeting) mentions the sender company name. If yes: deduct 0.15 from overall score
+   - The sender company may appear in paragraph 2 or later
+   - Flag: "Sender company introduced too early — paragraph 1 should focus on prospect"
 
 9. SIGNATURE VALIDATION:
    - Signature mode for this request: {signature_requirement}
@@ -427,9 +433,15 @@ Quality Scoring Standards (RESEARCH VALIDATION TEMPORARILY DISABLED):
 - B-Tier Leads (minimal research): ≥0.50 = Approved, 0.35-0.50 = Needs_Improvement, <0.35 = Rejected
 - Current lead tier: {lead_tier}
 - NO HYPHENS violation = Auto-deduct 0.3 from overall score minimum
-- Length over 140 words = Auto-deduct 0.2 from overall score
+- Length over 130 words = Auto-deduct 0.2 from overall score
+- Length 120-130 words = Auto-deduct 0.1 from overall score
 - Missing articles/pronouns = Deduct 0.1 per occurrence (up to 0.3 total)
-- Company name missing from follow-up subject/body = Auto-deduct 0.1 total (capped, not per follow-up)
+- Subject missing company identity = Auto-deduct 0.15 from overall score
+- Subject-body misalignment (vague subject) = Auto-deduct 0.1
+- Discovery call CTA in email 1 without urgency = Auto-deduct 0.2
+- Sender company in paragraph 1 = Auto-deduct 0.15
+- Incomplete sentence opening (missing "I") = Auto-deduct 0.1
+- Company name missing from follow-up subject/body = Auto-deduct 0.1 total (capped)
 - Research quality issues = Flag in suggestions but DO NOT reject or deduct points
 
 B-TIER LEAD SPECIAL INSTRUCTIONS (if lead_tier is "B"):
@@ -535,20 +547,23 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
 
             3. LENGTH VALIDATION (MANDATORY - COUNT CAREFULLY):
             - Count EXACT words in email body (excluding signature)
-            - Primary email body MUST be 95-140 words
+            - Primary email body target: 95-120 words. Hard cap: 130 words.
             - Follow-ups may be shorter if still complete and clear
             - Count paragraphs: MUST be 3-4 maximum
             - Count sentences per paragraph: MUST be 1-2 maximum
-            - If over 140 words = add to quality_issues: "Email exceeds 140 word limit ([ACTUAL_COUNT] words)" and deduct 0.2 from score
+            - If over 130 words = add to quality_issues: "Email exceeds 130 word hard cap ([ACTUAL_COUNT] words)" and deduct 0.2 from score
+            - If 120-130 words = add to quality_issues: "Email over 120 word target ([ACTUAL_COUNT] words)" and deduct 0.1
             - Treat overlength primary emails as a real conversion problem, not a minor formatting problem
             - If under 95 words = add to quality_issues: "Email under 95 word minimum"
 
             4. NATURAL LANGUAGE CHECK (MANDATORY):
             - Check for dropped pronouns or articles
             - Find sentences starting without "I", "We", articles
+            - CRITICAL: Check the FIRST content sentence after the greeting. If it starts with "Saw...", "Noticed...", "Looking at..." without "I" = IMMEDIATE flag and deduct 0.1
             - Example violations:
               * "Noticed RevCo closed..." (should be "I noticed RevCo closed...")
               * "Saw your blog post..." (should be "I saw your blog post...")
+              * "Saw Pure Oasis highlighted..." (should be "I saw Pure Oasis highlighted...")
             - Flag EACH violation in quality_issues
             - Deduct 0.1 per violation (up to 0.3 total)
 
@@ -584,13 +599,23 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
             - Flag product-heavy or AI-agency-style body language in the first email
             - Flag first-touch emails that explain multiple capabilities, channels, workflows, or product layers
             - Flag copy that sounds like a services pitch before the problem is clear
-            - Flag repeated product phrases such as "We build...", "At The Gen AI...", "AI agents...", "guardrails..." when they appear too early
-            - In first-touch cold emails, permission-based CTAs are preferred
-            - Penalize first-touch CTAs that jump to a discovery call without clearly justified urgency
-            - Discovery-call CTAs in email 1 should be treated as exceptions, not defaults
+
+            8b. SENDER INTRODUCTION CHECK:
+            - Check if paragraph 1 (after greeting) mentions the sender company name (e.g., "At The Gen AI", "The Gen AI", or similar)
+            - If sender company appears in paragraph 1 = add to quality_issues: "Sender company introduced in paragraph 1 — should focus on prospect first" and deduct 0.15
+            - Sender company may appear in paragraph 2 or later
+
+            8c. FIRST-TOUCH CTA CHECK (CRITICAL):
+            - In the PRIMARY email, scan for discovery call language: "Would you be open to a call", "discovery call", "20 minute call", "brief call", "short call", "set up a call", "schedule a call"
+            - If found AND no clear urgency signal in research: add to quality_issues: "Discovery call CTA in first email without urgency" and deduct 0.2
+            - Acceptable first-touch CTAs: asking to send an outline, workflow, teardown, flow, or example
+            - Discovery call CTAs are acceptable in follow-ups, just not email 1
+
+            8d. SEQUENCE DISCIPLINE CHECK:
             - For sequences, follow-ups must stay inside the same use-case family as the first email
             - Flag follow-ups that introduce a new service family or new core product angle instead of deepening the first problem
             - A sequence should feel like one conversation, not three separate offers
+            - Each follow-up subject must reflect that specific follow-up body angle, not a vague human phrase
             - Flag any structure violations in quality_issues
 
             9. SIGNATURE VALIDATION:
