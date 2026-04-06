@@ -65,13 +65,15 @@ def test_veto_sender_fabrication():
     assert result.overall_quality_score <= VETO_SCORE
     assert failing == "primary"
 
-def test_veto_overlength_body():
+def test_overlength_body_penalty():
+    """Body >130 words gets -0.2 penalty (not a veto, but enough to fail borderline emails)."""
+    # Base weighted: 0.25*0.70 + 0.50*0.70 + 0.25*0.70 = 0.70, minus 0.2 = 0.50
     result, failing = aggregate_qa_results(
-        _make_subject(0.90), _make_body(0.90, wc=155), _make_fu(0.90), "A"
+        _make_subject(0.70), _make_body(0.70, wc=155), _make_fu(0.70), "A"
     )
-    assert result.overall_quality_score <= VETO_SCORE
-    assert failing == "primary"
-    assert "130-word" in result.quality_issues[0]
+    assert result.overall_quality_score == pytest.approx(0.50, abs=0.01)
+    assert result.approval_status == "Needs_Improvement"
+    assert any("155 words" in i for i in result.quality_issues)
 
 def test_veto_hyphens_in_follow_ups():
     result, failing = aggregate_qa_results(

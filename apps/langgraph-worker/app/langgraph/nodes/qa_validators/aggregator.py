@@ -55,9 +55,6 @@ def aggregate_qa_results(
     elif body and body.has_sender_fabrication:
         veto_reason = "Sender fabrication detected"
         veto_group = "primary"
-    elif body and body.word_count > 130:
-        veto_reason = f"Body exceeds 130-word hard cap ({body.word_count} words)"
-        veto_group = "primary"
     elif fu and fu.has_hyphens:
         veto_reason = "Hyphens found in follow-ups"
         veto_group = "follow_ups"
@@ -80,6 +77,17 @@ def aggregate_qa_results(
     if veto_reason:
         overall = min(overall, VETO_SCORE)
         logger.warning(f"Veto rule triggered: {veto_reason}, score clamped to {VETO_SCORE}")
+
+    # --- Programmatic overlength penalty (deterministic, not LLM-scored) ---
+    overlength_penalty = 0.0
+    if body and body.word_count > 130:
+        overlength_penalty = 0.2
+        overall = max(0.0, overall - overlength_penalty)
+        logger.warning(f"Overlength penalty: body is {body.word_count} words (cap 130), -0.2 applied")
+    elif body and body.word_count > 120:
+        overlength_penalty = 0.1
+        overall = max(0.0, overall - overlength_penalty)
+        logger.info(f"Overlength warning: body is {body.word_count} words (target 120), -0.1 applied")
 
     # --- Determine approval ---
     if overall >= threshold:
@@ -126,6 +134,10 @@ def aggregate_qa_results(
         all_suggestions.extend(f"[follow-up] {s}" for s in fu.suggestions)
     if veto_reason:
         all_issues.insert(0, f"[veto] {veto_reason}")
+    if body and body.word_count > 130:
+        all_issues.insert(0, f"[body] Body is {body.word_count} words — hard cap is 130, cut {body.word_count - 120} words to reach target of 120")
+    elif body and body.word_count > 120:
+        all_issues.append(f"[body] Body is {body.word_count} words — target is 95-120, consider cutting {body.word_count - 115} words")
 
     # --- Build QualityAssessment ---
     assessment = QualityAssessment(
