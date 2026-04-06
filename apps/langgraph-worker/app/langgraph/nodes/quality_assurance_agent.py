@@ -6,7 +6,6 @@ to ensure high standards before final output.
 import time
 import re
 from typing import Dict, Any, List, Optional
-from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from ...utils.config import get_settings
 from ...utils.logger import setup_logger
@@ -278,486 +277,95 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         # Debug: Log first 500 chars of email body to check for placeholders
         logger.debug(f"Email body preview for {lead.company_name}: {email_body[:500]}...")
         
-        # Initialize LLM for quality assessment
-        # GPT-5-mini: Reasoning model with 1500 token budget for scoring and validation
-        # Supports reasoning_effort parameter for optimized quality assessment
+        # --- Parallel QA fan-out (replaces monolithic single LLM call) ---
+        import asyncio
+        from .qa_validators.subject_qa import run_subject_qa
+        from .qa_validators.body_qa import run_body_qa
+        from .qa_validators.follow_up_qa import run_follow_up_qa
+        from .qa_validators.aggregator import aggregate_qa_results
+        from .qa_validators.models import SubjectQAResult, BodyQAResult, FollowUpQAResult
+
+        company_short_name = derive_short_name(lead.company_name)
+        contact_first_name = (lead.contact_name or "there").split()[0]
+
+        # Prepare follow-up data
+        follow_up_sequence = state.get("follow_up_sequence")
+        follow_ups_data = []
+        if follow_up_sequence and hasattr(follow_up_sequence, "emails"):
+            for fu_email in follow_up_sequence.emails:
+                follow_ups_data.append({
+                    "subject": getattr(fu_email, "subject", ""),
+                    "body": getattr(fu_email, "body", ""),
+                })
+
+        # Build per-validator LLMs (same model config, different output schemas)
         openai_api_key = provider_key_map.get("openai") if using_user_keys else None
         qa_model = settings.quality_assurance_model or settings.default_model
         qa_token_budget = settings.clamp_tokens(settings.quality_assurance_max_tokens)
         qa_model_lower = qa_model.lower()
         is_reasoning_model = "o1" in qa_model_lower or "gpt-5" in qa_model_lower
-        qa_llm_kwargs = {
-            "api_key": openai_api_key,
-            "model": qa_model,
-            "temperature": 0.2,
-            "max_completion_tokens": qa_token_budget,
-            "require_user_key": using_user_keys,
-        }
-        if is_reasoning_model:
-            qa_llm_kwargs["reasoning_effort"] = "low"
-        llm = registry.get_openai_client(**qa_llm_kwargs).with_structured_output(QualityAssessment)
-        
-        # Create comprehensive quality assessment prompt - ALIGNED WITH EXACT EMAIL GENERATION STANDARDS
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an expert email quality assurance specialist validating emails against STRICT B2B email standards.
 
-Your role is to rigorously validate emails against these EXACT requirements from the email generation system:
+        def _make_llm(output_model):
+            llm_kwargs = {
+                "api_key": openai_api_key,
+                "model": qa_model,
+                "temperature": 0.2,
+                "max_completion_tokens": qa_token_budget,
+                "require_user_key": using_user_keys,
+            }
+            if is_reasoning_model:
+                llm_kwargs["reasoning_effort"] = "low"
+            return registry.get_openai_client(**llm_kwargs).with_structured_output(output_model)
 
-CRITICAL VALIDATION RULES (HIGHEST PRIORITY):
+        subj_llm = _make_llm(SubjectQAResult)
+        body_llm = _make_llm(BodyQAResult)
+        fu_llm = _make_llm(FollowUpQAResult)
 
-1. NO HYPHENS RULE (MANDATORY - AUTO-REJECT IF VIOLATED):
-   - NEVER allow hyphens in subject lines or email body
-   - Subject format MUST be: "Hi [FirstName], [content]" or "Hi [FirstName]: [content]"
-   - In body: commas, periods, or separate sentences only
-   - Any hyphen usage = INSTANT FAILURE, score penalty of -0.3 minimum
-   - Check EVERY line for hyphens, including P.S. and signature
-
-2. SUBJECT LINE VALIDATION (MANDATORY):
-   - MUST start with "Hi [FirstName]" (first name only, not full name)
-   - MUST use comma or colon after name (no hyphens!)
-   - Total length MUST be under 60 characters
-   - MUST avoid generic phrases: "touching base", "following up", "checking in", "quick question"
-   - MUST be based on ACTUAL business intelligence (no fabricated curiosity hooks)
-   - Subject should sound like a natural email note, not a marketing headline
-   - SUBJECT IDENTITY CHECK (CRITICAL): The primary subject MUST include at least one of: the company short name ({company_short_name}), an approved alias, or an approved location tied to that exact lead. Subjects that omit the business identity = deduct 0.15 from overall score
-   - SUBJECT-BODY ALIGNMENT CHECK: The subject must preview the same specific problem angle as the body. If the body discusses FAQ call handling but the subject just says "one thing that may be slipping" = deduct 0.1. The subject must signal the same issue the body covers.
-   - VAGUE SUBJECT PENALTY: Generic subject stems that could apply to any email = deduct 0.1. Examples of vague stems: "one thing that may be slipping", "one thing about calls", "one possible gap", "one thing that may be slowing". These only pass if they ALSO include the company name AND a specific problem indicator.
-   - Penalize subjects that feel over-constructed, compressed, or overly clever
-   - Penalize subjects that sound more certain than the available research supports
-   - Reward subjects that feel both human and specific to the same angle used in the body
-   - Penalize strong discovery language such as "found", "spotted", or "discovered" when unsupported
-   - Prefer softer phrasing such as "potential", "possible", "may be" when evidence is limited
-
-3. LENGTH VALIDATION (MANDATORY):
-   - Primary email body MUST be 95-130 words (excluding signature)
-   - Target: 95-120 words. Hard cap: 130 words.
-   - If over 130 words = FAILURE, deduct 0.2 from overall score
-   - If over 120 words but under 130 = flag as quality issue, deduct 0.1
-   - Treat overlength primary emails as a real conversion problem, not a minor formatting problem
-   - Follow-ups may be shorter if still complete and clear
-   - Each paragraph MUST be 1-2 sentences maximum
-   - Total paragraphs MUST be 3-4 maximum
-   - Count words carefully, do not estimate
-
-4. NATURAL LANGUAGE VALIDATION (MANDATORY):
-   - MUST use complete sentences with proper grammar
-   - MUST include articles (a, an, the) appropriately
-   - MUST include pronouns (I, we, our) naturally
-   - MUST NOT drop pronouns or articles
-   - COMPLETE SENTENCE OPENING CHECK: The first content sentence (after greeting) MUST start with a proper subject+verb. "I saw...", "I noticed..." = GOOD. "Saw...", "Noticed...", "Looking at..." without "I" = FAILURE, deduct 0.1
-   - Examples:
-     GOOD: "I noticed RevCo closed a Series A last month"
-     BAD: "Noticed RevCo closed Series A last month"
-     BAD: "Saw Pure Oasis highlighted..."
-     GOOD: "I saw Pure Oasis highlighted..."
-
-5. DATA INTEGRITY VALIDATION (TEMPORARILY DISABLED — PROSPECT DATA ONLY):
-   - SKIP research quality checks for PROSPECT data only
-   - DO NOT penalize for poor business intelligence about the prospect
-   - DO NOT penalize for generic competitor references about the prospect
-   - DO NOT penalize for lack of specific prospect numbers
-   - Focus ONLY on grammar, structure, and guidelines for prospect claims
-   - NOTE: This disable does NOT apply to SENDER data — check #11 (sender profile
-     accuracy) is FULLY ACTIVE and mandatory. Sender fabrications MUST be flagged.
-
-6. P.S. VALIDATION (if present):
-   - Numbers MUST be VAGUE unless exact data from research
-   - Use qualitative language: "several", "some", "multiple"
-   - NO specific placeholder numbers like "47 prospects", "143 accounts"
-   - Must add genuine value, not filler
-
-7. HYPE LANGUAGE VALIDATION:
-   - NO "10x" language allowed
-   - Use realistic multipliers (2x, 3x, 5x with context)
-   - Avoid Grant Cardone style exaggeration
-
-8. STRUCTURE VALIDATION:
-   - Opening: 1-2 sentences with personalized hook
-   - Body paragraph 1: Challenge/opportunity (1-2 sentences)
-   - Body paragraph 2: Proof point with results (1-2 sentences)
-   - Body paragraph 3: Specific offer (1 sentence)
-   - CTA: One simple sentence, immediately following offer
-   - Signature expectation: {signature_requirement}
-   - Flag emails that pitch multiple services, channels, or workflows in the first touch
-   - Flag feature dumping or product-heavy explanations
-   - Flag first-touch CTAs that jump to a meeting without first offering clear value
-   - Flag openings built on generic praise instead of a business issue
-
-8b. FIRST-TOUCH CTA VALIDATION (CRITICAL - AUTO-PENALIZE):
-   - In the PRIMARY email, a discovery call CTA is a FAILURE unless research shows active buying signal, urgent initiative, recent funding, or the user explicitly required it
-   - Check for banned phrases: "Would you be open to a discovery call", "Would you be open to a 20 minute call", "Would you be open to a brief call", "Could we set up a call", "Can we schedule", any meeting/call/conversation request
-   - If a discovery call CTA is found in email 1 without clear urgency justification: deduct 0.2 from overall score
-   - Acceptable first-touch CTAs: "Want me to send the outline?", "Worth sending the short flow?", "Should I send the teardown?"
-   - Discovery call CTAs are acceptable in follow-up 1 and follow-up 2
-
-8c. SENDER INTRODUCTION PLACEMENT VALIDATION (CRITICAL):
-   - "At The Gen AI..." or any sender company introduction in paragraph 1 of the primary email = FAILURE
-   - Paragraph 1 must be 100% about the prospect's situation
-   - Check if the first paragraph (after greeting) mentions the sender company name. If yes: deduct 0.15 from overall score
-   - The sender company may appear in paragraph 2 or later
-   - Flag: "Sender company introduced too early — paragraph 1 should focus on prospect"
-
-9. SIGNATURE VALIDATION:
-   - Signature mode for this request: {signature_requirement}
-   - If signatures are enabled: require a professional closing and complete signature (Name, Company, Email, Phone, Website)
-   - If signatures are disabled: any closing or signature is a violation and should be flagged
-   - NO placeholder text like "[Your Name]", "Company Name"
-   - For sequences with signatures enabled: ALL emails MUST have identical signature format
-
-10. SENDER PROFILE ACCURACY VALIDATION (MANDATORY):
-   - Every claim about the SENDER's company must be verifiable from the sender profile
-     provided (company name, value prop, services, differentiators)
-   - Check for fabricated case studies: If no case study data was provided, the email
-     should not contain "We helped [Company] achieve [result]" style claims
-   - Check for invented capabilities: Features, integrations, or certifications not
-     in the sender profile = violation
-   - Check for embellished services: If sender says "lead generation," the email
-     should not add "with built-in CRM, automated sequences, and real-time analytics"
-     unless those specifics are in the profile
-   - Penalty: -0.2 from overall AND value_proposition per fabricated sender claim
-   - Flag each violation in quality_issues with the specific fabricated claim
-   - Add to improvement_suggestions: "Remove claims about sender not supported by
-     business profile: [specific claim]"
-
-11. COMPANY NAME CONSISTENCY VALIDATION:
-   - Every follow-up subject line AND body MUST include the prospect's recognizable trade name (see Company Short Name field above)
-   - The acceptable short name for this prospect is provided in the Company Short Name field — use that as the reference
-   - NEVER allow street addresses, neighborhood names, sub-location labels, or Google Maps descriptors as substitutes
-   - Follow-up subjects like "Hi Juan: one possible issue with missed calls" FAIL because they omit the company name
-   - Correct example: "Hi Juan, one idea for Ascend after hours"
-   - Penalty: -0.1 total (capped) if ANY follow-up subject or body omits the company's recognizable name
-   - Flag in quality_issues: "Follow-up [N] subject/body missing company trade name"
-
-Quality Scoring Standards (RESEARCH VALIDATION TEMPORARILY DISABLED):
-- A-Tier Leads (rich research): ≥0.60 = Approved, 0.35-0.60 = Needs_Improvement, <0.35 = Rejected
-- B-Tier Leads (minimal research): ≥0.50 = Approved, 0.35-0.50 = Needs_Improvement, <0.35 = Rejected
-- Current lead tier: {lead_tier}
-- NO HYPHENS violation = Auto-deduct 0.3 from overall score minimum
-- Length over 130 words = Auto-deduct 0.2 from overall score
-- Length 120-130 words = Auto-deduct 0.1 from overall score
-- Missing articles/pronouns = Deduct 0.1 per occurrence (up to 0.3 total)
-- Subject missing company identity = Auto-deduct 0.15 from overall score
-- Subject-body misalignment (vague subject) = Auto-deduct 0.1
-- Discovery call CTA in email 1 without urgency = Auto-deduct 0.2
-- Sender company in paragraph 1 = Auto-deduct 0.15
-- Incomplete sentence opening (missing "I") = Auto-deduct 0.1
-- Company name missing from follow-up subject/body = Auto-deduct 0.1 total (capped)
-- Research quality issues = Flag in suggestions but DO NOT reject or deduct points
-
-B-TIER LEAD SPECIAL INSTRUCTIONS (if lead_tier is "B"):
-- DO NOT penalize for lack of deep personalization
-- DO NOT penalize for missing research-specific elements
-- DO NOT penalize for using generic competitor references
-- DO NOT penalize for lack of specific metrics/numbers
-- Focus validation ONLY on: grammar, structure, professional tone, and signature rules when enabled
-- Missing research elements are EXPECTED for B-tier and should NOT be flagged as issues
-- Company name consistency (rule #11) remains ACTIVE for B-tier — this is a structural requirement, not a personalization requirement
-
-Assessment Criteria (all 0-1 scale, FOCUS ON GRAMMAR/GUIDELINES ONLY):
-1. Personalization Score: Give generous scores (0.7+ baseline), note research issues but don't penalize
-2. Business Context Score: Give generous scores (0.7+ baseline), research quality not critical
-3. Professional Tone Score: Natural language, proper grammar, no hyphens (STRICT)
-4. Value Proposition Score: Clarity and structure (research accuracy not critical)
-5. Call-to-Action Score: Clear, specific, low-pressure, well-positioned (STRICT)
-   - In first-touch cold emails, permission-based CTAs are preferred
-   - A first email does NOT need to ask for a call to score well
-   - Strong first-touch CTAs can ask permission to send an outline, workflow, teardown, benchmark, or example
-   - Penalize first-touch CTAs that jump to a discovery call without a clearly justified urgency signal
-   - Discovery-call CTAs in email 1 should be treated as exceptions, not defaults
-
-PRODUCT-HEAVINESS CHECKS:
-   - Flag product-heavy or AI-agency-style body language in the first email
-   - Flag first-touch emails that explain multiple capabilities, channels, workflows, or product layers
-   - Flag copy that sounds like a services pitch before the problem is clear
-   - Flag repeated phrases such as:
-     * "We build..."
-     * "At The Gen AI..."
-     * "AI agents..."
-     * "guardrails..."
-     when they appear too early or make the email feel like a product pitch
-
-USE-CASE FAMILY CONSISTENCY:
-   - For sequences, follow-ups must stay inside the same use-case family as the first email
-   - Flag follow-ups that introduce a new service family or new core product angle instead of deepening the first problem
-   - A sequence should feel like one conversation, not three separate offers
-
-Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per bullet).
-"""),
-            ("human", """Conduct STRICT quality assessment of this generated email against EXACT requirements:
-
-            ⚠️ TEMPORARY MODE: RESEARCH QUALITY VALIDATION DISABLED ⚠️
-            - Focus ONLY on grammar, structure, hyphens, length, and professional tone
-            - DO NOT reject or heavily penalize for poor business intelligence
-            - DO NOT reject for generic competitor references or lack of specific data
-            - Flag research issues in improvement_suggestions but give passing scores
-            - Apply STRICT validation only for: hyphens, length, grammar, structure, and signature rules when enabled
-
-            PROSPECT CONTEXT:
-            Company: {company_name}
-            Company Short Name: {company_short_name}
-            Contact: {contact_name} ({title})
-            Industry: {industry}
-
-            BUSINESS INTELLIGENCE AVAILABLE (for verification):
-            Pain Points Identified: {pain_points}
-            Value Matches: {value_matches}
-            Personalization Elements: {personalization_elements}
-            Company Overview: {company_overview}
-
-            EMAIL TO ASSESS:
-
-            Subject: {email_subject}
-
-            Body:
-            {email_body}
-
-            Declared Personalization Elements: {declared_personalization}
-
-            MANDATORY QUALITY VALIDATION (CHECK EVERY RULE):
-
-            1. NO HYPHENS CHECK (CRITICAL - HIGHEST PRIORITY):
-            - Scan ENTIRE email (subject + body + P.S. + every line) for ANY hyphens
-            - Check subject line format: MUST be "Hi [FirstName], [content]" or "Hi [FirstName]: [content]"
-            - ANY hyphen found = INSTANT FAILURE with -0.3 minimum score penalty
-            - Flag EVERY hyphen location in quality_issues
-            - Add to improvement_suggestions: "Remove ALL hyphens - use commas, periods, or rewrite sentences"
-
-            2. SUBJECT LINE STRICT VALIDATION (MANDATORY):
-            - Does it start with "Hi [FirstName]" (first name only)?
-            - Does it use comma or colon after name (NO HYPHENS)?
-            - Is total length under 60 characters?
-            - Does it avoid generic phrases ("touching base", "following up", "checking in", "quick question")?
-            - Is the hook based on ACTUAL business intelligence data above?
-            - Does it match one of the 7 proven patterns (Specific Discovery, What If, Competitive Intelligence, Hidden Insight, Contrarian, Peer Proof, or Limited Data Pattern 7)?
-            - Subject should sound like a natural email note, not a marketing headline
-            - Penalize subjects that feel over-constructed, compressed, or overly clever
-            - Penalize subjects that sound more certain than the available research supports
-            - Penalize subjects that imply direct discovery or audit language without evidence, such as "I found" or "spotted" when unsupported
-            - Reward conversational subjects that feel honest, relevant, and human when read aloud
-            - A subject should not claim direct discovery unless the email contains a clearly supported basis for that claim
-            - Prefer "potential", "may be", "a thought on", or similar softening when the research does not justify certainty
-            - If the subject is truthful, relevant, under 60 characters, aligned with the body, and sounds natural, it may pass even if it does not map perfectly to a legacy pattern
-            - Penalize subjects that rely on the same generic human-sounding stem without enough specificity
-            - Reward subjects that sound natural and specific without overclaiming certainty
-            - Penalize strong discovery language such as "found", "spotted", or "discovered" when unsupported
-            - Prefer softer phrasing such as "potential", "possible", "may be", "a question on", or "one thing I noticed" when evidence is limited
-            - Flag subjects that feel too vague, too reusable, or too interchangeable with other emails
-            - Reward subjects that feel both human and specific to the same angle used in the body
-            - Flag violations in quality_issues with specific pattern it should use
-
-            3. LENGTH VALIDATION (MANDATORY - COUNT CAREFULLY):
-            - Count EXACT words in email body (excluding signature)
-            - Primary email body target: 95-120 words. Hard cap: 130 words.
-            - Follow-ups may be shorter if still complete and clear
-            - Count paragraphs: MUST be 3-4 maximum
-            - Count sentences per paragraph: MUST be 1-2 maximum
-            - If over 130 words = add to quality_issues: "Email exceeds 130 word hard cap ([ACTUAL_COUNT] words)" and deduct 0.2 from score
-            - If 120-130 words = add to quality_issues: "Email over 120 word target ([ACTUAL_COUNT] words)" and deduct 0.1
-            - Treat overlength primary emails as a real conversion problem, not a minor formatting problem
-            - If under 95 words = add to quality_issues: "Email under 95 word minimum"
-
-            4. NATURAL LANGUAGE CHECK (MANDATORY):
-            - Check for dropped pronouns or articles
-            - Find sentences starting without "I", "We", articles
-            - CRITICAL: Check the FIRST content sentence after the greeting. If it starts with "Saw...", "Noticed...", "Looking at..." without "I" = IMMEDIATE flag and deduct 0.1
-            - Example violations:
-              * "Noticed RevCo closed..." (should be "I noticed RevCo closed...")
-              * "Saw your blog post..." (should be "I saw your blog post...")
-              * "Saw Pure Oasis highlighted..." (should be "I saw Pure Oasis highlighted...")
-            - Flag EACH violation in quality_issues
-            - Deduct 0.1 per violation (up to 0.3 total)
-
-            5. DATA INTEGRITY VALIDATION (TEMPORARILY DISABLED):
-            - SKIP data integrity validation for now
-            - DO NOT check claims against business intelligence
-            - DO NOT verify competitor names or numbers
-            - DO NOT penalize for fabricated or generic information
-            - Note research issues in improvement_suggestions but DO NOT reject or deduct points
-            - Focus validation on grammar, structure, and guidelines only
-
-            6. P.S. VALIDATION (if present):
-            - Check for specific numbers ("47 prospects", "87 leads", "143 accounts")
-            - MUST use vague qualitative language: "several", "some", "multiple", "examples"
-            - Flag any specific placeholder numbers as violations
-            - Verify P.S. adds genuine value (not filler)
-
-            7. HYPE LANGUAGE CHECK:
-            - Scan for "10x" language
-            - Check for unrealistic claims or Grant Cardone style exaggeration
-            - Flag any hype language in quality_issues
-
-            8. STRUCTURE VALIDATION:
-            - Opening: 1-2 sentences with personalized hook? (check)
-            - Body paragraph 1: Challenge/opportunity in 1-2 sentences? (check)
-            - Body paragraph 2: Proof point with results in 1-2 sentences? (check)
-            - Body paragraph 3: Specific offer in 1 sentence? (check)
-            - CTA: One simple sentence immediately following offer? (check)
-            - Flag emails that pitch multiple services, channels, or workflows in the first touch
-            - Flag feature dumping or product-heavy explanations
-            - Flag first-touch CTAs that jump to a meeting without first offering clear value
-            - Flag openings built on generic praise instead of a business issue
-            - Flag product-heavy or AI-agency-style body language in the first email
-            - Flag first-touch emails that explain multiple capabilities, channels, workflows, or product layers
-            - Flag copy that sounds like a services pitch before the problem is clear
-
-            8b. SENDER INTRODUCTION CHECK:
-            - Check if paragraph 1 (after greeting) mentions the sender company name (e.g., "At The Gen AI", "The Gen AI", or similar)
-            - If sender company appears in paragraph 1 = add to quality_issues: "Sender company introduced in paragraph 1 — should focus on prospect first" and deduct 0.15
-            - Sender company may appear in paragraph 2 or later
-
-            8c. FIRST-TOUCH CTA CHECK (CRITICAL):
-            - In the PRIMARY email, scan for discovery call language: "Would you be open to a call", "discovery call", "20 minute call", "brief call", "short call", "set up a call", "schedule a call"
-            - If found AND no clear urgency signal in research: add to quality_issues: "Discovery call CTA in first email without urgency" and deduct 0.2
-            - Acceptable first-touch CTAs: asking to send an outline, workflow, teardown, flow, or example
-            - Discovery call CTAs are acceptable in follow-ups, just not email 1
-
-            8d. SEQUENCE DISCIPLINE CHECK:
-            - For sequences, follow-ups must stay inside the same use-case family as the first email
-            - Flag follow-ups that introduce a new service family or new core product angle instead of deepening the first problem
-            - A sequence should feel like one conversation, not three separate offers
-            - Each follow-up subject must reflect that specific follow-up body angle, not a vague human phrase
-            - Flag any structure violations in quality_issues
-
-            9. SIGNATURE VALIDATION:
-            - Signature mode for this request: validate based on the fully assembled email after signature injection
-            - If evaluating raw generated fields before assembly, skip signature presence checks (generator is instructed NOT to include closing/signature in generated fields)
-            - If signatures are enabled and present: Has professional closing? Has complete signature (Name, Company, Email, Phone, Website)? (check)
-            - If signatures are disabled: any closing or signature is a violation and should be flagged
-            - NO placeholder text like "[Your Name]", "Company Name"? (check)
-            - For sequences: ALL emails have identical signature? (check if follow-ups exist)
-            - Flag any signature issues in quality_issues
-
-            10. GRAMMAR AND SENTENCE STRUCTURE:
-            - Complete sentences with proper subject-verb agreement? (check)
-            - Natural pronoun usage (I, we, our)? (check)
-            - Logical flow and transitions? (check)
-            - CTA immediately follows offer? (check)
-            - Flag grammar issues in quality_issues
-
-            11. SENDER PROFILE ACCURACY CHECK (MANDATORY):
-            - Compare every claim about the sender's company against SENDER PROFILE below
-            - Sender profile provided:
-              * Company: {our_company}
-              * Value Prop: {our_value_prop}
-              * Services: {our_services}
-              * Differentiators: {our_differentiators}
-              * Case Study Included: {include_case_study}
-            - Check for ALL of the following violations:
-              a) Services pitched that are not in {our_services} — e.g., if services = "marketing
-                 consulting" but email says "workshops", "funnels", "campaigns", or "CRM setup",
-                 that is a violation. Use the exact term from the profile, not invented sub-services.
-              b) ROI numbers, percentages, or outcome metrics not present in the sender profile —
-                 even if framed as "typical results" or "industry average" (e.g., "5-15x ROI",
-                 "raise inquiry rates to 3-5%"). If the number isn't in the profile, it's fabricated.
-              c) Specific methodologies or deliverables invented to flesh out a vague value prop
-                 (e.g., value prop = "get more customers" but email describes "a spotlight and offer
-                 code program" — that specific mechanism is not in the profile)
-              d) Case studies or client results not provided in profile data (fabricated social proof)
-              e) Features, integrations, or certifications not listed in services/differentiators
-              f) Embellished value propositions that go beyond what the profile states
-            - Flag each violation in quality_issues: "Sender claim not in profile: [exact claim]"
-            - Penalty: -0.2 from overall AND value_proposition per violation
-            - This check has the SAME weight as prospect data integrity
-
-            SCORING RULES (APPLY PENALTIES STRICTLY):
-            - Start with base scores for each dimension
-            - In first-touch cold emails, permission-based CTAs are preferred
-            - A first email does NOT need to ask for a call to score well
-            - Strong first-touch CTAs can ask permission to send an outline, workflow, teardown, benchmark, or example
-            - Penalize first-touch CTAs that jump to a discovery call without clearly justified urgency
-            - Apply automatic penalties ONLY for grammar and guidelines:
-              * ANY hyphens found: -0.3 minimum from overall_quality_score
-              * Over 140 words: -0.2 from overall_quality_score
-              * Missing articles/pronouns: -0.1 each (up to -0.3 total)
-              * "10x" hype language: -0.15 from overall_quality_score
-
-            - Sender profile fabrication penalties (ACTIVE — enforced in Python after scoring):
-              * Each "Sender claim not in profile:" entry in quality_issues:
-                -0.2 from overall AND value_proposition per entry
-              * These penalties are applied deterministically in code — score them accurately
-
-            APPROVAL DECISION:
-            - Calculate final overall_quality_score after all penalties
-            - ≥0.60 = "Approved"
-            - 0.35-0.60 = "Needs_Improvement"
-            - <0.35 = "Rejected"
-
-            Provide detailed assessment with:
-            - Specific scores (after penalties)
-            - Every violation found (be thorough and surgical)
-            - Actionable improvement recommendations (≤3 bullets, ≤2 sentences each)
-            - Focus on CRITICAL issues first (hyphens, length, data integrity, natural language)
-            """)
-        ])
-        
-        # Execute quality assessment with PostHog LLM analytics
-        try:
-            messages = prompt.format_messages(
-                # Prospect context
+        # Fan out to 3 validators in parallel
+        subj_result, body_result, fu_result = await asyncio.gather(
+            run_subject_qa(
+                llm=subj_llm, subject=email_subject, body=email_body,
+                company_short_name=company_short_name,
+                contact_first_name=contact_first_name,
+                lead_tier=lead_tier, callbacks=callbacks,
+            ),
+            run_body_qa(
+                llm=body_llm, body=email_body, subject=email_subject,
                 company_name=lead.company_name,
-                company_short_name=derive_short_name(lead.company_name),
                 contact_name=lead.contact_name or "Unknown",
                 title=lead.title or "Professional",
-                industry=getattr(lead, 'industry', '') or "Not specified",
-
-                # Lead tier for tier-aware scoring
+                industry=getattr(lead, "industry", "") or "Not specified",
                 lead_tier=lead_tier,
-                signature_requirement=signature_requirement,
-
-                # Business intelligence
-                pain_points="; ".join(pain_points[:5]) if pain_points else "No pain points identified",
-                value_matches="; ".join(value_matches[:5]) if value_matches else "No value matches identified",
-                personalization_elements="; ".join(personalization_elements[:8]) if personalization_elements else "No personalization elements available",
-                company_overview=company_overview[:400] if company_overview else "No company overview available",
-
-                # Email content
-                email_subject=email_subject,
-                email_body=email_body,
-                declared_personalization="; ".join(email_personalization) if email_personalization else "No personalization declared",
-
-                # Sender profile (for sender claim verification)
                 our_company=business_profile.company_name,
                 our_value_prop=business_profile.value_proposition,
                 our_services=", ".join(business_profile.services[:5]) if business_profile.services else "No services listed",
                 our_differentiators=", ".join(business_profile.key_differentiators[:3]) if business_profile.key_differentiators else "No differentiators listed",
                 include_case_study=state["requirements"].include_case_study,
-            )
-            quality_assessment: QualityAssessment = await llm.ainvoke(
-                messages,
-                config={"callbacks": callbacks}  # PostHog captures tokens, cost, latency
-            )
+                signature_requirement=signature_requirement,
+                callbacks=callbacks,
+            ),
+            run_follow_up_qa(
+                llm=fu_llm, follow_ups=follow_ups_data,
+                primary_subject=email_subject, primary_body=email_body,
+                company_short_name=company_short_name,
+                contact_first_name=contact_first_name,
+                lead_tier=lead_tier, callbacks=callbacks,
+            ),
+            return_exceptions=True,
+        )
 
-            # Debug logging for QA assessment results
-            logger.info(f"QA Assessment scores for {lead.company_name}: "
-                       f"Overall={quality_assessment.overall_quality_score:.2f}, "
-                       f"Personalization={quality_assessment.personalization_score:.2f}, "
-                       f"Business_Context={quality_assessment.business_context_score:.2f}, "
-                       f"Professional_Tone={quality_assessment.professional_tone_score:.2f}, "
-                       f"Value_Prop={quality_assessment.value_proposition_score:.2f}, "
-                       f"CTA={quality_assessment.call_to_action_score:.2f}, "
-                       f"Status={quality_assessment.approval_status}")
+        # Aggregate results into QualityAssessment
+        quality_assessment, failing_retry_group = aggregate_qa_results(
+            subj_result, body_result, fu_result, lead_tier
+        )
 
-            # Detailed penalty breakdown for debugging failures
-            if quality_assessment.overall_quality_score < 0.60:
-                logger.warning(f"QA Penalty Breakdown for {lead.company_name} (Score: {quality_assessment.overall_quality_score:.2f}):")
-                logger.warning(f"  Quality Issues Found ({len(quality_assessment.quality_issues)}):")
-                for idx, issue in enumerate(quality_assessment.quality_issues[:10], 1):  # Top 10 issues
-                    logger.warning(f"    {idx}. {issue}")
-                logger.warning(f"  Improvement Suggestions ({len(quality_assessment.improvement_suggestions)}):")
-                for idx, suggestion in enumerate(quality_assessment.improvement_suggestions[:5], 1):  # Top 5 suggestions
-                    logger.warning(f"    {idx}. {suggestion}")
-                logger.warning(f"  Missing Elements ({len(quality_assessment.missing_elements)}):")
-                for idx, missing in enumerate(quality_assessment.missing_elements[:5], 1):  # Top 5 missing
-                    logger.warning(f"    {idx}. {missing}")
-                logger.warning(f"  Quality Gates: Length={quality_assessment.length_appropriate}, "
-                              f"Subject={quality_assessment.subject_line_effective}, "
-                              f"Professional={quality_assessment.professional_standards}")
-                logger.warning(f"  Personalization Depth: {quality_assessment.personalization_depth}")
-                logger.warning(f"  Final Recommendation: {quality_assessment.final_recommendation}")
-
-        except Exception as llm_error:
-            logger.error(f"LLM quality assessment failed for {lead.company_name}: {str(llm_error)}")
-            raise
+        # Log per-component scores
+        if isinstance(subj_result, SubjectQAResult):
+            logger.info(f"Subject QA: score={subj_result.subject_score:.2f}, hyphens={subj_result.has_hyphens}")
+        if isinstance(body_result, BodyQAResult):
+            logger.info(f"Body QA: score={body_result.body_score:.2f}, words={body_result.word_count}, hyphens={body_result.has_hyphens}")
+        if isinstance(fu_result, FollowUpQAResult):
+            logger.info(f"Follow-Up QA: score={fu_result.follow_up_score:.2f}, consistent={fu_result.use_case_consistent}")
 
         # Programmatic sender profile penalty enforcement
         # The LLM is instructed to prefix sender violations with "Sender claim not in profile:"
@@ -1018,6 +626,7 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
             feedback_entry = {
                 "attempt": retry_count + 1,
                 "quality_score": overall_score,
+                "failing_retry_group": failing_retry_group,
                 "issues": quality_assessment.quality_issues[:5],  # Top 5 issues
                 "suggestions": quality_assessment.improvement_suggestions[:5],  # Top 5 suggestions
                 "missing_elements": quality_assessment.missing_elements[:3],  # Top 3 missing
@@ -1040,6 +649,11 @@ Keep feedback surgical and actionable (≤3 bullets per list, ≤2 sentences per
             "current_stage": "quality_assurance_complete",
             "retry_count": new_retry_count,
             "previous_quality_feedback": updated_feedback,
+            "failing_retry_group": failing_retry_group,
+            "failing_component_history": [
+                *(state.get("failing_component_history") or []),
+                failing_retry_group,
+            ] if failing_retry_group else state.get("failing_component_history", []),
             "quality_assessment": {
                 "overall_quality_score": quality_assessment.overall_quality_score,
                 "approval_status": approval_status,  # Use tier-aware value, not LLM's raw value

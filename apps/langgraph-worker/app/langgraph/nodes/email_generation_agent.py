@@ -620,7 +620,7 @@ SUBJECT IDENTITY RULE (MANDATORY - APPLIES TO PRIMARY AND ALL FOLLOW-UPS):
 - Every subject line MUST include at least one of: {company_short_name}, an approved alias, or an approved location tied to that exact lead
 - Subjects that omit the business identity are too generic and too reusable. They FAIL.
 - Examples of FAILING subjects: "one thing that may be slipping", "one thing about calls", "one possible gap in patient reactivation"
-- Examples of PASSING subjects: "Hi Juan, one idea for Ascend after hours", "Hi Jeff, RISE Chelsea FAQ calls", "Hi Emma, reLeaf Natick phone lines"
+- Examples of PASSING subjects: "Hi Juan, one after hours idea for Ascend", "Hi Jeff, one FAQ call issue for RISE Chelsea", "Hi Emma, one phone line question for reLeaf Natick"
 
 SUBJECT-BODY ALIGNMENT RULE (MANDATORY):
 - The subject MUST preview the exact problem angle the body discusses
@@ -644,36 +644,43 @@ SUBJECT-BODY ALIGNMENT RULE (MANDATORY):
 - Avoid strong discovery verbs like "found", "spotted", "discovered" unless the research clearly supports that level of certainty
 
 Subject Line Patterns (ALL patterns MUST include {company_short_name}):
+
+WORD ORDER RULE (MANDATORY): The subject content MUST follow the structure "{idea/hook} for {company_short_name}".
+- The idea, issue, or hook comes FIRST, then "for {company_short_name}" at the END.
+- NEVER put {company_short_name} before the idea. That creates awkward, unnatural phrasing.
+- WRONG: "Hi Sarah, RevCo onboarding gap" or "Hi Sarah, one RevCo follow up issue"
+- RIGHT: "Hi Sarah, one onboarding gap for RevCo" or "Hi Sarah, one follow up issue for RevCo"
+
   1. Specific Discovery:
      - Keep only when research strongly supports it
      → Requires: 3+ identifiable opportunities from research
-     Example: "Hi Sarah, one possible gap in RevCo onboarding"
+     Example: "Hi Sarah, one possible onboarding gap for RevCo"
   2. What If Scenario:
      - Use sparingly
      - Prefer when tied to a real initiative or metric
      → Requires: Specific metrics or pain points from research
-     Example: "Hi Sarah, what may be slowing RevCo replies"
-  3. Competitive Intelligence: "Hi [name], why {company_short_name} competitors switched from [tool]"
+     Example: "Hi Sarah, what may be slowing replies for RevCo"
+  3. Competitive Intelligence: "Hi [name], why competitors switched from [tool] at {company_short_name}"
      → Requires: Real competitor names from research (NEVER use without data)
   4. Hidden Insight:
      → Requires: Specific identified challenge from research
-     Example: "Hi Sarah: one overlooked RevCo follow up issue"
-  5. Contrarian/Pattern Interrupt: "Hi [name], {company_short_name} + this = [outcome]"
+     Example: "Hi Sarah: one overlooked follow up issue for RevCo"
+  5. Contrarian/Pattern Interrupt: "Hi [name], one idea that could change [outcome] for {company_short_name}"
      → Requires: Specific data point from research
-  6. Peer Proof: "Hi [name], what companies like {company_short_name} are doing now"
+  6. Peer Proof: "Hi [name], what similar companies are doing differently from {company_short_name}"
      → Requires: Peer examples from research
   7. Limited Data Approach (USE WHEN RESEARCH IS SPARSE):
      → Use when: Missing competitor names, metrics, or recent news
      → Focus: Confirmed data only (bootstrapped status, employee range, founder role, stage)
 
      Pattern 7A - Company Insight:
-     Example: "Hi Ziad, one thing {company_short_name} teams often miss"
+     Example: "Hi Ziad, one thing teams often miss for {company_short_name}"
 
      Pattern 7B - Stage/Size Focus:
-     Example: "Hi Ziad, one {company_short_name} issue at your stage"
+     Example: "Hi Ziad, one issue at your stage for {company_short_name}"
 
      Pattern 7C - Role/Industry Specific:
-     Example: "Hi Ziad, a thought on {company_short_name} follow up"
+     Example: "Hi Ziad, a thought on follow up for {company_short_name}"
 
      REMINDER: Even Pattern 7 subjects MUST include the company name ({company_short_name})
 
@@ -693,13 +700,13 @@ SUBJECT LINE NATURALNESS RULES:
 SUBJECT VARIATION RULES:
 - Avoid repeating the same subject structure too often
 - Do NOT rely on "a thought on" as the default subject formula
-- Rotate among several natural styles:
-  * "one potential gap in..."
-  * "a question on..."
-  * "one thing that may be slipping..."
-  * "one possible issue with..."
-  * "one thing I noticed about..."
-  * "a thought on..." only when it feels most natural
+- Rotate among several natural styles (always ending with "for {company_short_name}"):
+  * "one potential gap in [area] for..."
+  * "a question on [topic] for..."
+  * "one thing that may be slipping for..."
+  * "one possible issue with [area] for..."
+  * "one thing I noticed about [topic] for..."
+  * "a thought on [area] for..." only when it feels most natural
 - The simplest truthful subject is usually stronger than the cleverer one
 - Read the subject out loud, if it sounds templated across a batch, simplify it and vary the structure
 
@@ -1341,25 +1348,27 @@ You MUST:
 
 Choose ONE of these proven patterns (EVERY pattern MUST include {company_short_name}):
 
+WORD ORDER RULE: Always put the idea/hook FIRST, then "for {company_short_name}" at the END.
+
 Pattern 1 - Specific Discovery (use only when research strongly supports it):
-"Hi {contact_first_name}, one possible gap in {company_short_name} [process]"
-"Hi {contact_first_name}: one potential {company_short_name} issue with [area]"
+"Hi {contact_first_name}, one possible [process] gap for {company_short_name}"
+"Hi {contact_first_name}: one potential [area] issue for {company_short_name}"
 
 Pattern 2 - What If Scenario (use sparingly, prefer when tied to a real initiative):
-"Hi {contact_first_name}, what may be slowing {company_short_name} [metric]"
+"Hi {contact_first_name}, what may be slowing [metric] for {company_short_name}"
 
 Pattern 3 - Competitive Intelligence:
-"Hi {contact_first_name}, why {company_short_name} competitors switched from [Competitor]"
+"Hi {contact_first_name}, why competitors switched from [Competitor] at {company_short_name}"
 
 Pattern 4 - Hidden Insight:
-"Hi {contact_first_name}: one overlooked {company_short_name} [topic] issue"
-"Hi {contact_first_name}, a thought on {company_short_name} [area]"
+"Hi {contact_first_name}: one overlooked [topic] issue for {company_short_name}"
+"Hi {contact_first_name}, a thought on [area] for {company_short_name}"
 
 Pattern 5 - Contrarian/Pattern Interrupt:
-"Hi {contact_first_name}, {company_short_name} + this = [SpecificOutcome]"
+"Hi {contact_first_name}, one idea that could change [outcome] for {company_short_name}"
 
 Pattern 6 - Peer Proof:
-"Hi {contact_first_name}, what companies like {company_short_name} are doing now"
+"Hi {contact_first_name}, what similar companies are doing differently from {company_short_name}"
 
 REMINDER: If your subject line does not contain {company_short_name}, it will FAIL QA. No exceptions.
 
@@ -1387,7 +1396,7 @@ Subject line (CRITICAL):
 - Use specific numbers, competitor names, or concrete details from RESEARCH ONLY
 - Create strong curiosity that makes them want to read more
 - Maximum 60 characters total
-- Reference company name when space allows and it flows naturally
+- Always end the subject content with "for {company_short_name}" — idea first, company last
 - Base all hooks on actual business intelligence data
 
 Email Structure (95-140 words max):
@@ -1537,7 +1546,7 @@ CONTENT REQUIREMENTS:
 - Every follow-up should feel fresh and provide new value
 - Keep the same tight, punchy writing style
 - All information must come from business intelligence
-- COMPANY NAME ANCHORING (CRITICAL): Every follow-up subject line AND body MUST include "{company_short_name}". Never substitute a street address, neighborhood name, sub-location label, or Google Maps place descriptor. Examples of CORRECT follow-up subjects: "Hi Juan, one idea for {company_short_name} after hours" / "Hi Juan: simple {company_short_name} FAQ flow". Examples of WRONG subjects: "Hi Juan, one possible issue with missed calls" / "Hi Juan, Friend Street peak hour questions"
+- COMPANY NAME ANCHORING (CRITICAL): Every follow-up subject line AND body MUST include "{company_short_name}". Never substitute a street address, neighborhood name, sub-location label, or Google Maps place descriptor. The company name must come AFTER the idea: "{idea} for {company_short_name}". Examples of CORRECT follow-up subjects: "Hi Juan, one after hours idea for {company_short_name}" / "Hi Juan: one simple FAQ flow idea for {company_short_name}". Examples of WRONG subjects: "Hi Juan, one possible issue with missed calls" / "Hi Juan, {company_short_name} FAQ flow" / "Hi Juan, Friend Street peak hour questions"
 
 CONSISTENCY REQUIREMENTS:
 - Maintain professional tone throughout sequence
@@ -1622,6 +1631,54 @@ Target score: ≥0.65 for approval.
 """
             logger.info(f"Retry {retry_count}: Using QA feedback to improve email generation")
 
+        # Cascade detection and targeted retry
+        failing_retry_group = state.get("failing_retry_group")
+        component_history = state.get("failing_component_history", [])
+        use_targeted_retry = False
+
+        if retry_count > 0 and failing_retry_group and failing_retry_group != "all":
+            # Check for cascade: has the failing group changed from last retry?
+            if len(component_history) >= 2 and component_history[-1] != component_history[-2]:
+                logger.warning(
+                    f"Cascade detected: {component_history[-2]} -> {component_history[-1]}. "
+                    "Falling back to full regeneration."
+                )
+                failing_retry_group = "all"
+            else:
+                use_targeted_retry = True
+                logger.info(f"Targeted retry: regenerating {failing_retry_group} only")
+
+        if use_targeted_retry and failing_retry_group == "follow_ups":
+            latest_feedback = previous_feedback[-1] if previous_feedback else {}
+            qa_improvement_context = f"""
+TARGETED RETRY - FOLLOW-UPS ONLY (Attempt {retry_count}):
+The primary email (subject + body) has been APPROVED. Do NOT change them.
+Regenerate ONLY the follow-up emails.
+
+Follow-up issues to fix:
+{chr(10).join(f"- {issue}" for issue in latest_feedback.get("issues", [])[:5] if "[follow-up]" in issue or "[veto]" in issue)}
+
+Requirements:
+- Follow-ups must stay in the SAME use-case family as the primary email
+- Every follow-up subject and body must include the company name
+- No hyphens anywhere
+"""
+        elif use_targeted_retry and failing_retry_group == "primary":
+            latest_feedback = previous_feedback[-1] if previous_feedback else {}
+            qa_improvement_context = f"""
+TARGETED RETRY - SUBJECT + BODY ONLY (Attempt {retry_count}):
+The follow-up emails have been APPROVED. Do NOT change them.
+Regenerate ONLY the primary email subject and body.
+
+Primary email issues to fix:
+{chr(10).join(f"- {issue}" for issue in latest_feedback.get("issues", [])[:5] if "[subject]" in issue or "[body]" in issue or "[veto]" in issue)}
+
+Requirements:
+- Subject must align with the new body
+- No hyphens anywhere
+- Subject must include company name with correct word order
+"""
+
         # Execute email generation with optional QA feedback and PostHog LLM analytics
         messages = prompt.format_messages(
             # Quality improvement context (for retries)
@@ -1686,6 +1743,34 @@ Target score: ≥0.65 for approval.
         # Post-process to clean up any duplicate content between fields
         # This is a safety net for when the LLM includes greeting/CTA in multiple fields
         email_sequence = _clean_duplicate_content(email_sequence, contact_first_name)
+
+        # On targeted retry, preserve approved components from previous attempt
+        if use_targeted_retry and failing_retry_group == "follow_ups":
+            prev_email = state.get("primary_email")
+            if prev_email:
+                logger.info("Targeted retry: preserving approved primary email, using new follow-ups only")
+                email_sequence = email_sequence.model_copy(update={
+                    "primary_subject": prev_email.subject,
+                    "primary_opening": "",  # Will be reconstructed from body
+                    "primary_body": prev_email.body,
+                    "primary_cta": "",
+                    "primary_ps": "",
+                })
+        elif use_targeted_retry and failing_retry_group == "primary":
+            prev_follow_ups = state.get("follow_up_sequence")
+            if prev_follow_ups and hasattr(prev_follow_ups, "emails"):
+                logger.info("Targeted retry: preserving approved follow-ups, using new primary only")
+                email_sequence = email_sequence.model_copy(update={
+                    "follow_up_emails": [
+                        FollowUpEmailPlan(
+                            subject=fu.subject,
+                            body=fu.body,
+                            objective=getattr(fu, "objective", ""),
+                            call_to_action=getattr(fu, "call_to_action", ""),
+                        )
+                        for fu in prev_follow_ups.emails
+                    ],
+                })
 
         execution_time = time.time() - start_time
 

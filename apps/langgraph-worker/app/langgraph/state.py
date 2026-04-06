@@ -101,3 +101,7 @@ class EmailGenerationState(TypedDict):
     retry_count: Optional[int]  # Number of email regeneration attempts (max 3)
     max_retries: Optional[int]  # Maximum retry attempts allowed (default 3)
     previous_quality_feedback: Optional[List[Dict[str, Any]]]  # QA feedback from previous attempts
+
+    # Targeted retry routing (parallel QA decomposition)
+    failing_retry_group: Optional[str]  # "primary" | "follow_ups" | "all" | None
+    failing_component_history: Optional[List[str]]  # Track cascade across retries
