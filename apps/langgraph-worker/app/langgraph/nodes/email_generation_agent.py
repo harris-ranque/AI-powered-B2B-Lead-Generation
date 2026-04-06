@@ -645,7 +645,7 @@ SUBJECT-BODY ALIGNMENT RULE (MANDATORY):
 
 Subject Line Patterns (ALL patterns MUST include {company_short_name}):
 
-WORD ORDER RULE (MANDATORY): The subject content MUST follow the structure "{idea/hook} for {company_short_name}".
+WORD ORDER RULE (MANDATORY): The subject content MUST follow the structure "{{idea/hook}} for {company_short_name}".
 - The idea, issue, or hook comes FIRST, then "for {company_short_name}" at the END.
 - NEVER put {company_short_name} before the idea. That creates awkward, unnatural phrasing.
 - WRONG: "Hi Sarah, RevCo onboarding gap" or "Hi Sarah, one RevCo follow up issue"
@@ -1546,7 +1546,7 @@ CONTENT REQUIREMENTS:
 - Every follow-up should feel fresh and provide new value
 - Keep the same tight, punchy writing style
 - All information must come from business intelligence
-- COMPANY NAME ANCHORING (CRITICAL): Every follow-up subject line AND body MUST include "{company_short_name}". Never substitute a street address, neighborhood name, sub-location label, or Google Maps place descriptor. The company name must come AFTER the idea: "{idea} for {company_short_name}". Examples of CORRECT follow-up subjects: "Hi Juan, one after hours idea for {company_short_name}" / "Hi Juan: one simple FAQ flow idea for {company_short_name}". Examples of WRONG subjects: "Hi Juan, one possible issue with missed calls" / "Hi Juan, {company_short_name} FAQ flow" / "Hi Juan, Friend Street peak hour questions"
+- COMPANY NAME ANCHORING (CRITICAL): Every follow-up subject line AND body MUST include "{company_short_name}". Never substitute a street address, neighborhood name, sub-location label, or Google Maps place descriptor. The company name must come AFTER the idea: "{{idea}} for {company_short_name}". Examples of CORRECT follow-up subjects: "Hi Juan, one after hours idea for {company_short_name}" / "Hi Juan: one simple FAQ flow idea for {company_short_name}". Examples of WRONG subjects: "Hi Juan, one possible issue with missed calls" / "Hi Juan, {company_short_name} FAQ flow" / "Hi Juan, Friend Street peak hour questions"
 
 CONSISTENCY REQUIREMENTS:
 - Maintain professional tone throughout sequence
