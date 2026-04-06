@@ -55,6 +55,9 @@ def aggregate_qa_results(
     elif body and body.has_sender_fabrication:
         veto_reason = "Sender fabrication detected"
         veto_group = "primary"
+    elif body and body.word_count > 130:
+        veto_reason = f"Body exceeds 130-word hard cap ({body.word_count} words)"
+        veto_group = "primary"
     elif fu and fu.has_hyphens:
         veto_reason = "Hyphens found in follow-ups"
         veto_group = "follow_ups"

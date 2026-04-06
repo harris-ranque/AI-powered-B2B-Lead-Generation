@@ -354,6 +354,13 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
             return_exceptions=True,
         )
 
+        # Programmatic word count override — LLMs can't count reliably
+        if isinstance(body_result, BodyQAResult):
+            actual_word_count = len(email_body.split())
+            if body_result.word_count != actual_word_count:
+                logger.info(f"Word count corrected: LLM said {body_result.word_count}, actual {actual_word_count}")
+                body_result = body_result.model_copy(update={"word_count": actual_word_count})
+
         # Aggregate results into QualityAssessment
         quality_assessment, failing_retry_group = aggregate_qa_results(
             subj_result, body_result, fu_result, lead_tier

@@ -65,6 +65,14 @@ def test_veto_sender_fabrication():
     assert result.overall_quality_score <= VETO_SCORE
     assert failing == "primary"
 
+def test_veto_overlength_body():
+    result, failing = aggregate_qa_results(
+        _make_subject(0.90), _make_body(0.90, wc=155), _make_fu(0.90), "A"
+    )
+    assert result.overall_quality_score <= VETO_SCORE
+    assert failing == "primary"
+    assert "130-word" in result.quality_issues[0]
+
 def test_veto_hyphens_in_follow_ups():
     result, failing = aggregate_qa_results(
         _make_subject(0.90), _make_body(0.90), _make_fu(0.90, hyphens=True), "A"
