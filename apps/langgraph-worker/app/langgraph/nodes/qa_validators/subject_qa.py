@@ -31,7 +31,7 @@ RULES (apply penalties to subject_score starting from 1.0):
    - Vague subjects that could apply to any email = misaligned
 
 6. NO GENERIC PHRASES (-0.1):
-   - Ban: "touching base", "following up", "checking in", "quick question"
+   - Ban: "touching base", "following up", "follow up", "checking in", "quick question"
 
 7. NATURALNESS:
    - Should sound like a natural email note, not a marketing headline
@@ -81,4 +81,20 @@ async def run_subject_qa(
     result: SubjectQAResult = await llm.ainvoke(
         messages, config={"callbacks": callbacks}
     )
+
+    # Programmatic check: contact name vs company name collision
+    if (
+        contact_first_name
+        and company_short_name
+        and contact_first_name.lower().strip() in company_short_name.lower().strip()
+    ):
+        result = result.model_copy(update={
+            "subject_score": min(result.subject_score, 0.30),
+            "subject_effective": False,
+            "issues": [
+                *result.issues,
+                f"Contact name '{contact_first_name}' matches company name '{company_short_name}' — likely bad lead data",
+            ],
+        })
+
     return result
