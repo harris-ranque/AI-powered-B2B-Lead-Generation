@@ -93,13 +93,10 @@ export async function countExportableLeads(
 ): Promise<number> {
   const leads = await ctx.db
     .query("leads")
-    .withIndex("by_search", (q) => q.eq("searchId", searchId))
-    .filter((q) =>
-      q.and(
-        q.eq(q.field("enrichmentStatus"), "completed"),
-        q.neq(q.field("analysisStatus"), "failed"),
-      ),
+    .withIndex("by_search_enrichment", (q) =>
+      q.eq("searchId", searchId).eq("enrichmentStatus", "completed"),
     )
+    .filter((q) => q.neq(q.field("analysisStatus"), "failed"))
     .collect();
   return leads.length;
 }

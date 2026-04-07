@@ -617,6 +617,7 @@ export default defineSchema({
     .index("by_analysis_status", ["analysisStatus"])
     .index("by_analysis_scheduled", ["analysisScheduledAt"])
     .index("by_search_analysis_status", ["searchId", "analysisStatus"])
+    .index("by_search_enrichment", ["searchId", "enrichmentStatus"])
     .index("by_user_primary_email", ["userId", "primaryEmail"]) // O(1) email deduplication
     .index("by_user_normalized_address", ["userId", "normalizedAddress"]) // O(1) address deduplication
     .index("by_created", ["createdAt"]) // Time-range queries for admin metrics

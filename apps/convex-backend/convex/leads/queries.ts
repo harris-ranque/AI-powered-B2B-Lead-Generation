@@ -437,7 +437,11 @@ export const getLeadCountsBySearchIds = query({
       // Ownership check: silently skip searches that don't belong to this user
       const search = await ctx.db.get(searchId);
       if (!search || search.userId !== user._id) continue;
-      counts[String(searchId)] = await countExportableLeads(ctx, searchId);
+      // Use pre-computed count from search document to avoid 16MB byte limit
+      // (loading all lead documents across 20 searches blows the per-execution cap).
+      // The actual CSV export still does a live count for accuracy.
+      counts[String(searchId)] =
+        search.results?.exportableCount ?? search.results?.enrichedCount ?? 0;
     }
     return counts;
   },
