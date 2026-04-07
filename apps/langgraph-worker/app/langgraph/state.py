@@ -105,3 +105,6 @@ class EmailGenerationState(TypedDict):
     # Targeted retry routing (parallel QA decomposition)
     failing_retry_group: Optional[str]  # "primary" | "follow_ups" | "all" | None
     failing_component_history: Optional[List[str]]  # Track cascade across retries
+
+    # Service matcher output (pain point → service assignments)
+    service_matches: Optional[Dict[str, Any]]  # ServiceMatcherOutput as dict

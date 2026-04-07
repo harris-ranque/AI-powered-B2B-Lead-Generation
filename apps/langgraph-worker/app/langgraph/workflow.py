@@ -15,6 +15,7 @@ from .nodes.business_intelligence_agent import business_intelligence_agent_node
 from .nodes.email_generation_agent import email_generation_agent_node
 from .nodes.quality_assurance_agent import quality_assurance_agent_node
 from .nodes.aggregator import aggregator_node
+from .nodes.service_matcher_agent import service_matcher_agent_node
 
 logger = setup_logger(__name__)
 
@@ -56,14 +57,15 @@ def create_email_generation_workflow(
     workflow.add_node("email_generation", email_generation_agent_node)
     workflow.add_node("quality_assurance", quality_assurance_agent_node)
     workflow.add_node("aggregator", aggregator_node)
+    workflow.add_node("service_matcher", service_matcher_agent_node)
 
     # Define conditional routing functions for error-aware workflow
     def should_continue_after_bi(state: EmailGenerationState) -> str:
-        """Route after BI agent: skip Email Gen if BI failed"""
+        """Route after BI agent: skip to aggregator if BI failed, otherwise go to service matcher."""
         if state.get("current_stage") == "error":
-            logger.warning("BI agent failed - skipping Email Generation and QA, going to aggregator")
+            logger.warning("BI agent failed - skipping remaining agents, going to aggregator")
             return "aggregator"
-        return "email_generation"
+        return "service_matcher"
 
     def should_continue_after_email(state: EmailGenerationState) -> str:
         """Route after Email Gen: skip QA if email generation failed or no email"""
@@ -107,22 +109,23 @@ def create_email_generation_workflow(
         return "aggregator"
 
     # Define the error-aware conditional workflow with retry loop
-    # Conditional flow: Start → BI → (if success) Email → (if success) QA → [Check quality]
-    #                              → (if error) skip to aggregator              ↓
-    #                                                                  ┌─ retry ←┘
-    #                                                                  ↓
-    #                                                              Email Gen (with feedback)
-    #                                                                  ↓
-    #                                                                 QA → approve/reject
+    # Flow: Start → BI → service_matcher → Email → QA → [Check quality]
+    #                   → (if error) skip to aggregator         ↓
+    #                                                    ┌─ retry ←┘
+    #                                                    ↓
+    #                                                Email Gen (with feedback)
+    #                                                    ↓
+    #                                                   QA → approve/reject
     workflow.add_edge(START, "business_intelligence")
     workflow.add_conditional_edges(
         "business_intelligence",
         should_continue_after_bi,
         {
-            "email_generation": "email_generation",
+            "service_matcher": "service_matcher",
             "aggregator": "aggregator"
         }
     )
+    workflow.add_edge("service_matcher", "email_generation")
     workflow.add_conditional_edges(
         "email_generation",
         should_continue_after_email,
@@ -135,8 +138,8 @@ def create_email_generation_workflow(
         "quality_assurance",
         should_retry_after_qa,
         {
-            "retry_email_generation": "email_generation",  # Retry loop back to email gen
-            "aggregator": "aggregator"  # Approve or reject final
+            "retry_email_generation": "email_generation",
+            "aggregator": "aggregator"
         }
     )
     workflow.add_edge("aggregator", END)
@@ -243,7 +246,8 @@ async def execute_email_generation(
         # Quality retry tracking
         "retry_count": 0,
         "max_retries": 3,  # Allow 4 total attempts (1 initial + 3 retries) for quality improvement
-        "previous_quality_feedback": []
+        "previous_quality_feedback": [],
+        "service_matches": None,
     }
 
     # Configuration for execution
@@ -387,7 +391,8 @@ async def execute_with_streaming(
         # Quality retry tracking
         "retry_count": 0,
         "max_retries": 3,  # Allow 4 total attempts (1 initial + 3 retries) for quality improvement
-        "previous_quality_feedback": []
+        "previous_quality_feedback": [],
+        "service_matches": None,
     }
 
     # Configuration

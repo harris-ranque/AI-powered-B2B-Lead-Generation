@@ -347,6 +347,20 @@ async def email_generation_agent_node(state: EmailGenerationState) -> Dict[str, 
         industry_benchmarks = research_metadata.get("industry_benchmarks", [])
         technology_stack = research_metadata.get("technology_stack", [])
 
+        # Read assigned angle from service matcher
+        service_matches = state.get("service_matches") or {}
+        ranked_matches = service_matches.get("ranked_matches", [])
+        if ranked_matches:
+            assigned_match = ranked_matches[0]
+            matched_pain_point = assigned_match.get("pain_point", "")
+            matched_service = assigned_match.get("service", "")
+            matched_rationale = assigned_match.get("rationale", "")
+        else:
+            # Fallback: no matcher output, email gen picks its own angle (legacy behavior)
+            matched_pain_point = ""
+            matched_service = ""
+            matched_rationale = ""
+
         logger.info(f"Raw research data available: {len(recent_news)} news items, "
                    f"{len(competitor_mentions)} competitor refs, {len(quantifiable_metrics)} metrics, "
                    f"{len(pain_point_research)} pain point refs, {len(industry_benchmarks)} benchmarks")
@@ -572,21 +586,25 @@ Your emails consistently achieve exceptional results because they:
 Email best practices:
 
 ANGLE SELECTION (MANDATORY):
-- Choose EXACTLY ONE primary angle for each email
-- Build the entire email around:
-  1. one verified hook
-  2. one pain or missed opportunity
-  3. one matched service or use case
-  4. one proof point
-  5. one ask
+- You have been assigned a specific pain point and service by the service matcher.
+- Build the entire email around the ASSIGNED ANGLE provided in the input.
+- Do NOT substitute a different service or pain point.
 - Do NOT combine multiple services, multiple workflows, or multiple pains in one email
 - Do NOT explain the full solution in the first touch
 - Sell one useful next step, not the whole product stack
-- The subject line, opening, and CTA must all support the same angle
+- The subject line, opening, and CTA must all support the assigned angle
 - The first email must sell one problem and one next step only
 - Do NOT add secondary offers, adjacent offers, or extra workflows in the same email
 - The follow-up sequence must stay inside the same use-case family as the first email
 - Follow-ups may deepen, narrow, or reframe the same problem, but may not switch to a different product family or different operational job
+
+FALLBACK ANGLE SELECTION (use ONLY when assigned pain point says "Not assigned"):
+When no angle has been assigned by the service matcher, fall back to these rules:
+- Review the pain points and services listed in the input
+- Choose the single pain point that most directly maps to one of your services
+- Match the service most relevant to this lead's industry, size, and pain points
+- Pitch only that service — do not list the full catalog
+- If no clear match exists, lead with the service closest to the lead's industry and keep the pitch general
 
 USE-CASE FAMILY CONSISTENCY:
 - The primary email chooses one use-case family for the full sequence
@@ -947,13 +965,6 @@ What this looks like in practice:
   leads. You cannot add "with biometric scanning and cloud-based access management" unless
   those features are stated.
 
-SERVICE-TO-VERTICAL MATCHING:
-When the sender's profile lists multiple services for different verticals:
-- Match the service most relevant to this lead's industry, size, and pain points.
-- Pitch only that service. Don't list the full catalog.
-- If no clear match exists, lead with the service closest to the lead's industry and
-  keep the pitch general.
-
 CALL TO ACTION:
 - One simple sentence
 - Low pressure
@@ -1132,6 +1143,13 @@ SUBJECT LINE SELF-CHECK:
             ("human", """Create a highly personalized email sequence using comprehensive business intelligence:
 
 {qa_improvement_context}
+
+ASSIGNED ANGLE (from service matcher — do not deviate):
+Pain point: {matched_pain_point}
+Service: {matched_service}
+Rationale: {matched_rationale}
+
+Write the email around this specific pairing. Do not substitute a different service or pain point.
 
 PROSPECT INFORMATION:
 Company: {company_name}
@@ -1678,11 +1696,31 @@ Requirements:
 - No hyphens anywhere
 - Subject must include company name with correct word order
 """
+            if matched_service:
+                qa_improvement_context += f"""
+Assigned angle (must be used):
+- Service: {matched_service}
+- Pain point: {matched_pain_point}
+"""
+            # Surface service-match QA issues in retry context
+            if previous_feedback:
+                latest = previous_feedback[-1]
+                sm_issues = [i for i in latest.get("issues", []) if "[service-match]" in i]
+                if sm_issues:
+                    qa_improvement_context += f"""
+Service match issues to fix:
+{chr(10).join(f"- {issue}" for issue in sm_issues)}
+"""
 
         # Execute email generation with optional QA feedback and PostHog LLM analytics
         messages = prompt.format_messages(
             # Quality improvement context (for retries)
             qa_improvement_context=qa_improvement_context,
+
+            # Assigned angle from service matcher
+            matched_pain_point=matched_pain_point or "Not assigned — choose the most relevant pain point",
+            matched_service=matched_service or "Not assigned — choose the most relevant service",
+            matched_rationale=matched_rationale or "No rationale provided",
 
             # Prospect information
             company_name=lead.company_name,

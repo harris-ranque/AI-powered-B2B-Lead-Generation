@@ -216,9 +216,9 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
     
     logger.info(f"Starting comprehensive business intelligence analysis for {lead.company_name}")
     
-    provider_keys: Optional[Dict[str, str]] = state.get("provider_keys")
-    provider_key_map = provider_keys or {}
+    provider_keys = state.get("provider_keys")
     using_user_keys = provider_keys is not None
+    provider_key_map = provider_keys if isinstance(provider_keys, dict) else {}
     registry = ClientRegistry.get_instance()
 
     # Extract PostHog LLM callback for analytics
@@ -523,6 +523,8 @@ EXTRACT EMAIL-OPTIMIZED INTELLIGENCE:
 6. Top 3 opportunities and red flags
 
 7. Top 3-5 pain points with QUANTIFIABLE IMPACT:
+   - Surface pain points across DIVERSE operational areas (e.g. staffing, finance, compliance, technology, marketing) — do not cluster around a single problem family
+   - When possible, prioritize pain points that relate to the sender's services listed in OUR PROFILE above — but only if the research genuinely supports them. Do not fabricate pain points to match services.
    - MUST include specific numbers: hours/week, percentage, dollar amount
    - Format: "[Challenge]: [Quantifiable Impact]"
    - Examples: "Manual prospecting: 25+ hours/week wasted", "Low conversion: Only 20% of leads qualify"
@@ -863,3 +865,5 @@ CRITICAL REQUIREMENTS:
             "agent_results": [*state.get("agent_results", []), agent_result],
             "errors": [*state.get("errors", []), f"Business intelligence agent error: {str(e)}"]
         }
+
+

@@ -39,3 +39,14 @@ class FollowUpQAResult(BaseModel):
     use_case_consistent: bool = Field(..., description="Follow-ups stay in same use-case family")
     issues: List[str] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
+
+
+class ServiceMatchQAResult(BaseModel):
+    service_match_score: float = Field(..., ge=0, le=1, description="Overall service match quality 0-1")
+    service_mentioned: bool = Field(..., description="Email references the assigned service concept")
+    pain_point_grounded: bool = Field(..., description="Email connects to the assigned pain point")
+    has_fabrication: bool = Field(..., description="Email introduces claims not in BI output")
+    assigned_service: str = Field(..., description="The service that was assigned by the matcher")
+    assigned_pain_point: str = Field(..., description="The pain point that was assigned by the matcher")
+    issues: List[str] = Field(default_factory=list)
+    suggestions: List[str] = Field(default_factory=list)

@@ -123,3 +123,37 @@ def test_follow_up_qa_result_valid():
     assert result.use_case_consistent is True
     assert result.company_name_present == [True, True, False]
     assert len(result.company_name_present) == 3
+
+
+from app.langgraph.nodes.qa_validators.models import ServiceMatchQAResult
+
+
+class TestServiceMatchQAResult:
+    def test_valid_result(self):
+        result = ServiceMatchQAResult(
+            service_match_score=0.85,
+            service_mentioned=True,
+            pain_point_grounded=True,
+            has_fabrication=False,
+            assigned_service="voice agent",
+            assigned_pain_point="FAQ call volume consuming 10+ hrs/week",
+            issues=[],
+            suggestions=[],
+        )
+        assert result.service_match_score == 0.85
+        assert result.service_mentioned is True
+        assert result.has_fabrication is False
+
+    def test_score_bounds(self):
+        import pytest
+        with pytest.raises(Exception):
+            ServiceMatchQAResult(
+                service_match_score=1.5,
+                service_mentioned=True,
+                pain_point_grounded=True,
+                has_fabrication=False,
+                assigned_service="voice agent",
+                assigned_pain_point="FAQ calls",
+                issues=[],
+                suggestions=[],
+            )

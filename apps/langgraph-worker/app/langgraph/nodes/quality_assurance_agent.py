@@ -282,8 +282,9 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         from .qa_validators.subject_qa import run_subject_qa
         from .qa_validators.body_qa import run_body_qa
         from .qa_validators.follow_up_qa import run_follow_up_qa
+        from .qa_validators.service_match_qa import run_service_match_qa
         from .qa_validators.aggregator import aggregate_qa_results
-        from .qa_validators.models import SubjectQAResult, BodyQAResult, FollowUpQAResult
+        from .qa_validators.models import SubjectQAResult, BodyQAResult, FollowUpQAResult, ServiceMatchQAResult
 
         company_short_name = derive_short_name(lead.company_name)
         contact_first_name = (lead.contact_name or "there").split()[0]
@@ -297,6 +298,21 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
                     "subject": getattr(fu_email, "subject", ""),
                     "body": getattr(fu_email, "body", ""),
                 })
+
+        # Extract assigned angle from service matcher for QA validation
+        service_matches = state.get("service_matches") or {}
+        ranked_matches = service_matches.get("ranked_matches", [])
+        if ranked_matches:
+            assigned_match = ranked_matches[0]
+            assigned_service = assigned_match.get("service", "")
+            assigned_pain_point = assigned_match.get("pain_point", "")
+            match_rationale = assigned_match.get("rationale", "")
+        else:
+            assigned_service = ""
+            assigned_pain_point = ""
+            match_rationale = ""
+
+        bi_pain_points = state.get("business_intelligence", {}).get("pain_points", [])
 
         # Build per-validator LLMs (same model config, different output schemas)
         openai_api_key = provider_key_map.get("openai") if using_user_keys else None
@@ -320,9 +336,10 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         subj_llm = _make_llm(SubjectQAResult)
         body_llm = _make_llm(BodyQAResult)
         fu_llm = _make_llm(FollowUpQAResult)
+        sm_llm = _make_llm(ServiceMatchQAResult)
 
-        # Fan out to 3 validators in parallel
-        subj_result, body_result, fu_result = await asyncio.gather(
+        # Fan out to 4 validators in parallel
+        subj_result, body_result, fu_result, sm_result = await asyncio.gather(
             run_subject_qa(
                 llm=subj_llm, subject=email_subject, body=email_body,
                 company_short_name=company_short_name,
@@ -351,6 +368,14 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
                 contact_first_name=contact_first_name,
                 lead_tier=lead_tier, callbacks=callbacks,
             ),
+            run_service_match_qa(
+                llm=sm_llm, body=email_body, subject=email_subject,
+                assigned_service=assigned_service,
+                assigned_pain_point=assigned_pain_point,
+                match_rationale=match_rationale,
+                bi_pain_points=bi_pain_points,
+                callbacks=callbacks,
+            ),
             return_exceptions=True,
         )
 
@@ -363,7 +388,7 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
 
         # Aggregate results into QualityAssessment
         quality_assessment, failing_retry_group = aggregate_qa_results(
-            subj_result, body_result, fu_result, lead_tier
+            subj_result, body_result, fu_result, sm_result, lead_tier
         )
 
         # Log per-component scores

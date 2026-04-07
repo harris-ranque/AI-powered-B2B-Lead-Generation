@@ -1,26 +1,27 @@
-"""QA Aggregator - combines 3 validator results into one QualityAssessment."""
+"""QA Aggregator - combines 4 validator results into one QualityAssessment."""
 from typing import Optional, Tuple, Union, List
 from ..quality_assurance_agent import QualityAssessment
-from .models import SubjectQAResult, BodyQAResult, FollowUpQAResult
+from .models import SubjectQAResult, BodyQAResult, FollowUpQAResult, ServiceMatchQAResult
 from ....utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-WEIGHTS = {"subject": 0.25, "body": 0.50, "follow_ups": 0.25}
+WEIGHTS = {"subject": 0.20, "body": 0.40, "follow_ups": 0.25, "service_match": 0.15}
 VETO_SCORE = 0.34  # Forces below any approval threshold
 
 APPROVAL_THRESHOLDS = {"A": 0.60, "B": 0.50}
 
-ValidatorResult = Union[SubjectQAResult, BodyQAResult, FollowUpQAResult, BaseException]
+ValidatorResult = Union[SubjectQAResult, BodyQAResult, FollowUpQAResult, ServiceMatchQAResult, BaseException]
 
 
 def aggregate_qa_results(
     subject_result: ValidatorResult,
     body_result: ValidatorResult,
     follow_up_result: ValidatorResult,
+    service_match_result: ValidatorResult,
     lead_tier: str,
 ) -> Tuple[QualityAssessment, Optional[str]]:
-    """Combine 3 validator results into a single QualityAssessment.
+    """Combine 4 validator results into a single QualityAssessment.
 
     Returns (assessment, failing_retry_group).
     failing_retry_group is None if approved, otherwise "primary"|"follow_ups"|"all".
@@ -37,6 +38,9 @@ def aggregate_qa_results(
     fu: Optional[FollowUpQAResult] = (
         follow_up_result if isinstance(follow_up_result, FollowUpQAResult) else None
     )
+    sm: Optional[ServiceMatchQAResult] = (
+        service_match_result if isinstance(service_match_result, ServiceMatchQAResult) else None
+    )
 
     if isinstance(subject_result, BaseException):
         logger.warning(f"Subject QA failed with {type(subject_result).__name__}: {subject_result}")
@@ -44,6 +48,8 @@ def aggregate_qa_results(
         logger.warning(f"Body QA failed with {type(body_result).__name__}: {body_result}")
     if isinstance(follow_up_result, BaseException):
         logger.warning(f"Follow-Up QA failed with {type(follow_up_result).__name__}: {follow_up_result}")
+    if isinstance(service_match_result, BaseException):
+        logger.warning(f"Service Match QA failed with {type(service_match_result).__name__}: {service_match_result}")
 
     # --- Veto rules: hard gates that override weighted scoring ---
     veto_reason = None
@@ -67,6 +73,8 @@ def aggregate_qa_results(
         scores["body"] = body.body_score
     if fu:
         scores["follow_ups"] = fu.follow_up_score
+    if sm:
+        scores["service_match"] = sm.service_match_score
 
     if not scores:
         overall = 0.0
@@ -111,12 +119,19 @@ def aggregate_qa_results(
             primary_fails = primary_score < threshold
             fu_fails = fu_score < threshold
 
+            sm_score = scores.get("service_match", 1.0)
+            sm_fails = sm_score < threshold
+
             if primary_fails and fu_fails:
                 failing = "all"
             elif primary_fails:
                 failing = "primary"
             elif fu_fails:
                 failing = "follow_ups"
+            elif sm_fails:
+                # Service match is the dominant failure — route to primary
+                # since the service angle is built into the body
+                failing = "primary"
             else:
                 failing = "primary" if primary_score <= fu_score else "follow_ups"
 
@@ -132,6 +147,9 @@ def aggregate_qa_results(
     if fu:
         all_issues.extend(f"[follow-up] {i}" for i in fu.issues)
         all_suggestions.extend(f"[follow-up] {s}" for s in fu.suggestions)
+    if sm:
+        all_issues.extend(f"[service-match] {i}" for i in sm.issues)
+        all_suggestions.extend(f"[service-match] {s}" for s in sm.suggestions)
     if veto_reason:
         all_issues.insert(0, f"[veto] {veto_reason}")
     if body and body.word_count > 130:

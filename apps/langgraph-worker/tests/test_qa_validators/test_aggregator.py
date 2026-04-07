@@ -1,6 +1,6 @@
 import pytest
 from app.langgraph.nodes.qa_validators.models import (
-    SubjectQAResult, BodyQAResult, FollowUpQAResult,
+    SubjectQAResult, BodyQAResult, FollowUpQAResult, ServiceMatchQAResult,
 )
 from app.langgraph.nodes.qa_validators.aggregator import (
     aggregate_qa_results, VETO_SCORE,
@@ -33,19 +33,26 @@ def _make_fu(score=0.70, hyphens=False, consistent=True):
         issues=[], suggestions=[],
     )
 
+def _make_sm(score=0.80):
+    return ServiceMatchQAResult(
+        service_match_score=score, service_mentioned=True,
+        pain_point_grounded=True, has_fabrication=False,
+        assigned_service="", assigned_pain_point="",
+    )
+
 
 def test_aggregate_happy_path():
     result, failing = aggregate_qa_results(
-        _make_subject(0.85), _make_body(0.75), _make_fu(0.70), "A"
+        _make_subject(0.85), _make_body(0.75), _make_fu(0.70), _make_sm(), "A"
     )
-    # 0.25*0.85 + 0.50*0.75 + 0.25*0.70 = 0.7625
-    assert result.overall_quality_score == pytest.approx(0.7625, abs=0.01)
+    # 0.20*0.85 + 0.40*0.75 + 0.25*0.70 + 0.15*0.80 = 0.765
+    assert result.overall_quality_score == pytest.approx(0.765, abs=0.01)
     assert result.approval_status == "Approved"
     assert failing is None
 
 def test_veto_hyphens_in_subject():
     result, failing = aggregate_qa_results(
-        _make_subject(0.85, hyphens=True), _make_body(0.90), _make_fu(0.90), "A"
+        _make_subject(0.85, hyphens=True), _make_body(0.90), _make_fu(0.90), _make_sm(), "A"
     )
     assert result.overall_quality_score <= VETO_SCORE
     assert result.approval_status != "Approved"
@@ -53,67 +60,67 @@ def test_veto_hyphens_in_subject():
 
 def test_veto_hyphens_in_body():
     result, failing = aggregate_qa_results(
-        _make_subject(0.90), _make_body(0.90, hyphens=True), _make_fu(0.90), "A"
+        _make_subject(0.90), _make_body(0.90, hyphens=True), _make_fu(0.90), _make_sm(), "A"
     )
     assert result.overall_quality_score <= VETO_SCORE
     assert failing == "primary"
 
 def test_veto_sender_fabrication():
     result, failing = aggregate_qa_results(
-        _make_subject(0.90), _make_body(0.90, fabrication=True), _make_fu(0.90), "A"
+        _make_subject(0.90), _make_body(0.90, fabrication=True), _make_fu(0.90), _make_sm(), "A"
     )
     assert result.overall_quality_score <= VETO_SCORE
     assert failing == "primary"
 
 def test_overlength_body_penalty():
     """Body >130 words gets -0.2 penalty (not a veto, but enough to fail borderline emails)."""
-    # Base weighted: 0.25*0.70 + 0.50*0.70 + 0.25*0.70 = 0.70, minus 0.2 = 0.50
+    # Base weighted: 0.20*0.70 + 0.40*0.70 + 0.25*0.70 + 0.15*0.80 = 0.715, minus 0.2 = 0.515
     result, failing = aggregate_qa_results(
-        _make_subject(0.70), _make_body(0.70, wc=155), _make_fu(0.70), "A"
+        _make_subject(0.70), _make_body(0.70, wc=155), _make_fu(0.70), _make_sm(), "A"
     )
-    assert result.overall_quality_score == pytest.approx(0.50, abs=0.01)
+    assert result.overall_quality_score == pytest.approx(0.515, abs=0.01)
     assert result.approval_status == "Needs_Improvement"
     assert any("155 words" in i for i in result.quality_issues)
 
 def test_veto_hyphens_in_follow_ups():
     result, failing = aggregate_qa_results(
-        _make_subject(0.90), _make_body(0.90), _make_fu(0.90, hyphens=True), "A"
+        _make_subject(0.90), _make_body(0.90), _make_fu(0.90, hyphens=True), _make_sm(), "A"
     )
     assert result.overall_quality_score <= VETO_SCORE
     assert failing == "follow_ups"
 
 def test_worst_component_primary():
     result, failing = aggregate_qa_results(
-        _make_subject(0.40), _make_body(0.40), _make_fu(0.80), "A"
+        _make_subject(0.40), _make_body(0.40), _make_fu(0.80), _make_sm(), "A"
     )
     assert failing == "primary"
 
 def test_worst_component_follow_ups():
-    # Scores chosen so weighted average < 0.60 and only follow-ups are below threshold
-    # 0.25*0.70 + 0.50*0.65 + 0.25*0.30 = 0.175 + 0.325 + 0.075 = 0.575
+    # Scores: subj=0.70, body=0.65, fu=0.30, sm=0.80
+    # 0.20*0.70 + 0.40*0.65 + 0.25*0.30 + 0.15*0.80 = 0.14 + 0.26 + 0.075 + 0.12 = 0.595
     result, failing = aggregate_qa_results(
-        _make_subject(0.70), _make_body(0.65), _make_fu(0.30), "A"
+        _make_subject(0.70), _make_body(0.65), _make_fu(0.30), _make_sm(), "A"
     )
     assert failing == "follow_ups"
 
 def test_both_fail_returns_all():
     result, failing = aggregate_qa_results(
-        _make_subject(0.30), _make_body(0.30), _make_fu(0.30), "A"
+        _make_subject(0.30), _make_body(0.30), _make_fu(0.30), _make_sm(), "A"
     )
     assert failing == "all"
 
 def test_b_tier_threshold():
     result, failing = aggregate_qa_results(
-        _make_subject(0.55), _make_body(0.50), _make_fu(0.50), "B"
+        _make_subject(0.55), _make_body(0.50), _make_fu(0.50), _make_sm(), "B"
     )
-    # 0.25*0.55 + 0.50*0.50 + 0.25*0.50 = 0.5125 >= 0.50 B-tier threshold
+    # 0.20*0.55 + 0.40*0.50 + 0.25*0.50 + 0.15*0.80 = 0.555 >= 0.50 B-tier threshold
     assert result.approval_status == "Approved"
 
 def test_partial_failure_rescales():
     """When one validator returns an exception, its weight is excluded."""
     result, failing = aggregate_qa_results(
-        ValueError("LLM timeout"), _make_body(0.80), _make_fu(0.70), "A"
+        ValueError("LLM timeout"), _make_body(0.80), _make_fu(0.70), _make_sm(), "A"
     )
-    # Subject excluded: body=50/(50+25)=0.667, fu=25/(50+25)=0.333
-    # 0.667*0.80 + 0.333*0.70 = 0.767
-    assert result.overall_quality_score == pytest.approx(0.767, abs=0.01)
+    # Subject excluded: body=0.40, fu=0.25, sm=0.15 → total=0.80
+    # 0.40/0.80*0.80 + 0.25/0.80*0.70 + 0.15/0.80*0.80 = 0.40 + 0.21875 + 0.15 = 0.76875
+    assert result.overall_quality_score == pytest.approx(0.769, abs=0.01)
