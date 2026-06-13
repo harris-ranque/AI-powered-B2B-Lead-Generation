@@ -7,6 +7,8 @@ import type { Lead } from "@/lib/types";
 
 const logger = createLogger("useLeads");
 
+const EMPTY_LEADS: Lead[] = [];
+
 // Helper to check if an ID is a temporary optimistic ID (not yet persisted to Convex)
 const isTempId = (id: string | undefined): boolean =>
   typeof id === "string" && id.startsWith("temp_");
@@ -18,8 +20,6 @@ export function useLeadsBase(searchId?: Id<"searches">) {
     searchId && !isTempId(searchId) ? { searchId } : "skip",
   );
 
-  const leads = leadsResult || [];
-
   const updateLeadMutation = useMutation(api.leads.mutations.updateLead);
   const updateLeadStatusMutation = useMutation(
     api.leads.mutations.updateLeadStatus,
@@ -27,11 +27,13 @@ export function useLeadsBase(searchId?: Id<"searches">) {
   const addLeadNotesMutation = useMutation(api.leads.mutations.addLeadNotes);
   const deleteLeadMutation = useMutation(api.leads.mutations.deleteLead);
 
-  const [optimisticLeads, setOptimisticLeads] = useState<Lead[]>(leads);
+  const [optimisticLeads, setOptimisticLeads] = useState<Lead[]>(EMPTY_LEADS);
 
   useEffect(() => {
-    setOptimisticLeads(leads);
-  }, [leads]);
+    if (leadsResult !== undefined) {
+      setOptimisticLeads(leadsResult);
+    }
+  }, [leadsResult]);
 
   const updateOptimisticLeads = (
     updater: Lead[] | ((prev: Lead[]) => Lead[]),
@@ -42,11 +44,11 @@ export function useLeadsBase(searchId?: Id<"searches">) {
   };
 
   useEffect(() => {
-    if (leads && leads.length > 0) {
+    if (leadsResult && leadsResult.length > 0) {
       logger.debug("Leads loaded", {
         searchId,
-        count: leads.length,
-        statuses: leads.reduce(
+        count: leadsResult.length,
+        statuses: leadsResult.reduce(
           (acc, lead) => {
             acc[lead.status] = (acc[lead.status] || 0) + 1;
             return acc;
@@ -55,7 +57,7 @@ export function useLeadsBase(searchId?: Id<"searches">) {
         ),
       });
     }
-  }, [leads, searchId]);
+  }, [leadsResult, searchId]);
 
   const updateLead = useCallback(async (...args: Parameters<typeof updateLeadMutation>) => {
     const { leadId, updates } = args[0];
