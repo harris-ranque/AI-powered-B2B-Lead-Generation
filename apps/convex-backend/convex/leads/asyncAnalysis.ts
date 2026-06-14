@@ -16,9 +16,13 @@ import {
   endPerformanceTracking,
   OPERATION_TYPES,
 } from "../lib/correlation";
-import { Doc } from "../_generated/dataModel";
+import { Doc, Id } from "../_generated/dataModel";
 import { getMissingApiKeysError } from "../lib/errorMessages";
 import { captureAnalyticsEvent } from "../lib/analytics";
+import { extractDomainFromWebsite } from "../lib/contactVerification";
+import {
+  normalizeCompanyResearchPayload,
+} from "../lib/companyResearchCache";
 
 /**
  * DEPRECATED: analyzeSingleLead - Replaced by batch processing
@@ -53,11 +57,14 @@ export const analyzeLeadsBatch: any = internalAction({
     searchId: v.id("searches"),
     batchId: v.string(),
     batchNumber: v.number(),
-    leadIds: v.array(v.id("leads")),
+    leadIds: v.optional(v.array(v.id("leads"))),
+    contactIds: v.optional(v.array(v.id("leadContacts"))),
     userId: v.id("users"),
     profileId: v.id("businessProfiles"),
   },
   handler: async (ctx, args) => {
+    const batchItemCount =
+      args.contactIds?.length ?? args.leadIds?.length ?? 0;
     // Create correlation context for batch
     const correlation = createCorrelationContext(
       OPERATION_TYPES.LANGGRAPH_API,
@@ -67,7 +74,7 @@ export const analyzeLeadsBatch: any = internalAction({
         metadata: {
           batchId: args.batchId,
           batchNumber: args.batchNumber,
-          leadCount: args.leadIds.length,
+          leadCount: batchItemCount,
           stage: "batch_analysis",
         },
       },
@@ -83,7 +90,7 @@ export const analyzeLeadsBatch: any = internalAction({
         {
           batchId: args.batchId,
           batchNumber: args.batchNumber,
-          leadCount: args.leadIds.length,
+          leadCount: batchItemCount,
         },
       );
 
@@ -160,93 +167,194 @@ export const analyzeLeadsBatch: any = internalAction({
                   "batch analysis",
                 );
 
-          // Mark all leads in batch as failed
-          for (const leadId of args.leadIds) {
-            await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
-              leadId,
-              error: errorMessage,
-            });
+          // Mark all items in batch as failed
+          if (args.contactIds?.length) {
+            for (const contactId of args.contactIds) {
+              await ctx.runMutation(
+                internal.leads.contactInternal.markContactAnalysisFailed,
+                { contactId, error: errorMessage },
+              );
+            }
+          } else if (args.leadIds?.length) {
+            for (const leadId of args.leadIds) {
+              await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
+                leadId,
+                error: errorMessage,
+              });
+            }
           }
 
           throw new Error(`BYOK keys missing: ${errorMessage}`);
         }
       }
 
-      // Fetch all leads in batch
-      const leads: Doc<"leads">[] = [];
-      for (const leadId of args.leadIds) {
-        const lead = (await ctx.runQuery(
-          internal.leads.internal.getLeadInternal,
-          { leadId },
-        )) as Doc<"leads"> | null;
+      // Fetch batch items (contacts or leads)
+      const formattedLeads: Record<string, unknown>[] = [];
+      const companyResearchCache = new Map<string, Record<string, unknown>>();
 
-        if (lead) {
-          leads.push(lead);
-        } else {
-          console.warn(`Lead ${leadId} not found in batch ${args.batchId}`);
+      if (args.contactIds && args.contactIds.length > 0) {
+        for (const contactId of args.contactIds) {
+          const contact = await ctx.runQuery(
+            internal.leads.contactInternal.getContactInternal,
+            { contactId },
+          );
+          if (!contact) continue;
+
+          const lead = (await ctx.runQuery(
+            internal.leads.internal.getLeadInternal,
+            { leadId: contact.leadId },
+          )) as Doc<"leads"> | null;
+          if (!lead) continue;
+
+          const domain =
+            extractDomainFromWebsite(lead.website) ?? "";
+          let companyResearch: Record<string, unknown> | undefined;
+          if (domain) {
+            if (!companyResearchCache.has(domain)) {
+              const cached = await ctx.runQuery(
+                internal.leads.contactInternal.getCompanyResearchByDomain,
+                { searchId: args.searchId, domain },
+              );
+              if (cached?.researchPayload) {
+                const normalized = normalizeCompanyResearchPayload(
+                  cached.researchPayload,
+                );
+                if (normalized) {
+                  companyResearchCache.set(domain, normalized);
+                }
+              }
+            }
+            companyResearch = companyResearchCache.get(domain);
+          }
+
+          const companySizeFromEnrichment =
+            typeof lead.enrichmentData?.company_size === "string"
+              ? lead.enrichmentData.company_size
+              : undefined;
+          const inferredCompanySize =
+            companySizeFromEnrichment ||
+            (lead.reviewCount && lead.reviewCount > 50
+              ? "Medium"
+              : lead.reviewCount && lead.reviewCount > 10
+                ? "Small"
+                : "Micro");
+
+          formattedLeads.push({
+            id: contact._id,
+            leadId: lead._id,
+            contactId: contact._id,
+            company_name: lead.businessName,
+            contact_name: contact.name,
+            title: contact.title || "",
+            industry: lead.category || "",
+            company_size: inferredCompanySize,
+            location: `${lead.location.city || ""}, ${lead.location.state || ""}`
+              .trim()
+              .replace(/^,\s*/, ""),
+            description:
+              lead.enrichmentData?.description || lead.category
+                ? `${lead.category} business`
+                : "",
+            website: lead.website || "",
+            contact_info: {
+              email: contact.email,
+              phone: lead.phone || "",
+              linkedin: contact.linkedin || "",
+              website: lead.website || "",
+            },
+            revenue:
+              lead.enrichmentData?.estimated_revenue ||
+              (lead.reviewCount && lead.reviewCount > 100
+                ? "High"
+                : lead.reviewCount && lead.reviewCount > 20
+                  ? "Medium"
+                  : "Low"),
+            technologies: lead.enrichmentData?.technologies || [],
+            pain_points: lead.enrichmentData?.pain_points || [],
+            rating: lead.rating || 0,
+            review_count: lead.reviewCount || 0,
+            company_research: companyResearch,
+          });
+        }
+      } else if (args.leadIds) {
+        const leads: Doc<"leads">[] = [];
+        for (const leadId of args.leadIds) {
+          const lead = (await ctx.runQuery(
+            internal.leads.internal.getLeadInternal,
+            { leadId },
+          )) as Doc<"leads"> | null;
+
+          if (lead) {
+            leads.push(lead);
+          } else {
+            console.warn(`Lead ${leadId} not found in batch ${args.batchId}`);
+          }
+        }
+
+        if (leads.length === 0) {
+          throw new Error("No valid leads found in batch");
+        }
+
+        for (const lead of leads) {
+          const companySizeFromEnrichment =
+            typeof lead.enrichmentData?.company_size === "string"
+              ? lead.enrichmentData.company_size
+              : undefined;
+          const employeeCount =
+            typeof lead.enrichmentData?.employee_count === "number"
+              ? String(lead.enrichmentData.employee_count)
+              : undefined;
+          const inferredCompanySize =
+            companySizeFromEnrichment ||
+            employeeCount ||
+            (lead.reviewCount && lead.reviewCount > 50
+              ? "Medium"
+              : lead.reviewCount && lead.reviewCount > 10
+                ? "Small"
+                : "Micro");
+
+          formattedLeads.push({
+            id: lead._id,
+            company_name: lead.businessName,
+            contact_name: lead.contactInfo?.contacts?.[0]?.name || "",
+            title: lead.contactInfo?.contacts?.[0]?.title || "",
+            industry: lead.category || "",
+            company_size: inferredCompanySize,
+            location: `${lead.location.city || ""}, ${lead.location.state || ""}`
+              .trim()
+              .replace(/^,\s*/, ""),
+            description:
+              lead.enrichmentData?.description || lead.category
+                ? `${lead.category} business`
+                : "",
+            website: lead.website || "",
+            contact_info: {
+              email: lead.contactInfo?.emails?.[0]?.email || "",
+              phone: lead.phone || "",
+              linkedin: lead.contactInfo?.socialProfiles?.linkedin || "",
+              website: lead.website || "",
+            },
+            revenue:
+              lead.enrichmentData?.estimated_revenue ||
+              (lead.reviewCount && lead.reviewCount > 100
+                ? "High"
+                : lead.reviewCount && lead.reviewCount > 20
+                  ? "Medium"
+                  : "Low"),
+            technologies: lead.enrichmentData?.technologies || [],
+            pain_points: lead.enrichmentData?.pain_points || [],
+            rating: lead.rating || 0,
+            review_count: lead.reviewCount || 0,
+            social_profiles: lead.contactInfo?.socialProfiles || {},
+            contact_emails: lead.contactInfo?.emails || [],
+            all_contacts: lead.contactInfo?.contacts || [],
+          });
         }
       }
 
-      if (leads.length === 0) {
-        throw new Error("No valid leads found in batch");
+      if (formattedLeads.length === 0) {
+        throw new Error("No valid batch items found");
       }
-
-      // Format leads for batch request
-      const formattedLeads = leads.map((lead) => {
-        const companySizeFromEnrichment =
-          typeof lead.enrichmentData?.company_size === "string"
-            ? lead.enrichmentData.company_size
-            : undefined;
-        const employeeCount =
-          typeof lead.enrichmentData?.employee_count === "number"
-            ? String(lead.enrichmentData.employee_count)
-            : undefined;
-        const inferredCompanySize =
-          companySizeFromEnrichment ||
-          employeeCount ||
-          (lead.reviewCount && lead.reviewCount > 50
-            ? "Medium"
-            : lead.reviewCount && lead.reviewCount > 10
-              ? "Small"
-              : "Micro");
-
-        return {
-          id: lead._id,
-          company_name: lead.businessName,
-          contact_name: lead.contactInfo?.contacts?.[0]?.name || "",
-          title: lead.contactInfo?.contacts?.[0]?.title || "",
-          industry: lead.category || "",
-          company_size: inferredCompanySize,
-          location: `${lead.location.city || ""}, ${lead.location.state || ""}`
-            .trim()
-            .replace(/^,\s*/, ""),
-          description:
-            lead.enrichmentData?.description || lead.category
-              ? `${lead.category} business`
-              : "",
-          website: lead.website || "",
-          contact_info: {
-            email: lead.contactInfo?.emails?.[0]?.email || "",
-            phone: lead.phone || "",
-            linkedin: lead.contactInfo?.socialProfiles?.linkedin || "",
-            website: lead.website || "",
-          },
-          revenue:
-            lead.enrichmentData?.estimated_revenue ||
-            (lead.reviewCount && lead.reviewCount > 100
-              ? "High"
-              : lead.reviewCount && lead.reviewCount > 20
-                ? "Medium"
-                : "Low"),
-          technologies: lead.enrichmentData?.technologies || [],
-          pain_points: lead.enrichmentData?.pain_points || [],
-          rating: lead.rating || 0,
-          review_count: lead.reviewCount || 0,
-          social_profiles: lead.contactInfo?.socialProfiles || {},
-          contact_emails: lead.contactInfo?.emails || [],
-          all_contacts: lead.contactInfo?.contacts || [],
-        };
-      });
 
       // Prepare batch request payload
       const batchPayload = {
@@ -303,7 +411,7 @@ export const analyzeLeadsBatch: any = internalAction({
         {
           batchId: args.batchId,
           batchNumber: args.batchNumber,
-          leadCount: leads.length,
+          leadCount: formattedLeads.length,
           durationMs: perfData?.duration || 0,
           webhooksExpected: true,
           progressInterval: 10,
@@ -314,14 +422,14 @@ export const analyzeLeadsBatch: any = internalAction({
         batchId: args.batchId,
         searchId: args.searchId,
         batchNumber: args.batchNumber,
-        leadCount: leads.length,
+        leadCount: formattedLeads.length,
         durationMs: perfData?.duration || 0,
       });
 
       return {
         success: true,
         batchId: args.batchId,
-        leadCount: leads.length,
+        leadCount: formattedLeads.length,
         status: result.status || "processing",
       };
     } catch (error) {
@@ -334,18 +442,34 @@ export const analyzeLeadsBatch: any = internalAction({
         {
           batchId: args.batchId,
           batchNumber: args.batchNumber,
-          leadCount: args.leadIds.length,
+          leadCount: batchItemCount,
           durationMs: perfData?.duration || 0,
         },
         error as Error,
       );
 
-      // Mark all leads in batch as failed
-      for (const leadId of args.leadIds) {
-        await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
-          leadId,
-          error: error instanceof Error ? error.message : "Batch analysis failed",
-        });
+      // Mark all items in batch as failed
+      if (args.contactIds?.length) {
+        for (const contactId of args.contactIds) {
+          await ctx.runMutation(
+            internal.leads.contactInternal.markContactAnalysisFailed,
+            {
+              contactId,
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Batch analysis failed",
+            },
+          );
+        }
+      } else if (args.leadIds?.length) {
+        for (const leadId of args.leadIds) {
+          await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
+            leadId,
+            error:
+              error instanceof Error ? error.message : "Batch analysis failed",
+          });
+        }
       }
 
       captureAnalyticsEvent(args.userId, "batch_analysis_failed", {
@@ -361,6 +485,142 @@ export const analyzeLeadsBatch: any = internalAction({
         error: error instanceof Error ? error.message : "Unknown error",
       };
     }
+  },
+});
+
+/**
+ * Run company-level research once per domain before contact analysis fan-out.
+ */
+export const ensureCompanyResearchForSearch: any = internalAction({
+  args: {
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const domainsNeeded = await ctx.runQuery(
+      internal.leads.contactInternal.getDomainsNeedingCompanyResearch,
+      { searchId: args.searchId },
+    );
+
+    if (domainsNeeded.length === 0) {
+      return { researched: 0, skipped: 0 };
+    }
+
+    const langgraphUrl = process.env.LANGGRAPH_URL;
+    const langgraphApiKey = process.env.LANGGRAPH_API_KEY;
+    if (!langgraphUrl || !langgraphApiKey) {
+      throw new Error("LangGraph service not configured");
+    }
+
+    const user = await ctx.runQuery(internal.users.internal.getUserInternal, {
+      userId: args.userId,
+    });
+    const userTier = user?.plan ?? "free";
+    const isEnterpriseUser = user?.plan === "enterprise";
+
+    let providerKeys: Record<string, string> | undefined;
+    if (isEnterpriseUser) {
+      try {
+        const resolvedKeys = (await ctx.runAction(
+          internal.userApiKeys.actions.resolveUserProviderKeys,
+          {
+            userId: args.userId,
+            purpose: "company_research",
+          },
+        )) as Record<string, string>;
+
+        if (resolvedKeys.tavily && resolvedKeys.perplexity) {
+          providerKeys = {
+            tavily: resolvedKeys.tavily,
+            perplexity: resolvedKeys.perplexity,
+          };
+        }
+      } catch (error) {
+        console.warn(
+          `[CompanyResearch] BYOK key resolution failed for user ${args.userId}:`,
+          error,
+        );
+      }
+    }
+
+    let researched = 0;
+    for (const item of domainsNeeded) {
+      try {
+        const response = await fetch(`${langgraphUrl}/research-company`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${langgraphApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            companyName: item.businessName,
+            domain: item.domain,
+            location: item.location,
+            industry: item.industry,
+            userId: args.userId,
+            userTier,
+            providerKeys,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(
+            `[CompanyResearch] Failed for ${item.domain}: ${response.status} ${errorText}`,
+          );
+          continue;
+        }
+
+        const data = (await response.json()) as {
+          researchPayload?: Record<string, unknown>;
+          deepResearchUsed?: boolean;
+          additionalCreditsUsed?: number;
+        };
+
+        if (!data.researchPayload) {
+          continue;
+        }
+
+        await ctx.runMutation(
+          internal.leads.contactInternal.saveCompanyResearchFromWebhook,
+          {
+            searchId: args.searchId,
+            userId: args.userId,
+            leadId: item.leadId,
+            domain: item.domain,
+            researchPayload: data.researchPayload,
+          },
+        );
+
+        if (
+          data.deepResearchUsed &&
+          !isEnterpriseUser &&
+          typeof data.additionalCreditsUsed === "number" &&
+          data.additionalCreditsUsed > 0
+        ) {
+          await ctx.runMutation(internal.credits.transactions.recordTransaction, {
+            userId: args.userId,
+            amount: data.additionalCreditsUsed,
+            operation: "usage",
+            description: `Deep Research (company cache) - ${item.businessName}`,
+            relatedEntityType: "lead",
+            relatedEntityId: item.leadId,
+          });
+        }
+
+        researched += 1;
+      } catch (error) {
+        console.error(
+          `[CompanyResearch] Error researching ${item.domain}:`,
+          error,
+        );
+      }
+    }
+
+    return {
+      researched,
+      skipped: domainsNeeded.length - researched,
+    };
   },
 });
 
@@ -406,13 +666,103 @@ export const retryFailedLeads: any = internalAction({
         },
       );
 
-      // Get all leads for this search
+      const failedContacts = (await ctx.runQuery(
+        internal.leads.contactInternal.getFailedContactsForRetry,
+        { searchId: args.searchId, maxRetries },
+      )) as Array<{ _id: Id<"leadContacts"> }>;
+
+      if (failedContacts.length > 0) {
+        logWithCorrelation(
+          "info",
+          correlation,
+          "📋 Found Failed Contacts for Retry",
+          {
+            searchId: args.searchId,
+            failedCount: failedContacts.length,
+            maxRetries,
+          },
+        );
+
+        await ctx.runAction(
+          (internal as any)["leads/asyncAnalysis"].ensureCompanyResearchForSearch,
+          {
+            searchId: args.searchId,
+            userId: args.userId,
+          },
+        );
+
+        const BATCH_SIZE = 100;
+        const batches: Array<Array<{ _id: Id<"leadContacts"> }>> = [];
+        for (let i = 0; i < failedContacts.length; i += BATCH_SIZE) {
+          batches.push(failedContacts.slice(i, i + BATCH_SIZE));
+        }
+
+        for (const contact of failedContacts) {
+          await ctx.runMutation(
+            internal.leads.contactInternal.markContactAnalysisScheduled,
+            {
+              contactId: contact._id,
+              requestId: `${args.searchId}_retry_contact_${contact._id}`,
+            },
+          );
+        }
+
+        let scheduledBatches = 0;
+        for (let i = 0; i < batches.length; i++) {
+          const batch = batches[i];
+          if (!batch) continue;
+          const batchId = `${args.searchId}_retry_batch_${i + 1}`;
+
+          await ctx.scheduler.runAfter(
+            i * 10000,
+            (internal as any)["leads/asyncAnalysis"].analyzeLeadsBatch,
+            {
+              searchId: args.searchId,
+              batchId,
+              batchNumber: i + 1,
+              contactIds: batch.map((c) => c._id),
+              userId: args.userId,
+              profileId: args.profileId,
+            },
+          );
+
+          scheduledBatches++;
+        }
+
+        const perfData = endPerformanceTracking(perfTracker);
+
+        logWithCorrelation(
+          "info",
+          correlation,
+          "✅ Failed Contacts Retry Scheduled",
+          {
+            searchId: args.searchId,
+            retriedCount: failedContacts.length,
+            batchCount: scheduledBatches,
+            durationMs: perfData?.duration || 0,
+          },
+        );
+
+        captureAnalyticsEvent(args.userId, "failed_contacts_retry_scheduled", {
+          searchId: args.searchId,
+          retriedCount: failedContacts.length,
+          batchCount: scheduledBatches,
+        });
+
+        return {
+          success: true,
+          retriedCount: failedContacts.length,
+          batchCount: scheduledBatches,
+          message: `Scheduled ${failedContacts.length} failed contacts for retry in ${scheduledBatches} batches`,
+        };
+      }
+
+      // Legacy fallback: searches without leadContacts rows
       const allLeads = await ctx.runQuery(
         internal.leads.internal.getSearchLeadsInternal,
         { searchId: args.searchId },
       );
 
-      // Filter to only failed leads that haven't exceeded retry limit
       const failedLeads = allLeads.filter((lead: any) => {
         const isFailed = lead.analysisStatus === "failed";
         const retryCount = lead.analysisRetryCount || 0;

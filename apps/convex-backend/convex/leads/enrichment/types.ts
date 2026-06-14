@@ -63,6 +63,12 @@ export interface EnrichmentError {
 
 export interface EnrichmentOptions {
   roles?: string[];
+  /** Per-role API calls (multi-contact pipeline) */
+  perRole?: boolean;
+  /** Expand user roles into related title patterns for discovery (no cap) */
+  enableRoleExpansion?: boolean;
+  /** Max contacts per role/pattern request (multi-contact default: 5) */
+  limit?: number;
 }
 
 export interface EnrichmentProviderInterface {

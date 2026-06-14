@@ -28,6 +28,11 @@ class Lead(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
     """Lead data model"""
     id: Optional[str] = Field(default=None, description="Unique lead identifier")
+    lead_id: Optional[str] = Field(None, alias="leadId", description="Parent company lead identifier")
+    contact_id: Optional[str] = Field(None, alias="contactId", description="Contact record identifier")
+    company_research: Optional[Dict[str, Any]] = Field(
+        None, alias="companyResearch", description="Precomputed company research payload"
+    )
     company_name: str = Field(..., alias="company", description="Company name")
     contact_name: Optional[str] = Field(None, alias="name", description="Primary contact name")
     title: Optional[str] = Field(None, description="Contact title/position")
@@ -154,6 +159,34 @@ class LeadAnalysisRequest(BaseModel):
     provider_keys: Optional[ProviderKeys] = Field(default=None, alias="providerKeys", description="Optional provider credential overrides")
     user_id: Optional[str] = Field(default=None, alias="userId", description="Authenticated user identifier for logging")
 
+
+class CompanyResearchRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    """Run company-level research once for cache reuse across contacts"""
+
+    company_name: str = Field(..., alias="companyName", description="Company name")
+    domain: str = Field(..., description="Company website domain")
+    location: Optional[str] = Field(default="", description="Company location")
+    industry: Optional[str] = Field(default="", description="Industry classification")
+    user_id: Optional[str] = Field(default=None, alias="userId", description="User identifier")
+    user_tier: str = Field(default="free", alias="userTier", description="Subscription tier")
+    provider_keys: Optional[ProviderKeys] = Field(
+        default=None,
+        alias="providerKeys",
+        description="Optional BYOK provider credentials",
+    )
+
+
+class CompanyResearchResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    """Cached company research payload for downstream contact analysis"""
+
+    research_payload: Dict[str, Any] = Field(..., alias="researchPayload")
+    deep_research_used: bool = Field(default=False, alias="deepResearchUsed")
+    deep_research_reason: Optional[str] = Field(default=None, alias="deepResearchReason")
+    additional_credits_used: int = Field(default=0, alias="additionalCreditsUsed")
+    processing_time: float = Field(default=0, alias="processingTime")
+
 class AgentResult(BaseModel):
     """Individual agent result"""
 
@@ -243,6 +276,7 @@ class BatchLeadResult(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     lead_id: str = Field(..., alias="leadId", description="Lead identifier")
+    contact_id: Optional[str] = Field(None, alias="contactId", description="Contact identifier when multi-contact")
     status: Literal["completed", "failed"] = Field(..., description="Processing status")
     result: Optional[EmailGenerationResult] = Field(None, description="Generation result if successful")
     error: Optional[str] = Field(None, description="Error message if failed")

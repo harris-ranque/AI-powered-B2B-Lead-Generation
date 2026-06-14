@@ -12,6 +12,7 @@ import {
   shouldBlockPipeline,
   type ApiError,
 } from "../../lib/apiErrors";
+import { expandRolesForMatching } from "../../lib/roleFamilies";
 
 const FINDYMAIL_BASE_URL = "https://app.findymail.com/api";
 const FINDYMAIL_TIMEOUT_MS = 50_000;
@@ -26,14 +27,17 @@ function createTimeoutController(timeoutMs: number) {
 }
 
 const DEFAULT_ROLES = ["ceo", "founder", "owner"] as const;
-const MAX_ROLES = 3;
+/** FindyMail combined /search/domain request supports up to 3 roles in one call */
+const MAX_ROLES_PER_API_REQUEST = 3;
+/** Contacts fetched per user-requested role (and per expanded pattern) */
+const DEFAULT_PER_ROLE_CONTACT_LIMIT = 5;
+const PER_ROLE_FETCH_CONCURRENCY = 3;
 
 /**
- * Sanitize and normalize roles for FindyMail API
- * FindyMail API only supports a maximum of 3 roles per request
+ * Sanitize and normalize roles for FindyMail API.
  *
- * @param roles - Array of role strings to sanitize
- * @returns Object containing sanitized roles and any truncation warning
+ * @param maxRoles - When set, caps roles for a single combined API request (API limit).
+ *   Omit for per-role discovery lists (UI caps user input; expansion has no backend cap).
  */
 interface SanitizedRolesResult {
   roles: string[];
@@ -41,7 +45,10 @@ interface SanitizedRolesResult {
   originalCount: number;
 }
 
-function sanitizeRoles(roles?: string[] | null): SanitizedRolesResult {
+function sanitizeRoles(
+  roles?: string[] | null,
+  maxRoles?: number,
+): SanitizedRolesResult {
   if (!roles || roles.length === 0) {
     return {
       roles: [...DEFAULT_ROLES],
@@ -62,13 +69,14 @@ function sanitizeRoles(roles?: string[] | null): SanitizedRolesResult {
   }
 
   const originalCount = deduped.length;
-  const truncated = originalCount > MAX_ROLES;
+  const truncated =
+    maxRoles !== undefined && originalCount > maxRoles;
 
   if (truncated) {
     console.warn(
-      `[FindyMail] ⚠️ Role truncation: Requested ${originalCount} roles but FindyMail API only supports ${MAX_ROLES}. ` +
-      `Using: [${deduped.slice(0, MAX_ROLES).join(", ")}]. ` +
-      `Truncated: [${deduped.slice(MAX_ROLES).join(", ")}]`
+      `[FindyMail] ⚠️ Role truncation: Requested ${originalCount} roles but combined API request supports ${maxRoles}. ` +
+      `Using: [${deduped.slice(0, maxRoles).join(", ")}]. ` +
+      `Truncated: [${deduped.slice(maxRoles).join(", ")}]`
     );
   }
 
@@ -80,15 +88,27 @@ function sanitizeRoles(roles?: string[] | null): SanitizedRolesResult {
     };
   }
 
+  const cap = maxRoles ?? deduped.length;
+
   return {
-    roles: deduped.slice(0, MAX_ROLES),
+    roles: deduped.slice(0, cap),
     truncated,
     originalCount,
   };
 }
 
 function resolveRoles(options?: EnrichmentOptions): string[] {
-  return sanitizeRoles(options?.roles).roles;
+  return sanitizeRoles(options?.roles, MAX_ROLES_PER_API_REQUEST).roles;
+}
+
+function resolveRolesForPerRoleFetch(options?: EnrichmentOptions): string[] {
+  const userRoles = sanitizeRoles(options?.roles).roles;
+
+  if (options?.enableRoleExpansion) {
+    return expandRolesForMatching(userRoles, true);
+  }
+
+  return userRoles;
 }
 
 export class FindyMailProvider implements EnrichmentProviderInterface {
@@ -241,7 +261,12 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
     domain: string,
     options?: EnrichmentOptions,
   ): Promise<EnrichmentResult | null> {
+    if (options?.perRole && options.roles && options.roles.length > 0) {
+      return await this.enrichPerRoles(domain, options.roles, options);
+    }
+
     console.log(`[FindyMail] Enriching domain: ${domain}`);
+    const limit = options?.limit ?? 1;
     const timeout = createTimeoutController(FINDYMAIL_TIMEOUT_MS);
     let response: Response;
     try {
@@ -254,7 +279,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
         body: JSON.stringify({
           domain: domain,
           roles: resolveRoles(options),
-          limit: 1, // Get top contact per domain
+          limit,
         }),
         signal: timeout.signal,
       });
@@ -312,6 +337,82 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
       console.error(`[FindyMail] Failed to parse response for ${domain}:`, error);
       return null;
     }
+  }
+
+  /**
+   * Fetch contacts per role pattern (one API call per pattern), merge by email.
+   * Uses expanded role families when enabled — no backend cap on expansion count.
+   */
+  async enrichPerRoles(
+    domain: string,
+    roles: string[],
+    options?: EnrichmentOptions,
+  ): Promise<EnrichmentResult | null> {
+    const rolesToFetch = resolveRolesForPerRoleFetch({
+      ...options,
+      roles,
+    });
+    const perRoleLimit = options?.limit ?? DEFAULT_PER_ROLE_CONTACT_LIMIT;
+
+    console.log(
+      `[FindyMail] Per-role enrichment for ${domain}: ${rolesToFetch.length} role pattern(s), limit=${perRoleLimit} per pattern`,
+    );
+
+    const mergedContacts: EnrichmentResult["contacts"] = [];
+    const mergedEmails: EnrichmentResult["emails"] = [];
+    const seenEmails = new Set<string>();
+
+    const singleRoleResults = await mapWithConcurrency(
+      rolesToFetch,
+      PER_ROLE_FETCH_CONCURRENCY,
+      async (role) =>
+        this.enrichSingle(domain, {
+          roles: [role],
+          limit: perRoleLimit,
+          perRole: false,
+        }),
+    );
+
+    for (const singleRoleResult of singleRoleResults) {
+      if (!singleRoleResult) {
+        continue;
+      }
+
+      for (const contact of singleRoleResult.contacts) {
+        const email = contact.email?.toLowerCase().trim();
+        if (!email || seenEmails.has(email)) {
+          continue;
+        }
+        seenEmails.add(email);
+        mergedContacts.push({ ...contact, domain });
+      }
+
+      for (const emailEntry of singleRoleResult.emails) {
+        const email = emailEntry.email?.toLowerCase().trim();
+        if (!email || seenEmails.has(email)) {
+          continue;
+        }
+        seenEmails.add(email);
+        mergedEmails.push(emailEntry);
+      }
+    }
+
+    if (mergedContacts.length === 0 && mergedEmails.length === 0) {
+      return null;
+    }
+
+    return {
+      emails: mergedEmails,
+      contacts: mergedContacts,
+      metadata: {
+        provider: "findymail",
+        confidence:
+          mergedContacts.length > 0
+            ? Math.max(...mergedContacts.map((c) => c.confidence ?? 0))
+            : 0,
+        timestamp: Date.now(),
+      },
+    };
   }
 
   /**
@@ -1051,7 +1152,7 @@ export async function resolveDomainsWithFindyMail(
   const concurrency = Math.min(options.concurrency ?? 5, 5);
   const maxRetries = options.maxRetries ?? 5;
   const baseDelayMs = options.baseDelayMs ?? 800;
-  const sanitizedRoles = sanitizeRoles(roles).roles;
+  const sanitizedRoles = sanitizeRoles(roles, MAX_ROLES_PER_API_REQUEST).roles;
 
   let pipelineBlockingError: ApiError | undefined;
 

@@ -55,6 +55,10 @@ import { createLogger } from "@/utils/logger";
 import { normalizeError } from "@/utils/errorUtils";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { PushToInstantlyButton } from "@/components/instantly/PushToInstantlyButton";
+import { useQuery } from "convex/react";
+import { api } from "@genni/convex-types";
+import type { Id } from "@genni/convex-types/dataModel";
+import { featureFlags } from "@/lib/featureFlags";
 
 const EXPORT_FORMATS = [
   {
@@ -183,6 +187,12 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
   const { toast } = useToast();
   const analytics = useAnalytics();
   const { search } = useSearch(state.searchId || undefined);
+  const contactCounts = useQuery(
+    api.leads.queries.getAcceptedContactCountsBySearch,
+    featureFlags.multiContactPipeline && state.searchId
+      ? { searchId: state.searchId as Id<"searches"> }
+      : "skip",
+  );
   const { leads: searchLeads, updateLeadStatus } = useLeads(
     state.searchId || undefined,
   );
@@ -294,10 +304,17 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
   // Intentionally excludes search?.progress?.enriched — that live counter includes
   // completed_fallback leads (no email found) which inflates the figure.
   const enrichedCount = Math.max(
+    featureFlags.multiContactPipeline
+      ? (contactCounts?.totalAccepted ?? 0)
+      : 0,
     search?.results?.enrichedCount ?? 0,
     leadsWithEmails.length,
     state.enrichedLeads.length,
   );
+
+  const exportableContactCount = featureFlags.multiContactPipeline
+    ? (contactCounts?.totalExportable ?? enrichedCount)
+    : enrichedCount;
 
   // personalizedCount: leads with actual email content generated (analysis succeeded).
   // emailDetailsByLead already merges DB-loaded leads and session-generated emails accurately.
@@ -306,7 +323,11 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
   const personalizedCount = emailDetailsByLead.size;
 
   const enrichmentRate =
-    discoveredCount > 0 ? (enrichedCount / discoveredCount) * 100 : 0;
+    discoveredCount > 0
+      ? featureFlags.multiContactPipeline
+        ? (exportableContactCount / discoveredCount) * 100
+        : (enrichedCount / discoveredCount) * 100
+      : 0;
 
   const readyToSendCount = readyToSendLeads.length;
   const awaitingPersonalizationCount = awaitingPersonalization.length;
@@ -735,7 +756,9 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
                 {formatNumber(enrichedCount)}
               </div>
               <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                Contacts Found
+                {featureFlags.multiContactPipeline
+                  ? "Accepted Contacts"
+                  : "Contacts Found"}
               </p>
             </div>
 

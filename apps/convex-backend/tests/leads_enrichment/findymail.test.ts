@@ -98,7 +98,7 @@ describe('Lead Enrichment Tests - Batch 7', () => {
       expect(callBody.roles.every((r: string) => r === r.toLowerCase())).toBe(true); // All lowercase
     });
 
-    it('should enforce MAX_ROLES limit of 3', async () => {
+    it('should enforce MAX_ROLES limit of 3 on combined API requests', async () => {
       // Arrange
       const apiKey = 'test_api_key';
       const provider = new FindyMailProvider(apiKey);
@@ -140,6 +140,115 @@ describe('Lead Enrichment Tests - Batch 7', () => {
       // Assert - Should fall back to default roles
       const callBody = JSON.parse(mockFetch.mock.calls[0]![1]!.body as string);
       expect(callBody.roles).toEqual(['ceo', 'founder', 'owner']);
+    });
+  });
+
+  describe('Multi-contact per-role discovery', () => {
+    it('fetches multiple contacts per role pattern with expansion (no 3-role cap)', async () => {
+      const apiKey = 'test_api_key';
+      const provider = new FindyMailProvider(apiKey);
+      const domain = 'acme.com';
+
+      mockFetch.mockImplementation(async () => ({
+        ok: true,
+        json: async () => ({
+          contacts: [
+            {
+              name: 'Alice Regional',
+              title: 'Regional Property Manager',
+              email: 'alice@acme.com',
+              confidence: 0.9,
+            },
+            {
+              name: 'Bob Director',
+              title: 'Director of Property Management',
+              email: 'bob@acme.com',
+              confidence: 0.85,
+            },
+          ],
+        }),
+      }));
+
+      const result = await provider.enrichSingle(domain, {
+        roles: ['Property Manager'],
+        perRole: true,
+        enableRoleExpansion: true,
+        limit: 5,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.contacts.length).toBeGreaterThan(0);
+
+      const limits = mockFetch.mock.calls.map((call) => {
+        const body = JSON.parse(call[1]!.body as string);
+        return body.limit;
+      });
+      expect(limits.every((limit: number) => limit === 5)).toBe(true);
+
+      // Property family expansion yields more than one role pattern
+      expect(mockFetch.mock.calls.length).toBeGreaterThan(1);
+
+      const singleRoleCalls = mockFetch.mock.calls.map((call) => {
+        const body = JSON.parse(call[1]!.body as string);
+        return body.roles;
+      });
+      expect(singleRoleCalls.every((roles: string[]) => roles.length === 1)).toBe(
+        true,
+      );
+    });
+
+    it('merges contacts across role patterns by unique email', async () => {
+      const apiKey = 'test_api_key';
+      const provider = new FindyMailProvider(apiKey);
+      const domain = 'acme.com';
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            contacts: [
+              {
+                name: 'Alice',
+                email: 'alice@acme.com',
+                confidence: 0.9,
+              },
+            ],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            contacts: [
+              {
+                name: 'Alice Duplicate',
+                email: 'alice@acme.com',
+                confidence: 0.8,
+              },
+              {
+                name: 'Carol',
+                email: 'carol@acme.com',
+                confidence: 0.85,
+              },
+            ],
+          }),
+        })
+        .mockResolvedValue({
+          ok: true,
+          json: async () => ({ contacts: [] }),
+        });
+
+      const result = await provider.enrichSingle(domain, {
+        roles: ['ceo', 'founder'],
+        perRole: true,
+        enableRoleExpansion: false,
+        limit: 5,
+      });
+
+      expect(result).not.toBeNull();
+      const emails = result!.contacts.map((c) => c.email).filter(Boolean);
+      expect(new Set(emails).size).toBe(emails.length);
+      expect(emails).toContain('alice@acme.com');
+      expect(emails).toContain('carol@acme.com');
     });
   });
 

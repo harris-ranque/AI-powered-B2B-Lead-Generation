@@ -81,24 +81,45 @@ export function isLeadExportable(lead: ExportableLead): boolean {
   return email.length > 0 && !analysisFailed;
 }
 
+export type ExportableContact = {
+  email: string;
+  analysisStatus?: string;
+  status?: string;
+};
+
+export function isContactExportable(contact: ExportableContact): boolean {
+  if (contact.status && contact.status !== "accepted") {
+    return false;
+  }
+  return (
+    contact.email.trim().length > 0 && contact.analysisStatus !== "failed"
+  );
+}
+
 // ---------------------------------------------------------------------------
 // DB-level helper — call from within a query or mutation context.
 // Mirrors isLeadExportable: enrichmentStatus "completed" + analysisStatus not "failed".
 // enrichmentStatus "completed" is only ever set when emails were actually stored,
 // so we do not need a separate email-presence check at the DB level.
 // ---------------------------------------------------------------------------
+export async function countExportableContacts(
+  ctx: { db: GenericDatabaseReader<DataModel> },
+  searchId: Id<"searches">,
+): Promise<number> {
+  const contacts = await ctx.db
+    .query("leadContacts")
+    .withIndex("by_search_status", (q) =>
+      q.eq("searchId", searchId).eq("status", "accepted"),
+    )
+    .collect();
+  return contacts.filter(isContactExportable).length;
+}
+
 export async function countExportableLeads(
   ctx: { db: GenericDatabaseReader<DataModel> },
   searchId: Id<"searches">,
 ): Promise<number> {
-  const leads = await ctx.db
-    .query("leads")
-    .withIndex("by_search_enrichment", (q) =>
-      q.eq("searchId", searchId).eq("enrichmentStatus", "completed"),
-    )
-    .filter((q) => q.neq(q.field("analysisStatus"), "failed"))
-    .collect();
-  return leads.length;
+  return countExportableContacts(ctx, searchId);
 }
 
 export function noExportableLeadsMessage(stats: {

@@ -237,34 +237,82 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
 
     try:
         # Phase 1: Execute tiered business context research
-        logger.info(f"Phase 1: Business context research for {lead.company_name}")
-        research_start = time.time()
-        
-        # Extract domain from lead
-        domain = lead.website or ""
-        if not domain and hasattr(lead, 'contact_info') and hasattr(lead.contact_info, 'website'):
-            domain = lead.contact_info.website or ""
+        precomputed = getattr(lead, "company_research", None)
 
-        # Extract location from lead
-        location = getattr(lead, 'location', '') or ""
+        def _extract_cached_overview(payload: dict) -> str:
+            overview = payload.get("company_overview")
+            if isinstance(overview, str) and overview.strip():
+                return overview.strip()
+            raw_data = payload.get("raw_data")
+            if isinstance(raw_data, dict):
+                for key in ("company_overview", "research_summary", "comprehensive_report"):
+                    value = raw_data.get(key)
+                    if isinstance(value, str) and value.strip():
+                        return value.strip()
+            lead_analysis = payload.get("lead_analysis")
+            if isinstance(lead_analysis, dict):
+                for key in ("company_overview", "research_summary", "comprehensive_report"):
+                    value = lead_analysis.get(key)
+                    if isinstance(value, str) and value.strip():
+                        return value.strip()
+            comprehensive = payload.get("comprehensive_report")
+            if isinstance(comprehensive, str) and comprehensive.strip():
+                return comprehensive.strip()
+            return ""
 
-        # Determine user tier and lead value
-        user_tier = state.get("user_tier", "free")
-        lead_value = float(getattr(lead, 'estimated_value', 0))
-        
-        # Perform tiered research
-        orchestrator = ResearchOrchestrator(client_registry=registry)
-        research_result = await orchestrator.research_company(
-            company_name=lead.company_name,
-            domain=domain,
-            location=location,
-            user_tier=user_tier,
-            lead_value=lead_value,
-            provider_keys=provider_key_map if using_user_keys else None,
-            user_id=state.get("user_id"),
+        cached_overview = (
+            _extract_cached_overview(precomputed) if isinstance(precomputed, dict) else ""
         )
-        
-        research_time = time.time() - research_start
+        use_cached_research = bool(cached_overview)
+
+        if use_cached_research:
+            logger.info(
+                f"Phase 1: Using cached company research for {lead.company_name}"
+            )
+            research_start = time.time()
+            from types import SimpleNamespace
+
+            cached_payload = precomputed if isinstance(precomputed, dict) else {}
+            raw_data = cached_payload.get("raw_data")
+            if not isinstance(raw_data, dict):
+                raw_data = {}
+
+            research_result = SimpleNamespace(
+                company_overview=cached_overview,
+                raw_data=raw_data if isinstance(raw_data, dict) else {},
+                confidence_score=float(cached_payload.get("confidence_score", 0.7)),
+                data_points=int(cached_payload.get("data_points", 0)),
+                tier=SimpleNamespace(
+                    value=cached_payload.get("research_tier", "tavily")
+                ),
+                sources_analyzed=int(cached_payload.get("sources_analyzed", 0)),
+                escalation_reason=cached_payload.get("escalation_reason"),
+            )
+            research_time = time.time() - research_start
+        else:
+            logger.info(f"Phase 1: Business context research for {lead.company_name}")
+            research_start = time.time()
+
+            domain = lead.website or ""
+            if not domain and hasattr(lead, 'contact_info') and hasattr(lead.contact_info, 'website'):
+                domain = lead.contact_info.website or ""
+
+            location = getattr(lead, 'location', '') or ""
+            user_tier = state.get("user_tier", "free")
+            lead_value = float(getattr(lead, 'estimated_value', 0))
+
+            orchestrator = ResearchOrchestrator(client_registry=registry)
+            research_result = await orchestrator.research_company(
+                company_name=lead.company_name,
+                domain=domain,
+                location=location,
+                user_tier=user_tier,
+                lead_value=lead_value,
+                provider_keys=provider_key_map if using_user_keys else None,
+                user_id=state.get("user_id"),
+            )
+            research_time = time.time() - research_start
+
         logger.info(f"Research completed in {research_time:.2f}s using {research_result.tier.value} tier")
         
         # Track deep research usage

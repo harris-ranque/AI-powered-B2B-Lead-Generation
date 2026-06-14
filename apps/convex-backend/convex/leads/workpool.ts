@@ -24,6 +24,37 @@ import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 
+function isEnrichmentReturnSuccessful(returnValue: unknown): boolean {
+  if (!returnValue || typeof returnValue !== "object") {
+    return false;
+  }
+
+  const value = returnValue as {
+    success?: boolean;
+    reason?: string;
+    retrying?: boolean;
+    skipped?: boolean;
+  };
+
+  if (value.retrying) {
+    return false;
+  }
+
+  if (
+    value.reason === "queued" ||
+    value.reason === "requeued" ||
+    value.reason === "queued_for_cron"
+  ) {
+    return false;
+  }
+
+  if (typeof value.success === "boolean") {
+    return value.success;
+  }
+
+  return !value.skipped;
+}
+
 /**
  * Workpool instance for lead enrichment
  *
@@ -186,8 +217,11 @@ export const onEnrichmentComplete = internalMutation({
         return;
       }
 
-      // Update batch progress
-      const isSuccess = result.kind === "success";
+      // Update batch progress — count enrichment success only when contacts were accepted
+      const returnValue =
+        result.kind === "success" ? (result.returnValue as unknown) : undefined;
+      const isSuccess =
+        result.kind === "success" && isEnrichmentReturnSuccessful(returnValue);
       const isFailed = result.kind === "failed" || result.kind === "canceled";
 
       const newCompletedLeads = batch.completedLeads + 1;

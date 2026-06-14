@@ -22,6 +22,11 @@ import { EnrichmentBatchResult, EnrichmentOptions } from "./enrichment/types";
 
 // Import Workpool for batch enrichment
 import { enrichmentPool, generateBatchId } from "./workpool";
+import { isMultiContactPipelineEnabled } from "../lib/featureFlags";
+import {
+  normalizeCompanyResearchPayload,
+  isValidCompanyResearchCache,
+} from "../lib/companyResearchCache";
 
 type LangGraphResponse = {
   status: string;
@@ -847,13 +852,17 @@ export const analyzeLeads: any = internalAction({
         },
       );
 
-      // Get leads ready for analysis (filters enrichment status, analysis status, and contact info)
-      const leads: any = await ctx.runQuery(
-        internal.leads.internal.getLeadsForAnalysis,
-        {
-          searchId: args.searchId,
-        },
-      );
+      // Get leads or contacts ready for analysis
+      const multiContact = isMultiContactPipelineEnabled();
+      const leads: any = multiContact
+        ? await ctx.runQuery(
+            internal.leads.contactInternal.getContactsForAnalysis,
+            { searchId: args.searchId },
+          )
+        : await ctx.runQuery(
+            internal.leads.internal.getLeadsForAnalysis,
+            { searchId: args.searchId },
+          );
 
       // LangGraph service configuration
       const langgraphUrl = process.env.LANGGRAPH_URL;
@@ -909,6 +918,16 @@ export const analyzeLeads: any = internalAction({
 
       if (!profile) {
         throw new Error("Business profile required for AI analysis");
+      }
+
+      if (multiContact && leads.length > 0) {
+        await ctx.runAction(
+          (internal as any)["leads/asyncAnalysis"].ensureCompanyResearchForSearch,
+          {
+            searchId: args.searchId,
+            userId: search.userId,
+          },
+        );
       }
 
       if (!langgraphUrl || !langgraphApiKey) {
@@ -971,13 +990,23 @@ export const analyzeLeads: any = internalAction({
             },
           );
 
-          // Mark all leads in batch as scheduled
-          for (const lead of batch) {
-            const typedLead = lead as any; // Type assertion for filtered lead data
-            await ctx.runMutation(internal.leads.internal.markLeadAnalysisScheduled, {
-              leadId: typedLead._id,
-              requestId: `${batchId}_${typedLead._id}`,
-            });
+          // Mark all items in batch as scheduled
+          for (const item of batch) {
+            const typedItem = item as any;
+            if (multiContact) {
+              await ctx.runMutation(
+                internal.leads.contactInternal.markContactAnalysisScheduled,
+                {
+                  contactId: typedItem._id,
+                  requestId: `${batchId}_${typedItem._id}`,
+                },
+              );
+            } else {
+              await ctx.runMutation(internal.leads.internal.markLeadAnalysisScheduled, {
+                leadId: typedItem._id,
+                requestId: `${batchId}_${typedItem._id}`,
+              });
+            }
           }
 
           // Schedule the batch analysis action
@@ -988,7 +1017,9 @@ export const analyzeLeads: any = internalAction({
               searchId: args.searchId,
               batchId,
               batchNumber: i + 1,
-              leadIds: batch.map((l: any) => l._id),
+              ...(multiContact
+                ? { contactIds: batch.map((c: any) => c._id) }
+                : { leadIds: batch.map((l: any) => l._id) }),
               userId: search.userId,
               profileId: profile._id,
             },
@@ -999,13 +1030,27 @@ export const analyzeLeads: any = internalAction({
           schedulingErrors++;
           console.error(`Failed to schedule batch ${i + 1}:`, error);
 
-          // Mark all leads in failed batch as failed
-          for (const lead of batch) {
-            const typedLead = lead as any; // Type assertion for filtered lead data
-            await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
-              leadId: typedLead._id,
-              error: error instanceof Error ? error.message : "Batch scheduling failed",
-            });
+          // Mark all items in failed batch as failed
+          for (const item of batch) {
+            const typedItem = item as any;
+            if (multiContact) {
+              await ctx.runMutation(
+                internal.leads.contactInternal.markContactAnalysisFailed,
+                {
+                  contactId: typedItem._id,
+                  error:
+                    error instanceof Error
+                      ? error.message
+                      : "Batch scheduling failed",
+                },
+              );
+            } else {
+              await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
+                leadId: typedItem._id,
+                error:
+                  error instanceof Error ? error.message : "Batch scheduling failed",
+              });
+            }
           }
 
           // Broadcast scheduling error
@@ -1105,6 +1150,88 @@ export const analyzeLeads: any = internalAction({
 
       throw error;
     }
+  },
+});
+
+// Populate company research cache once per lead domain before contact fan-out analysis.
+export const runCompanyResearchOnce: ReturnType<typeof internalAction> = internalAction({
+  args: {
+    leadId: v.id("leads"),
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args): Promise<{
+    cached: boolean;
+    companyResearchId?: string;
+  }> => {
+    const lead = await ctx.runQuery(internal.leads.internal.getLeadInternal, {
+      leadId: args.leadId,
+    });
+    if (!lead?.website) {
+      return { cached: false };
+    }
+
+    const domain = extractDomain(lead.website);
+    if (!domain) {
+      return { cached: false };
+    }
+
+    const existing = await ctx.runQuery(
+      internal.leads.contactInternal.getCompanyResearchByDomain,
+      { searchId: args.searchId, domain },
+    );
+    if (existing?.researchPayload && isValidCompanyResearchCache(existing.researchPayload)) {
+      return { cached: true, companyResearchId: existing._id };
+    }
+
+    const aiAnalysis = lead.aiAnalysis as
+      | {
+          leadAnalysis?: Record<string, unknown>;
+          researchTier?: string;
+        }
+      | undefined;
+    const leadAnalysis = aiAnalysis?.leadAnalysis;
+    if (!leadAnalysis) {
+      return { cached: false };
+    }
+
+    const researchPayload = normalizeCompanyResearchPayload({
+      company_overview:
+        (leadAnalysis.company_overview as string | undefined) ??
+        (leadAnalysis.research_summary as string | undefined),
+      lead_analysis: leadAnalysis,
+      comprehensive_report:
+        (leadAnalysis.research_metadata as Record<string, unknown> | undefined)
+          ?.comprehensive_report ?? leadAnalysis.comprehensive_report,
+      research_tier: aiAnalysis?.researchTier,
+      confidence_score:
+        (leadAnalysis.research_metadata as Record<string, unknown> | undefined)
+          ?.confidence_score,
+    });
+
+    if (!researchPayload) {
+      return { cached: false };
+    }
+
+    const companyResearchId = await ctx.runMutation(
+      internal.leads.contactInternal.upsertCompanyResearch,
+      {
+        searchId: args.searchId,
+        userId: args.userId,
+        leadId: args.leadId,
+        domain,
+        researchPayload,
+        status: "completed",
+        provider: aiAnalysis?.researchTier ?? "cached",
+      },
+    );
+
+    await ctx.runMutation(
+      internal.leads.contactInternal.linkContactsToCompanyResearch,
+      { leadId: args.leadId, companyResearchId },
+    );
+
+    return { cached: true, companyResearchId };
   },
 });
 

@@ -3,6 +3,7 @@ import { internal, api } from "../_generated/api";
 import { v } from "convex/values";
 import { createOperationLogger } from "../lib/logger";
 import { Id, Doc } from "../_generated/dataModel";
+import { extractDomainFromWebsite } from "../lib/contactVerification";
 
 // TODO: Add webhook idempotency table to prevent duplicate processing
 // Current implementation has partial checks but no dedicated tracking.
@@ -987,6 +988,7 @@ const BatchProgressUpdate = v.object({
 
 const BatchLeadResult = v.object({
   leadId: v.string(),
+  contactId: v.optional(v.string()),
   status: v.union(v.literal("completed"), v.literal("failed")),
   result: v.optional(v.any()),
   error: v.optional(v.union(v.string(), v.null())),
@@ -1237,37 +1239,92 @@ export const handleBatchCompleted = internalMutation({
               };
             });
 
-            // Update lead with AI analysis and email content
-            await ctx.runMutation(internal.leads.internal.updateLeadAnalysis, {
-              leadId: leadIdTyped as any,
-              aiAnalysis: {
-                relevanceScore: result.relevance_score || 0,
-                painPoints: result.pain_points_identified || [],
-                valueMatches: result.value_matches || [],
-                recommendations: result.recommendations || [],
-                leadAnalysis: result.lead_analysis || {},
-                processingTime: leadResult.processingTime,
-                confidence: result.relevance_score || 0.5,
-              },
-              emailContent:
-                result.primary_email && result.primary_email !== null
-                  ? {
-                      subject: result.primary_email.subject,
-                      body: result.primary_email.body,
-                      personalizationNotes:
-                        result.primary_email.personalization_notes || [],
-                      estimatedEffectiveness:
-                        result.primary_email.estimated_effectiveness || 0.5,
-                    }
-                  : undefined,
-              followUpEmails:
-                formattedFollowUps.length > 0 ? formattedFollowUps : undefined,
-            });
+            const aiAnalysisPayload = {
+              relevanceScore: result.relevance_score || 0,
+              painPoints: result.pain_points_identified || [],
+              valueMatches: result.value_matches || [],
+              recommendations: result.recommendations || [],
+              leadAnalysis: result.lead_analysis || {},
+              processingTime: leadResult.processingTime,
+              confidence: result.relevance_score || 0.5,
+            };
+            const emailContentPayload =
+              result.primary_email && result.primary_email !== null
+                ? {
+                    subject: result.primary_email.subject,
+                    body: result.primary_email.body,
+                    personalizationNotes:
+                      result.primary_email.personalization_notes || [],
+                    estimatedEffectiveness:
+                      result.primary_email.estimated_effectiveness || 0.5,
+                  }
+                : undefined;
 
-            // Mark lead analysis as completed
-            await ctx.runMutation(internal.leads.internal.markLeadAnalysisCompleted, {
-              leadId: leadIdTyped as any,
-            });
+            const contactIdRaw = leadResult.contactId;
+            const hasContactId =
+              typeof contactIdRaw === "string" &&
+              /^[a-zA-Z0-9]{16,32}$/.test(contactIdRaw);
+
+            if (hasContactId) {
+              const contactIdTyped = contactIdRaw as Id<"leadContacts">;
+              await ctx.runMutation(
+                internal.leads.contactInternal.updateLeadContactAnalysis,
+                {
+                  contactId: contactIdTyped,
+                  aiAnalysis: aiAnalysisPayload,
+                  emailContent: emailContentPayload,
+                  followUpEmails:
+                    formattedFollowUps.length > 0 ? formattedFollowUps : undefined,
+                },
+              );
+              await ctx.runMutation(
+                internal.leads.contactInternal.markContactAnalysisCompleted,
+                { contactId: contactIdTyped },
+              );
+            } else {
+              await ctx.runMutation(internal.leads.internal.updateLeadAnalysis, {
+                leadId: leadIdTyped as any,
+                aiAnalysis: aiAnalysisPayload,
+                emailContent: emailContentPayload,
+                followUpEmails:
+                  formattedFollowUps.length > 0 ? formattedFollowUps : undefined,
+              });
+
+              await ctx.runMutation(internal.leads.internal.markLeadAnalysisCompleted, {
+                leadId: leadIdTyped as any,
+              });
+            }
+
+            const leadAnalysisPayload = result.lead_analysis || {};
+            const companyDomain = extractDomainFromWebsite(lead.website);
+            if (
+              companyDomain &&
+              (leadAnalysisPayload.company_overview ||
+                leadAnalysisPayload.research_summary)
+            ) {
+              await ctx.runMutation(
+                internal.leads.contactInternal.saveCompanyResearchFromWebhook,
+                {
+                  searchId: searchIdTyped,
+                  userId: search.userId,
+                  leadId: lead._id,
+                  domain: companyDomain,
+                  researchPayload: {
+                    company_overview:
+                      leadAnalysisPayload.company_overview ||
+                      leadAnalysisPayload.research_summary ||
+                      "",
+                    raw_data: leadAnalysisPayload,
+                    confidence_score: result.relevance_score || 0.5,
+                    research_tier: result.deep_research_used
+                      ? "perplexity"
+                      : "tavily",
+                    deep_research_used: Boolean(result.deep_research_used),
+                    deep_research_reason: result.deep_research_reason,
+                  },
+                },
+              );
+            }
 
             // Handle deep research credits for non-enterprise users
             const deepResearchUsed = Boolean(result.deep_research_used);

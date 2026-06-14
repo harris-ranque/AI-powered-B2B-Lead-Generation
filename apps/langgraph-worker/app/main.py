@@ -58,6 +58,8 @@ from .models.lead_models import (
     ProviderKeyValidationRequest,
     ProviderKeyValidationResponse,
     LeadAnalysisRequest,
+    CompanyResearchRequest,
+    CompanyResearchResponse,
     BatchEmailGenerationRequest,
     BatchEmailGenerationResponse,
     BatchLeadResult,
@@ -763,6 +765,119 @@ async def analyze_lead(
         )
         raise HTTPException(status_code=500, detail=f"Lead analysis failed: {str(e)}")
 
+@app.post("/research-company", response_model=CompanyResearchResponse)
+async def research_company(
+    request: CompanyResearchRequest,
+    authenticated: bool = Depends(verify_api_key),
+):
+    """
+    Run company-level research once and return a normalized cache payload.
+
+    Used before per-contact analysis so Tavily/Perplexity research is not repeated
+  for every accepted contact at the same company.
+    """
+    start_time = datetime.utcnow()
+
+    provider_keys_payload = (
+        request.provider_keys.model_dump(exclude_none=True)
+        if request.provider_keys
+        else None
+    )
+
+    capture_event(
+        "api_research_company_started",
+        {
+            "company_name": request.company_name,
+            "domain": request.domain,
+            "user_id": request.user_id,
+            "user_tier": request.user_tier,
+            "using_user_keys": provider_keys_payload is not None,
+        },
+    )
+
+    try:
+        from .utils.research_clients import (
+            ClientRegistry,
+            ResearchOrchestrator,
+            ResearchTier,
+        )
+        from .config import CREDIT_COSTS
+
+        registry = ClientRegistry.get_instance()
+        orchestrator = ResearchOrchestrator(client_registry=registry)
+
+        research_result = await orchestrator.research_company(
+            company_name=request.company_name,
+            domain=request.domain,
+            location=request.location or "",
+            user_tier=request.user_tier,
+            lead_value=0.0,
+            provider_keys=provider_keys_payload,
+            user_id=request.user_id,
+        )
+
+        deep_research_used = research_result.tier == ResearchTier.PERPLEXITY
+        additional_credits_used = (
+            CREDIT_COSTS["DEEP_RESEARCH"] if deep_research_used else 0
+        )
+
+        raw_data = {
+            "company_overview": research_result.company_overview,
+            "services_products": research_result.services_products,
+            "industry_insights": research_result.industry_insights,
+            "competitors": research_result.competitors,
+            "annual_revenue": research_result.annual_revenue,
+            "employee_count": research_result.employee_count,
+            "leadership_names": research_result.leadership_names,
+            "recent_news": research_result.recent_news,
+            "funding_investments": research_result.funding_investments,
+            "research_metadata": research_result.raw_data,
+        }
+
+        research_payload = {
+            "company_overview": research_result.company_overview or "",
+            "raw_data": raw_data,
+            "confidence_score": research_result.confidence_score,
+            "research_tier": research_result.tier.value,
+            "data_points": research_result.data_points,
+            "sources_analyzed": research_result.sources_analyzed,
+            "escalation_reason": research_result.escalation_reason,
+            "deep_research_used": deep_research_used,
+            "deep_research_reason": research_result.escalation_reason,
+        }
+
+        duration = (datetime.utcnow() - start_time).total_seconds()
+        capture_event(
+            "api_research_company_completed",
+            {
+                "company_name": request.company_name,
+                "domain": request.domain,
+                "user_id": request.user_id,
+                "duration_ms": duration * 1000,
+                "deep_research_used": deep_research_used,
+                "research_tier": research_result.tier.value,
+            },
+        )
+
+        return CompanyResearchResponse(
+            research_payload=research_payload,
+            deep_research_used=deep_research_used,
+            deep_research_reason=research_result.escalation_reason,
+            additional_credits_used=additional_credits_used,
+            processing_time=duration,
+        )
+    except Exception as e:
+        logger.error(f"Company research failed for {request.company_name}: {e}")
+        capture_error(e, {
+            "company_name": request.company_name,
+            "domain": request.domain,
+            "user_id": request.user_id,
+        })
+        raise HTTPException(
+            status_code=500,
+            detail=f"Company research failed: {str(e)}",
+        )
+
 @app.post("/batch-generate-emails", response_model=BatchEmailGenerationResponse)
 async def batch_generate_emails(
     request: BatchEmailGenerationRequest,
@@ -946,7 +1061,8 @@ async def process_batch_with_progress(
                     return
 
             lead_start = time.time()
-            lead_id = lead.id or f"lead_{lead_index}"
+            lead_id = getattr(lead, "lead_id", None) or lead.id or f"lead_{lead_index}"
+            contact_id = getattr(lead, "contact_id", None)
 
             try:
                 logger.info(
@@ -994,6 +1110,7 @@ async def process_batch_with_progress(
                             # True success - email generated and approved
                             results.append(BatchLeadResult(
                                 leadId=lead_id,
+                                contactId=contact_id,
                                 status="completed",
                                 result=final_result,
                                 processingTime=lead_time
@@ -1015,6 +1132,7 @@ async def process_batch_with_progress(
                             # Add failed lead to results so Convex can update analysisStatus to "failed"
                             results.append(BatchLeadResult(
                                 leadId=lead_id,
+                                contactId=contact_id,
                                 status="failed",
                                 result=None,
                                 error=error_msg,
@@ -1032,6 +1150,7 @@ async def process_batch_with_progress(
                         # Add failed lead to results so Convex can update analysisStatus to "failed"
                         results.append(BatchLeadResult(
                             leadId=lead_id,
+                            contactId=contact_id,
                             status="failed",
                             result=None,
                             error=error_msg,
@@ -1063,6 +1182,7 @@ async def process_batch_with_progress(
                     # This is required for search completion to trigger properly
                     results.append(BatchLeadResult(
                         leadId=lead_id,
+                        contactId=contact_id,
                         status="failed",
                         result=None,
                         error=error_msg,
@@ -1136,17 +1256,20 @@ async def process_batch_with_progress(
 
     # Send final completion webhook
     try:
-        # Convert results to dict format for webhook (camelCase for JavaScript backend)
-        results_dicts = [
-            {
+        # Convert results to dict format for webhook (camelCase for JavaScript backend).
+        # Omit contactId when absent — Convex v.optional(v.string()) rejects null.
+        results_dicts = []
+        for r in results:
+            entry: dict = {
                 "leadId": r.lead_id,
                 "status": r.status,
                 "result": r.result.model_dump(by_alias=True) if r.result else None,
                 "error": r.error,
-                "processingTime": r.processing_time
+                "processingTime": r.processing_time,
             }
-            for r in results
-        ]
+            if r.contact_id is not None:
+                entry["contactId"] = r.contact_id
+            results_dicts.append(entry)
 
         await webhook_client.send_batch_completion(
             batch_id=batch_id,

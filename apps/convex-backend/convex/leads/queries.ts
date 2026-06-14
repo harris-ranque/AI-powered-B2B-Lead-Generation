@@ -1,7 +1,7 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth, getCurrentUser } from "../auth";
-import { countExportableLeads } from "../lib/exportEligibility";
+import { countExportableLeads, isContactExportable } from "../lib/exportEligibility";
 
 // Get leads for a search (FULL documents - use sparingly, prefer getLeadsListView)
 export const getLeadsBySearch = query({
@@ -101,6 +101,115 @@ export const exportLeads = query({
   },
   handler: async (ctx, args) => {
     const pageSize = Math.min(args.limit || 5000, 5000);
+
+    if (args.searchId) {
+      const search = await ctx.db.get(args.searchId);
+      if (!search) {
+        throw new Error("Search not found");
+      }
+
+      const user = await getCurrentUser(ctx);
+      if (!user || search.userId !== user._id) {
+        throw new Error("Search not found or access denied");
+      }
+
+      const contactQuery = ctx.db
+        .query("leadContacts")
+        .withIndex("by_search_status", (q) =>
+          q.eq("searchId", args.searchId!).eq("status", "accepted"),
+        );
+
+      const allContacts = await contactQuery.collect();
+      const exportableContacts = allContacts.filter(isContactExportable);
+
+      const startIndex = args.cursor ? Number.parseInt(args.cursor, 10) : 0;
+      const pageContacts = exportableContacts.slice(
+        startIndex,
+        startIndex + pageSize,
+      );
+      const nextIndex = startIndex + pageContacts.length;
+      const isDone = nextIndex >= exportableContacts.length;
+
+      const tierLabels: Record<string, string> = {
+        basic: "Basic (Tavily)",
+        pro: "Pro (Sonar Pro)",
+        deep: "Deep (Deep Research)",
+        unknown: "Not Available",
+      };
+
+      const formattedLeads = [];
+      for (const contact of pageContacts) {
+        const lead = await ctx.db.get(contact.leadId);
+        if (!lead) continue;
+
+        const aiAnalysis = contact.aiAnalysis ?? lead.aiAnalysis;
+        const companyData = aiAnalysis?.companyData;
+        const researchTier = aiAnalysis?.researchTier || "unknown";
+        const leadAnalysis = aiAnalysis?.leadAnalysis;
+
+        formattedLeads.push({
+          id: contact._id,
+          leadId: lead._id,
+          contactId: contact._id,
+          name: lead.businessName,
+          contactName: contact.name,
+          title: contact.title || "",
+          address: lead.location.formattedAddress,
+          phone: lead.phone || "",
+          website: lead.website || "",
+          email: contact.email,
+          rating: lead.rating || 0,
+          reviewCount: lead.reviewCount || 0,
+          placeId: lead.placeId,
+          enrichmentStatus: lead.enrichmentStatus,
+          analysisStatus: contact.analysisStatus,
+          researchTier,
+          researchTierLabel: tierLabels[researchTier] || "Unknown",
+          annualRevenueAmount: companyData?.annual_revenue?.amount || "",
+          annualRevenueYear: companyData?.annual_revenue?.year || "",
+          annualRevenueSource: companyData?.annual_revenue?.source || "",
+          employeeCount: companyData?.employee_count?.count || "",
+          employeeCountAsOf: companyData?.employee_count?.as_of || "",
+          employeeCountSource: companyData?.employee_count?.source || "",
+          leadership1Name: companyData?.leadership_names?.[0]?.name || "",
+          leadership1Title: companyData?.leadership_names?.[0]?.title || "",
+          leadership2Name: companyData?.leadership_names?.[1]?.name || "",
+          leadership2Title: companyData?.leadership_names?.[1]?.title || "",
+          leadership3Name: companyData?.leadership_names?.[2]?.name || "",
+          leadership3Title: companyData?.leadership_names?.[2]?.title || "",
+          recentNews1: companyData?.recent_news?.[0]?.event || "",
+          recentNews1Date: companyData?.recent_news?.[0]?.date || "",
+          recentNews2: companyData?.recent_news?.[1]?.event || "",
+          recentNews2Date: companyData?.recent_news?.[1]?.date || "",
+          recentNews3: companyData?.recent_news?.[2]?.event || "",
+          recentNews3Date: companyData?.recent_news?.[2]?.date || "",
+          fundingTotalRaised: companyData?.funding_details?.total_raised || "",
+          fundingLatestRound: companyData?.funding_details?.latest_round || "",
+          fundingSource: companyData?.funding_details?.source || "",
+          fullResearchReport:
+            leadAnalysis?.research_metadata?.comprehensive_report ||
+            leadAnalysis?.comprehensive_report ||
+            "",
+          perplexityCitations: JSON.stringify(
+            leadAnalysis?.research_metadata?.citations || [],
+          ),
+          researchConfidenceScore:
+            leadAnalysis?.research_metadata?.confidence_score || "",
+          emailSubject: contact.emailContent?.subject || "",
+          emailBody: contact.emailContent?.body || "",
+          createdAt: new Date(
+            contact.createdAt || contact._creationTime,
+          ).toISOString(),
+          updatedAt: new Date(contact.updatedAt || contact._creationTime).toISOString(),
+        });
+      }
+
+      return {
+        leads: formattedLeads,
+        cursor: isDone ? null : String(nextIndex),
+        isDone,
+      };
+    }
 
     let queryBuilder;
     if (args.searchId) {
@@ -437,13 +546,46 @@ export const getLeadCountsBySearchIds = query({
       // Ownership check: silently skip searches that don't belong to this user
       const search = await ctx.db.get(searchId);
       if (!search || search.userId !== user._id) continue;
-      // Use pre-computed count from search document to avoid 16MB byte limit
-      // (loading all lead documents across 20 searches blows the per-execution cap).
-      // The actual CSV export still does a live count for accuracy.
-      counts[String(searchId)] =
-        search.results?.exportableCount ?? search.results?.enrichedCount ?? 0;
+      counts[String(searchId)] = await countExportableLeads(ctx, searchId);
     }
     return counts;
+  },
+});
+
+// Accepted contact counts for multi-contact pipeline UI (per search).
+export const getAcceptedContactCountsBySearch = query({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    const search = await ctx.db.get(args.searchId);
+    if (!search || search.userId !== user._id) {
+      throw new Error("Search not found or access denied");
+    }
+
+    const contacts = await ctx.db
+      .query("leadContacts")
+      .withIndex("by_search_status", (q) =>
+        q.eq("searchId", args.searchId).eq("status", "accepted"),
+      )
+      .collect();
+
+    const exportableContacts = contacts.filter(isContactExportable);
+    const byLead: Record<string, number> = {};
+    for (const contact of exportableContacts) {
+      const key = String(contact.leadId);
+      byLead[key] = (byLead[key] ?? 0) + 1;
+    }
+
+    return {
+      totalAccepted: contacts.length,
+      totalExportable: exportableContacts.length,
+      byLead,
+      multiContactEnabled: true,
+    };
   },
 });
 

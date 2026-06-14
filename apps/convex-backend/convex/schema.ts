@@ -111,6 +111,7 @@ export default defineSchema({
       industries: v.optional(v.array(v.string())),
       excludeTerms: v.optional(v.array(v.string())),
       roles: v.optional(v.array(v.string())),
+      expandRelatedRoles: v.optional(v.boolean()),
       minRating: v.optional(v.number()),
       maxResults: v.number(),
       // Legacy filters field for backwards compatibility with old search records
@@ -623,6 +624,140 @@ export default defineSchema({
     .index("by_created", ["createdAt"]) // Time-range queries for admin metrics
     // OCC-safe enrichment queue index: tenant → status → oldest search first → oldest lead first
     .index("by_enrichment_queue", ["enrichmentApiKeyHash", "enrichmentStatus", "enrichmentSearchQueuedAt", "enrichmentQueuedAt"]),
+
+  // Accepted contacts per company lead (multi-contact pipeline)
+  leadContacts: defineTable({
+    leadId: v.id("leads"),
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+
+    // Contact identity
+    name: v.string(),
+    title: v.optional(v.string()),
+    email: v.string(),
+    normalizedEmail: v.string(),
+    linkedin: v.optional(v.string()),
+    confidence: v.number(),
+
+    // Provider provenance
+    source: v.union(v.literal("findymail"), v.literal("csv_import"), v.literal("manual")),
+    providerContactId: v.optional(v.string()),
+    rawProviderData: v.optional(v.any()),
+
+    // Request / acceptance context
+    requestedRoles: v.array(v.string()),
+    matchedRole: v.optional(v.string()),
+    titleMatchScore: v.optional(v.number()),
+    titleMatchReason: v.optional(v.string()),
+    emailVerified: v.boolean(),
+    domainMatchVerified: v.boolean(),
+
+    // Lifecycle
+    status: v.union(
+      v.literal("candidate"),
+      v.literal("accepted"),
+      v.literal("rejected"),
+    ),
+    rejectionReason: v.optional(
+      v.union(
+        v.literal("title_mismatch"),
+        v.literal("domain_mismatch"),
+        v.literal("email_unverified"),
+        v.literal("duplicate_email"),
+        v.literal("missing_email"),
+      ),
+    ),
+
+    // Shared company research reference
+    companyResearchId: v.optional(v.id("companyResearch")),
+
+    // AI analysis (per contact)
+    analysisStatus: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("scheduled"),
+        v.literal("processing"),
+        v.literal("completed"),
+        v.literal("failed"),
+        v.literal("timeout"),
+        v.literal("skipped"),
+      ),
+    ),
+    analysisScheduledAt: v.optional(v.number()),
+    analysisStartedAt: v.optional(v.number()),
+    analysisCompletedAt: v.optional(v.number()),
+    analysisRequestId: v.optional(v.string()),
+    analysisAttempts: v.optional(v.number()),
+    analysisError: v.optional(v.string()),
+
+    aiAnalysis: v.optional(
+      v.object({
+        relevanceScore: v.number(),
+        painPoints: v.array(v.string()),
+        valueMatches: v.array(v.string()),
+        recommendations: v.optional(v.array(v.string())),
+        leadAnalysis: v.optional(v.any()),
+        processingTime: v.optional(v.number()),
+        confidence: v.optional(v.number()),
+        researchTier: v.optional(v.string()),
+        companyData: v.optional(v.any()),
+        fitAssessment: v.optional(v.string()),
+        recommendedApproach: v.optional(v.string()),
+      }),
+    ),
+
+    emailContent: v.optional(
+      v.object({
+        subject: v.string(),
+        body: v.string(),
+        personalizationNotes: v.array(v.string()),
+        estimatedEffectiveness: v.number(),
+      }),
+    ),
+
+    followUpEmails: v.optional(
+      v.array(
+        v.object({
+          subject: v.string(),
+          body: v.string(),
+          delay_days: v.optional(v.number()),
+        }),
+      ),
+    ),
+
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_lead", ["leadId"])
+    .index("by_lead_status", ["leadId", "status"])
+    .index("by_search_status", ["searchId", "status"])
+    .index("by_search_email", ["searchId", "normalizedEmail"])
+    .index("by_search_analysis", ["searchId", "analysisStatus"])
+    .index("by_user", ["userId"]),
+
+  // Company-level research cache (reused across contacts for same domain)
+  companyResearch: defineTable({
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+    leadId: v.optional(v.id("leads")),
+    domain: v.string(),
+
+    researchPayload: v.any(),
+    confidence: v.optional(v.number()),
+    citations: v.optional(v.array(v.string())),
+    provider: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    expiresAt: v.optional(v.number()),
+  })
+    .index("by_search_domain", ["searchId", "domain"])
+    .index("by_lead", ["leadId"]),
 
   // Email Sequences - AI-generated personalized emails
   emailSequences: defineTable({

@@ -99,6 +99,15 @@ export function PipelineOrchestrator({
   const activeSearchId = (search?._id ?? state.searchId) ?? null;
   const totalFound = search?.results?.totalFound ?? 0;
   const enrichedCount = search?.results?.enrichedCount ?? 0;
+  const contactCounts = useQuery(
+    api.leads.queries.getAcceptedContactCountsBySearch,
+    featureFlags.multiContactPipeline && activeSearchId
+      ? { searchId: activeSearchId as Id<"searches"> }
+      : "skip",
+  );
+  const acceptedContactCount = featureFlags.multiContactPipeline
+    ? (contactCounts?.totalAccepted ?? enrichedCount)
+    : enrichedCount;
 
   // Live exportable count — used in completion dialog so old searches without
   // results.exportableCount stored still show the accurate verified-email count.
@@ -109,7 +118,9 @@ export function PipelineOrchestrator({
   );
   const exportableCount =
     liveExportableCounts?.[String(activeSearchId)] ??
-    search?.results?.exportableCount ??
+    (featureFlags.multiContactPipeline
+      ? (contactCounts?.totalExportable ?? search?.results?.exportableCount)
+      : search?.results?.exportableCount) ??
     enrichedCount;
 
   const openLeadHistory = useCallback(() => {
@@ -418,6 +429,7 @@ export function PipelineOrchestrator({
       leadsFromPipeline?.length ?? 0,
     );
     const enrichedMetric = Math.max(
+      featureFlags.multiContactPipeline ? acceptedContactCount : 0,
       enrichedFromSearch,
       enrichedFromLeads,
       state.enrichedLeads.length,
@@ -455,6 +467,7 @@ export function PipelineOrchestrator({
     search?.results?.totalFound,
     state.enrichedLeads.length,
     state.generatedEmails.length,
+    acceptedContactCount,
   ]);
 
   const shouldHideInteractiveSections =
@@ -510,32 +523,42 @@ export function PipelineOrchestrator({
               </div>
               <DialogTitle className="text-2xl">Search Complete!</DialogTitle>
             </div>
-            <DialogDescription className="text-base pt-2">
-              {totalFound > 0 ? (
-                <div className="space-y-2">
-                  <p className="font-medium text-foreground">
-                    Great news! We found and processed your leads.
-                  </p>
-                  <div className="grid grid-cols-3 gap-3 pt-3">
-                    <div className="flex flex-col items-center justify-center rounded-lg border border-primary/40 bg-primary/5 p-3 transition-all hover:border-primary/60 hover:bg-primary/10">
-                      <div className="text-2xl font-bold text-foreground">{totalFound}</div>
-                      <div className="text-xs font-medium text-muted-foreground">Found</div>
-                    </div>
-                    <div className="flex flex-col items-center justify-center rounded-lg border border-accent/40 bg-accent/5 p-3 transition-all hover:border-accent/60 hover:bg-accent/10">
-                      <div className="text-2xl font-bold text-foreground">{enrichedCount}</div>
-                      <div className="text-xs font-medium text-muted-foreground">Contacts Found</div>
-                    </div>
-                    <div className="flex flex-col items-center justify-center rounded-lg border border-ring/40 bg-ring/5 p-3 transition-all hover:border-ring/60 hover:bg-ring/10">
-                      <div className="text-2xl font-bold text-foreground">
-                        {exportableCount}
+            <DialogDescription asChild>
+              <div className="text-base pt-2 text-muted-foreground">
+                {totalFound > 0 ? (
+                  <div className="space-y-2">
+                    <p className="font-medium text-foreground">
+                      Great news! We found and processed your leads.
+                    </p>
+                    <div className="grid grid-cols-3 gap-3 pt-3">
+                      <div className="flex flex-col items-center justify-center rounded-lg border border-primary/40 bg-primary/5 p-3 transition-all hover:border-primary/60 hover:bg-primary/10">
+                        <div className="text-2xl font-bold text-foreground">{totalFound}</div>
+                        <div className="text-xs font-medium text-muted-foreground">Found</div>
                       </div>
-                      <div className="text-xs font-medium text-muted-foreground">Analyzed</div>
+                      <div className="flex flex-col items-center justify-center rounded-lg border border-accent/40 bg-accent/5 p-3 transition-all hover:border-accent/60 hover:bg-accent/10">
+                        <div className="text-2xl font-bold text-foreground">
+                          {featureFlags.multiContactPipeline
+                            ? acceptedContactCount
+                            : enrichedCount}
+                        </div>
+                        <div className="text-xs font-medium text-muted-foreground">
+                          {featureFlags.multiContactPipeline
+                            ? "Accepted Contacts"
+                            : "Contacts Found"}
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-center justify-center rounded-lg border border-ring/40 bg-ring/5 p-3 transition-all hover:border-ring/60 hover:bg-ring/10">
+                        <div className="text-2xl font-bold text-foreground">
+                          {exportableCount}
+                        </div>
+                        <div className="text-xs font-medium text-muted-foreground">Analyzed</div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <p>Your search has finished. Review the results in search history.</p>
-              )}
+                ) : (
+                  <p>Your search has finished. Review the results in search history.</p>
+                )}
+              </div>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex gap-2 sm:gap-2">

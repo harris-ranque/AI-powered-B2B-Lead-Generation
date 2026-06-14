@@ -883,27 +883,31 @@ http.route({
         if (lead.analysisStatus === "failed") analysisFailedCount++;
       }
 
-      // Filter out leads without email or with failed analysis.
-      leads = leads.filter((lead) =>
-        isLeadExportable({
-          email: lead.email,
-          analysisStatus: lead.analysisStatus,
-          contactInfo: lead.contactInfo,
-        }),
-      );
+      const multiContactExport = Boolean(searchId);
 
-      if (leads.length === 0) {
-        return new Response(
-          noExportableLeadsMessage({
-            total: totalBeforeFilter,
-            withoutEmail: withoutEmailCount,
-            analysisFailed: analysisFailedCount,
+      // Filter out leads without email or with failed analysis (legacy export path).
+      if (!multiContactExport) {
+        leads = leads.filter((lead) =>
+          isLeadExportable({
+            email: lead.email,
+            analysisStatus: lead.analysisStatus,
+            contactInfo: lead.contactInfo,
           }),
-          {
-            status: 404,
-            headers: baseHeaders,
-          },
         );
+
+        if (leads.length === 0) {
+          return new Response(
+            noExportableLeadsMessage({
+              total: totalBeforeFilter,
+              withoutEmail: withoutEmailCount,
+              analysisFailed: analysisFailedCount,
+            }),
+            {
+              status: 404,
+              headers: baseHeaders,
+            },
+          );
+        }
       }
 
       const userId = resolvedUserId as Id<"users">;
@@ -949,12 +953,14 @@ http.route({
 
       const csvHeaders = [
         "id",
+        "contact_id",
         "company_name",
         "website",
         "company_profile",
         "first_name",
         "full_name",
         "email",
+        "title",
         "phone",
         "category",
         "subject_line_1",
@@ -973,15 +979,23 @@ http.route({
         // Removed follow_up_3 - now limited to 2 follow-ups
       ];
 
-      const csvRows = leads.map((lead) => {
-        const leadKey = String(lead._id);
-        const emailDetails = emailDetailsByLead.get(leadKey);
+      const leadById = new Map(leads.map((lead) => [String(lead._id), lead]));
 
-        // Get follow-up emails from langgraphRequests outputData OR from lead.followUpEmails
+      const buildExportRow = (
+        lead: LeadDoc,
+        leadKey: string,
+        contactId: string,
+        contactDetails: { firstName: string; fullName: string; email: string },
+        contactTitle: string,
+        emailDetails: EmailExportDetails | undefined,
+        contactEmailContent?: { subject?: string; body?: string },
+        contactFollowUps?: Array<{ subject: string; body: string; delay_days?: number }>,
+        contactAiAnalysis?: Record<string, unknown>,
+      ) => {
         let followUps = emailDetails?.followUps ?? [];
-
-        // If no follow-ups from langgraphRequests, try lead.followUpEmails
-        if (followUps.length === 0 && (lead as any).followUpEmails) {
+        if (followUps.length === 0 && contactFollowUps?.length) {
+          followUps = parseFollowUps(contactFollowUps);
+        } else if (followUps.length === 0 && (lead as any).followUpEmails) {
           const leadFollowUps = (lead as any).followUpEmails;
           if (Array.isArray(leadFollowUps)) {
             followUps = parseFollowUps(leadFollowUps);
@@ -991,38 +1005,48 @@ http.route({
         const defaultFollowUp: FollowUpEmail = { subject: "", body: "" };
         const followUp1: FollowUpEmail = followUps[0] ?? defaultFollowUp;
         const followUp2: FollowUpEmail = followUps[1] ?? defaultFollowUp;
-        // Removed followUp3 - now limited to 2 follow-ups
 
-        const contactDetails = extractContactDetails(lead);
         const companyProfile = extractCompanyProfile(lead);
-        const primarySubject =
-          firstNonEmptyString(
-            emailDetails?.primarySubject,
-            lead.emailContent?.subject,
-          );
-        const primaryBody =
-          firstNonEmptyString(emailDetails?.primaryBody, lead.emailContent?.body);
+        const primarySubject = firstNonEmptyString(
+          emailDetails?.primarySubject,
+          contactEmailContent?.subject,
+          lead.emailContent?.subject,
+        );
+        const primaryBody = firstNonEmptyString(
+          emailDetails?.primaryBody,
+          contactEmailContent?.body,
+          lead.emailContent?.body,
+        );
 
-        // Extract raw Perplexity research data from aiAnalysis
-        const aiAnalysis = (lead as any).aiAnalysis;
-        const leadAnalysis = aiAnalysis?.leadAnalysis;
+        const aiAnalysis = (contactAiAnalysis ?? (lead as any).aiAnalysis) as
+          | Record<string, unknown>
+          | undefined;
+        const leadAnalysis = (aiAnalysis?.leadAnalysis ?? aiAnalysis) as
+          | Record<string, unknown>
+          | undefined;
+        const researchMetadata = leadAnalysis?.research_metadata as
+          | Record<string, unknown>
+          | undefined;
         const fullResearchReport =
-          leadAnalysis?.research_metadata?.comprehensive_report ||
-          leadAnalysis?.comprehensive_report || "";
+          researchMetadata?.comprehensive_report ||
+          leadAnalysis?.comprehensive_report ||
+          "";
         const perplexityCitations = JSON.stringify(
-          leadAnalysis?.research_metadata?.citations || []
+          researchMetadata?.citations || [],
         );
         const researchConfidenceScore =
-          leadAnalysis?.research_metadata?.confidence_score || "";
+          researchMetadata?.confidence_score || "";
 
         const rowValues: unknown[] = [
           leadKey,
+          contactId,
           lead.businessName ?? "",
           lead.website ?? "",
           companyProfile,
           contactDetails.firstName,
           contactDetails.fullName,
           contactDetails.email,
+          contactTitle,
           lead.phone ?? "",
           lead.category ?? "",
           primarySubject,
@@ -1032,17 +1056,92 @@ http.route({
           followUp1.body,
           followUp2.subject,
           followUp2.body,
-          // Raw Perplexity research data
           fullResearchReport,
           perplexityCitations,
           researchConfidenceScore,
-          // Lead tier classification
           (lead as any).leadTier ?? "",
-          // Removed followUp3 - now limited to 2 follow-ups
         ];
 
         return rowValues.map(escapeCsvValue).join(",");
-      });
+      };
+
+      let csvRows: string[];
+
+      if (searchId) {
+        const contacts = (await ctx.runQuery(
+          internal.leads.contactInternal.getAcceptedContactsForSearch,
+          { searchId: searchId as Id<"searches"> },
+        )) as Array<{
+          _id: Id<"leadContacts">;
+          leadId: Id<"leads">;
+          name: string;
+          title?: string;
+          email: string;
+          analysisStatus?: string;
+          emailContent?: {
+            subject: string;
+            body: string;
+          };
+          followUpEmails?: Array<{ subject: string; body: string }>;
+          aiAnalysis?: Record<string, unknown>;
+        }>;
+
+        const exportableContacts = contacts.filter(
+          (contact) =>
+            contact.email.trim().length > 0 &&
+            contact.analysisStatus !== "failed",
+        );
+
+        if (exportableContacts.length === 0) {
+          return new Response(
+            noExportableLeadsMessage({
+              total: contacts.length,
+              withoutEmail: contacts.filter((c) => !c.email.trim()).length,
+              analysisFailed: contacts.filter((c) => c.analysisStatus === "failed")
+                .length,
+            }),
+            { status: 404, headers: baseHeaders },
+          );
+        }
+
+        csvRows = exportableContacts.map((contact) => {
+          const lead = leadById.get(String(contact.leadId));
+          if (!lead) {
+            return "";
+          }
+          const leadKey = String(lead._id);
+          const emailDetails = emailDetailsByLead.get(leadKey);
+          const fullName = contact.name;
+          const firstName = fullName.split(/\s+/)[0] ?? "";
+          return buildExportRow(
+            lead,
+            leadKey,
+            String(contact._id),
+            { firstName, fullName, email: contact.email },
+            contact.title ?? "",
+            emailDetails,
+            contact.emailContent,
+            contact.followUpEmails,
+            contact.aiAnalysis,
+          );
+        }).filter((row) => row.length > 0);
+      } else {
+        csvRows = leads.map((lead) => {
+          const leadKey = String(lead._id);
+          const emailDetails = emailDetailsByLead.get(leadKey);
+          const contactDetails = extractContactDetails(lead);
+          return buildExportRow(
+            lead,
+            leadKey,
+            "",
+            contactDetails,
+            (
+              lead.contactInfo?.contacts?.[0] as { title?: string } | undefined
+            )?.title ?? "",
+            emailDetails,
+          );
+        });
+      }
 
       const csvContent = "\uFEFF" + [csvHeaders.join(","), ...csvRows].join("\r\n");
 

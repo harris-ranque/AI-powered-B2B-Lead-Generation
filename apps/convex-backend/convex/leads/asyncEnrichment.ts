@@ -53,6 +53,9 @@ import {
   shouldBlockPipeline,
   type ApiError,
 } from "../lib/apiErrors";
+import {
+  isMultiContactPipelineEnabled,
+} from "../lib/featureFlags";
 
 // Note: Workpool instance is created per-call in enrichLeads action
 // This is because we need ctx.runMutation which is only available in action context
@@ -67,7 +70,16 @@ function getApiKeyHash(apiKey: string | undefined): string {
   return createHash("sha256").update(keyToHash).digest("hex");
 }
 
-// Helper function to extract domain from URL
+// Helper to detect raw provider candidates before acceptance filtering
+function hasRawEnrichmentCandidates(
+  result: EnrichmentResult | null | undefined,
+): boolean {
+  return Boolean(
+    result &&
+      ((result.emails?.length ?? 0) > 0 || (result.contacts?.length ?? 0) > 0),
+  );
+}
+
 function extractDomain(url?: string): string {
   if (!url) return "";
   try {
@@ -188,23 +200,34 @@ async function tryProvider(
   }
 ): Promise<TryProviderResult> {
   const service = createEnrichmentService(options.userApiKey, provider);
+  const multiContact = isMultiContactPipelineEnabled();
+  const enrichOptions: EnrichmentOptions = {
+    roles: options.roles,
+    perRole: multiContact,
+    enableRoleExpansion: multiContact,
+    limit: multiContact ? 5 : undefined,
+  };
 
   for (let attempt = 1; attempt <= options.retries; attempt++) {
     try {
       console.log(`[${provider}] Attempt ${attempt}/${options.retries} for domain: ${domain}`);
 
-      const result = await service.enrichSingle(domain, { roles: options.roles });
+      const result = await service.enrichSingle(domain, enrichOptions);
 
-      // Check if we got valid emails
-      if (result && result.emails && result.emails.length > 0) {
-        console.log(`[${provider}] ✅ Success for ${domain}: found ${result.emails.length} emails`);
-        return { result: { ...result, provider } }; // Tag with provider that worked
+      const hasCandidates =
+        result &&
+        ((result.emails && result.emails.length > 0) ||
+          (result.contacts && result.contacts.length > 0));
+
+      if (hasCandidates) {
+        console.log(
+          `[${provider}] ✅ Success for ${domain}: found ${result!.emails?.length ?? 0} emails, ${result!.contacts?.length ?? 0} contacts`,
+        );
+        return { result: { ...result!, provider } };
       }
 
-      // API succeeded but no emails found - don't retry (wastes credits)
-      // The domain simply doesn't have discoverable contacts
       console.log(`[${provider}] ⚠️ No emails found for ${domain} - API succeeded but domain has no discoverable contacts`);
-      return { result: null }; // Exit immediately, no point retrying
+      return { result: null };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
       console.error(`[${provider}] ❌ Error on attempt ${attempt}/${options.retries} for ${domain}: ${errorMsg}`);
@@ -593,14 +616,52 @@ export const enrichSingleLeadWorkpool = internalAction({
       }
 
       // PRIMARY PROVIDER: FindyMail (3 retries with internal backoff)
-      const { result, pipelineBlockingError } = await tryProvider("findymail", domain, {
-        retries: 3,
-        roles: args.roles,
-        userApiKey: args.userApiKey,
-      });
+      let result: (EnrichmentResult & { provider: "findymail" }) | null = null;
+      let pipelineBlockingError: ApiError | undefined;
 
-      // PIPELINE-BLOCKING ERROR: Credits exhausted, subscription paused, or auth failed
-      // Save checkpoint and propagate error for user action
+      if (isMultiContactPipelineEnabled()) {
+        const cacheEntry = await ctx.runQuery(
+          internal.leads.contactInternal.getEnrichmentCacheEntry,
+          { searchId: args.searchId, domain },
+        );
+        const cacheValid =
+          cacheEntry &&
+          cacheEntry.expiresAt > Date.now() &&
+          cacheEntry.enrichmentData;
+
+        if (cacheValid) {
+          result = {
+            ...(cacheEntry.enrichmentData as EnrichmentResult),
+            provider: "findymail",
+          };
+        } else {
+          const providerAttempt = await tryProvider("findymail", domain, {
+            retries: 3,
+            roles: args.roles,
+            userApiKey: args.userApiKey,
+          });
+          result = providerAttempt.result;
+          pipelineBlockingError = providerAttempt.pipelineBlockingError;
+
+          if (result) {
+            await ctx.runMutation(internal.leads.contactInternal.cacheEnrichmentData, {
+              searchId: args.searchId,
+              domain,
+              enrichmentData: result,
+            });
+          }
+        }
+      } else {
+        const providerAttempt = await tryProvider("findymail", domain, {
+          retries: 3,
+          roles: args.roles,
+          userApiKey: args.userApiKey,
+        });
+        result = providerAttempt.result;
+        pipelineBlockingError = providerAttempt.pipelineBlockingError;
+      }
+
+      // PIPELINE-BLOCKING ERROR handling uses pipelineBlockingError from above
       if (pipelineBlockingError) {
         logWithCorrelation(
           "error",
@@ -684,70 +745,97 @@ export const enrichSingleLeadWorkpool = internalAction({
         };
       }
 
-      // RESULT HANDLING
-      if (result && result.emails.length > 0) {
-        // SUCCESS
-        await ctx.runMutation(
-          internal.leads.internal.updateLeadEnrichment,
+      // RESULT HANDLING — success requires accepted contacts, not raw provider emails
+      const hasRawCandidates = hasRawEnrichmentCandidates(result);
+
+      if (hasRawCandidates && isMultiContactPipelineEnabled()) {
+        const processResult = await ctx.runMutation(
+          internal.leads.contactInternal.processMultiContactEnrichment,
           {
             leadId: args.leadId,
-            enrichmentData: result,
-            status: "completed",
-            enrichmentProvider: result.provider,
+            searchId: args.searchId,
+            userId: args.userId,
+            requestedRoles: args.roles ?? [],
+            companyWebsite: lead.website,
+            enrichmentResult: result,
+            enableRoleExpansion: true,
           },
         );
 
-        // Check for email duplicates using paginated queries (handles >5000 leads)
-        await checkEmailDuplicateWithPagination(
-          ctx,
-          args.leadId,
-          args.userId,
-          args.searchId,
-        );
+        if (processResult.acceptedCount > 0) {
+          await checkEmailDuplicateWithPagination(
+            ctx,
+            args.leadId,
+            args.userId,
+            args.searchId,
+          );
 
-        const perfData = endPerformanceTracking(performanceTracker);
+          const perfData = endPerformanceTracking(performanceTracker);
+          logWithCorrelation(
+            "info",
+            correlation,
+            "✅ [Workpool] Multi-contact enrichment successful",
+            {
+              leadId: args.leadId,
+              acceptedCount: processResult.acceptedCount,
+              candidateCount: processResult.candidateCount,
+            },
+          );
 
-        logWithCorrelation(
-          "info",
-          correlation,
-          "✅ [Workpool] Lead Enrichment Successful",
-          {
+          trackEnrichmentCompleted({
+            searchId: args.searchId,
             leadId: args.leadId,
-            businessName: lead.businessName,
-            provider: result.provider,
-            emailsFound: result.emails.length,
+            provider: "findymail",
             durationMs: perfData?.duration || 0,
-          },
-        );
+            rolesFound: processResult.acceptedCount,
+            emailFound: true,
+            retryAttempt: 0,
+            apiKeyHash: args.userApiKey ? apiKeyHash : undefined,
+          });
 
-        trackEnrichmentCompleted({
-          searchId: args.searchId,
+          await ctx.runMutation(
+            internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+            { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+          );
+
+          if (args._fromQueue) {
+            await ctx.runMutation(
+              internal.leads.workpool.reportQueuedLeadCompletion,
+              { searchId: args.searchId, leadId: args.leadId, success: true },
+            );
+          }
+
+          return {
+            success: true,
+            provider: "findymail",
+            emailsFound: processResult.acceptedCount,
+          };
+        }
+
+        await ctx.runMutation(internal.leads.internal.updateEnrichmentStatus, {
           leadId: args.leadId,
-          provider: result.provider,
-          durationMs: perfData?.duration || 0,
-          rolesFound: result.contacts?.length || 0,
-          emailFound: true,
-          retryAttempt: 0,
-          apiKeyHash: args.userApiKey ? apiKeyHash : undefined,
+          status: "no_contacts_found",
+          error:
+            "Contacts found but none passed role/domain/verification acceptance",
         });
 
-        // Release slot
         await ctx.runMutation(
           internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
           { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
         );
 
-        // If this lead came from the queue, report completion to batch tracker
         if (args._fromQueue) {
           await ctx.runMutation(
             internal.leads.workpool.reportQueuedLeadCompletion,
-            { searchId: args.searchId, leadId: args.leadId, success: true },
+            { searchId: args.searchId, leadId: args.leadId, success: false },
           );
         }
 
-        return { success: true, provider: result.provider, emailsFound: result.emails.length };
-      } else {
-        // NO EMAILS FOUND - Preserve lead with "no_contacts_found" status
+        return { success: false, provider: "findymail", reason: "no_accepted_contacts" };
+      }
+
+      {
+        // No accepted contacts (API returned nothing or candidates failed acceptance)
         // This distinguishes between "API succeeded but no results" vs "API error"
         await ctx.runMutation(
           internal.leads.internal.updateEnrichmentStatus,
@@ -798,11 +886,11 @@ export const enrichSingleLeadWorkpool = internalAction({
         if (args._fromQueue) {
           await ctx.runMutation(
             internal.leads.workpool.reportQueuedLeadCompletion,
-            { searchId: args.searchId, leadId: args.leadId, success: true },
+            { searchId: args.searchId, leadId: args.leadId, success: false },
           );
         }
 
-        return { success: true, provider: "findymail", reason: "no_contacts_found", emailsFound: 0 };
+        return { success: false, provider: "findymail", reason: "no_contacts_found", emailsFound: 0 };
       }
     } catch (error) {
       const perfData = endPerformanceTracking(performanceTracker);
@@ -1019,7 +1107,7 @@ export const resumeEnrichmentFromCheckpoint = internalAction({
  *
  * Flow:
  * 1. Try FindyMail (3 retries with exponential backoff)
- * 2. If no emails found, mark as completed_fallback with no emails
+ * 2. Success only when at least one contact passes acceptance; otherwise no_contacts_found
  *
  * Each lead has its own 10-minute action timeout
  */
@@ -1496,172 +1584,176 @@ export const enrichSingleLead = internalAction({
         };
       }
 
-      // FINAL RESULT: Update lead based on enrichment outcome
-      if (result && result.emails.length > 0) {
-        // SUCCESS: Update lead with enrichment data
-        await ctx.runMutation(
-          internal.leads.internal.updateLeadEnrichment,
+      // FINAL RESULT — success requires accepted contacts, not raw provider emails
+      const hasRawCandidates = hasRawEnrichmentCandidates(result);
+      let acceptedCount = 0;
+
+      if (hasRawCandidates && isMultiContactPipelineEnabled()) {
+        const processResult = await ctx.runMutation(
+          internal.leads.contactInternal.processMultiContactEnrichment,
           {
             leadId: args.leadId,
-            enrichmentData: result,
-            status: "completed",
-            enrichmentProvider: result.provider,
-          },
-        );
-
-        // Check for email duplicates using paginated queries (handles >5000 leads)
-        await checkEmailDuplicateWithPagination(
-          ctx,
-          args.leadId,
-          args.userId,
-          args.searchId,
-        );
-
-        const perfData = endPerformanceTracking(performanceTracker);
-
-        logWithCorrelation(
-          "info",
-          correlation,
-          "✅ Lead Enrichment Successful",
-          {
-            leadId: args.leadId,
-            businessName: lead.businessName,
-            provider: result.provider,
-            emailsFound: result.emails.length,
-            contactsFound: result.contacts?.length || 0,
-            durationMs: perfData?.duration || 0,
-          },
-        );
-
-        // Track enrichment completion for analytics
-        trackEnrichmentCompleted({
-          searchId: args.searchId,
-          leadId: args.leadId,
-          provider: result.provider,
-          durationMs: perfData?.duration || 0,
-          rolesFound: result.contacts?.length || 0,
-          emailFound: result.emails.length > 0,
-          retryAttempt: 0,
-          apiKeyHash: args.userApiKey ? apiKeyHash : undefined,
-        });
-
-        // Update overall search progress
-        const allLeads: any = await ctx.runQuery(
-          internal.leads.internal.getSearchLeadsInternal,
-          { searchId: args.searchId },
-        );
-
-        const enrichedLeads = allLeads.filter(
-          (l: any) =>
-            l.enrichmentStatus === "completed" ||
-            l.enrichmentStatus === "completed_fallback",
-        );
-
-        const progressPercent = (enrichedLeads.length / allLeads.length) * 100;
-
-        // Broadcast real-time progress update
-        const pendingLeads = allLeads.filter((l: any) => l.enrichmentStatus === "pending");
-        const inProgressLeads = allLeads.filter((l: any) => l.enrichmentStatus === "in_progress");
-        const failedLeads = allLeads.filter((l: any) => l.enrichmentStatus === "failed");
-
-        await ctx.runMutation(
-          internal.realtime.broadcaster.broadcastPipelineUpdate,
-          {
-            userId: args.userId,
             searchId: args.searchId,
-            stage: "enrichment",
-            progress: progressPercent,
-            message: `Enriched ${enrichedLeads.length} of ${allLeads.length} leads (${Math.round(progressPercent)}% complete)`,
-            data: {
-              progress: {
-                discovered: allLeads.length,
-                enriched: enrichedLeads.length,
-                analyzed: 0,
-                total: allLeads.length,
-              },
-              enrichmentBreakdown: {
-                pending: pendingLeads.length,
-                inProgress: inProgressLeads.length,
-                completed: enrichedLeads.filter((l: any) => l.enrichmentStatus === "completed").length,
-                completedFallback: enrichedLeads.filter((l: any) => l.enrichmentStatus === "completed_fallback").length,
-                failed: failedLeads.length,
-                percentComplete: Math.round(progressPercent),
-              },
-              lastEnrichedLead: {
-                businessName: lead.businessName,
-                provider: result.provider,
-                emailCount: result.emails.length,
-                contactCount: result.contacts?.length || 0,
-              },
-            },
+            userId: args.userId,
+            requestedRoles: args.roles ?? [],
+            companyWebsite: lead.website,
+            enrichmentResult: result,
+            enableRoleExpansion: true,
           },
         );
+        acceptedCount = processResult.acceptedCount;
 
-        // CHECK: Atomically try to trigger AI analysis phase (prevents race conditions)
-        const shouldTriggerAnalysis = await ctx.runMutation(
-          internal.leads.internal.tryTriggerAnalysisPhase,
-          { searchId: args.searchId }
-        );
+        if (acceptedCount > 0) {
+          await checkEmailDuplicateWithPagination(
+            ctx,
+            args.leadId,
+            args.userId,
+            args.searchId,
+          );
 
-        if (shouldTriggerAnalysis) {
+          const perfData = endPerformanceTracking(performanceTracker);
+
           logWithCorrelation(
             "info",
             correlation,
-            "🎉 All Enrichment Complete - Triggering AI Analysis Phase (won race)",
+            "✅ Lead Enrichment Successful",
             {
-              searchId: args.searchId,
-              totalLeads: allLeads.length,
-              enrichedSuccessfully: enrichedLeads.length,
-              enrichedWithFallback: allLeads.filter((l: any) => l.enrichmentStatus === "completed_fallback").length,
-              failed: allLeads.filter((l: any) => l.enrichmentStatus === "failed").length,
-              nextPhase: "ai_analysis",
-              note: "This action won the race to trigger analysis",
+              leadId: args.leadId,
+              businessName: lead.businessName,
+              provider: "findymail",
+              acceptedCount,
+              candidateCount: processResult.candidateCount,
+              durationMs: perfData?.duration || 0,
             },
           );
 
-          // Trigger AI analysis phase (fire-and-forget)
-          await ctx.scheduler.runAfter(
-            0,
-            (internal as any)["leads/actions"].analyzeLeads,
-            { searchId: args.searchId }
-          );
-        } else {
-          logWithCorrelation(
-            "info",
-            correlation,
-            "ℹ️ Analysis already triggered by another action",
-            {
-              searchId: args.searchId,
-              note: "Another enrichment action won the race",
-            },
-          );
-        }
-
-        // Release API key slot
-        await ctx.runMutation(
-          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
-          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
-        );
-
-        logWithCorrelation(
-          "info",
-          correlation,
-          "🔓 Released API key slot (success)",
-          {
+          trackEnrichmentCompleted({
+            searchId: args.searchId,
             leadId: args.leadId,
-            emailsFound: result.emails.length,
-            slotIndex: acquiredSlotIndex,
-          },
-        );
+            provider: "findymail",
+            durationMs: perfData?.duration || 0,
+            rolesFound: acceptedCount,
+            emailFound: true,
+            retryAttempt: 0,
+            apiKeyHash: args.userApiKey ? apiKeyHash : undefined,
+          });
 
-        return {
-          success: true,
-          provider: result.provider,
-          emailsFound: result.emails.length,
-        };
-      } else {
-        // NO EMAILS FOUND - Preserve lead with "no_contacts_found" status
-        // This distinguishes between "API succeeded but no results" vs "API error"
+          const allLeads: any = await ctx.runQuery(
+            internal.leads.internal.getSearchLeadsInternal,
+            { searchId: args.searchId },
+          );
+
+          const enrichedLeads = allLeads.filter(
+            (l: any) =>
+              l.enrichmentStatus === "completed" ||
+              l.enrichmentStatus === "completed_fallback",
+          );
+
+          const progressPercent = (enrichedLeads.length / allLeads.length) * 100;
+          const pendingLeads = allLeads.filter((l: any) => l.enrichmentStatus === "pending");
+          const inProgressLeads = allLeads.filter((l: any) => l.enrichmentStatus === "in_progress");
+          const failedLeads = allLeads.filter((l: any) => l.enrichmentStatus === "failed");
+
+          await ctx.runMutation(
+            internal.realtime.broadcaster.broadcastPipelineUpdate,
+            {
+              userId: args.userId,
+              searchId: args.searchId,
+              stage: "enrichment",
+              progress: progressPercent,
+              message: `Enriched ${enrichedLeads.length} of ${allLeads.length} leads (${Math.round(progressPercent)}% complete)`,
+              data: {
+                progress: {
+                  discovered: allLeads.length,
+                  enriched: enrichedLeads.length,
+                  analyzed: 0,
+                  total: allLeads.length,
+                },
+                enrichmentBreakdown: {
+                  pending: pendingLeads.length,
+                  inProgress: inProgressLeads.length,
+                  completed: enrichedLeads.filter((l: any) => l.enrichmentStatus === "completed").length,
+                  completedFallback: enrichedLeads.filter((l: any) => l.enrichmentStatus === "completed_fallback").length,
+                  failed: failedLeads.length,
+                  percentComplete: Math.round(progressPercent),
+                },
+                lastEnrichedLead: {
+                  businessName: lead.businessName,
+                  provider: "findymail",
+                  emailCount: acceptedCount,
+                  contactCount: acceptedCount,
+                },
+              },
+            },
+          );
+
+          const shouldTriggerAnalysis = await ctx.runMutation(
+            internal.leads.internal.tryTriggerAnalysisPhase,
+            { searchId: args.searchId },
+          );
+
+          if (shouldTriggerAnalysis) {
+            logWithCorrelation(
+              "info",
+              correlation,
+              "🎉 All Enrichment Complete - Triggering AI Analysis Phase (won race)",
+              {
+                searchId: args.searchId,
+                totalLeads: allLeads.length,
+                enrichedSuccessfully: enrichedLeads.length,
+                enrichedWithFallback: allLeads.filter((l: any) => l.enrichmentStatus === "completed_fallback").length,
+                failed: allLeads.filter((l: any) => l.enrichmentStatus === "failed").length,
+                nextPhase: "ai_analysis",
+                note: "This action won the race to trigger analysis",
+              },
+            );
+
+            await ctx.scheduler.runAfter(
+              0,
+              (internal as any)["leads/actions"].analyzeLeads,
+              { searchId: args.searchId },
+            );
+          } else {
+            logWithCorrelation(
+              "info",
+              correlation,
+              "ℹ️ Analysis already triggered by another action",
+              {
+                searchId: args.searchId,
+                note: "Another enrichment action won the race",
+              },
+            );
+          }
+
+          await ctx.runMutation(
+            internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+            { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+          );
+
+          logWithCorrelation(
+            "info",
+            correlation,
+            "🔓 Released API key slot (success)",
+            {
+              leadId: args.leadId,
+              acceptedCount,
+              slotIndex: acquiredSlotIndex,
+            },
+          );
+
+          return {
+            success: true,
+            provider: "findymail",
+            emailsFound: acceptedCount,
+          };
+        }
+      }
+
+      const noContactsReason = hasRawCandidates
+        ? "no_accepted_contacts"
+        : "no_contacts_found";
+
+      if (!hasRawCandidates) {
         await ctx.runMutation(
           internal.leads.internal.updateEnrichmentStatus,
           {
@@ -1671,135 +1763,144 @@ export const enrichSingleLead = internalAction({
           },
         );
 
-        // Update enrichment provider to track that we attempted FindyMail
         await ctx.runMutation(
           internal.leads.internal.updateEnrichmentProvider,
           { leadId: args.leadId, provider: "findymail" },
         );
+      }
 
-        const perfData = endPerformanceTracking(performanceTracker);
+      const perfData = endPerformanceTracking(performanceTracker);
 
+      logWithCorrelation(
+        "info",
+        correlation,
+        hasRawCandidates
+          ? "📭 Lead Preserved - No Accepted Contacts"
+          : "📭 Lead Preserved - No Contacts Found",
+        {
+          leadId: args.leadId,
+          businessName: lead.businessName,
+          domain,
+          reason: noContactsReason,
+          durationMs: perfData?.duration || 0,
+          note: "Lead preserved with 'no_contacts_found' status for user visibility",
+        },
+      );
+
+      trackEnrichmentFailed({
+        searchId: args.searchId,
+        leadId: args.leadId,
+        provider: "findymail",
+        durationMs: perfData?.duration || 0,
+        errorType: hasRawCandidates ? "no_accepted_contacts" : "no_emails_found",
+        retryAttempt: 0,
+      });
+
+      const allLeadsForNoContacts: any = await ctx.runQuery(
+        internal.leads.internal.getSearchLeadsInternal,
+        { searchId: args.searchId },
+      );
+
+      const processedLeadsForNoContacts = allLeadsForNoContacts.filter(
+        (l: any) =>
+          l.enrichmentStatus === "completed" ||
+          l.enrichmentStatus === "completed_fallback" ||
+          l.enrichmentStatus === "no_contacts_found",
+      );
+
+      const progressPercentNoContacts =
+        (processedLeadsForNoContacts.length / allLeadsForNoContacts.length) * 100;
+
+      await ctx.runMutation(
+        internal.realtime.broadcaster.broadcastPipelineUpdate,
+        {
+          userId: args.userId,
+          searchId: args.searchId,
+          stage: "enrichment",
+          progress: progressPercentNoContacts,
+          message: `Processed ${processedLeadsForNoContacts.length} of ${allLeadsForNoContacts.length} leads (${Math.round(progressPercentNoContacts)}% complete)`,
+          data: {
+            progress: {
+              discovered: allLeadsForNoContacts.length,
+              enriched: processedLeadsForNoContacts.filter(
+                (l: any) =>
+                  l.enrichmentStatus === "completed" ||
+                  l.enrichmentStatus === "completed_fallback",
+              ).length,
+              analyzed: 0,
+              total: allLeadsForNoContacts.length,
+            },
+            enrichmentBreakdown: {
+              pending: allLeadsForNoContacts.filter((l: any) => l.enrichmentStatus === "pending").length,
+              inProgress: allLeadsForNoContacts.filter((l: any) => l.enrichmentStatus === "in_progress").length,
+              completed: allLeadsForNoContacts.filter((l: any) => l.enrichmentStatus === "completed").length,
+              completedFallback: allLeadsForNoContacts.filter((l: any) => l.enrichmentStatus === "completed_fallback").length,
+              noContactsFound: allLeadsForNoContacts.filter((l: any) => l.enrichmentStatus === "no_contacts_found").length,
+              failed: allLeadsForNoContacts.filter((l: any) => l.enrichmentStatus === "failed").length,
+              percentComplete: Math.round(progressPercentNoContacts),
+            },
+            lastProcessedLead: {
+              businessName: lead.businessName,
+              status: "no_contacts_found",
+              reason: noContactsReason,
+            },
+          },
+        },
+      );
+
+      const shouldTriggerAnalysis = await ctx.runMutation(
+        internal.leads.internal.tryTriggerAnalysisPhase,
+        { searchId: args.searchId },
+      );
+
+      if (shouldTriggerAnalysis) {
         logWithCorrelation(
           "info",
           correlation,
-          "📭 Lead Preserved - No Contacts Found",
+          "🎉 All Enrichment Complete - Triggering AI Analysis Phase (won race)",
           {
-            leadId: args.leadId,
-            businessName: lead.businessName,
-            domain,
-            triedProviders: ["findymail"],
-            durationMs: perfData?.duration || 0,
-            note: "Lead preserved with 'no_contacts_found' status for user visibility",
+            searchId: args.searchId,
+            nextPhase: "ai_analysis",
+            triggeredBy: noContactsReason,
+            note: "This action won the race to trigger analysis",
           },
         );
 
-        // Track enrichment completion (not failure - API succeeded)
-        trackEnrichmentFailed({
-          searchId: args.searchId,
-          leadId: args.leadId,
-          provider: "findymail",
-          durationMs: perfData?.duration || 0,
-          errorType: "no_emails_found",
-          retryAttempt: 0,
-        });
-
-        // Update overall search progress
-        const allLeadsForNoContacts: any = await ctx.runQuery(
-          internal.leads.internal.getSearchLeadsInternal,
+        await ctx.scheduler.runAfter(
+          0,
+          (internal as any)["leads/actions"].analyzeLeads,
           { searchId: args.searchId },
         );
-
-        const processedLeadsForNoContacts = allLeadsForNoContacts.filter(
-          (l: any) =>
-            l.enrichmentStatus === "completed" ||
-            l.enrichmentStatus === "completed_fallback" ||
-            l.enrichmentStatus === "no_contacts_found",
-        );
-
-        const progressPercentNoContacts = (processedLeadsForNoContacts.length / allLeadsForNoContacts.length) * 100;
-
-        // Broadcast real-time progress update
-        await ctx.runMutation(
-          internal.realtime.broadcaster.broadcastPipelineUpdate,
-          {
-            userId: args.userId,
-            searchId: args.searchId,
-            stage: "enrichment",
-            progress: progressPercentNoContacts,
-            message: `Processed ${processedLeadsForNoContacts.length} of ${allLeadsForNoContacts.length} leads (${Math.round(progressPercentNoContacts)}% complete)`,
-            data: {
-              progress: {
-                discovered: allLeadsForNoContacts.length,
-                enriched: processedLeadsForNoContacts.length,
-                analyzed: 0,
-                total: allLeadsForNoContacts.length,
-              },
-              lastProcessedLead: {
-                businessName: lead.businessName,
-                status: "no_contacts_found",
-                domain,
-              },
-            },
-          },
-        );
-
-        // CHECK: Atomically try to trigger AI analysis phase (prevents race conditions)
-        const shouldTriggerAnalysis = await ctx.runMutation(
-          internal.leads.internal.tryTriggerAnalysisPhase,
-          { searchId: args.searchId }
-        );
-
-        if (shouldTriggerAnalysis) {
-          logWithCorrelation(
-            "info",
-            correlation,
-            "🎉 All Enrichment Complete - Triggering AI Analysis Phase (won race)",
-            {
-              searchId: args.searchId,
-              nextPhase: "ai_analysis",
-              triggeredBy: "no_contacts_found_completion",
-              note: "This action won the race to trigger analysis",
-            },
-          );
-
-          // Trigger AI analysis phase (fire-and-forget)
-          await ctx.scheduler.runAfter(
-            0,
-            (internal as any)["leads/actions"].analyzeLeads,
-            { searchId: args.searchId }
-          );
-        } else {
-          logWithCorrelation(
-            "info",
-            correlation,
-            "ℹ️ Analysis already triggered by another action",
-            {
-              searchId: args.searchId,
-              note: "Another enrichment action won the race",
-            },
-          );
-        }
-
-        // Release API key slot
-        await ctx.runMutation(
-          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
-          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
-        );
-
+      } else {
         logWithCorrelation(
           "info",
           correlation,
-          "🔓 Released API key slot (no contacts found)",
-          { leadId: args.leadId, slotIndex: acquiredSlotIndex },
+          "ℹ️ Analysis already triggered by another action",
+          {
+            searchId: args.searchId,
+            note: "Another enrichment action won the race",
+          },
         );
-
-        return {
-          success: true,
-          provider: "findymail",
-          reason: "no_contacts_found",
-          emailsFound: 0,
-        };
       }
+
+      await ctx.runMutation(
+        internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+        { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+      );
+
+      logWithCorrelation(
+        "info",
+        correlation,
+        "🔓 Released API key slot (no contacts found)",
+        { leadId: args.leadId, slotIndex: acquiredSlotIndex },
+      );
+
+      return {
+        success: false,
+        provider: "findymail",
+        reason: noContactsReason,
+        emailsFound: 0,
+      };
     } catch (error) {
       const perfData = endPerformanceTracking(performanceTracker);
 
