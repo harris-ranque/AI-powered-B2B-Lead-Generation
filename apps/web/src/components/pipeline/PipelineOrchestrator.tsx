@@ -114,17 +114,19 @@ export function PipelineOrchestrator({
   // results.exportableCount stored still show the accurate verified-email count.
   const completionSearchIds = activeSearchId ? [activeSearchId as Id<"searches">] : [];
   const liveExportableCounts = useQuery(
-    api.leads.queries.getLeadCountsBySearchIds,
+    api.leads.queries.getExportSummariesBySearchIds,
     completionSearchIds.length > 0 ? { searchIds: completionSearchIds } : "skip",
   );
+  const exportSummary = liveExportableCounts?.[String(activeSearchId)];
   const exportableCount =
-    liveExportableCounts?.[String(activeSearchId)] ??
+    exportSummary?.exportableContacts ??
     (featureFlags.multiContactPipeline
       ? (contactCounts?.totalExportableIncludingPrior ??
           contactCounts?.totalExportable ??
           search?.results?.exportableCount)
       : search?.results?.exportableCount) ??
     enrichedCount;
+  const exportableBusinessCount = exportSummary?.exportableBusinesses;
 
   const duplicateSkipCount =
     (search?.duplicatesFilteredPlaceId ?? 0) +
@@ -588,7 +590,18 @@ export function PipelineOrchestrator({
                         <div className="text-2xl font-bold text-foreground">
                           {exportableCount}
                         </div>
-                        <div className="text-xs font-medium text-muted-foreground">Analyzed</div>
+                        <div className="text-xs font-medium text-muted-foreground">
+                          {featureFlags.multiContactPipeline
+                            ? "Exportable Contacts"
+                            : "Analyzed"}
+                        </div>
+                        {featureFlags.multiContactPipeline &&
+                          exportableBusinessCount != null &&
+                          exportableBusinessCount > 0 && (
+                            <div className="text-[10px] text-muted-foreground">
+                              {exportableBusinessCount} businesses
+                            </div>
+                          )}
                       </div>
                     </div>
                   </div>

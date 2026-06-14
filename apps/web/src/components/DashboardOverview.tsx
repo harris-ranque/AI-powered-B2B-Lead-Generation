@@ -25,6 +25,8 @@ import { formatDistanceToNow } from "date-fns";
 import type { Search as SearchRecord } from "@/lib/types";
 import { PlanStatusCard } from "@/components/PlanStatusCard";
 import { DashboardHelpWidget } from "@/components/DashboardHelpWidget";
+import { featureFlags } from "@/lib/featureFlags";
+import { formatExportableCountShort } from "@/lib/exportDisplay";
 import { cn } from "@/lib/utils";
 
 export type DashboardTabName =
@@ -116,6 +118,10 @@ export function DashboardOverview({
   const recentSearchIds = useMemo(() => recentSearches.map((s) => s.id), [recentSearches]);
   const liveLeadCounts = useQuery(
     api.leads.queries.getLeadCountsBySearchIds,
+    recentSearchIds.length > 0 ? { searchIds: recentSearchIds } : "skip",
+  );
+  const liveExportSummaries = useQuery(
+    api.leads.queries.getExportSummariesBySearchIds,
     recentSearchIds.length > 0 ? { searchIds: recentSearchIds } : "skip",
   );
 
@@ -302,7 +308,12 @@ export function DashboardOverview({
                   <div className="flex items-center justify-between text-sm text-muted-foreground">
                     <span className="text-xs">
                       <TrendingUp className="mr-1.5 inline h-3.5 w-3.5 text-primary" />
-                      {(liveLeadCounts?.[String(search.id)] ?? search.exportableFallback).toLocaleString()} exportable leads
+                      {formatExportableCountShort(
+                        liveExportSummaries?.[String(search.id)],
+                        liveLeadCounts?.[String(search.id)] ?? search.exportableFallback,
+                        featureFlags.multiContactPipeline,
+                      )}{" "}
+                      exportable
                     </span>
                     <Button
                       variant="ghost"

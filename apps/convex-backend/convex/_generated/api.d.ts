@@ -68,6 +68,7 @@ import type * as lib_companyResearchCache from "../lib/companyResearchCache.js";
 import type * as lib_config from "../lib/config.js";
 import type * as lib_constants from "../lib/constants.js";
 import type * as lib_contactAcceptance from "../lib/contactAcceptance.js";
+import type * as lib_contactAnalysisStorage from "../lib/contactAnalysisStorage.js";
 import type * as lib_contactVerification from "../lib/contactVerification.js";
 import type * as lib_correlation from "../lib/correlation.js";
 import type * as lib_creditHelpers from "../lib/creditHelpers.js";
@@ -202,6 +203,7 @@ declare const fullApi: ApiFromModules<{
   "lib/config": typeof lib_config;
   "lib/constants": typeof lib_constants;
   "lib/contactAcceptance": typeof lib_contactAcceptance;
+  "lib/contactAnalysisStorage": typeof lib_contactAnalysisStorage;
   "lib/contactVerification": typeof lib_contactVerification;
   "lib/correlation": typeof lib_correlation;
   "lib/creditHelpers": typeof lib_creditHelpers;

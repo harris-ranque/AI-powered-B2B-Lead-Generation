@@ -249,6 +249,11 @@ describe('Lead Enrichment Tests - Batch 7', () => {
       expect(new Set(emails).size).toBe(emails.length);
       expect(emails).toContain('alice@acme.com');
       expect(emails).toContain('carol@acme.com');
+      const alice = result!.contacts.find((c) => c.email === 'alice@acme.com');
+      expect(alice?.title).toBe('ceo');
+      const carol = result!.contacts.find((c) => c.email === 'carol@acme.com');
+      expect(carol?.title).toBe('founder');
+      expect(carol?.sourceRole).toBe('founder');
     });
   });
 

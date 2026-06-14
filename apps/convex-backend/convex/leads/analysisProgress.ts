@@ -2,6 +2,7 @@ import { internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { computeAnalysisProgress } from "../lib/analysisProgress";
+import { countExportableSummaryForSearch } from "../lib/exportEligibility";
 
 /**
  * Keep search.progress.analyzed aligned with live contact/lead analysis state.
@@ -72,10 +73,29 @@ export const publishAnalysisProgress = internalMutation({
       },
     });
 
+    const exportableSummary = await countExportableSummaryForSearch(
+      ctx,
+      args.searchId,
+      search.userId,
+    );
+    const exportableCount = exportableSummary.exportableContacts;
+    const existingResults = search.results ?? {
+      totalFound: discovered,
+      enrichedCount: enriched,
+    };
+    await ctx.db.patch(args.searchId, {
+      results: {
+        ...existingResults,
+        exportableCount,
+        analyzedCount: analysis.personalized,
+      },
+    });
+
     return {
       updated: true,
       personalized: analysis.personalized,
       total: analysis.total,
+      exportableCount,
       isComplete: analysis.isComplete,
     };
   },

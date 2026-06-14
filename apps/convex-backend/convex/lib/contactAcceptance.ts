@@ -129,6 +129,28 @@ export function scoreTitleAgainstRoles(
   };
 }
 
+export function resolveContactTitleForStorage(
+  title: string | undefined,
+  matchedRole: string | undefined,
+  sourceRole: string | undefined,
+  requestedRoles: string[],
+): string | undefined {
+  const trimmedTitle = title?.trim();
+  if (trimmedTitle) {
+    return trimmedTitle;
+  }
+  const trimmedMatched = matchedRole?.trim();
+  if (trimmedMatched) {
+    return trimmedMatched;
+  }
+  const trimmedSource = sourceRole?.trim();
+  if (trimmedSource) {
+    return trimmedSource;
+  }
+  const firstRequested = requestedRoles.find((role) => role.trim().length > 0);
+  return firstRequested?.trim() || undefined;
+}
+
 export function evaluateContactCandidate(
   candidate: ContactCandidateInput,
   options: {
@@ -138,6 +160,7 @@ export function evaluateContactCandidate(
     enableRoleExpansion: boolean;
     requireVerifiedEmail: boolean;
     trustNamedRoleContacts?: boolean;
+    sourceRole?: string;
   },
 ): ContactAcceptanceResult {
   const normalizedEmail = normalizeContactEmail(candidate.email);
@@ -214,12 +237,18 @@ export function evaluateContactCandidate(
     };
   }
 
+  const matchedRole =
+    titleMatch.matchedRole ??
+    (options.trustNamedRoleContacts && !hasTitle
+      ? options.sourceRole?.trim() || options.requestedRoles.find((r) => r.trim())
+      : undefined);
+
   return {
     accepted: true,
     emailVerified,
     domainMatchVerified,
     normalizedEmail,
-    matchedRole: titleMatch.matchedRole,
+    matchedRole,
     titleMatchScore: titleMatch.score,
     titleMatchReason: titleMatch.reason,
   };

@@ -61,6 +61,8 @@ import { api } from "@genni/convex-types";
 import { useAuth } from "@/hooks/useAuth";
 import { usePostHogTracking } from "@/hooks/usePostHog";
 import type { EnrichmentBroadcastData } from "@/types/enrichment";
+import { featureFlags } from "@/lib/featureFlags";
+import { formatExportableResultsLabel } from "@/lib/exportDisplay";
 
 interface SearchProgressTrackerProps {
   searchId: Id<"searches">;
@@ -127,6 +129,10 @@ export function SearchProgressTracker({
     api.leads.queries.getEnrichmentProgress,
     search ? { searchId } : "skip"
   );
+  const liveExportSummaries = useQuery(
+    api.leads.queries.getExportSummariesBySearchIds,
+    { searchIds: [searchId] },
+  );
 
   // Get current user for admin controls
   const { user } = useAuth();
@@ -189,6 +195,11 @@ export function SearchProgressTracker({
       ? (search.finalSearchRadius / 1609.34).toFixed(1)
       : null;
   const discoveryMetadata = search.discoveryMetadata;
+  const exportResultsLabel = formatExportableResultsLabel(
+    liveExportSummaries?.[String(searchId)],
+    search.results?.exportableCount ?? search.results?.enrichedCount ?? 0,
+    featureFlags.multiContactPipeline,
+  );
 
   const researchTierDisplay = getResearchTierDisplay(search.researchTier);
   const analysisStageIcon: LucideIcon =
@@ -982,7 +993,7 @@ export function SearchProgressTracker({
                 </div>
                 <div className="space-y-1">
                   <span className="text-xs uppercase tracking-wide text-muted-foreground">Results</span>
-                  <p className="font-medium text-foreground">{search.results?.exportableCount ?? search.results?.enrichedCount ?? 0} leads</p>
+                  <p className="font-medium text-foreground">{exportResultsLabel}</p>
                 </div>
               </div>
 

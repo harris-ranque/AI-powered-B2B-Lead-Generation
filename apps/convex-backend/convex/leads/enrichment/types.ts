@@ -17,6 +17,8 @@ export interface Contact {
   confidence: number;
   domain?: string;
   verified?: boolean;
+  /** Role pattern from per-role FindyMail fetch when job title was not returned */
+  sourceRole?: string;
 }
 
 export interface SocialProfiles {

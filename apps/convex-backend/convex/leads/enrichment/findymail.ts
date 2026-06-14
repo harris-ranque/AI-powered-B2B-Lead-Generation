@@ -366,15 +366,17 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
     const singleRoleResults = await mapWithConcurrency(
       rolesToFetch,
       PER_ROLE_FETCH_CONCURRENCY,
-      async (role) =>
-        this.enrichSingle(domain, {
+      async (role) => {
+        const result = await this.enrichSingle(domain, {
           roles: [role],
           limit: perRoleLimit,
           perRole: false,
-        }),
+        });
+        return { role, result };
+      },
     );
 
-    for (const singleRoleResult of singleRoleResults) {
+    for (const { role, result: singleRoleResult } of singleRoleResults) {
       if (!singleRoleResult) {
         continue;
       }
@@ -385,7 +387,14 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
           continue;
         }
         seenEmails.add(email);
-        mergedContacts.push({ ...contact, domain });
+        const resolvedTitle =
+          contact.title?.trim() ? contact.title.trim() : role;
+        mergedContacts.push({
+          ...contact,
+          domain,
+          sourceRole: role,
+          title: resolvedTitle,
+        });
       }
 
       for (const emailEntry of singleRoleResult.emails) {

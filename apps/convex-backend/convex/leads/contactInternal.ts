@@ -1,8 +1,9 @@
-import { internalMutation, internalQuery } from "../_generated/server";
+import { internalMutation, internalQuery, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { extractPrimaryEmail } from "../lib/deduplication";
-import { evaluateContactCandidate } from "../lib/contactAcceptance";
+import { evaluateContactCandidate, resolveContactTitleForStorage } from "../lib/contactAcceptance";
+import { slimContactAiAnalysisForStorage } from "../lib/contactAnalysisStorage";
 import { extractDomainFromWebsite } from "../lib/contactVerification";
 import { resolveEnrichmentRoles } from "../lib/enrichmentRoles";
 import {
@@ -394,7 +395,7 @@ export const updateLeadContactAnalysis = internalMutation({
   },
   handler: async (ctx, args) => {
     const updateData: Record<string, unknown> = {
-      aiAnalysis: args.aiAnalysis,
+      aiAnalysis: slimContactAiAnalysisForStorage(args.aiAnalysis),
       analysisStatus: "completed",
       analysisCompletedAt: Date.now(),
       updatedAt: Date.now(),
@@ -412,30 +413,7 @@ export const updateLeadContactAnalysis = internalMutation({
     const contact = await ctx.db.get(args.contactId);
     if (!contact) return;
 
-    const leadContacts = await ctx.db
-      .query("leadContacts")
-      .withIndex("by_lead", (q) => q.eq("leadId", contact.leadId))
-      .collect();
-
-    const anyCompleted = leadContacts.some(
-      (c) => c.status === "accepted" && c.analysisStatus === "completed",
-    );
-    const allSkippedOrDone = leadContacts
-      .filter((c) => c.status === "accepted")
-      .every(
-        (c) =>
-          c.analysisStatus === "completed" ||
-          c.analysisStatus === "skipped" ||
-          c.analysisStatus === "failed",
-      );
-
-    if (anyCompleted || allSkippedOrDone) {
-      await ctx.db.patch(contact.leadId, {
-        analysisStatus: anyCompleted ? "completed" : "skipped",
-        analysisCompletedAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-    }
+    await syncLeadAnalysisStatusFromContacts(ctx, contact.leadId);
   },
 });
 
@@ -471,6 +449,7 @@ export const processMultiContactEnrichment = internalMutation({
       contacts?: Array<{
         name: string;
         title?: string;
+        sourceRole?: string;
         email?: string;
         linkedin?: string;
         confidence?: number;
@@ -486,6 +465,7 @@ export const processMultiContactEnrichment = internalMutation({
     const candidates: Array<{
       name: string;
       title?: string;
+      sourceRole?: string;
       email: string;
       linkedin?: string;
       confidence: number;
@@ -499,6 +479,7 @@ export const processMultiContactEnrichment = internalMutation({
         candidates.push({
           name: contact.name || "Unknown",
           title: contact.title,
+          sourceRole: contact.sourceRole,
           email: contact.email,
           linkedin: contact.linkedin,
           confidence: contact.confidence ?? 0.5,
@@ -553,7 +534,15 @@ export const processMultiContactEnrichment = internalMutation({
           enableRoleExpansion: args.enableRoleExpansion,
           requireVerifiedEmail: true,
           trustNamedRoleContacts: candidate.fromRoleContact,
+          sourceRole: candidate.sourceRole,
         },
+      );
+
+      const storedTitle = resolveContactTitleForStorage(
+        candidate.title,
+        evaluation.matchedRole,
+        candidate.sourceRole,
+        requestedRoles,
       );
 
       const status: "accepted" | "rejected" = evaluation.accepted
@@ -575,7 +564,7 @@ export const processMultiContactEnrichment = internalMutation({
         searchId: args.searchId,
         userId: args.userId,
         name: candidate.name,
-        title: candidate.title,
+        title: storedTitle,
         email: candidate.email,
         normalizedEmail,
         linkedin: candidate.linkedin,
@@ -615,7 +604,7 @@ export const processMultiContactEnrichment = internalMutation({
         acceptedCount += 1;
         acceptedForDualWrite.push({
           name: candidate.name,
-          title: candidate.title,
+          title: storedTitle,
           email: candidate.email,
           linkedin: candidate.linkedin,
           confidence: candidate.confidence,
@@ -656,17 +645,78 @@ export const processMultiContactEnrichment = internalMutation({
   },
 });
 
+export const getContactByAnalysisRequestId = internalQuery({
+  args: { requestId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("leadContacts")
+      .filter((q) => q.eq(q.field("analysisRequestId"), args.requestId))
+      .first();
+  },
+});
+
+async function syncLeadAnalysisStatusFromContacts(
+  ctx: MutationCtx,
+  leadId: Id<"leads">,
+) {
+  const leadContacts = await ctx.db
+    .query("leadContacts")
+    .withIndex("by_lead", (q) => q.eq("leadId", leadId))
+    .collect();
+
+  const accepted = leadContacts.filter((contact) => contact.status === "accepted");
+  if (accepted.length === 0) {
+    return;
+  }
+
+  const anyCompleted = accepted.some(
+    (contact) => contact.analysisStatus === "completed",
+  );
+  const allDone = accepted.every(
+    (contact) =>
+      contact.analysisStatus === "completed" ||
+      contact.analysisStatus === "skipped" ||
+      contact.analysisStatus === "failed",
+  );
+
+  if (!anyCompleted && !allDone) {
+    return;
+  }
+
+  let analysisStatus: "completed" | "skipped" | "failed";
+  if (anyCompleted) {
+    analysisStatus = "completed";
+  } else if (accepted.every((contact) => contact.analysisStatus === "skipped")) {
+    analysisStatus = "skipped";
+  } else {
+    analysisStatus = "failed";
+  }
+
+  await ctx.db.patch(leadId, {
+    analysisStatus,
+    analysisCompletedAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+}
+
 export const markContactAnalysisFailed = internalMutation({
   args: {
     contactId: v.id("leadContacts"),
     error: v.string(),
   },
   handler: async (ctx, args) => {
+    const contact = await ctx.db.get(args.contactId);
+    if (!contact) {
+      return;
+    }
+
     await ctx.db.patch(args.contactId, {
       analysisStatus: "failed",
       analysisError: args.error,
       updatedAt: Date.now(),
     });
+
+    await syncLeadAnalysisStatusFromContacts(ctx, contact.leadId);
   },
 });
 

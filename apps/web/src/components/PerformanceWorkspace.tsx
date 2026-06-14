@@ -415,7 +415,12 @@ function PerformanceWorkspaceComponent({
                       <span className="text-sm font-semibold text-foreground">
                         {search.name || search.parameters?.keywords?.join(", ") || "Untitled search"}
                       </span>
-                      <Badge variant="outline">{search.results?.exportableCount ?? search.results?.enrichedCount ?? 0} leads</Badge>
+                      <Badge variant="outline">
+                        {search.results?.exportableCount ??
+                          search.results?.enrichedCount ??
+                          0}{" "}
+                        {featureFlags.multiContactPipeline ? "contacts" : "leads"}
+                      </Badge>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Completed {search.completedAt ? format(search.completedAt, "MMM d, yyyy h:mma") : "recently"}

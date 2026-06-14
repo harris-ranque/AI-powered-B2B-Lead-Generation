@@ -1,10 +1,17 @@
 import type { GenericDatabaseReader } from "convex/server";
 import type { DataModel } from "../_generated/dataModel";
 import type { Id } from "../_generated/dataModel";
+import { resolveContactTitleForStorage } from "./contactAcceptance";
+
+export type WrittenEmailContent = {
+  subject?: string;
+  body?: string;
+};
 
 export type ExportableLead = {
   email?: string;
   analysisStatus?: string;
+  emailContent?: WrittenEmailContent;
   contactInfo?: {
     contacts?: Array<{
       name?: string;
@@ -75,24 +82,67 @@ export function extractContactDetails(lead: ExportableLead): {
   };
 }
 
+export function hasWrittenEmail(
+  emailContent?: WrittenEmailContent,
+): boolean {
+  const subject = emailContent?.subject?.trim();
+  const body = emailContent?.body?.trim();
+  return Boolean(subject || body);
+}
+
 export function isLeadExportable(lead: ExportableLead): boolean {
   const { email } = extractContactDetails(lead);
-  const analysisFailed = lead.analysisStatus === "failed";
-  return email.length > 0 && !analysisFailed;
+  if (email.length === 0) {
+    return false;
+  }
+  if (lead.analysisStatus === "failed" || lead.analysisStatus === "skipped") {
+    return false;
+  }
+  if (lead.analysisStatus === "completed") {
+    return hasWrittenEmail(lead.emailContent);
+  }
+  // Legacy leads without explicit analysis status
+  return true;
 }
 
 export type ExportableContact = {
   email: string;
   analysisStatus?: string;
   status?: string;
+  emailContent?: WrittenEmailContent;
 };
+
+export function resolveContactExportTitle(contact: {
+  title?: string;
+  matchedRole?: string;
+  requestedRoles?: string[];
+}): string {
+  return (
+    resolveContactTitleForStorage(
+      contact.title,
+      contact.matchedRole,
+      undefined,
+      contact.requestedRoles ?? [],
+    ) ?? ""
+  );
+}
 
 export function isContactExportable(contact: ExportableContact): boolean {
   if (contact.status && contact.status !== "accepted") {
     return false;
   }
+  if (contact.email.trim().length === 0) {
+    return false;
+  }
+  if (
+    contact.analysisStatus === "failed" ||
+    contact.analysisStatus === "skipped"
+  ) {
+    return false;
+  }
   return (
-    contact.email.trim().length > 0 && contact.analysisStatus !== "failed"
+    contact.analysisStatus === "completed" &&
+    hasWrittenEmail(contact.emailContent)
   );
 }
 
@@ -113,6 +163,84 @@ export async function countExportableContacts(
     )
     .collect();
   return contacts.filter(isContactExportable).length;
+}
+
+export type ExportableCountSummary = {
+  exportableContacts: number;
+  exportableBusinesses: number;
+  fromThisSearch: number;
+  priorSearchExportable: number;
+  duplicateSkips: number;
+};
+
+export async function countExportableSummaryForSearch(
+  ctx: { db: GenericDatabaseReader<DataModel> },
+  searchId: Id<"searches">,
+  userId: Id<"users">,
+): Promise<ExportableCountSummary> {
+  const resolution = await resolveSearchExportData(ctx, searchId, userId);
+  const exportable = resolution.contacts.filter((contact) =>
+    isContactExportable({
+      email: contact.email,
+      analysisStatus: contact.analysisStatus,
+      status: contact.status,
+      emailContent: contact.emailContent,
+    }),
+  );
+
+  const businessIds = new Set<string>();
+  let fromThisSearch = 0;
+  let priorSearchExportable = 0;
+  for (const contact of exportable) {
+    businessIds.add(String(contact.leadId));
+    if (String(contact.searchId) === String(searchId)) {
+      fromThisSearch++;
+    } else {
+      priorSearchExportable++;
+    }
+  }
+
+  return {
+    exportableContacts: exportable.length,
+    exportableBusinesses: businessIds.size,
+    fromThisSearch,
+    priorSearchExportable,
+    duplicateSkips: resolution.duplicateSkips,
+  };
+}
+
+export async function countExportableSummary(
+  ctx: { db: GenericDatabaseReader<DataModel> },
+  searchId: Id<"searches">,
+): Promise<ExportableCountSummary> {
+  const contacts = await ctx.db
+    .query("leadContacts")
+    .withIndex("by_search_status", (q) =>
+      q.eq("searchId", searchId).eq("status", "accepted"),
+    )
+    .collect();
+
+  const exportable = contacts.filter((contact) =>
+    isContactExportable({
+      email: contact.email,
+      analysisStatus: contact.analysisStatus,
+      status: contact.status,
+      emailContent: contact.emailContent,
+    }),
+  );
+
+  const businessIds = new Set<string>();
+  for (const contact of exportable) {
+    businessIds.add(String(contact.leadId));
+  }
+
+  return {
+    exportableContacts: exportable.length,
+    exportableBusinesses: businessIds.size,
+    fromThisSearch: exportable.length,
+    priorSearchExportable: 0,
+    duplicateSkips: 0,
+  };
 }
 
 export async function countExportableLeads(

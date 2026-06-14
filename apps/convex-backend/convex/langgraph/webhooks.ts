@@ -2,8 +2,10 @@ import { internalMutation } from "../_generated/server";
 import { internal, api } from "../_generated/api";
 import { v } from "convex/values";
 import { createOperationLogger } from "../lib/logger";
-import { Id, Doc } from "../_generated/dataModel";
+import { Id } from "../_generated/dataModel";
 import { extractDomainFromWebsite } from "../lib/contactVerification";
+import { getAnalysisCompletionState } from "../lib/analysisProgress";
+import { slimLeadAnalysisForContactStorage } from "../lib/contactAnalysisStorage";
 
 // TODO: Add webhook idempotency table to prevent duplicate processing
 // Current implementation has partial checks but no dedicated tracking.
@@ -251,11 +253,26 @@ export const handleEmailGenerationCompleted = internalMutation({
             qualityScore: qualityScore,
           });
 
-          // Mark lead as failed analysis rather than accepting unapproved email
-          await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
-            leadId: leadId as any,
-            error: `Email not approved by QA agent (quality score: ${qualityScore.toFixed(2)})`,
-          });
+          const rejectionError = `Email not approved by QA agent (quality score: ${qualityScore.toFixed(2)})`;
+          const failedContact = await ctx.runQuery(
+            internal.leads.contactInternal.getContactByAnalysisRequestId,
+            { requestId: args.payload.request_id },
+          );
+
+          if (failedContact) {
+            await ctx.runMutation(
+              internal.leads.contactInternal.markContactAnalysisFailed,
+              {
+                contactId: failedContact._id,
+                error: rejectionError,
+              },
+            );
+          } else {
+            await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
+              leadId: leadId as any,
+              error: rejectionError,
+            });
+          }
 
           // Acknowledge webhook but don't store unapproved email
           return {
@@ -461,28 +478,12 @@ export const handleEmailGenerationCompleted = internalMutation({
           }
         }
 
-        // Calculate search-level progress
-        const allLeads = await ctx.runQuery(
-          internal.leads.internal.getSearchLeadsInternal,
-          { searchId: searchId as any },
-        );
-
-        // Filter to only eligible leads (same criteria as getLeadsForAnalysis)
-        // This ensures we only count leads that should be analyzed
-        const eligibleLeads = allLeads.filter((l: Doc<"leads">) => {
-          const enrichmentComplete =
-            l.enrichmentStatus === "completed" ||
-            l.enrichmentStatus === "completed_fallback";
-          const hasEmail = Boolean(l.contactInfo?.emails?.length);
-          const hasContactName = Boolean(l.contactInfo?.contacts?.[0]?.name);
-          return enrichmentComplete && hasEmail && hasContactName;
-        });
-
-        const completedLeads = eligibleLeads.filter(
-          (l: Doc<"leads">) => l.analysisStatus === "completed",
-        ).length;
-        const totalLeads = eligibleLeads.length;
-        const progressPercent = totalLeads > 0 ? (completedLeads / totalLeads) * 100 : 0;
+        // Calculate search-level progress without loading all search leads
+        const completion = await getAnalysisCompletionState(ctx, searchId as Id<"searches">);
+        const progressPercent =
+          completion.total > 0
+            ? Math.round((completion.personalized / completion.total) * 100)
+            : 0;
 
         await ctx.runMutation(
           internal.leads.analysisProgress.publishAnalysisProgress,
@@ -491,18 +492,13 @@ export const handleEmailGenerationCompleted = internalMutation({
             searchId: searchId as Id<"searches">,
             progressPercent,
             currentLead: lead.businessName,
-            message: `Wrote email for ${lead.businessName} (${completedLeads}/${totalLeads} complete)`,
+            message: `Wrote email for ${lead.businessName} (${completion.personalized}/${completion.total} complete)`,
           },
         );
 
         // Check if all eligible leads are complete and trigger search completion
         // Use idempotency guard to prevent race conditions when multiple webhooks complete simultaneously
-        const scheduledOrProcessing = eligibleLeads.filter(
-          (l: Doc<"leads">) =>
-            l.analysisStatus === "scheduled" || l.analysisStatus === "processing",
-        ).length;
-
-        if (scheduledOrProcessing === 0 && completedLeads === totalLeads && totalLeads > 0) {
+        if (completion.isComplete && completion.total > 0) {
           // Verify search is still in processing state (idempotency check)
           // This prevents race conditions when multiple webhooks complete simultaneously
           const currentSearch = await ctx.db.get(searchId);
@@ -514,9 +510,9 @@ export const handleEmailGenerationCompleted = internalMutation({
             // Note: completeSearch action handles final status transition and idempotency
             logger.info("All leads analyzed - triggering search completion", {
               searchId: searchIdStr,
-              totalLeads,
-              completedLeads,
-              eligibleLeads: eligibleLeads.length,
+              totalLeads: completion.total,
+              completedLeads: completion.completed,
+              personalized: completion.personalized,
             });
 
             try {
@@ -583,52 +579,46 @@ export const handleEmailGenerationCompleted = internalMutation({
           });
         }
 
-        // Update lead with error state
-        await ctx.runMutation(internal.leads.internal.updateLeadAnalysis, {
-          leadId: leadId as any,
-          aiAnalysis: {
-            relevanceScore: 0,
-            painPoints: [],
-            valueMatches: [],
-            recommendations: [`Analysis failed: ${errorMessage}`],
-            leadAnalysis: { error: errorMessage },
-            processingTime: 0,
-            confidence: 0,
-          },
-          emailContent: undefined,
-        });
-
-        // Mark lead analysis as failed (async tracking)
-        await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
-          leadId: leadId as any,
-          error: errorMessage,
-        });
-
-        // Calculate search-level progress (including failures)
-        const allLeads = await ctx.runQuery(
-          internal.leads.internal.getSearchLeadsInternal,
-          { searchId: searchId as any },
+        const failedContact = await ctx.runQuery(
+          internal.leads.contactInternal.getContactByAnalysisRequestId,
+          { requestId: args.payload.request_id },
         );
 
-        // Filter to only eligible leads (same criteria as getLeadsForAnalysis)
-        const eligibleLeads = allLeads.filter((l: Doc<"leads">) => {
-          const enrichmentComplete =
-            l.enrichmentStatus === "completed" ||
-            l.enrichmentStatus === "completed_fallback";
-          const hasEmail = Boolean(l.contactInfo?.emails?.length);
-          const hasContactName = Boolean(l.contactInfo?.contacts?.[0]?.name);
-          return enrichmentComplete && hasEmail && hasContactName;
-        });
+        if (failedContact) {
+          await ctx.runMutation(
+            internal.leads.contactInternal.markContactAnalysisFailed,
+            {
+              contactId: failedContact._id,
+              error: errorMessage,
+            },
+          );
+        } else {
+          // Legacy per-lead path
+          await ctx.runMutation(internal.leads.internal.updateLeadAnalysis, {
+            leadId: leadId as any,
+            aiAnalysis: {
+              relevanceScore: 0,
+              painPoints: [],
+              valueMatches: [],
+              recommendations: [`Analysis failed: ${errorMessage}`],
+              leadAnalysis: { error: errorMessage },
+              processingTime: 0,
+              confidence: 0,
+            },
+            emailContent: undefined,
+          });
 
-        const completedLeads = eligibleLeads.filter(
-          (l: Doc<"leads">) => l.analysisStatus === "completed",
-        ).length;
-        const failedLeads = eligibleLeads.filter(
-          (l: Doc<"leads">) => l.analysisStatus === "failed",
-        ).length;
-        const totalLeads = eligibleLeads.length;
-        const processedLeads = completedLeads + failedLeads;
-        const progressPercent = totalLeads > 0 ? (processedLeads / totalLeads) * 100 : 0;
+          await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
+            leadId: leadId as any,
+            error: errorMessage,
+          });
+        }
+
+        const completion = await getAnalysisCompletionState(ctx, searchId as Id<"searches">);
+        const progressPercent =
+          completion.total > 0
+            ? Math.round((completion.processed / completion.total) * 100)
+            : 0;
 
         await ctx.runMutation(
           internal.leads.analysisProgress.publishAnalysisProgress,
@@ -641,14 +631,7 @@ export const handleEmailGenerationCompleted = internalMutation({
           },
         );
 
-        // Check if all eligible leads are processed (complete or failed) and trigger search completion
-        // Use idempotency guard to prevent race conditions
-        const scheduledOrProcessing = eligibleLeads.filter(
-          (l: Doc<"leads">) =>
-            l.analysisStatus === "scheduled" || l.analysisStatus === "processing",
-        ).length;
-
-        if (scheduledOrProcessing === 0 && processedLeads === totalLeads && totalLeads > 0) {
+        if (completion.isComplete && completion.total > 0) {
           // Verify search is still in processing state (idempotency check)
           // This prevents race conditions when multiple webhooks complete simultaneously
           const currentSearch = await ctx.db.get(searchId);
@@ -660,10 +643,9 @@ export const handleEmailGenerationCompleted = internalMutation({
             // Note: completeSearch action handles final status transition and idempotency
             logger.info("All leads processed - triggering search completion", {
               searchId: searchIdStr,
-              totalLeads,
-              completedLeads,
-              failedLeads,
-              eligibleLeads: eligibleLeads.length,
+              totalLeads: completion.total,
+              completedLeads: completion.completed,
+              failedLeads: completion.failed,
             });
 
             try {
@@ -1115,19 +1097,20 @@ export const handleBatchCompleted = internalMutation({
           }
 
           const leadIdTyped = leadResult.leadId as Id<"leads">;
-
-          // Get lead
-          const lead = await ctx.runQuery(internal.leads.internal.getLeadInternal, {
-            leadId: leadIdTyped,
-          });
-
-          if (!lead) {
-            logger.error(`Lead not found: ${leadResult.leadId}`, { batchId });
-            processingErrors++;
-            continue;
-          }
+          const contactIdRaw = leadResult.contactId;
+          const hasContactId =
+            typeof contactIdRaw === "string" &&
+            /^[a-zA-Z0-9]{16,32}$/.test(contactIdRaw);
 
           if (leadResult.status === "completed" && leadResult.result) {
+            const lead = await ctx.db.get(leadIdTyped);
+
+            if (!lead) {
+              logger.error(`Lead not found: ${leadResult.leadId}`, { batchId });
+              processingErrors++;
+              continue;
+            }
+
             // Process successful lead result (similar to handleEmailGenerationCompleted)
             const result = leadResult.result;
 
@@ -1190,7 +1173,9 @@ export const handleBatchCompleted = internalMutation({
               painPoints: result.pain_points_identified || [],
               valueMatches: result.value_matches || [],
               recommendations: result.recommendations || [],
-              leadAnalysis: result.lead_analysis || {},
+              leadAnalysis:
+                slimLeadAnalysisForContactStorage(result.lead_analysis || {}) ??
+                {},
               processingTime: leadResult.processingTime,
               confidence: result.relevance_score || 0.5,
             };
@@ -1206,13 +1191,13 @@ export const handleBatchCompleted = internalMutation({
                   }
                 : undefined;
 
-            const contactIdRaw = leadResult.contactId;
-            const hasContactId =
-              typeof contactIdRaw === "string" &&
-              /^[a-zA-Z0-9]{16,32}$/.test(contactIdRaw);
+            const contactIdRawSuccess = leadResult.contactId;
+            const hasContactIdSuccess =
+              typeof contactIdRawSuccess === "string" &&
+              /^[a-zA-Z0-9]{16,32}$/.test(contactIdRawSuccess);
 
-            if (hasContactId) {
-              const contactIdTyped = contactIdRaw as Id<"leadContacts">;
+            if (hasContactIdSuccess) {
+              const contactIdTyped = contactIdRawSuccess as Id<"leadContacts">;
               await ctx.runMutation(
                 internal.leads.contactInternal.updateLeadContactAnalysis,
                 {
@@ -1343,24 +1328,41 @@ export const handleBatchCompleted = internalMutation({
             // Handle failed lead result
             const errorMessage = leadResult.error || "Analysis failed";
 
-            await ctx.runMutation(internal.leads.internal.updateLeadAnalysis, {
-              leadId: leadIdTyped as any,
-              aiAnalysis: {
-                relevanceScore: 0,
-                painPoints: [],
-                valueMatches: [],
-                recommendations: [`Analysis failed: ${errorMessage}`],
-                leadAnalysis: { error: errorMessage },
-                processingTime: leadResult.processingTime,
-                confidence: 0,
-              },
-              emailContent: undefined,
-            });
+            if (hasContactId) {
+              await ctx.runMutation(
+                internal.leads.contactInternal.markContactAnalysisFailed,
+                {
+                  contactId: contactIdRaw as Id<"leadContacts">,
+                  error: errorMessage,
+                },
+              );
+            } else {
+              const lead = await ctx.db.get(leadIdTyped);
+              if (!lead) {
+                logger.error(`Lead not found: ${leadResult.leadId}`, { batchId });
+                processingErrors++;
+                continue;
+              }
 
-            await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
-              leadId: leadIdTyped as any,
-              error: errorMessage,
-            });
+              await ctx.runMutation(internal.leads.internal.updateLeadAnalysis, {
+                leadId: leadIdTyped as any,
+                aiAnalysis: {
+                  relevanceScore: 0,
+                  painPoints: [],
+                  valueMatches: [],
+                  recommendations: [`Analysis failed: ${errorMessage}`],
+                  leadAnalysis: { error: errorMessage },
+                  processingTime: leadResult.processingTime,
+                  confidence: 0,
+                },
+                emailContent: undefined,
+              });
+
+              await ctx.runMutation(internal.leads.internal.markLeadAnalysisFailed, {
+                leadId: leadIdTyped as any,
+                error: errorMessage,
+              });
+            }
 
             processedSuccessfully++;
           }
@@ -1374,30 +1376,14 @@ export const handleBatchCompleted = internalMutation({
         }
       }
 
-      // Calculate overall search progress
-      const allLeads = await ctx.runQuery(
-        internal.leads.internal.getSearchLeadsInternal,
-        { searchId: searchIdTyped },
-      );
-
-      const eligibleLeads = allLeads.filter((l: Doc<"leads">) => {
-        const enrichmentComplete =
-          l.enrichmentStatus === "completed" ||
-          l.enrichmentStatus === "completed_fallback";
-        const hasEmail = Boolean(l.contactInfo?.emails?.length);
-        const hasContactName = Boolean(l.contactInfo?.contacts?.[0]?.name);
-        return enrichmentComplete && hasEmail && hasContactName;
-      });
-
-      const completedLeads = eligibleLeads.filter(
-        (l: Doc<"leads">) => l.analysisStatus === "completed",
-      ).length;
-      const failedLeads = eligibleLeads.filter(
-        (l: Doc<"leads">) => l.analysisStatus === "failed",
-      ).length;
-      const totalLeads = eligibleLeads.length;
-      const processedLeads = completedLeads + failedLeads;
-      const progressPercent = totalLeads > 0 ? (processedLeads / totalLeads) * 100 : 0;
+      // Calculate overall search progress without loading every lead in the search
+      const completion = await getAnalysisCompletionState(ctx, searchIdTyped);
+      const completedLeads = completion.completed;
+      const failedLeads = completion.failed;
+      const totalLeads = completion.total;
+      const processedLeads = completion.processed;
+      const progressPercent =
+        totalLeads > 0 ? Math.round((processedLeads / totalLeads) * 100) : 0;
 
       // Broadcast batch completion with clear success messaging
       const successRate = totalLeads > 0 ? (completedLeads / totalLeads) * 100 : 0;
@@ -1420,13 +1406,7 @@ export const handleBatchCompleted = internalMutation({
         message: completionMessage,
       });
 
-      // Check if all leads are processed and trigger search completion
-      const scheduledOrProcessing = eligibleLeads.filter(
-        (l: Doc<"leads">) =>
-          l.analysisStatus === "scheduled" || l.analysisStatus === "processing",
-      ).length;
-
-      if (scheduledOrProcessing === 0 && processedLeads === totalLeads && totalLeads > 0) {
+      if (completion.isComplete && totalLeads > 0) {
         const currentSearch = await ctx.db.get(searchIdTyped);
 
         // Atomic check-and-set to prevent race conditions from multiple batch completions

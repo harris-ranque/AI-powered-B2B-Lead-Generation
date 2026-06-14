@@ -31,6 +31,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PushToInstantlyButton } from "./instantly/PushToInstantlyButton";
+import { featureFlags } from "@/lib/featureFlags";
+import { formatExportableResultsLabel } from "@/lib/exportDisplay";
 
 const ITEMS_PER_PAGE = 20;
 
@@ -59,6 +61,10 @@ export function LeadSearchHistory() {
   const searchIds = useMemo(() => items.map((s) => s._id), [items]);
   const liveLeadCounts = useQuery(
     api.leads.queries.getLeadCountsBySearchIds,
+    searchIds.length > 0 ? { searchIds } : "skip",
+  );
+  const liveExportSummaries = useQuery(
+    api.leads.queries.getExportSummariesBySearchIds,
     searchIds.length > 0 ? { searchIds } : "skip",
   );
 
@@ -208,11 +214,18 @@ export function LeadSearchHistory() {
         items.map((s: Doc<"searches">) => {
           const isExpanded = expandedSearchId === String(s._id);
           const duration = formatDuration(s.startedAt, s.completedAt);
+          const liveSummary = liveExportSummaries?.[String(s._id)];
           const liveCount =
+            liveSummary?.exportableContacts ??
             liveLeadCounts?.[String(s._id)] ??
             s.results?.exportableCount ??
             s.results?.enrichedCount ??
             0;
+          const resultsLabel = formatExportableResultsLabel(
+            liveSummary,
+            liveCount,
+            featureFlags.multiContactPipeline,
+          );
           const enrichmentRate =
             s.results?.totalFound && s.results.totalFound > 0
               ? Math.round((liveCount / s.results.totalFound) * 100)
@@ -301,7 +314,7 @@ export function LeadSearchHistory() {
                         <BarChart3 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
                         <div className="flex flex-col gap-0.5">
                           <span className="font-medium text-foreground" data-testid="results-count">
-                            {liveCount} leads found
+                            {resultsLabel}
                           </span>
                         </div>
                       </div>

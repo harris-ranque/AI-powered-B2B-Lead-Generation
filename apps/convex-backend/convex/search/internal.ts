@@ -2,7 +2,7 @@ import { internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { Doc } from "../_generated/dataModel";
 import { withUpdatedAtIfSupported, isUpdatedAtSchemaError } from "./utils";
-import { countExportableLeads } from "../lib/exportEligibility";
+import { countExportableSummaryForSearch } from "../lib/exportEligibility";
 
 // Internal query to get search without auth check
 export const getSearchInternal = internalQuery({
@@ -56,7 +56,16 @@ export const getSearchResults = internalQuery({
 export const getExportableCount = internalQuery({
   args: { searchId: v.id("searches") },
   handler: async (ctx, args) => {
-    return countExportableLeads(ctx, args.searchId);
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      return 0;
+    }
+    const summary = await countExportableSummaryForSearch(
+      ctx,
+      args.searchId,
+      search.userId,
+    );
+    return summary.exportableContacts;
   },
 });
 

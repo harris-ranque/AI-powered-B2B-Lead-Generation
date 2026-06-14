@@ -1,7 +1,7 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth, getCurrentUser } from "../auth";
-import { countExportableLeads, isContactExportable, resolveSearchExportData } from "../lib/exportEligibility";
+import { countExportableLeads, countExportableSummaryForSearch, isContactExportable, resolveContactExportTitle, resolveSearchExportData } from "../lib/exportEligibility";
 import { computeAnalysisProgress } from "../lib/analysisProgress";
 
 // Get leads for a search (FULL documents - use sparingly, prefer getLeadsListView)
@@ -153,7 +153,7 @@ export const exportLeads = query({
           contactId: contact._id,
           name: lead.businessName,
           contactName: contact.name,
-          title: contact.title || "",
+          title: resolveContactExportTitle(contact),
           address: lead.location.formattedAddress,
           phone: lead.phone || "",
           website: lead.website || "",
@@ -583,9 +583,44 @@ export const getLeadCountsBySearchIds = query({
       // Ownership check: silently skip searches that don't belong to this user
       const search = await ctx.db.get(searchId);
       if (!search || search.userId !== user._id) continue;
-      counts[String(searchId)] = await countExportableLeads(ctx, searchId);
+      counts[String(searchId)] = (
+        await countExportableSummaryForSearch(ctx, searchId, user._id)
+      ).exportableContacts;
     }
     return counts;
+  },
+});
+
+// Live exportable contact + business counts for search history / dashboard labels.
+export const getExportSummariesBySearchIds = query({
+  args: { searchIds: v.array(v.id("searches")) },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    if (!user) return {};
+
+    const idsToProcess = args.searchIds.slice(0, 50);
+    const summaries: Record<
+      string,
+      {
+        exportableContacts: number;
+        exportableBusinesses: number;
+        fromThisSearch: number;
+        priorSearchExportable: number;
+        duplicateSkips: number;
+      }
+    > = {};
+
+    for (const searchId of idsToProcess) {
+      const search = await ctx.db.get(searchId);
+      if (!search || search.userId !== user._id) continue;
+      summaries[String(searchId)] = await countExportableSummaryForSearch(
+        ctx,
+        searchId,
+        user._id,
+      );
+    }
+
+    return summaries;
   },
 });
 

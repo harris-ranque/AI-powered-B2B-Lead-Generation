@@ -20,6 +20,7 @@ import {
   isLeadExportable,
   isContactExportable,
   noExportableLeadsMessage,
+  resolveContactExportTitle,
 } from "./lib/exportEligibility";
 
 const http = httpRouter();
@@ -963,6 +964,7 @@ http.route({
           isLeadExportable({
             email: lead.email,
             analysisStatus: lead.analysisStatus,
+            emailContent: lead.emailContent,
             contactInfo: lead.contactInfo,
           }),
         );
@@ -1145,6 +1147,7 @@ http.route({
             email: contact.email,
             analysisStatus: contact.analysisStatus,
             status: "accepted",
+            emailContent: contact.emailContent,
           }),
         );
 
@@ -1154,7 +1157,13 @@ http.route({
               total: exportContacts.length,
               withoutEmail: exportContacts.filter((c) => !c.email.trim()).length,
               analysisFailed: exportContacts.filter(
-                (c) => c.analysisStatus === "failed",
+                (c) =>
+                  !isContactExportable({
+                    email: c.email,
+                    analysisStatus: c.analysisStatus,
+                    status: "accepted",
+                    emailContent: c.emailContent,
+                  }) && c.email.trim().length > 0,
               ).length,
             }, {
               duplicateSkips,
@@ -1181,7 +1190,7 @@ http.route({
             leadKey,
             String(contact._id),
             { firstName, fullName, email: contact.email },
-            contact.title ?? "",
+            resolveContactExportTitle(contact),
             emailDetails,
             contact.emailContent,
             contact.followUpEmails,
