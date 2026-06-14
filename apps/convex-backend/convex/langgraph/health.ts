@@ -1,6 +1,12 @@
 import { action, internalAction, internalMutation } from "../_generated/server";
 import { internal, api } from "../_generated/api";
 import { v } from "convex/values";
+import {
+  buildLangGraphUrl,
+  formatLangGraphHealthError,
+  langGraphRequestHeaders,
+  normalizeLangGraphBaseUrl,
+} from "../lib/langgraphClient";
 
 /**
  * LangGraph Worker Health Check System
@@ -34,21 +40,19 @@ export const checkLangGraphHealth = internalAction({
     }
 
     try {
-      // Call the /health endpoint with authentication
-      console.log(`[HealthCheck] Calling ${langgraphUrl}/health`);
+      const baseUrl = normalizeLangGraphBaseUrl(langgraphUrl);
+      const healthUrl = buildLangGraphUrl(baseUrl, "/health");
+      console.log(`[HealthCheck] Calling ${healthUrl}`);
 
-      const response = await fetch(`${langgraphUrl}/health`, {
+      const response = await fetch(healthUrl, {
         method: "GET",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
+        headers: langGraphRequestHeaders(apiKey),
         signal: AbortSignal.timeout(10000), // 10 second timeout
       });
 
       if (!response.ok) {
         throw new Error(
-          `Health check failed with status ${response.status}: ${response.statusText}`,
+          formatLangGraphHealthError(response.status, response.statusText, baseUrl),
         );
       }
 

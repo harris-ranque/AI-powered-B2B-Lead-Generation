@@ -313,8 +313,19 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
   );
 
   const exportableContactCount = featureFlags.multiContactPipeline
-    ? (contactCounts?.totalExportable ?? enrichedCount)
+    ? (contactCounts?.totalExportableIncludingPrior ??
+        contactCounts?.totalExportable ??
+        enrichedCount)
     : enrichedCount;
+
+  const duplicateSkipCount =
+    (search?.duplicatesFilteredPlaceId ?? 0) +
+    (search?.duplicatesFilteredAddress ?? 0) +
+    (search?.duplicatesFilteredPlaceName ?? 0) +
+    (search?.duplicatesFilteredEmail ?? 0);
+  const priorSearchExportable = contactCounts?.duplicateFallbackExportable ?? 0;
+  const isRepeatSearchNoNewLeads =
+    discoveredCount === 0 && duplicateSkipCount > 0;
 
   // personalizedCount: leads with actual email content generated (analysis succeeded).
   // emailDetailsByLead already merges DB-loaded leads and session-generated emails accurately.
@@ -797,6 +808,22 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
         </TabsList>
 
         <TabsContent value="export" className="space-y-4 pt-4">
+          {isRepeatSearchNoNewLeads && (
+            <Alert className="border-amber-500/40 bg-amber-500/10">
+              <AlertTriangle className="h-4 w-4 text-amber-300" />
+              <AlertDescription className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">
+                  No new businesses were added
+                </span>
+                — {duplicateSkipCount.toLocaleString()} were already in your account
+                from prior searches. CSV export includes exportable contacts from
+                those prior results
+                {priorSearchExportable > 0
+                  ? ` (${priorSearchExportable.toLocaleString()} available now).`
+                  : " when available."}
+              </AlertDescription>
+            </Alert>
+          )}
           <div className="grid gap-4 md:grid-cols-3">
             {EXPORT_FORMATS.map((format) => {
               const IconComponent = format.icon;

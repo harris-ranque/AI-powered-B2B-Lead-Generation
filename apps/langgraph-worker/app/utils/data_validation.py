@@ -109,12 +109,17 @@ class BaseDataValidator:
         # Check each required data point using structured fields first, then fallback to text analysis
         data_point_scores = {}
 
-        # Check structured fields first (preferred for Perplexity results)
-        data_point_scores["annual_revenue"] = bool(result.annual_revenue and result.annual_revenue != "")
-        data_point_scores["employee_count"] = bool(result.employee_count and result.employee_count != "")
-        data_point_scores["leadership_names"] = bool(result.leadership_names and len(result.leadership_names) > 0)
-        data_point_scores["recent_news"] = bool(result.recent_news and len(result.recent_news) > 0)
-        data_point_scores["funding_investments"] = bool(result.funding_investments and result.funding_investments != "")
+        annual_revenue = getattr(result, "annual_revenue", "") or ""
+        employee_count = getattr(result, "employee_count", "") or ""
+        leadership_names = getattr(result, "leadership_names", None) or []
+        recent_news = getattr(result, "recent_news", None) or []
+        funding_investments = getattr(result, "funding_investments", "") or ""
+
+        data_point_scores["annual_revenue"] = bool(annual_revenue and annual_revenue != "")
+        data_point_scores["employee_count"] = bool(employee_count and employee_count != "")
+        data_point_scores["leadership_names"] = bool(leadership_names and len(leadership_names) > 0)
+        data_point_scores["recent_news"] = bool(recent_news and len(recent_news) > 0)
+        data_point_scores["funding_investments"] = bool(funding_investments and funding_investments != "")
 
         # Fallback to text-based checking if structured fields are empty (for Tavily results)
         if not any(data_point_scores.values()):
@@ -152,28 +157,31 @@ class BaseDataValidator:
         text_parts = []
         
         # Main content
-        if result.company_overview:
-            text_parts.append(result.company_overview)
+        company_overview = getattr(result, "company_overview", "") or ""
+        if company_overview:
+            text_parts.append(company_overview)
             
-        if result.industry_insights:
-            text_parts.append(result.industry_insights)
+        industry_insights = getattr(result, "industry_insights", "") or ""
+        if industry_insights:
+            text_parts.append(industry_insights)
             
         # Services and products
-        if result.services_products:
-            text_parts.extend(result.services_products)
+        services_products = getattr(result, "services_products", None) or []
+        if services_products:
+            text_parts.extend(services_products)
             
         # Competitor descriptions
-        for competitor in result.competitors:
+        for competitor in getattr(result, "competitors", None) or []:
             if isinstance(competitor, dict) and "description" in competitor:
                 text_parts.append(competitor["description"])
                 
         # Raw data content
-        if result.raw_data:
-            # Extract text from various raw data structures
-            if "comprehensive_report" in result.raw_data:
-                text_parts.append(str(result.raw_data["comprehensive_report"]))
-            if "langchain_tavily_result" in result.raw_data:
-                tavily_data = result.raw_data["langchain_tavily_result"]
+        raw_data = getattr(result, "raw_data", None) or {}
+        if raw_data:
+            if "comprehensive_report" in raw_data:
+                text_parts.append(str(raw_data["comprehensive_report"]))
+            if "langchain_tavily_result" in raw_data:
+                tavily_data = raw_data["langchain_tavily_result"]
                 if "answer" in tavily_data:
                     text_parts.append(str(tavily_data["answer"]))
                 if "results" in tavily_data:

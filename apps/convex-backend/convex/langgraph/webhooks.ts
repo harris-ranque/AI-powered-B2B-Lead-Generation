@@ -484,37 +484,14 @@ export const handleEmailGenerationCompleted = internalMutation({
         const totalLeads = eligibleLeads.length;
         const progressPercent = totalLeads > 0 ? (completedLeads / totalLeads) * 100 : 0;
 
-        // Broadcast success update via real-time status broadcast
         await ctx.runMutation(
-          internal.realtime.broadcaster.broadcastPipelineUpdate,
+          internal.leads.analysisProgress.publishAnalysisProgress,
           {
             userId: search.userId,
-            searchId: searchId as any,
-            stage: "analysis",
-            progress: progressPercent,
-            message: `Analyzed ${completedLeads} of ${totalLeads} leads - ${lead.businessName} complete`,
-            data: {
-              stage: "email_generation_completed",
-              redirectTo: "search-history",
-              leadId: leadId,
-              leadName: lead.businessName,
-              relevanceScore: result.relevance_score || 0,
-              qualityScore: args.payload.quality_score || 0,
-              approved: args.payload.approved || false,
-              emailGenerated: !!(result.primary_email && result.primary_email !== null),
-              processingTime: result.processing_time || 0,
-              requestId: args.payload.request_id,
-              progress: {
-                discovered: allLeads.length,
-                enriched: allLeads.filter(
-                  (l: Doc<"leads">) =>
-                    l.enrichmentStatus === "completed" ||
-                    l.enrichmentStatus === "completed_fallback",
-                ).length,
-                analyzed: completedLeads,
-                total: totalLeads, // Use eligible leads count
-              },
-            },
+            searchId: searchId as Id<"searches">,
+            progressPercent,
+            currentLead: lead.businessName,
+            message: `Wrote email for ${lead.businessName} (${completedLeads}/${totalLeads} complete)`,
           },
         );
 
@@ -653,33 +630,14 @@ export const handleEmailGenerationCompleted = internalMutation({
         const processedLeads = completedLeads + failedLeads;
         const progressPercent = totalLeads > 0 ? (processedLeads / totalLeads) * 100 : 0;
 
-        // Broadcast error via real-time status broadcast
         await ctx.runMutation(
-          internal.realtime.broadcaster.broadcastPipelineUpdate,
+          internal.leads.analysisProgress.publishAnalysisProgress,
           {
             userId: search.userId,
-            searchId: searchId as any,
-            stage: "analysis",
-            progress: progressPercent,
-            message: `Analyzed ${processedLeads} of ${totalLeads} leads (${completedLeads} successful, ${failedLeads} failed)`,
-            error: `Failed: ${lead.businessName} - ${errorMessage}`,
-            data: {
-              stage: "email_generation_failed",
-              leadId: leadId,
-              leadName: lead.businessName,
-              error: errorMessage,
-              progress: {
-                discovered: allLeads.length,
-                enriched: allLeads.filter(
-                  (l: Doc<"leads">) =>
-                    l.enrichmentStatus === "completed" ||
-                    l.enrichmentStatus === "completed_fallback",
-                ).length,
-                analyzed: completedLeads,
-                failed: failedLeads,
-                total: totalLeads, // Use eligible leads count
-              },
-            },
+            searchId: searchId as Id<"searches">,
+            progressPercent,
+            currentLead: lead.businessName,
+            message: `Failed writing email for ${lead.businessName}: ${errorMessage}`,
           },
         );
 
@@ -1054,29 +1012,17 @@ export const handleBatchProgress = internalMutation({
         return { success: false, error: "Search not found" };
       }
 
-      // Broadcast progress update to frontend
-      await ctx.runMutation(
-        internal.realtime.broadcaster.broadcastPipelineUpdate,
-        {
-          userId: search.userId,
-          searchId: searchIdTyped,
-          stage: "analysis",
-          progress: progressPercent,
-          message: currentLead
-            ? `Analyzing ${currentLead} (${completedCount}/${totalCount} complete)`
-            : `Analyzed ${completedCount} of ${totalCount} leads (${successCount} successful, ${failureCount} failed)`,
-          data: {
-            batchId,
-            stage: "batch_analysis_progress",
-            completedCount,
-            totalCount,
-            successCount,
-            failureCount,
-            currentLead,
-            progressPercent,
-          },
-        },
-      );
+      // Sync search progress + broadcast live Write Emails metrics
+      await ctx.runMutation(internal.leads.analysisProgress.publishAnalysisProgress, {
+        searchId: searchIdTyped,
+        userId: search.userId,
+        progressPercent,
+        batchId,
+        currentLead: currentLead ?? undefined,
+        message: currentLead
+          ? `Writing email for ${currentLead} (${completedCount}/${totalCount} processed)`
+          : `Wrote ${successCount} of ${totalCount} emails (${successCount} successful, ${failureCount} failed)`,
+      });
 
       logger.info("Batch progress broadcast complete", {
         batchId,
@@ -1466,36 +1412,13 @@ export const handleBatchCompleted = internalMutation({
         completionMessage = `Batch complete: ${completedLeads} analyzed, ${failedLeads} skipped (${processedLeads}/${totalLeads} total)`;
       }
 
-      await ctx.runMutation(
-        internal.realtime.broadcaster.broadcastPipelineUpdate,
-        {
-          userId: search.userId,
-          searchId: searchIdTyped,
-          stage: "analysis",
-          progress: progressPercent,
-          message: completionMessage,
-          data: {
-            batchId,
-            stage: "batch_analysis_completed",
-            status,
-            processedSuccessfully,
-            processingErrors,
-            totalProcessingTime,
-            successRate,
-            progress: {
-              discovered: allLeads.length,
-              enriched: allLeads.filter(
-                (l: Doc<"leads">) =>
-                  l.enrichmentStatus === "completed" ||
-                  l.enrichmentStatus === "completed_fallback",
-              ).length,
-              analyzed: completedLeads,
-              failed: failedLeads,
-              total: totalLeads,
-            },
-          },
-        },
-      );
+      await ctx.runMutation(internal.leads.analysisProgress.publishAnalysisProgress, {
+        searchId: searchIdTyped,
+        userId: search.userId,
+        progressPercent,
+        batchId,
+        message: completionMessage,
+      });
 
       // Check if all leads are processed and trigger search completion
       const scheduledOrProcessing = eligibleLeads.filter(

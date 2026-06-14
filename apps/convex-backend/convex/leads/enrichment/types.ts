@@ -16,6 +16,7 @@ export interface Contact {
   linkedin?: string;
   confidence: number;
   domain?: string;
+  verified?: boolean;
 }
 
 export interface SocialProfiles {

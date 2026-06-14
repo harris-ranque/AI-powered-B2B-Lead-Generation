@@ -127,7 +127,7 @@ export function expandRolesForMatching(
     const families = detectRoleFamilies(role);
     for (const family of families) {
       if (ROLE_FAMILY_PATTERNS[family]) {
-        for (const pattern of ROLE_FAMILY_PATTERNS[family]) {
+        for (const pattern of ROLE_FAMILY_PATTERNS[family]!) {
           expanded.add(pattern);
         }
       } else {

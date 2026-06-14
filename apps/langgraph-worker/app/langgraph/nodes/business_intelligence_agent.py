@@ -159,6 +159,117 @@ def extract_company_data(raw_data: Dict[str, Any]) -> Dict[str, Any]:
 
     return company_data
 
+
+def _coerce_research_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        for key in ("amount", "total_raised", "latest_round", "event", "value", "text"):
+            nested = value.get(key)
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip()
+    return str(value).strip()
+
+
+def _coerce_research_string_list(value: Any) -> List[str]:
+    if not value:
+        return []
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    if not isinstance(value, list):
+        return []
+
+    items: List[str] = []
+    for entry in value:
+        if isinstance(entry, str) and entry.strip():
+            items.append(entry.strip())
+        elif isinstance(entry, dict):
+            for key in ("name", "event", "title", "text"):
+                nested = entry.get(key)
+                if isinstance(nested, str) and nested.strip():
+                    items.append(nested.strip())
+                    break
+    return items
+
+
+def _research_result_from_cache(
+    cached_payload: Dict[str, Any],
+    cached_overview: str,
+    company_name: str,
+) -> ResearchResult:
+    """Build a full ResearchResult from shared company research cache."""
+    raw_data = cached_payload.get("raw_data")
+    if not isinstance(raw_data, dict):
+        raw_data = {}
+
+    tier_str = str(cached_payload.get("research_tier") or "tavily").lower()
+    tier = ResearchTier.PERPLEXITY if tier_str == "perplexity" else ResearchTier.TAVILY
+
+    def pick_text(*keys: str) -> str:
+        for key in keys:
+            value = raw_data.get(key)
+            if value is None:
+                value = cached_payload.get(key)
+            text = _coerce_research_text(value)
+            if text:
+                return text
+        return ""
+
+    def pick_string_list(*keys: str) -> List[str]:
+        for key in keys:
+            value = raw_data.get(key)
+            if value is None:
+                value = cached_payload.get(key)
+            items = _coerce_research_string_list(value)
+            if items:
+                return items
+        return []
+
+    services_raw = raw_data.get("services_products")
+    if services_raw is None:
+        services_raw = cached_payload.get("services_products")
+    if isinstance(services_raw, list):
+        services_products = [str(item).strip() for item in services_raw if str(item).strip()]
+    elif isinstance(services_raw, str) and services_raw.strip():
+        services_products = [services_raw.strip()]
+    else:
+        services_products = []
+
+    competitors_raw = raw_data.get("competitors")
+    if competitors_raw is None:
+        competitors_raw = cached_payload.get("competitors")
+    competitors = competitors_raw if isinstance(competitors_raw, list) else []
+
+    data_points = cached_payload.get("data_points")
+    if data_points is None:
+        data_points = raw_data.get("data_points")
+    sources_analyzed = cached_payload.get("sources_analyzed")
+    if sources_analyzed is None:
+        sources_analyzed = raw_data.get("sources_analyzed")
+
+    return ResearchResult(
+        query=company_name,
+        tier=tier,
+        confidence_score=float(cached_payload.get("confidence_score", 0.7)),
+        data_points=int(data_points or 0),
+        sources_analyzed=int(sources_analyzed or 0),
+        response_time=0.0,
+        company_overview=cached_overview,
+        services_products=services_products,
+        industry_insights=pick_text("industry_insights"),
+        competitors=competitors,
+        annual_revenue=pick_text("annual_revenue"),
+        employee_count=pick_text("employee_count"),
+        leadership_names=pick_string_list("leadership_names"),
+        recent_news=pick_string_list("recent_news"),
+        funding_investments=pick_text("funding_investments", "funding_details"),
+        raw_data=raw_data,
+        escalation_reason=cached_payload.get("escalation_reason"),
+    )
+
+
 class BusinessIntelligence(BaseModel):
     """Streamlined business intelligence analysis optimized for token efficiency"""
     model_config = ConfigDict(extra="forbid")
@@ -270,23 +381,12 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
                 f"Phase 1: Using cached company research for {lead.company_name}"
             )
             research_start = time.time()
-            from types import SimpleNamespace
 
             cached_payload = precomputed if isinstance(precomputed, dict) else {}
-            raw_data = cached_payload.get("raw_data")
-            if not isinstance(raw_data, dict):
-                raw_data = {}
-
-            research_result = SimpleNamespace(
-                company_overview=cached_overview,
-                raw_data=raw_data if isinstance(raw_data, dict) else {},
-                confidence_score=float(cached_payload.get("confidence_score", 0.7)),
-                data_points=int(cached_payload.get("data_points", 0)),
-                tier=SimpleNamespace(
-                    value=cached_payload.get("research_tier", "tavily")
-                ),
-                sources_analyzed=int(cached_payload.get("sources_analyzed", 0)),
-                escalation_reason=cached_payload.get("escalation_reason"),
+            research_result = _research_result_from_cache(
+                cached_payload,
+                cached_overview,
+                lead.company_name,
             )
             research_time = time.time() - research_start
         else:

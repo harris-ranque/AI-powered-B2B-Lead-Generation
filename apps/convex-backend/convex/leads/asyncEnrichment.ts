@@ -56,6 +56,7 @@ import {
 import {
   isMultiContactPipelineEnabled,
 } from "../lib/featureFlags";
+import { resolveEnrichmentRoles } from "../lib/enrichmentRoles";
 
 // Note: Workpool instance is created per-call in enrichLeads action
 // This is because we need ctx.runMutation which is only available in action context
@@ -484,6 +485,8 @@ export const enrichSingleLeadWorkpool = internalAction({
         throw new Error(`Search ${args.searchId} not found`);
       }
 
+      const requestedRoles = resolveEnrichmentRoles(args.roles, search.parameters);
+
       if (search.enrichmentPaused) {
         // Release slot and skip
         await ctx.runMutation(
@@ -637,7 +640,7 @@ export const enrichSingleLeadWorkpool = internalAction({
         } else {
           const providerAttempt = await tryProvider("findymail", domain, {
             retries: 3,
-            roles: args.roles,
+            roles: requestedRoles,
             userApiKey: args.userApiKey,
           });
           result = providerAttempt.result;
@@ -654,7 +657,7 @@ export const enrichSingleLeadWorkpool = internalAction({
       } else {
         const providerAttempt = await tryProvider("findymail", domain, {
           retries: 3,
-          roles: args.roles,
+          roles: requestedRoles,
           userApiKey: args.userApiKey,
         });
         result = providerAttempt.result;
@@ -755,7 +758,7 @@ export const enrichSingleLeadWorkpool = internalAction({
             leadId: args.leadId,
             searchId: args.searchId,
             userId: args.userId,
-            requestedRoles: args.roles ?? [],
+            requestedRoles,
             companyWebsite: lead.website,
             enrichmentResult: result,
             enableRoleExpansion: true,
@@ -1143,6 +1146,15 @@ export const enrichSingleLead = internalAction({
 
     const performanceTracker = startPerformanceTracking();
 
+    const searchForRoles = await ctx.runQuery(
+      internal.search.internal.getSearchInternal,
+      { searchId: args.searchId },
+    );
+    const requestedRoles = resolveEnrichmentRoles(
+      args.roles,
+      searchForRoles?.parameters,
+    );
+
     // Try to acquire API key slot for rate limiting (5 concurrent per unique API key)
     const apiKeyHash = getApiKeyHash(args.userApiKey);
     // Use leadId as claimId for precise slot tracking and release
@@ -1243,7 +1255,7 @@ export const enrichSingleLead = internalAction({
           leadId: args.leadId,
           searchId: args.searchId,
           userId: args.userId,
-          roles: args.roles,
+          roles: requestedRoles,
           userApiKey: args.userApiKey,
           slotRetryAttempt: slotRetryAttempt + 1,
         }
@@ -1458,7 +1470,7 @@ export const enrichSingleLead = internalAction({
           leadId: args.leadId,
           businessName: lead.businessName,
           domain,
-          roles: args.roles,
+          roles: requestedRoles,
         },
       );
 
@@ -1520,7 +1532,7 @@ export const enrichSingleLead = internalAction({
       // PRIMARY PROVIDER: FindyMail (3 retries)
       const { result, pipelineBlockingError } = await tryProvider("findymail", domain, {
         retries: 3,
-        roles: args.roles,
+        roles: requestedRoles,
         userApiKey: args.userApiKey,
       });
 
@@ -1595,7 +1607,7 @@ export const enrichSingleLead = internalAction({
             leadId: args.leadId,
             searchId: args.searchId,
             userId: args.userId,
-            requestedRoles: args.roles ?? [],
+            requestedRoles,
             companyWebsite: lead.website,
             enrichmentResult: result,
             enableRoleExpansion: true,

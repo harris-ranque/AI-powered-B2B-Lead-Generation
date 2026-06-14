@@ -23,6 +23,7 @@ import { STAGE_CONFIGS, STAGE_ORDER } from "@/pipeline/config";
 import { SourceSelector } from "./SourceSelector";
 import { LeadDiscoveryStage } from "./LeadDiscoveryStage";
 import { EnrichmentStage } from "./EnrichmentStage";
+import { AIPersonalizationStage } from "./AIPersonalizationStage";
 import { ReviewExportStage } from "./ReviewExportStage";
 import { SearchProgressTracker } from "../SearchProgressTracker";
 import { StageTracker } from "./StageTracker";
@@ -119,9 +120,20 @@ export function PipelineOrchestrator({
   const exportableCount =
     liveExportableCounts?.[String(activeSearchId)] ??
     (featureFlags.multiContactPipeline
-      ? (contactCounts?.totalExportable ?? search?.results?.exportableCount)
+      ? (contactCounts?.totalExportableIncludingPrior ??
+          contactCounts?.totalExportable ??
+          search?.results?.exportableCount)
       : search?.results?.exportableCount) ??
     enrichedCount;
+
+  const duplicateSkipCount =
+    (search?.duplicatesFilteredPlaceId ?? 0) +
+    (search?.duplicatesFilteredAddress ?? 0) +
+    (search?.duplicatesFilteredPlaceName ?? 0) +
+    (search?.duplicatesFilteredEmail ?? 0);
+  const priorSearchExportable = contactCounts?.duplicateFallbackExportable ?? 0;
+  const isRepeatSearchNoNewLeads =
+    totalFound === 0 && duplicateSkipCount > 0;
 
   const openLeadHistory = useCallback(() => {
     setShowCompletionDialog(false);
@@ -215,13 +227,26 @@ export function PipelineOrchestrator({
       state.leads.some(
         (lead, index) => lead._id !== searchLeads[index]?._id,
       );
+    const enrichmentDataChanged = state.leads.some((lead, index) => {
+      const serverLead = searchLeads[index];
+      if (!serverLead || lead._id !== serverLead._id) return false;
+      const localEmails = lead.contactInfo?.emails?.length ?? 0;
+      const serverEmails = serverLead.contactInfo?.emails?.length ?? 0;
+      return (
+        lead.enrichmentStatus !== serverLead.enrichmentStatus ||
+        localEmails !== serverEmails ||
+        lead.primaryEmail !== serverLead.primaryEmail
+      );
+    });
 
-    if (hasDifferentLead) {
+    if (hasDifferentLead || enrichmentDataChanged) {
       setLeads(searchLeads);
     }
 
     const enriched = searchLeads.filter(
-      (lead) => lead.contactInfo?.emails?.length,
+      (lead) =>
+        lead.primaryEmail ||
+        (lead.contactInfo?.emails && lead.contactInfo.emails.length > 0),
     );
 
     if (state.enrichedLeads.length !== enriched.length) {
@@ -266,6 +291,19 @@ export function PipelineOrchestrator({
         </div>
       )
     : undefined;
+
+  const handleStageAdvance = useCallback(
+    (stage: PipelineStage) => {
+      const targetIndex = STAGE_ORDER.indexOf(stage);
+      if (targetIndex > 0) {
+        for (let i = 0; i < targetIndex; i++) {
+          markStageComplete(STAGE_ORDER[i]);
+        }
+      }
+      setStage(stage);
+    },
+    [markStageComplete, setStage],
+  );
 
   const handleStageSelect = (stage: (typeof STAGE_ORDER)[number]) => {
     if (stage === state.currentStage) return;
@@ -488,8 +526,7 @@ export function PipelineOrchestrator({
       case "enrichment":
         return <EnrichmentStage />;
       case "ai_personalization":
-        // AI personalization is tracked via SearchProgressTracker below
-        return null;
+        return <AIPersonalizationStage />;
       case "review_export":
         return <ReviewExportStage onViewResults={openLeadHistory} />;
       default:
@@ -554,6 +591,31 @@ export function PipelineOrchestrator({
                         <div className="text-xs font-medium text-muted-foreground">Analyzed</div>
                       </div>
                     </div>
+                  </div>
+                ) : isRepeatSearchNoNewLeads ? (
+                  <div className="space-y-3">
+                    <p className="font-medium text-foreground">
+                      No new businesses were added for this search.
+                    </p>
+                    <p>
+                      {duplicateSkipCount.toLocaleString()} businesses were already in
+                      your account from prior searches in this area (deduplication).
+                    </p>
+                    {priorSearchExportable > 0 ? (
+                      <p>
+                        {priorSearchExportable.toLocaleString()} exportable contact
+                        {priorSearchExportable === 1 ? "" : "s"} from those prior
+                        results can still be downloaded — use{" "}
+                        <span className="font-medium text-foreground">Export CSV</span>{" "}
+                        in review or search history.
+                      </p>
+                    ) : (
+                      <p>
+                        Export CSV will include contacts from prior searches when they
+                        become available. Open an earlier search that discovered these
+                        businesses for full results.
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <p>Your search has finished. Review the results in search history.</p>
@@ -706,7 +768,7 @@ export function PipelineOrchestrator({
           completedStages={state.completedStages}
           availableStages={availableStages}
           optimisticMetrics={optimisticMetrics}
-          onStageAdvance={setStage}
+          onStageAdvance={handleStageAdvance}
           onStageSelect={handleStageSelect}
           collapsed={isPipelineCollapsed}
           onCollapseChange={setIsPipelineCollapsed}

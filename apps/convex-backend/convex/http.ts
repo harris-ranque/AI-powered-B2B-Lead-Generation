@@ -18,6 +18,7 @@ import {
 import {
   extractContactDetails,
   isLeadExportable,
+  isContactExportable,
   noExportableLeadsMessage,
 } from "./lib/exportEligibility";
 
@@ -105,16 +106,52 @@ function escapeCsvValue(value: unknown): string {
   return raw;
 }
 
-function extractCompanyProfile(lead: LeadDoc): string {
-  const analysis = lead.aiAnalysis?.leadAnalysis;
-  if (!analysis || typeof analysis !== "object" || analysis === null) {
-    if (typeof lead.notes === "string" && lead.notes.trim()) {
+const OPERATIONAL_NOTE_PATTERN = /duplicate email detected/i;
+
+function isExportableLeadNote(notes: string): boolean {
+  const trimmed = notes.trim();
+  if (!trimmed) {
+    return false;
+  }
+  return !OPERATIONAL_NOTE_PATTERN.test(trimmed);
+}
+
+function resolveExportLeadAnalysis(
+  lead: LeadDoc,
+  contactAiAnalysis?: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const aiAnalysis = (contactAiAnalysis ?? lead.aiAnalysis) as
+    | Record<string, unknown>
+    | undefined;
+  if (!aiAnalysis || typeof aiAnalysis !== "object") {
+    return null;
+  }
+
+  const nested = aiAnalysis.leadAnalysis;
+  if (nested && typeof nested === "object" && nested !== null) {
+    return nested as Record<string, unknown>;
+  }
+
+  return aiAnalysis;
+}
+
+function extractCompanyProfile(
+  lead: LeadDoc,
+  contactAiAnalysis?: Record<string, unknown>,
+): string {
+  const analysis = resolveExportLeadAnalysis(lead, contactAiAnalysis);
+  if (!analysis) {
+    if (
+      typeof lead.notes === "string" &&
+      lead.notes.trim() &&
+      isExportableLeadNote(lead.notes)
+    ) {
       return lead.notes.trim();
     }
     return "";
   }
 
-  const record = analysis as Record<string, unknown>;
+  const record = analysis;
   const bullets: string[] = [];
 
   // Helper to format array values - take first 2-3 items for conciseness
@@ -213,8 +250,13 @@ function extractCompanyProfile(lead: LeadDoc): string {
     }
   }
 
-  // If still no data, try notes
-  if (bullets.length === 0 && typeof lead.notes === "string" && lead.notes.trim()) {
+  // If still no data, try user notes (skip operational dedup/system messages)
+  if (
+    bullets.length === 0 &&
+    typeof lead.notes === "string" &&
+    lead.notes.trim() &&
+    isExportableLeadNote(lead.notes)
+  ) {
     return `- ${truncate(lead.notes.trim(), 250)}`;
   }
 
@@ -815,6 +857,23 @@ http.route({
       // Get leads data
       const searchId = searchIdParam as Id<"searches"> | undefined;
       let leads: LeadDoc[] = [];
+      let exportContacts: Array<{
+        _id: Id<"leadContacts">;
+        leadId: Id<"leads">;
+        name: string;
+        title?: string;
+        email: string;
+        analysisStatus?: string;
+        emailContent?: {
+          subject: string;
+          body: string;
+        };
+        followUpEmails?: Array<{ subject: string; body: string }>;
+        aiAnalysis?: Record<string, unknown>;
+      }> = [];
+      let includesPriorSearchLeads = false;
+      let duplicateSkips = 0;
+      let priorSearchExportable = 0;
 
       if (searchId) {
         const search = await ctx.runQuery(
@@ -831,12 +890,19 @@ http.route({
           });
         }
 
-        leads = (await ctx.runQuery(
-          internal.leads.internal.getSearchLeadsInternal,
+        const exportResolution = await ctx.runQuery(
+          internal.leads.internal.resolveSearchExportInternal,
           {
-            searchId: searchId as any,
+            searchId: searchId as Id<"searches">,
+            userId: resolvedUserId as Id<"users">,
           },
-        )) as LeadDoc[];
+        );
+
+        leads = exportResolution.leads as LeadDoc[];
+        exportContacts = exportResolution.contacts;
+        includesPriorSearchLeads = exportResolution.includesPriorSearchLeads;
+        duplicateSkips = exportResolution.duplicateSkips;
+        priorSearchExportable = exportResolution.priorSearchExportable;
       } else {
         // Collect all user leads with pagination to avoid 16MB limit
         let allLeads: LeadDoc[] = [];
@@ -867,10 +933,16 @@ http.route({
       }
 
       if (!leads || leads.length === 0) {
-        return new Response("No leads found for export", {
-          status: 404,
-          headers: baseHeaders,
-        });
+        return new Response(
+          noExportableLeadsMessage(
+            { total: 0, withoutEmail: 0, analysisFailed: 0 },
+            { duplicateSkips, priorSearchExportable },
+          ),
+          {
+            status: 404,
+            headers: baseHeaders,
+          },
+        );
       }
 
       // Compute breakdown stats before filtering for diagnostic messages.
@@ -1006,7 +1078,7 @@ http.route({
         const followUp1: FollowUpEmail = followUps[0] ?? defaultFollowUp;
         const followUp2: FollowUpEmail = followUps[1] ?? defaultFollowUp;
 
-        const companyProfile = extractCompanyProfile(lead);
+        const companyProfile = extractCompanyProfile(lead, contactAiAnalysis);
         const primarySubject = firstNonEmptyString(
           emailDetails?.primarySubject,
           contactEmailContent?.subject,
@@ -1068,39 +1140,30 @@ http.route({
       let csvRows: string[];
 
       if (searchId) {
-        const contacts = (await ctx.runQuery(
-          internal.leads.contactInternal.getAcceptedContactsForSearch,
-          { searchId: searchId as Id<"searches"> },
-        )) as Array<{
-          _id: Id<"leadContacts">;
-          leadId: Id<"leads">;
-          name: string;
-          title?: string;
-          email: string;
-          analysisStatus?: string;
-          emailContent?: {
-            subject: string;
-            body: string;
-          };
-          followUpEmails?: Array<{ subject: string; body: string }>;
-          aiAnalysis?: Record<string, unknown>;
-        }>;
-
-        const exportableContacts = contacts.filter(
-          (contact) =>
-            contact.email.trim().length > 0 &&
-            contact.analysisStatus !== "failed",
+        const exportableContacts = exportContacts.filter((contact) =>
+          isContactExportable({
+            email: contact.email,
+            analysisStatus: contact.analysisStatus,
+            status: "accepted",
+          }),
         );
 
         if (exportableContacts.length === 0) {
           return new Response(
             noExportableLeadsMessage({
-              total: contacts.length,
-              withoutEmail: contacts.filter((c) => !c.email.trim()).length,
-              analysisFailed: contacts.filter((c) => c.analysisStatus === "failed")
-                .length,
+              total: exportContacts.length,
+              withoutEmail: exportContacts.filter((c) => !c.email.trim()).length,
+              analysisFailed: exportContacts.filter(
+                (c) => c.analysisStatus === "failed",
+              ).length,
+            }, {
+              duplicateSkips,
+              priorSearchExportable,
             }),
-            { status: 404, headers: baseHeaders },
+            {
+              status: 404,
+              headers: baseHeaders,
+            },
           );
         }
 
@@ -1145,14 +1208,19 @@ http.route({
 
       const csvContent = "\uFEFF" + [csvHeaders.join(","), ...csvRows].join("\r\n");
 
+      const exportHeaders: Record<string, string> = {
+        ...baseHeaders,
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": searchId
+          ? `attachment; filename="leads_${searchId}.csv"`
+          : `attachment; filename="leads_${resolvedUserId}.csv"`,
+      };
+      if (includesPriorSearchLeads) {
+        exportHeaders["X-Genni-Export-Includes-Prior-Search"] = "true";
+      }
+
       return new Response(csvContent, {
-        headers: {
-          ...baseHeaders,
-          "Content-Type": "text/csv; charset=utf-8",
-          "Content-Disposition": searchId
-            ? `attachment; filename="leads_${searchId}.csv"`
-            : `attachment; filename="leads_${resolvedUserId}.csv"`,
-        },
+        headers: exportHeaders,
       });
     } catch (error) {
       console.error("Export error:", error);

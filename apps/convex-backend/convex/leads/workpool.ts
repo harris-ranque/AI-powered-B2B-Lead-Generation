@@ -19,7 +19,7 @@
 
 import { Workpool, vOnCompleteArgs, type WorkId } from "@convex-dev/workpool";
 import { components } from "../_generated/api";
-import { internalMutation, internalQuery } from "../_generated/server";
+import { internalMutation, internalQuery, type MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
@@ -53,6 +53,67 @@ function isEnrichmentReturnSuccessful(returnValue: unknown): boolean {
   }
 
   return !value.skipped;
+}
+
+/**
+ * Keep search.progress and pipeline broadcasts aligned during enrichment.
+ * `successfulLeads` = businesses with at least one accepted email (UI "emails found").
+ * `completedLeads` = businesses finished processing (success, failure, or no contacts).
+ */
+async function publishEnrichmentProgress(
+  ctx: MutationCtx,
+  args: {
+    userId: Id<"users">;
+    searchId: Id<"searches">;
+    batchId: string;
+    totalLeads: number;
+    completedLeads: number;
+    successfulLeads: number;
+    failedLeads: number;
+    analyzed: number;
+  },
+): Promise<void> {
+  const progressPercent =
+    args.totalLeads > 0
+      ? Math.round((args.completedLeads / args.totalLeads) * 100)
+      : 0;
+
+  await ctx.runMutation(internal.search.internal.updateSearchProgressInternal, {
+    searchId: args.searchId,
+    progress: {
+      discovered: args.totalLeads,
+      enriched: args.successfulLeads,
+      analyzed: args.analyzed,
+      total: args.totalLeads,
+    },
+  });
+
+  await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+    userId: args.userId,
+    searchId: args.searchId,
+    stage: "enrichment",
+    progress: progressPercent,
+    message: `Found emails for ${args.successfulLeads} of ${args.totalLeads} businesses (${progressPercent}% processed)`,
+    data: {
+      progress: {
+        discovered: args.totalLeads,
+        enriched: args.successfulLeads,
+        analyzed: args.analyzed,
+        total: args.totalLeads,
+      },
+      enrichmentBreakdown: {
+        completed: args.successfulLeads,
+        failed: args.failedLeads,
+        pending: args.totalLeads - args.completedLeads,
+        percentComplete: progressPercent,
+      },
+      workpoolBatch: {
+        batchId: args.batchId,
+        completedLeads: args.completedLeads,
+        totalLeads: args.totalLeads,
+      },
+    },
+  });
 }
 
 /**
@@ -244,32 +305,18 @@ export const onEnrichmentComplete = internalMutation({
         `[Workpool] Lead ${leadId} enrichment ${result.kind} (${newCompletedLeads}/${batch.totalLeads} = ${progressPercent}%)`
       );
 
-      // Broadcast progress update
-      await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+      const search = await ctx.db.get(searchId);
+      const analyzed = search?.progress?.analyzed ?? 0;
+
+      await publishEnrichmentProgress(ctx, {
         userId,
         searchId,
-        stage: "enrichment",
-        progress: progressPercent,
-        message: `Enriched ${newCompletedLeads} of ${batch.totalLeads} leads (${progressPercent}% complete)`,
-        data: {
-          progress: {
-            discovered: batch.totalLeads,
-            enriched: newCompletedLeads,
-            analyzed: 0,
-            total: batch.totalLeads,
-          },
-          enrichmentBreakdown: {
-            completed: newSuccessfulLeads,
-            failed: newFailedLeads,
-            pending: batch.totalLeads - newCompletedLeads,
-            percentComplete: progressPercent,
-          },
-          workpoolBatch: {
-            batchId,
-            completedLeads: newCompletedLeads,
-            totalLeads: batch.totalLeads,
-          },
-        },
+        batchId,
+        totalLeads: batch.totalLeads,
+        completedLeads: newCompletedLeads,
+        successfulLeads: newSuccessfulLeads,
+        failedLeads: newFailedLeads,
+        analyzed,
       });
 
       // If all leads are complete, trigger the analysis phase
@@ -474,32 +521,17 @@ export const reportQueuedLeadCompletion = internalMutation({
         return { updated: true, isComplete };
       }
 
-      // Broadcast progress update
-      await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+      const analyzed = search.progress?.analyzed ?? 0;
+
+      await publishEnrichmentProgress(ctx, {
         userId: search.userId,
         searchId: args.searchId,
-        stage: "enrichment",
-        progress: progressPercent,
-        message: `Enriched ${newCompletedLeads} of ${batch.totalLeads} leads (${progressPercent}% complete)`,
-        data: {
-          progress: {
-            discovered: batch.totalLeads,
-            enriched: newCompletedLeads,
-            analyzed: 0,
-            total: batch.totalLeads,
-          },
-          enrichmentBreakdown: {
-            completed: newSuccessfulLeads,
-            failed: newFailedLeads,
-            pending: batch.totalLeads - newCompletedLeads,
-            percentComplete: progressPercent,
-          },
-          workpoolBatch: {
-            batchId: batch.batchId,
-            completedLeads: newCompletedLeads,
-            totalLeads: batch.totalLeads,
-          },
-        },
+        batchId: batch.batchId,
+        totalLeads: batch.totalLeads,
+        completedLeads: newCompletedLeads,
+        successfulLeads: newSuccessfulLeads,
+        failedLeads: newFailedLeads,
+        analyzed,
       });
 
       // If all leads are complete, trigger the analysis phase

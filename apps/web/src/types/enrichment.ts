@@ -15,6 +15,9 @@ export interface EnrichmentProgress {
   inProgress: number;
   completed: number;
   failed: number;
+  noContacts?: number;
+  withEmail?: number;
+  processed?: number;
   percentComplete: number;
   providers: {
     findymail: number;

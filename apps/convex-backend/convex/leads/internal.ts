@@ -5,6 +5,7 @@ import {
   normalizePlaceName,
   extractPrimaryEmail,
 } from "../lib/deduplication";
+import { resolveSearchExportData } from "../lib/exportEligibility";
 
 // Internal query to get lead without auth check
 export const getLeadInternal = internalQuery({
@@ -1661,5 +1662,15 @@ export const getEnrichmentQueueStats = internalQuery({
         count,
       })),
     };
+  },
+});
+
+export const resolveSearchExportInternal = internalQuery({
+  args: {
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    return await resolveSearchExportData(ctx, args.searchId, args.userId);
   },
 });

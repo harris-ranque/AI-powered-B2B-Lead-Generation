@@ -4,6 +4,7 @@ export { StageTracker } from "./StageTracker";
 export { SourceSelector } from "./SourceSelector";
 export { LeadDiscoveryStage } from "./LeadDiscoveryStage";
 export { EnrichmentStage } from "./EnrichmentStage";
+export { AIPersonalizationStage } from "./AIPersonalizationStage";
 export { ReviewExportStage } from "./ReviewExportStage";
 export { FileUploadArea } from "./FileUploadArea";
 export { EstimatedCostCard } from "./EstimatedCostCard";

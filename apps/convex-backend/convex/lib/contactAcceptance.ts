@@ -4,8 +4,8 @@
 
 import {
   emailDomainMatchesCompany,
-  isContactEmailVerified,
   normalizeContactEmail,
+  resolveContactEmailVerified,
 } from "./contactVerification";
 import { expandRolesForMatching } from "./roleFamilies";
 
@@ -137,6 +137,7 @@ export function evaluateContactCandidate(
     acceptedEmailsInSearch: Set<string>;
     enableRoleExpansion: boolean;
     requireVerifiedEmail: boolean;
+    trustNamedRoleContacts?: boolean;
   },
 ): ContactAcceptanceResult {
   const normalizedEmail = normalizeContactEmail(candidate.email);
@@ -159,9 +160,9 @@ export function evaluateContactCandidate(
     };
   }
 
-  const raw = candidate.raw ?? {};
-  const emailVerified =
-    candidate.verified === true || isContactEmailVerified(raw);
+  const emailVerified = resolveContactEmailVerified(candidate, {
+    trustNamedRoleContacts: options.trustNamedRoleContacts,
+  });
 
   if (options.requireVerifiedEmail && !emailVerified) {
     return {
@@ -193,7 +194,15 @@ export function evaluateContactCandidate(
     options.enableRoleExpansion,
   );
 
-  if (titleMatch.score < TITLE_MATCH_ACCEPT_THRESHOLD) {
+  const hasTitle = Boolean(candidate.title?.trim());
+  const titleAccepted =
+    titleMatch.score >= TITLE_MATCH_ACCEPT_THRESHOLD ||
+    (!hasTitle &&
+      options.trustNamedRoleContacts &&
+      domainMatchVerified &&
+      emailVerified);
+
+  if (!titleAccepted) {
     return {
       accepted: false,
       rejectionReason: "title_mismatch",

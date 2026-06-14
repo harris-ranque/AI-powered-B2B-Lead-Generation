@@ -4,6 +4,7 @@ import { Id } from "../_generated/dataModel";
 import { extractPrimaryEmail } from "../lib/deduplication";
 import { evaluateContactCandidate } from "../lib/contactAcceptance";
 import { extractDomainFromWebsite } from "../lib/contactVerification";
+import { resolveEnrichmentRoles } from "../lib/enrichmentRoles";
 import {
   isValidCompanyResearchCache,
   normalizeCompanyResearchPayload,
@@ -460,6 +461,12 @@ export const processMultiContactEnrichment = internalMutation({
       ).map((c) => c.normalizedEmail),
     );
 
+    let requestedRoles = args.requestedRoles;
+    if (requestedRoles.length === 0) {
+      const search = await ctx.db.get(args.searchId);
+      requestedRoles = resolveEnrichmentRoles(undefined, search?.parameters);
+    }
+
     const result = args.enrichmentResult as {
       contacts?: Array<{
         name: string;
@@ -467,6 +474,7 @@ export const processMultiContactEnrichment = internalMutation({
         email?: string;
         linkedin?: string;
         confidence?: number;
+        verified?: boolean;
       }>;
       emails?: Array<{
         email: string;
@@ -482,6 +490,8 @@ export const processMultiContactEnrichment = internalMutation({
       linkedin?: string;
       confidence: number;
       verified?: boolean;
+      raw?: Record<string, unknown>;
+      fromRoleContact: boolean;
     }> = [];
 
     for (const contact of result.contacts ?? []) {
@@ -492,6 +502,9 @@ export const processMultiContactEnrichment = internalMutation({
           email: contact.email,
           linkedin: contact.linkedin,
           confidence: contact.confidence ?? 0.5,
+          verified: contact.verified,
+          raw: contact as Record<string, unknown>,
+          fromRoleContact: true,
         });
       }
     }
@@ -507,6 +520,8 @@ export const processMultiContactEnrichment = internalMutation({
           email: emailEntry.email,
           confidence: emailEntry.confidence ?? 0.5,
           verified: emailEntry.verified,
+          raw: emailEntry as Record<string, unknown>,
+          fromRoleContact: false,
         });
       }
     }
@@ -529,13 +544,15 @@ export const processMultiContactEnrichment = internalMutation({
           linkedin: candidate.linkedin,
           confidence: candidate.confidence,
           verified: candidate.verified,
+          raw: candidate.raw,
         },
         {
-          requestedRoles: args.requestedRoles,
+          requestedRoles,
           companyWebsite: args.companyWebsite,
           acceptedEmailsInSearch: acceptedEmails,
           enableRoleExpansion: args.enableRoleExpansion,
           requireVerifiedEmail: true,
+          trustNamedRoleContacts: candidate.fromRoleContact,
         },
       );
 
@@ -564,7 +581,7 @@ export const processMultiContactEnrichment = internalMutation({
         linkedin: candidate.linkedin,
         confidence: candidate.confidence,
         source: "findymail" as const,
-        requestedRoles: args.requestedRoles,
+        requestedRoles,
         matchedRole: evaluation.matchedRole,
         titleMatchScore: evaluation.titleMatchScore,
         titleMatchReason: evaluation.titleMatchReason,
@@ -650,6 +667,27 @@ export const markContactAnalysisFailed = internalMutation({
       analysisError: args.error,
       updatedAt: Date.now(),
     });
+  },
+});
+
+export const skipContactAnalysisInternal = internalMutation({
+  args: {
+    contactId: v.id("leadContacts"),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const contact = await ctx.db.get(args.contactId);
+    if (!contact) {
+      return { skipped: false, reason: "not_found" };
+    }
+
+    await ctx.db.patch(args.contactId, {
+      analysisStatus: "skipped",
+      analysisError: args.reason,
+      updatedAt: Date.now(),
+    });
+
+    return { skipped: true, searchId: contact.searchId, userId: contact.userId };
   },
 });
 

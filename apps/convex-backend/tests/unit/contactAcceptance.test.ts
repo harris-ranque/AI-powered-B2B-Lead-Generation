@@ -32,6 +32,72 @@ describe("contactAcceptance", () => {
     );
   });
 
+  it("accepts FindyMail role contact with person name when verification metadata is missing", () => {
+    const result = evaluateContactCandidate(
+      {
+        name: "Thalia Castillo",
+        email: "thalia.castillo@karmaclubchicago.com",
+        confidence: 0,
+      },
+      {
+        requestedRoles: ["CEO", "Owner"],
+        companyWebsite: "https://www.karmaclubchicago.com",
+        acceptedEmailsInSearch: new Set(),
+        enableRoleExpansion: true,
+        requireVerifiedEmail: true,
+        trustNamedRoleContacts: true,
+      },
+    );
+
+    expect(result.accepted).toBe(true);
+    expect(result.emailVerified).toBe(true);
+    expect(result.domainMatchVerified).toBe(true);
+  });
+
+  it("accepts named role contact with matching title and domain", () => {
+    const result = evaluateContactCandidate(
+      {
+        name: "Thalia Castillo",
+        title: "CEO",
+        email: "thalia.castillo@karmaclubchicago.com",
+        confidence: 0,
+      },
+      {
+        requestedRoles: ["CEO", "Owner"],
+        companyWebsite: "https://www.karmaclubchicago.com",
+        acceptedEmailsInSearch: new Set(),
+        enableRoleExpansion: true,
+        requireVerifiedEmail: true,
+        trustNamedRoleContacts: true,
+      },
+    );
+
+    expect(result.accepted).toBe(true);
+    expect(result.emailVerified).toBe(true);
+    expect(result.domainMatchVerified).toBe(true);
+  });
+
+  it("accepts contact when confidence is high enough without explicit verified flag", () => {
+    const result = evaluateContactCandidate(
+      {
+        name: "Jane Doe",
+        title: "CEO",
+        email: "jane@acme.com",
+        confidence: 0.85,
+      },
+      {
+        requestedRoles: ["CEO"],
+        companyWebsite: "https://acme.com",
+        acceptedEmailsInSearch: new Set(),
+        enableRoleExpansion: false,
+        requireVerifiedEmail: true,
+      },
+    );
+
+    expect(result.accepted).toBe(true);
+    expect(result.emailVerified).toBe(true);
+  });
+
   it("rejects wrong-role contact even with valid email", () => {
     const result = evaluateContactCandidate(
       {

@@ -1,4 +1,5 @@
 import { mutation } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { requireAuth } from "../auth";
 import { createConvexError, ERROR_CODES } from "../lib/errorHandling";
@@ -643,5 +644,142 @@ export const createSearchFromCSV = mutation({
       leadIds,
       statistics: args.statistics,
     };
+  },
+});
+
+const STUCK_ANALYSIS_MS = 10 * 60 * 1000;
+
+// Skip a single contact stuck in email writing (user-initiated)
+export const skipContactAnalysis = mutation({
+  args: { contactId: v.id("leadContacts") },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw createConvexError("authentication", "Authentication required", {
+        code: ERROR_CODES.UNAUTHORIZED,
+        severity: "high",
+        retryable: false,
+      });
+    }
+
+    const contact = await ctx.db.get(args.contactId);
+    if (!contact || contact.userId !== user._id) {
+      throw createConvexError("authorization", "Contact not found", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        retryable: false,
+      });
+    }
+
+    if (
+      contact.analysisStatus !== "scheduled" &&
+      contact.analysisStatus !== "processing" &&
+      contact.analysisStatus !== "pending"
+    ) {
+      throw createConvexError(
+        "business_logic",
+        "Only pending or in-progress contacts can be skipped",
+        {
+          code: ERROR_CODES.INVALID_INPUT,
+          severity: "low",
+          retryable: false,
+        },
+      );
+    }
+
+    await ctx.runMutation(internal.leads.contactInternal.skipContactAnalysisInternal, {
+      contactId: args.contactId,
+      reason: "Skipped by user",
+    });
+
+    await ctx.scheduler.runAfter(
+      0,
+      internal.leads.analysisProgress.publishAnalysisProgress,
+      {
+        searchId: contact.searchId,
+        userId: contact.userId,
+        message: `Skipped email writing for ${contact.email}`,
+      },
+    );
+
+    return { success: true };
+  },
+});
+
+// Skip all contacts stuck in scheduled/processing for a search
+export const skipStuckAnalysisContacts = mutation({
+  args: {
+    searchId: v.id("searches"),
+    olderThanMinutes: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw createConvexError("authentication", "Authentication required", {
+        code: ERROR_CODES.UNAUTHORIZED,
+        severity: "high",
+        retryable: false,
+      });
+    }
+
+    const search = await ctx.db.get(args.searchId);
+    if (!search || search.userId !== user._id) {
+      throw createConvexError("authorization", "Search not found", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        retryable: false,
+      });
+    }
+
+    const thresholdMs =
+      (args.olderThanMinutes ?? 10) * 60 * 1000;
+    const cutoff = Date.now() - thresholdMs;
+
+    const contacts = await ctx.db
+      .query("leadContacts")
+      .withIndex("by_search_status", (q) =>
+        q.eq("searchId", args.searchId).eq("status", "accepted"),
+      )
+      .collect();
+
+    const stuckContacts = contacts.filter((contact) => {
+      if (
+        contact.analysisStatus !== "scheduled" &&
+        contact.analysisStatus !== "processing"
+      ) {
+        return false;
+      }
+      const startedAt =
+        contact.analysisStartedAt ??
+        contact.analysisScheduledAt ??
+        contact.updatedAt;
+      return startedAt < cutoff;
+    });
+
+    let skippedCount = 0;
+    for (const contact of stuckContacts) {
+      await ctx.runMutation(
+        internal.leads.contactInternal.skipContactAnalysisInternal,
+        {
+          contactId: contact._id,
+          reason: "Skipped by user (stuck in processing)",
+        },
+      );
+      skippedCount += 1;
+    }
+
+    if (skippedCount > 0) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.leads.analysisProgress.publishAnalysisProgress,
+        {
+          searchId: args.searchId,
+          userId: user._id,
+          message: `Skipped ${skippedCount} stuck contacts`,
+        },
+      );
+    }
+
+    return { success: true, skippedCount };
   },
 });

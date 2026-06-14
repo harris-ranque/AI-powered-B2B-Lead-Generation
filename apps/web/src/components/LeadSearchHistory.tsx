@@ -358,7 +358,7 @@ export function LeadSearchHistory() {
                       disabled={
                         downloadingId === String(s._id) ||
                         s.status !== "completed" ||
-                        (s.results?.totalFound ?? 0) === 0
+                        ((s.results?.totalFound ?? 0) === 0 && totalDuplicates === 0)
                       }
                     >
                       {downloadingId === String(s._id) ? (
@@ -722,6 +722,14 @@ export function LeadSearchHistory() {
                               delivered {s.discoveryMetadata.delivered}
                               {s.discoveryMetadata.shortfall > 0 &&
                                 ` (${s.discoveryMetadata.shortfall} shortfall)`}
+                              {s.discoveryMetadata.delivered === 0 &&
+                                totalDuplicates > 0 && (
+                                  <span className="block mt-1 text-amber-600 dark:text-amber-400">
+                                    Businesses were skipped as duplicates from prior
+                                    searches. CSV export can still include contacts from
+                                    those prior results.
+                                  </span>
+                                )}
                             </div>
                           </div>
                         )}

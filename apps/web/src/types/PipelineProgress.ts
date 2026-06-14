@@ -332,6 +332,34 @@ export function deriveStageFromSearch(
     return "review_export";
   }
 
+  const broadcastStageRaw = extractStageFromBroadcast(latestBroadcast);
+  const stageFromBroadcast = broadcastStageRaw
+    ? normalizeStageId(broadcastStageRaw, fallback)
+    : null;
+
+  // Active analysis broadcasts outrank stale researchStage (often still "enrichment")
+  if (
+    broadcastStageRaw &&
+    (broadcastStageRaw.includes("analysis") ||
+      broadcastStageRaw.includes("email") ||
+      broadcastStageRaw.includes("batch") ||
+      broadcastStageRaw.includes("personal"))
+  ) {
+    return "ai_personalization";
+  }
+
+  if (latestBroadcast?.message) {
+    const message = latestBroadcast.message.toLowerCase();
+    if (
+      message.includes("writing email") ||
+      message.includes("wrote ") ||
+      message.includes("analyzing") ||
+      message.includes("ai analysis")
+    ) {
+      return "ai_personalization";
+    }
+  }
+
   if (researchStage) {
     if (researchStage.includes("analysis") || researchStage.includes("ai")) {
       return "ai_personalization";
@@ -344,16 +372,14 @@ export function deriveStageFromSearch(
     }
   }
 
-  const stageFromBroadcast = latestBroadcast
-    ? normalizeStageId(extractStageFromBroadcast(latestBroadcast), fallback)
-    : null;
+  if ((search.progress?.analyzed ?? 0) > 0) {
+    return "ai_personalization";
+  }
+
   if (stageFromBroadcast) {
     return stageFromBroadcast;
   }
 
-  if ((search.progress?.analyzed ?? 0) > 0) {
-    return "ai_personalization";
-  }
   if ((search.progress?.enriched ?? 0) > 0) {
     return "enrichment";
   }

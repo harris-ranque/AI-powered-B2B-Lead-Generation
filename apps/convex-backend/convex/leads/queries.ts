@@ -1,7 +1,8 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth, getCurrentUser } from "../auth";
-import { countExportableLeads, isContactExportable } from "../lib/exportEligibility";
+import { countExportableLeads, isContactExportable, resolveSearchExportData } from "../lib/exportEligibility";
+import { computeAnalysisProgress } from "../lib/analysisProgress";
 
 // Get leads for a search (FULL documents - use sparingly, prefer getLeadsListView)
 export const getLeadsBySearch = query({
@@ -113,13 +114,12 @@ export const exportLeads = query({
         throw new Error("Search not found or access denied");
       }
 
-      const contactQuery = ctx.db
-        .query("leadContacts")
-        .withIndex("by_search_status", (q) =>
-          q.eq("searchId", args.searchId!).eq("status", "accepted"),
-        );
-
-      const allContacts = await contactQuery.collect();
+      const exportResolution = await resolveSearchExportData(
+        ctx,
+        args.searchId!,
+        user._id,
+      );
+      const allContacts = exportResolution.contacts;
       const exportableContacts = allContacts.filter(isContactExportable);
 
       const startIndex = args.cursor ? Number.parseInt(args.cursor, 10) : 0;
@@ -503,10 +503,20 @@ export const getEnrichmentProgress = query({
       l.enrichmentStatus === "completed_fallback"
     ).length;
     const failed = allLeads.filter(l => l.enrichmentStatus === "failed").length;
+    const noContacts = allLeads.filter(
+      (l) => l.enrichmentStatus === "no_contacts_found",
+    ).length;
 
-    // Calculate completion percentage
+    const withEmail = allLeads.filter(
+      (l) =>
+        Boolean(l.primaryEmail) ||
+        (l.contactInfo?.emails && l.contactInfo.emails.length > 0),
+    ).length;
+
+    // Calculate completion percentage (all leads processed, regardless of email found)
     const total = allLeads.length;
-    const percentComplete = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const processed = completed + failed + noContacts;
+    const percentComplete = total > 0 ? Math.round((processed / total) * 100) : 0;
 
     // Get provider breakdown for completed leads
     const findymailCount = allLeads.filter(l => l.enrichmentProvider === "findymail").length;
@@ -519,12 +529,39 @@ export const getEnrichmentProgress = query({
       inProgress,
       completed,
       failed,
+      noContacts,
+      withEmail,
+      processed,
       percentComplete,
       providers: {
         findymail: findymailCount,
       },
       isComplete: pending === 0 && inProgress === 0,
       isPaused: search.enrichmentPaused || false,
+    };
+  },
+});
+
+// Live analysis / "Write Emails" progress for a search
+export const getAnalysisProgress = query({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    const search = await ctx.db.get(args.searchId);
+    if (!search || search.userId !== user._id) {
+      throw new Error("Search not found or access denied");
+    }
+
+    const progress = await computeAnalysisProgress(ctx, args.searchId);
+
+    return {
+      ...progress,
+      searchStatus: search.status,
+      researchTier: search.researchTier ?? null,
     };
   },
 });
@@ -574,15 +611,27 @@ export const getAcceptedContactCountsBySearch = query({
       .collect();
 
     const exportableContacts = contacts.filter(isContactExportable);
+    const exportResolution = await resolveSearchExportData(
+      ctx,
+      args.searchId,
+      user._id,
+    );
     const byLead: Record<string, number> = {};
     for (const contact of exportableContacts) {
       const key = String(contact.leadId);
       byLead[key] = (byLead[key] ?? 0) + 1;
     }
 
+    const totalExportableIncludingPrior = exportResolution.contacts.filter(
+      isContactExportable,
+    ).length;
+
     return {
       totalAccepted: contacts.length,
       totalExportable: exportableContacts.length,
+      duplicateFallbackExportable: exportResolution.priorSearchExportable,
+      totalExportableIncludingPrior,
+      duplicateSkips: exportResolution.duplicateSkips,
       byLead,
       multiContactEnabled: true,
     };

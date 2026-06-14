@@ -13,6 +13,7 @@ import {
   type ApiError,
 } from "../../lib/apiErrors";
 import { expandRolesForMatching } from "../../lib/roleFamilies";
+import { isContactEmailVerified } from "../../lib/contactVerification";
 
 const FINDYMAIL_BASE_URL = "https://app.findymail.com/api";
 const FINDYMAIL_TIMEOUT_MS = 50_000;
@@ -514,15 +515,8 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
 
     // Extract contacts - handle different response formats
     const rawContacts = extractContacts();
-    const contacts = rawContacts.map((contact: any) => ({
-      name: normalizeContactName(contact),
-      title: normalizeTitle(contact),
-      email:
-        typeof contact?.email === "string" && contact.email.trim().length > 0
-          ? contact.email.trim()
-          : undefined,
-      linkedin: normalizeLinkedIn(contact),
-      confidence: toConfidence(
+    const contacts = rawContacts.map((contact: any) => {
+      const confidence = toConfidence(
         contact?.confidence ??
           contact?.confidence_score ??
           contact?.confidenceScore ??
@@ -530,8 +524,25 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
           contact?.certainty ??
           contact?.accuracy ??
           contact?.email_confidence
-      ),
-    }));
+      );
+      const verified = isContactEmailVerified({
+        ...contact,
+        confidence,
+        score: contact?.score ?? confidence,
+      });
+
+      return {
+        name: normalizeContactName(contact),
+        title: normalizeTitle(contact),
+        email:
+          typeof contact?.email === "string" && contact.email.trim().length > 0
+            ? contact.email.trim()
+            : undefined,
+        linkedin: normalizeLinkedIn(contact),
+        confidence,
+        verified,
+      };
+    });
 
     // Extract emails from contacts array (FindyMail API structure)
     // Each contact object contains: { name, email, domain, first_name, ... }
@@ -556,7 +567,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
         verified:
           typeof email?.verified === "boolean"
             ? email.verified
-            : undefined,
+            : isContactEmailVerified(email),
       }));
 
     const emailsFromContacts = contacts
@@ -565,7 +576,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
         email: contact.email!,
         type: "contact",
         confidence: contact.confidence,
-        verified: undefined,
+        verified: contact.verified,
       }));
 
     const seenEmails = new Set<string>();

@@ -88,4 +88,22 @@ describe("exportEligibility", () => {
     const msg = noExportableLeadsMessage({ total: 0, withoutEmail: 0, analysisFailed: 0 });
     expect(msg).toBe("No leads found for export");
   });
+
+  it("message explains duplicate skips with prior exportable contacts", () => {
+    const msg = noExportableLeadsMessage(
+      { total: 0, withoutEmail: 0, analysisFailed: 0 },
+      { duplicateSkips: 129, priorSearchExportable: 5 },
+    );
+    expect(msg).toContain("already in your account");
+    expect(msg).toContain("5 exportable contacts");
+  });
+
+  it("message explains duplicate skips without exportable contacts", () => {
+    const msg = noExportableLeadsMessage(
+      { total: 0, withoutEmail: 0, analysisFailed: 0 },
+      { duplicateSkips: 50, priorSearchExportable: 0 },
+    );
+    expect(msg).toContain("already in your account");
+    expect(msg).toContain("none have exportable contacts yet");
+  });
 });

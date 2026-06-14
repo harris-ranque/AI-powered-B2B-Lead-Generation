@@ -23,6 +23,11 @@ import { extractDomainFromWebsite } from "../lib/contactVerification";
 import {
   normalizeCompanyResearchPayload,
 } from "../lib/companyResearchCache";
+import {
+  buildLangGraphUrl,
+  langGraphRequestHeaders,
+  normalizeLangGraphBaseUrl,
+} from "../lib/langgraphClient";
 
 /**
  * DEPRECATED: analyzeSingleLead - Replaced by batch processing
@@ -95,7 +100,7 @@ export const analyzeLeadsBatch: any = internalAction({
       );
 
       // Get LangGraph configuration
-      const langgraphUrl = process.env.LANGGRAPH_URL;
+      const langgraphUrl = normalizeLangGraphBaseUrl(process.env.LANGGRAPH_URL ?? "");
       const langgraphApiKey = process.env.LANGGRAPH_API_KEY;
 
       if (!langgraphUrl || !langgraphApiKey) {
@@ -385,12 +390,9 @@ export const analyzeLeadsBatch: any = internalAction({
       };
 
       // Call batch endpoint
-      const response = await fetch(`${langgraphUrl}/batch-generate-emails`, {
+      const response = await fetch(buildLangGraphUrl(langgraphUrl, "/batch-generate-emails"), {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${langgraphApiKey}`,
-          "Content-Type": "application/json",
-        },
+        headers: langGraphRequestHeaders(langgraphApiKey),
         body: JSON.stringify(batchPayload),
       });
 
@@ -506,7 +508,7 @@ export const ensureCompanyResearchForSearch: any = internalAction({
       return { researched: 0, skipped: 0 };
     }
 
-    const langgraphUrl = process.env.LANGGRAPH_URL;
+    const langgraphUrl = normalizeLangGraphBaseUrl(process.env.LANGGRAPH_URL ?? "");
     const langgraphApiKey = process.env.LANGGRAPH_API_KEY;
     if (!langgraphUrl || !langgraphApiKey) {
       throw new Error("LangGraph service not configured");
@@ -546,12 +548,9 @@ export const ensureCompanyResearchForSearch: any = internalAction({
     let researched = 0;
     for (const item of domainsNeeded) {
       try {
-        const response = await fetch(`${langgraphUrl}/research-company`, {
+        const response = await fetch(buildLangGraphUrl(langgraphUrl, "/research-company"), {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${langgraphApiKey}`,
-            "Content-Type": "application/json",
-          },
+          headers: langGraphRequestHeaders(langgraphApiKey),
           body: JSON.stringify({
             companyName: item.businessName,
             domain: item.domain,
