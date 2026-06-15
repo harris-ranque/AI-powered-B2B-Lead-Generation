@@ -4,7 +4,7 @@ FROM node:18-alpine AS builder
 WORKDIR /app
 
 # Install pnpm
-RUN npm install -g pnpm@latest
+RUN npm install -g pnpm@10.5.2
 
 # Copy monorepo files (Railway context is ../.., so this gets the whole repo)
 COPY . .
