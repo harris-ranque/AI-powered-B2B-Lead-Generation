@@ -55,4 +55,6 @@ export interface AnalysisBroadcastData {
   analysisBreakdown?: AnalysisBreakdown;
   currentLead?: string;
   batchId?: string;
+  activityPhase?: "researching" | "writing_email" | "completed";
+  activityLabel?: string;
 }

@@ -1069,6 +1069,23 @@ async def process_batch_with_progress(
                     f"[Batch] 🚀 Starting lead {lead_index+1}/{len(leads)}: {lead.company_name} (batch: {batch_id})"
                 )
 
+                try:
+                    await webhook_client.send_batch_progress(
+                        batch_id=batch_id,
+                        search_id=search_id,
+                        progress_percent=(completed_count / len(leads)) * 100,
+                        completed_count=completed_count,
+                        total_count=len(leads),
+                        success_count=success_count,
+                        failure_count=failure_count,
+                        current_lead=lead.company_name,
+                        activity_phase="researching",
+                    )
+                except Exception as webhook_error:
+                    logger.warning(
+                        f"[Batch] Failed to send start progress webhook: {webhook_error}"
+                    )
+
                 # Execute email generation
                 result = await execute_email_generation(
                     lead=lead,
@@ -1216,7 +1233,8 @@ async def process_batch_with_progress(
                             success_count=success_count,
                             failure_count=failure_count,
                             current_lead=lead.company_name,
-                            estimated_time_remaining=estimated_remaining
+                            estimated_time_remaining=estimated_remaining,
+                            activity_phase="completed",
                         )
 
                         logger.info(

@@ -922,6 +922,14 @@ const BatchProgressUpdate = v.object({
   successCount: v.number(),
   failureCount: v.number(),
   currentLead: v.optional(v.union(v.string(), v.null())),
+  activityPhase: v.optional(
+    v.union(
+      v.literal("researching"),
+      v.literal("writing_email"),
+      v.literal("completed"),
+      v.null(),
+    ),
+  ),
   estimatedTimeRemaining: v.optional(v.union(v.number(), v.null())),
   timestamp: v.optional(v.string()), // Worker sends ISO timestamp for batch progress
 });
@@ -965,7 +973,17 @@ export const handleBatchProgress = internalMutation({
     const timer = logger.start(`Processing batch progress: ${args.payload.batchId}`);
 
     try {
-      const { batchId, searchId, progressPercent, completedCount, totalCount, successCount, failureCount, currentLead } = args.payload;
+      const { batchId, searchId, progressPercent, completedCount, totalCount, successCount, failureCount, currentLead, activityPhase } = args.payload;
+
+      const activityMessages: Record<string, string> = {
+        researching: "Researching business",
+        writing_email: "Writing email",
+        completed: "Email finished",
+      };
+      const activityLabel =
+        activityPhase && currentLead
+          ? `${activityMessages[activityPhase] ?? "Processing"}: ${currentLead}`
+          : undefined;
 
       logger.info("Batch progress update received", {
         batchId,
@@ -973,6 +991,7 @@ export const handleBatchProgress = internalMutation({
         progressPercent: `${progressPercent.toFixed(1)}%`,
         completed: `${completedCount}/${totalCount}`,
         successRate: `${successCount}/${completedCount}`,
+        activityPhase,
       });
 
       // Validate search ID format
@@ -1001,9 +1020,11 @@ export const handleBatchProgress = internalMutation({
         progressPercent,
         batchId,
         currentLead: currentLead ?? undefined,
-        message: currentLead
-          ? `Writing email for ${currentLead} (${completedCount}/${totalCount} processed)`
-          : `Wrote ${successCount} of ${totalCount} emails (${successCount} successful, ${failureCount} failed)`,
+        activityPhase: activityPhase ?? undefined,
+        message: activityLabel
+          ?? (currentLead
+            ? `Writing email for ${currentLead} (${completedCount}/${totalCount} processed)`
+            : `Wrote ${successCount} of ${totalCount} emails (${successCount} successful, ${failureCount} failed)`),
       });
 
       logger.info("Batch progress broadcast complete", {

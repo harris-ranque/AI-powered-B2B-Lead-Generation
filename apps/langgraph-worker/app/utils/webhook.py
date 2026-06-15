@@ -483,6 +483,7 @@ class WebhookClient:
         failure_count: int,
         current_lead: Optional[str] = None,
         estimated_time_remaining: Optional[float] = None,
+        activity_phase: Optional[str] = None,
         retries: int = 2
     ) -> bool:
         """
@@ -527,6 +528,8 @@ class WebhookClient:
 
         if current_lead:
             payload["currentLead"] = current_lead
+        if activity_phase:
+            payload["activityPhase"] = activity_phase
         if estimated_time_remaining is not None:
             payload["estimatedTimeRemaining"] = estimated_time_remaining
 

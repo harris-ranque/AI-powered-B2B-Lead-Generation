@@ -273,18 +273,19 @@ class BaseDataValidator:
             )
             return False, "All 5 data points present - Deep Research not needed"
 
-        # Check if missing 2+ data points after Sonar Pro
-        if len(validation_result.missing_data_points) >= min_missing:
+        missing_count = len(validation_result.missing_data_points)
+
+        # Escalate when missing enough data points after Sonar Pro
+        if missing_count >= min_missing:
             return True, (
-                f"Missing {len(validation_result.missing_data_points)}/5 data points "
+                f"Missing {missing_count}/5 data points "
                 f"after Sonar Pro - comprehensive research needed"
             )
 
-        # Only check confidence if we're missing 1 data point
-        # (missing 0 is caught above, missing 2+ is caught above)
-        if confidence_score < confidence_threshold:
+        # Low confidence alone is not enough — require 2+ missing points to escalate
+        if missing_count >= 2 and confidence_score < confidence_threshold:
             return True, (
-                f"Low confidence ({confidence_score:.2f}) with {len(validation_result.missing_data_points)} "
+                f"Low confidence ({confidence_score:.2f}) with {missing_count} "
                 f"missing data point(s) - additional research depth needed"
             )
 

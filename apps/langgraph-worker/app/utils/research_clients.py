@@ -445,7 +445,9 @@ class PerplexityClient:
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or getattr(settings, 'perplexity_api_key', None)
         self.base_url = "https://api.perplexity.ai"
-        self.timeout = 20.0  # Longer timeout for comprehensive analysis
+        self.timeout = PERPLEXITY_RATE_LIMIT_CONFIG.get(
+            "SONAR_PRO_TIMEOUT_SECONDS", 35.0
+        )
 
         # Initialize rate limiter with configurable limits
         # BYOK clients may override via environment variables
@@ -803,7 +805,9 @@ class PerplexityClient:
 
         # Longer timeout for deep research (180 seconds vs 20 seconds for standard)
         # Deep research does multiple searches even with low reasoning_effort
-        deep_research_timeout = 180.0
+        deep_research_timeout = PERPLEXITY_RATE_LIMIT_CONFIG.get(
+            "DEEP_RESEARCH_TIMEOUT_SECONDS", 120.0
+        )
 
         async def make_api_call() -> dict:
             """Execute the actual API call."""

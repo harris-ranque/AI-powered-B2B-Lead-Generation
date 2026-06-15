@@ -35,6 +35,19 @@ function extractAnalysisBreakdown(
   return null;
 }
 
+function extractBroadcastActivity(
+  broadcasts: Array<{ data?: unknown }>,
+): { phase?: AnalysisBroadcastData["activityPhase"]; label?: string } {
+  for (const broadcast of broadcasts) {
+    if (!broadcast.data || typeof broadcast.data !== "object") continue;
+    const data = broadcast.data as AnalysisBroadcastData;
+    if (data.activityPhase || data.activityLabel) {
+      return { phase: data.activityPhase, label: data.activityLabel };
+    }
+  }
+  return {};
+}
+
 function extractBroadcastAnalyzedCount(
   broadcasts: Array<{ data?: unknown }>,
 ): number {
@@ -87,6 +100,11 @@ export function AIPersonalizationStage() {
 
   const broadcastAnalyzed = useMemo(
     () => extractBroadcastAnalyzedCount(broadcasts),
+    [broadcasts],
+  );
+
+  const broadcastActivity = useMemo(
+    () => extractBroadcastActivity(broadcasts),
     [broadcasts],
   );
 
@@ -196,6 +214,8 @@ export function AIPersonalizationStage() {
   }
 
   const displayTotal = totalToWrite > 0 ? totalToWrite : leads.length;
+  const scheduledCount = analysisProgress?.scheduled ?? 0;
+  const processingCount = analysisProgress?.processing ?? 0;
   const inProgressCount =
     analysisProgress?.inProgress ??
     broadcastBreakdown?.inProgress ??
@@ -203,6 +223,29 @@ export function AIPersonalizationStage() {
   const pendingCount =
     analysisProgress?.pending ?? broadcastBreakdown?.pending ?? 0;
   const stuckCount = analysisProgress?.stuckInProgress ?? 0;
+
+  const activityPhase = broadcastActivity.phase;
+  const activityLabel = broadcastActivity.label;
+
+  const biStatus =
+    activityPhase === "researching"
+      ? "active"
+      : processingPercent > 0 || emailsWritten > 0
+        ? "complete"
+        : "pending";
+  const emailGenStatus =
+    activityPhase === "researching"
+      ? "pending"
+      : inProgressCount > 0 || activityPhase === "writing_email"
+        ? "active"
+        : emailsWritten > 0
+          ? "complete"
+          : "pending";
+  const qaStatus = analysisComplete
+    ? "complete"
+    : inProgressCount > 0 && emailsWritten > 0
+      ? "active"
+      : "pending";
 
   const handleSkipStuck = async (olderThanMinutes: number) => {
     if (!searchId) return;
@@ -251,8 +294,9 @@ export function AIPersonalizationStage() {
                 <h4 className="font-semibold">Write Emails Progress</h4>
                 <p className="text-sm text-muted-foreground">
                   {emailsWritten} of {displayTotal} emails written
-                  {pendingCount + inProgressCount > 0 &&
-                    ` · ${pendingCount + inProgressCount} processing`}
+                  {pendingCount > 0 && ` · ${pendingCount} queued`}
+                  {scheduledCount > 0 && ` · ${scheduledCount} scheduled`}
+                  {processingCount > 0 && ` · ${processingCount} in worker`}
                 </p>
               </div>
 
@@ -261,9 +305,16 @@ export function AIPersonalizationStage() {
               </Badge>
             </div>
 
+            {activityLabel && !analysisComplete && (
+              <div className="flex items-center gap-2 text-sm text-primary">
+                <Clock className="h-4 w-4 animate-spin" />
+                <span>{activityLabel}</span>
+              </div>
+            )}
+
             <Progress value={writeEmailsPercent} className="h-3 progress-pulse" />
             <p className="text-xs text-muted-foreground">
-              {processingPercent}% of contacts processed
+              {processingPercent}% contacts finished (research + email + QA)
               {analysisProgress?.failed > 0 &&
                 ` · ${analysisProgress.failed} failed`}
             </p>
@@ -319,32 +370,21 @@ export function AIPersonalizationStage() {
       <div className="grid md:grid-cols-3 gap-4">
         {[
           {
-            name: "Business Intelligence",
+            name: "Business Research",
             icon: Brain,
-            status:
-              processingPercent > 0 || emailsWritten > 0 ? "complete" : "pending",
-            description: "Research & analysis",
+            status: biStatus,
+            description: "Perplexity company research",
           },
           {
-            name: "Email Generation",
+            name: "Email Writing",
             icon: Sparkles,
-            status:
-              inProgressCount > 0 || pendingCount > 0
-                ? "active"
-                : emailsWritten > 0
-                  ? "complete"
-                  : "pending",
-            description: "Personalized emails",
+            status: emailGenStatus,
+            description: "OpenAI personalized draft",
           },
           {
-            name: "Quality Assurance",
+            name: "Quality Check",
             icon: CheckCircle,
-            status:
-              analysisComplete
-                ? "complete"
-                : inProgressCount > 0
-                  ? "active"
-                  : "pending",
+            status: qaStatus,
             description: "Validation & approval",
           },
         ].map((agent) => (
@@ -396,8 +436,8 @@ export function AIPersonalizationStage() {
         <Card className="glass-card">
           <CardContent className="p-4 text-center">
             <Clock className="h-6 w-6 mx-auto mb-2 text-blue-500" />
-            <div className="text-2xl font-bold">{inProgressCount + pendingCount}</div>
-            <div className="text-sm text-muted-foreground">In Progress</div>
+            <div className="text-2xl font-bold">{inProgressCount}</div>
+            <div className="text-sm text-muted-foreground">Active / Queued</div>
           </CardContent>
         </Card>
 

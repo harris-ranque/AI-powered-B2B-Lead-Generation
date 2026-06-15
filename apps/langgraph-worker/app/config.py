@@ -50,17 +50,14 @@ CREDIT_COSTS = {
 # Deep Research Configuration
 # Triggers ONLY when Sonar Pro fails to get sufficient data (data quality-based escalation)
 DEEP_RESEARCH_CONFIG = {
-    # Trigger if confidence is low after Sonar Pro
-    # With Sonar Pro, we expect 0.7-0.9 confidence - trigger deep research if <0.6
-    'CONFIDENCE_THRESHOLD': get_env_float('DEEP_RESEARCH_CONFIDENCE_THRESHOLD', 0.6),
+    # Trigger deep research only on very low confidence (with 2+ missing data points)
+    'CONFIDENCE_THRESHOLD': get_env_float('DEEP_RESEARCH_CONFIDENCE_THRESHOLD', 0.45),
 
     # Trigger if data is incomplete after Sonar Pro
-    # With Sonar Pro, we expect 0.8+ data completeness - trigger deep research if <0.7
     'DATA_COMPLETENESS_THRESHOLD': get_env_float('DEEP_RESEARCH_DATA_THRESHOLD', 0.7),
 
-    # Trigger if missing 2+ of 5 data points after Sonar Pro
-    # With Sonar Pro, we expect 4-5/5 data points - trigger deep research if ≤2/5 missing
-    'MIN_MISSING_DATA_POINTS': get_env_int('DEEP_RESEARCH_MIN_MISSING_POINTS', 2),
+    # Trigger only when missing 3+ of 5 data points after Sonar Pro (reduces slow escalations)
+    'MIN_MISSING_DATA_POINTS': get_env_int('DEEP_RESEARCH_MIN_MISSING_POINTS', 3),
 
     # Enable/disable deep research globally
     'ENABLED': get_env_bool('DEEP_RESEARCH_ENABLED', True),
@@ -120,6 +117,10 @@ PERPLEXITY_RATE_LIMIT_CONFIG = {
 
     # Timeout configuration
     'TIMEOUT_RETRY_ONCE': get_env_bool('PERPLEXITY_TIMEOUT_RETRY_ONCE', True),
+    'SONAR_PRO_TIMEOUT_SECONDS': get_env_float('PERPLEXITY_SONAR_PRO_TIMEOUT_SECONDS', 35.0),
+    'DEEP_RESEARCH_TIMEOUT_SECONDS': get_env_float(
+        'PERPLEXITY_DEEP_RESEARCH_TIMEOUT_SECONDS', 120.0
+    ),
 
     # Per-user rate limiter cleanup configuration
     'INACTIVE_USER_CLEANUP_HOURS': get_env_int('PERPLEXITY_CLEANUP_HOURS', 2),

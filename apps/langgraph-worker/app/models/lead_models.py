@@ -304,6 +304,11 @@ class BatchProgressUpdate(BaseModel):
     completed_count: int = Field(..., alias="completedCount", description="Number of leads completed")
     total_count: int = Field(..., alias="totalCount", description="Total leads in batch")
     current_lead: Optional[str] = Field(None, alias="currentLead", description="Currently processing lead name")
+    activity_phase: Optional[str] = Field(
+        None,
+        alias="activityPhase",
+        description="researching | writing_email | completed",
+    )
     success_count: int = Field(..., alias="successCount", description="Successful completions")
     failure_count: int = Field(..., alias="failureCount", description="Failed completions")
     estimated_time_remaining: Optional[float] = Field(None, alias="estimatedTimeRemaining", description="Estimated seconds remaining")

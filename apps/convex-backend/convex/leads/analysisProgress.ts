@@ -15,6 +15,13 @@ export const publishAnalysisProgress = internalMutation({
     progressPercent: v.optional(v.number()),
     currentLead: v.optional(v.string()),
     batchId: v.optional(v.string()),
+    activityPhase: v.optional(
+      v.union(
+        v.literal("researching"),
+        v.literal("writing_email"),
+        v.literal("completed"),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const search = await ctx.db.get(args.searchId);
@@ -70,6 +77,8 @@ export const publishAnalysisProgress = internalMutation({
         },
         currentLead: args.currentLead,
         batchId: args.batchId,
+        activityPhase: args.activityPhase,
+        activityLabel: args.message,
       },
     });
 
