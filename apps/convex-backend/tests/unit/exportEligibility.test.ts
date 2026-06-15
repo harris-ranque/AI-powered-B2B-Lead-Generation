@@ -8,6 +8,7 @@ import {
   resolveContactExportTitle,
   type ExportableLead,
 } from "../../convex/lib/exportEligibility";
+import { extractProviderTitle } from "../../convex/lib/contactAcceptance";
 
 describe("exportEligibility", () => {
   it("uses legacy lead.email when contactInfo.emails is missing", () => {
@@ -124,26 +125,17 @@ describe("exportEligibility", () => {
     ).toBe(false);
   });
 
-  it("resolveContactExportTitle prefers title then matchedRole", () => {
+  it("extractProviderTitle reads job title from raw payload", () => {
     expect(
-      resolveContactExportTitle({ title: "VP Sales", matchedRole: "Owner" }),
-    ).toBe("VP Sales");
-    expect(resolveContactExportTitle({ matchedRole: "Owner" })).toBe("Owner");
-    expect(resolveContactExportTitle({})).toBe("");
+      extractProviderTitle({
+        raw: { job_title: "Chief Marketing Officer" },
+      }),
+    ).toBe("Chief Marketing Officer");
   });
 
-  it("resolveContactExportTitle falls back to first requestedRole", () => {
-    expect(
-      resolveContactExportTitle({
-        requestedRoles: ["Marketing Manager", "Owner"],
-      }),
-    ).toBe("Marketing Manager");
-    expect(
-      resolveContactExportTitle({
-        matchedRole: "",
-        requestedRoles: ["", "Owner"],
-      }),
-    ).toBe("Owner");
+  it("resolveContactExportTitle uses provider title only", () => {
+    expect(resolveContactExportTitle({ title: "VP Sales" })).toBe("VP Sales");
+    expect(resolveContactExportTitle({})).toBe("");
   });
 
   it("message mentions email when all leads lack email", () => {

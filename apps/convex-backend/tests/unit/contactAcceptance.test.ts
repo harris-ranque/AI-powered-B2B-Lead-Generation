@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   evaluateContactCandidate,
+  extractProviderTitle,
   scoreTitleAgainstRoles,
   TITLE_MATCH_ACCEPT_THRESHOLD,
 } from "../../convex/lib/contactAcceptance";
@@ -32,7 +33,7 @@ describe("contactAcceptance", () => {
     );
   });
 
-  it("accepts FindyMail role contact with person name when verification metadata is missing", () => {
+  it("accepts FindyMail role contact without job title when sourceRole matches requested roles", () => {
     const result = evaluateContactCandidate(
       {
         name: "Thalia Castillo",
@@ -45,7 +46,8 @@ describe("contactAcceptance", () => {
         acceptedEmailsInSearch: new Set(),
         enableRoleExpansion: true,
         requireVerifiedEmail: true,
-        trustNamedRoleContacts: true,
+        fromRoleContact: true,
+        sourceRole: "CEO",
       },
     );
 
@@ -54,13 +56,36 @@ describe("contactAcceptance", () => {
     expect(result.domainMatchVerified).toBe(true);
   });
 
+  it("rejects provider title that does not match requested roles", () => {
+    const result = evaluateContactCandidate(
+      {
+        name: "Bob Smith",
+        title: "Junior Accountant",
+        email: "bob@acme.com",
+        verified: true,
+      },
+      {
+        requestedRoles: ["CEO", "Founder"],
+        companyWebsite: "https://acme.com",
+        acceptedEmailsInSearch: new Set(),
+        enableRoleExpansion: false,
+        requireVerifiedEmail: true,
+        fromRoleContact: true,
+        sourceRole: "CEO",
+      },
+    );
+
+    expect(result.accepted).toBe(false);
+    expect(result.rejectionReason).toBe("title_mismatch");
+  });
+
   it("accepts named role contact with matching title and domain", () => {
     const result = evaluateContactCandidate(
       {
         name: "Thalia Castillo",
         title: "CEO",
         email: "thalia.castillo@karmaclubchicago.com",
-        confidence: 0,
+        verified: true,
       },
       {
         requestedRoles: ["CEO", "Owner"],
@@ -68,7 +93,6 @@ describe("contactAcceptance", () => {
         acceptedEmailsInSearch: new Set(),
         enableRoleExpansion: true,
         requireVerifiedEmail: true,
-        trustNamedRoleContacts: true,
       },
     );
 
@@ -140,12 +164,17 @@ describe("contactAcceptance", () => {
     expect(result.rejectionReason).toBe("duplicate_email");
   });
 
-  it("expands marketing manager to marketing director titles", () => {
-    const match = scoreTitleAgainstRoles(
+  it("accepts related marketing decision-makers when user requested Marketing Manager", () => {
+    const titles = [
       "VP of Marketing",
-      ["Marketing Manager"],
-      true,
-    );
-    expect(match.score).toBeGreaterThanOrEqual(TITLE_MATCH_ACCEPT_THRESHOLD);
+      "Marketing Director",
+      "Head of Marketing",
+      "Chief Marketing Officer",
+    ];
+
+    for (const title of titles) {
+      const match = scoreTitleAgainstRoles(title, ["Marketing Manager"], true);
+      expect(match.score).toBeGreaterThanOrEqual(TITLE_MATCH_ACCEPT_THRESHOLD);
+    }
   });
 });

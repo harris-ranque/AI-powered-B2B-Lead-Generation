@@ -387,13 +387,11 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
           continue;
         }
         seenEmails.add(email);
-        const resolvedTitle =
-          contact.title?.trim() ? contact.title.trim() : role;
         mergedContacts.push({
           ...contact,
           domain,
           sourceRole: role,
-          title: resolvedTitle,
+          title: contact.title?.trim() || undefined,
         });
       }
 

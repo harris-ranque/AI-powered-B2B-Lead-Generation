@@ -250,9 +250,10 @@ describe('Lead Enrichment Tests - Batch 7', () => {
       expect(emails).toContain('alice@acme.com');
       expect(emails).toContain('carol@acme.com');
       const alice = result!.contacts.find((c) => c.email === 'alice@acme.com');
-      expect(alice?.title).toBe('ceo');
+      expect(alice?.title).toBeUndefined();
+      expect(alice?.sourceRole).toBe('ceo');
       const carol = result!.contacts.find((c) => c.email === 'carol@acme.com');
-      expect(carol?.title).toBe('founder');
+      expect(carol?.title).toBeUndefined();
       expect(carol?.sourceRole).toBe('founder');
     });
   });
@@ -446,6 +447,7 @@ describe('Lead Enrichment Tests - Batch 7', () => {
         email: 'john@example.com',
         linkedin: 'https://linkedin.com/in/johndoe',
         confidence: 0.9,
+        verified: true,
       });
 
       // Verify name construction from first/last

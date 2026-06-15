@@ -2,7 +2,7 @@ import { internalMutation, internalQuery, type MutationCtx } from "../_generated
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { extractPrimaryEmail } from "../lib/deduplication";
-import { evaluateContactCandidate, resolveContactTitleForStorage } from "../lib/contactAcceptance";
+import { evaluateContactCandidate, extractProviderTitle, resolveContactTitleForStorage } from "../lib/contactAcceptance";
 import { slimContactAiAnalysisForStorage } from "../lib/contactAnalysisStorage";
 import { extractDomainFromWebsite } from "../lib/contactVerification";
 import { resolveEnrichmentRoles } from "../lib/enrichmentRoles";
@@ -533,17 +533,16 @@ export const processMultiContactEnrichment = internalMutation({
           acceptedEmailsInSearch: acceptedEmails,
           enableRoleExpansion: args.enableRoleExpansion,
           requireVerifiedEmail: true,
-          trustNamedRoleContacts: candidate.fromRoleContact,
+          fromRoleContact: candidate.fromRoleContact,
           sourceRole: candidate.sourceRole,
         },
       );
 
-      const storedTitle = resolveContactTitleForStorage(
-        candidate.title,
-        evaluation.matchedRole,
-        candidate.sourceRole,
-        requestedRoles,
-      );
+      const providerTitle = extractProviderTitle({
+        title: candidate.title,
+        raw: candidate.raw,
+      });
+      const storedTitle = resolveContactTitleForStorage(providerTitle);
 
       const status: "accepted" | "rejected" = evaluation.accepted
         ? "accepted"

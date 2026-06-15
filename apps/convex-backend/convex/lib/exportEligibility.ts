@@ -114,17 +114,8 @@ export type ExportableContact = {
 
 export function resolveContactExportTitle(contact: {
   title?: string;
-  matchedRole?: string;
-  requestedRoles?: string[];
 }): string {
-  return (
-    resolveContactTitleForStorage(
-      contact.title,
-      contact.matchedRole,
-      undefined,
-      contact.requestedRoles ?? [],
-    ) ?? ""
-  );
+  return resolveContactTitleForStorage(contact.title) ?? "";
 }
 
 export function isContactExportable(contact: ExportableContact): boolean {

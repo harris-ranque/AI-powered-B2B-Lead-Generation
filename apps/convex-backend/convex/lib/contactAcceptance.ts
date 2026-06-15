@@ -7,7 +7,7 @@ import {
   normalizeContactEmail,
   resolveContactEmailVerified,
 } from "./contactVerification";
-import { expandRolesForMatching } from "./roleFamilies";
+import { expandRolesForMatching, scoreRoleLaneMatch } from "./roleFamilies";
 
 export const TITLE_MATCH_ACCEPT_THRESHOLD = 0.6;
 
@@ -122,6 +122,13 @@ export function scoreTitleAgainstRoles(
     }
   }
 
+  if (enableRoleExpansion && bestScore < TITLE_MATCH_ACCEPT_THRESHOLD) {
+    const laneMatch = scoreRoleLaneMatch(title, requestedRoles, true);
+    if (laneMatch.score > bestScore) {
+      return laneMatch;
+    }
+  }
+
   return {
     score: bestScore,
     matchedRole,
@@ -129,26 +136,36 @@ export function scoreTitleAgainstRoles(
   };
 }
 
+/** Provider-reported job title only — never the searched role pattern. */
+export function extractProviderTitle(
+  candidate: ContactCandidateInput,
+): string | undefined {
+  const direct = candidate.title?.trim();
+  if (direct) {
+    return direct;
+  }
+
+  const raw = candidate.raw;
+  if (!raw) {
+    return undefined;
+  }
+
+  const fromRaw = [
+    raw.title,
+    raw.job_title,
+    raw.jobTitle,
+    raw.position,
+    raw.occupation,
+  ].find((value) => typeof value === "string" && value.trim().length > 0);
+
+  return typeof fromRaw === "string" ? fromRaw.trim() : undefined;
+}
+
 export function resolveContactTitleForStorage(
   title: string | undefined,
-  matchedRole: string | undefined,
-  sourceRole: string | undefined,
-  requestedRoles: string[],
 ): string | undefined {
   const trimmedTitle = title?.trim();
-  if (trimmedTitle) {
-    return trimmedTitle;
-  }
-  const trimmedMatched = matchedRole?.trim();
-  if (trimmedMatched) {
-    return trimmedMatched;
-  }
-  const trimmedSource = sourceRole?.trim();
-  if (trimmedSource) {
-    return trimmedSource;
-  }
-  const firstRequested = requestedRoles.find((role) => role.trim().length > 0);
-  return firstRequested?.trim() || undefined;
+  return trimmedTitle || undefined;
 }
 
 export function evaluateContactCandidate(
@@ -159,7 +176,9 @@ export function evaluateContactCandidate(
     acceptedEmailsInSearch: Set<string>;
     enableRoleExpansion: boolean;
     requireVerifiedEmail: boolean;
-    trustNamedRoleContacts?: boolean;
+    /** FindyMail per-role hits: trust named contacts for email verification only. */
+    fromRoleContact?: boolean;
+    /** Role pattern used in the API call that surfaced this contact (matching only, not storage). */
     sourceRole?: string;
   },
 ): ContactAcceptanceResult {
@@ -184,7 +203,7 @@ export function evaluateContactCandidate(
   }
 
   const emailVerified = resolveContactEmailVerified(candidate, {
-    trustNamedRoleContacts: options.trustNamedRoleContacts,
+    trustNamedRoleContacts: options.fromRoleContact,
   });
 
   if (options.requireVerifiedEmail && !emailVerified) {
@@ -211,21 +230,29 @@ export function evaluateContactCandidate(
     };
   }
 
-  const titleMatch = scoreTitleAgainstRoles(
-    candidate.title,
+  const providerTitle = extractProviderTitle(candidate);
+
+  let titleMatch = scoreTitleAgainstRoles(
+    providerTitle,
     options.requestedRoles,
     options.enableRoleExpansion,
   );
 
-  const hasTitle = Boolean(candidate.title?.trim());
-  const titleAccepted =
-    titleMatch.score >= TITLE_MATCH_ACCEPT_THRESHOLD ||
-    (!hasTitle &&
-      options.trustNamedRoleContacts &&
-      domainMatchVerified &&
-      emailVerified);
+  // When FindyMail omits job title, use the searched role pattern for matching only.
+  if (
+    titleMatch.score < TITLE_MATCH_ACCEPT_THRESHOLD &&
+    !providerTitle &&
+    options.fromRoleContact &&
+    options.sourceRole?.trim()
+  ) {
+    titleMatch = scoreTitleAgainstRoles(
+      options.sourceRole,
+      options.requestedRoles,
+      options.enableRoleExpansion,
+    );
+  }
 
-  if (!titleAccepted) {
+  if (titleMatch.score < TITLE_MATCH_ACCEPT_THRESHOLD) {
     return {
       accepted: false,
       rejectionReason: "title_mismatch",
@@ -237,18 +264,12 @@ export function evaluateContactCandidate(
     };
   }
 
-  const matchedRole =
-    titleMatch.matchedRole ??
-    (options.trustNamedRoleContacts && !hasTitle
-      ? options.sourceRole?.trim() || options.requestedRoles.find((r) => r.trim())
-      : undefined);
-
   return {
     accepted: true,
     emailVerified,
     domainMatchVerified,
     normalizedEmail,
-    matchedRole,
+    matchedRole: titleMatch.matchedRole,
     titleMatchScore: titleMatch.score,
     titleMatchReason: titleMatch.reason,
   };
