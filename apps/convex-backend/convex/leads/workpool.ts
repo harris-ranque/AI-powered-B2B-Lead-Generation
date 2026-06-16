@@ -48,6 +48,10 @@ function isEnrichmentReturnSuccessful(returnValue: unknown): boolean {
     return false;
   }
 
+  if (value.reason === "queue_failed" || value.retrying) {
+    return false;
+  }
+
   if (typeof value.success === "boolean") {
     return value.success;
   }

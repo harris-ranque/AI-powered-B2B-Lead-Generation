@@ -370,6 +370,40 @@ export const recoverStuckSearches: any = internalAction({
 
       // NEW: Check for searches with failed enrichment leads BEFORE timeout
       if (search.status === "processing" && age < PROCESSING_TIMEOUT_MS) {
+        const pendingLinkedCount = await ctx.runQuery(
+          internal.leads.searchLinkedLeads.countSearchLinkedLeads,
+          {
+            searchId: search._id as Id<"searches">,
+            status: "pending",
+          },
+        );
+
+        const enrichedProgress = search.progress?.enriched ?? 0;
+
+        if (
+          pendingLinkedCount > 0 &&
+          enrichedProgress === 0 &&
+          age >= ANALYSIS_RECOVERY_GRACE_MS
+        ) {
+          logWithCorrelation(
+            "info",
+            correlation,
+            "🔄 Resuming enrichment for pending linked duplicate businesses",
+            {
+              searchId: search._id,
+              pendingLinkedCount,
+              ageMinutes: Math.floor(age / 60000),
+            },
+          );
+
+          await ctx.scheduler.runAfter(0, "leads/actions:enrichLeads" as any, {
+            searchId: search._id,
+          });
+
+          recoveredCount++;
+          continue;
+        }
+
         // Get leads to check for failures
         const leads = (await ctx.runQuery(
           internal.leads.internal.getSearchLeadsInternal,

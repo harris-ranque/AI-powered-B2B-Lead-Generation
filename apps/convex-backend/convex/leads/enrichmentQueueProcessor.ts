@@ -216,6 +216,11 @@ export const claimLeadForEnrichment = internalMutation({
     }
 
     // Update lead to in_progress and clear queue fields
+    const targetSearchId = lead.enrichmentTargetSearchId ?? lead.searchId;
+    const reenrichForSearch =
+      lead.enrichmentTargetSearchId != null &&
+      String(lead.enrichmentTargetSearchId) !== String(lead.searchId);
+
     await ctx.db.patch(args.leadId, {
       enrichmentStatus: "in_progress",
       enrichmentStartedAt: Date.now(),
@@ -227,9 +232,10 @@ export const claimLeadForEnrichment = internalMutation({
 
     return {
       claimed: true,
-      searchId: lead.searchId,
+      searchId: targetSearchId,
       userId: lead.userId,
       apiKeyHash: lead.enrichmentApiKeyHash,
+      reenrichForSearch,
     };
   },
 });
@@ -341,8 +347,7 @@ export const processEnrichmentQueue = internalAction({
             leadId: lead._id,
             searchId: claimResult.searchId,
             userId: claimResult.userId,
-            // Note: We don't have userApiKey stored in leads, so the action will use system key
-            // This is a limitation we may want to address in future iterations
+            reenrichForSearch: claimResult.reenrichForSearch ?? false,
             _fromQueue: true,
           });
 

@@ -1733,6 +1733,7 @@ export const queueLeadForEnrichment = internalMutation({
     searchId: v.id("searches"),
     apiKeyHash: v.string(),
     searchQueuedAt: v.number(),
+    reenrichForSearch: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const lead = await ctx.db.get(args.leadId);
@@ -1740,8 +1741,19 @@ export const queueLeadForEnrichment = internalMutation({
       return { queued: false, reason: "lead_not_found" };
     }
 
-    // Only queue if lead is in pending state
-    if (lead.enrichmentStatus !== "pending") {
+    const isReenrich = Boolean(args.reenrichForSearch);
+
+    if (isReenrich) {
+      const link = await ctx.db
+        .query("searchLinkedLeads")
+        .withIndex("by_search_lead", (q) =>
+          q.eq("searchId", args.searchId).eq("leadId", args.leadId),
+        )
+        .unique();
+      if (!link || link.status !== "pending") {
+        return { queued: false, reason: "no_pending_reenrich_link" };
+      }
+    } else if (lead.enrichmentStatus !== "pending") {
       return {
         queued: false,
         reason: "not_pending",
@@ -1749,21 +1761,32 @@ export const queueLeadForEnrichment = internalMutation({
       };
     }
 
-    // Check if already queued (has queuedAt set)
-    if (lead.enrichmentQueuedAt && lead.enrichmentApiKeyHash) {
+    if (
+      !isReenrich &&
+      lead.enrichmentQueuedAt &&
+      lead.enrichmentApiKeyHash
+    ) {
       return { queued: false, reason: "already_queued" };
     }
 
-    // Update lead with queue fields
-    await ctx.db.patch(args.leadId, {
-      enrichmentQueuedAt: Date.now(),
+    const now = Date.now();
+    const patch: Record<string, unknown> = {
+      enrichmentQueuedAt: now,
       enrichmentSearchQueuedAt: args.searchQueuedAt,
       enrichmentApiKeyHash: args.apiKeyHash,
-      updatedAt: Date.now(),
-    });
+      updatedAt: now,
+    };
+
+    if (isReenrich) {
+      patch.enrichmentStatus = "pending";
+      patch.enrichmentTargetSearchId = args.searchId;
+      patch.enrichmentStartedAt = undefined;
+    }
+
+    await ctx.db.patch(args.leadId, patch);
 
     console.log(
-      `[EnrichmentQueue] Queued lead ${args.leadId} for API key ${args.apiKeyHash.substring(0, 8)}...`,
+      `[EnrichmentQueue] Queued lead ${args.leadId} for API key ${args.apiKeyHash.substring(0, 8)}...${isReenrich ? " (re-enrich)" : ""}`,
     );
 
     return { queued: true };
@@ -1780,6 +1803,7 @@ export const requeueLeadForEnrichment = internalMutation({
     searchId: v.id("searches"),
     apiKeyHash: v.string(),
     searchQueuedAt: v.number(),
+    reenrichForSearch: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const lead = await ctx.db.get(args.leadId);
@@ -1787,17 +1811,28 @@ export const requeueLeadForEnrichment = internalMutation({
       return { queued: false, reason: "lead_not_found" };
     }
 
-    await ctx.db.patch(args.leadId, {
+    const isReenrich =
+      Boolean(args.reenrichForSearch) || String(args.searchId) !== String(lead.searchId);
+
+    const patch: Record<string, unknown> = {
       enrichmentStatus: "pending",
       enrichmentQueuedAt: Date.now(),
       enrichmentSearchQueuedAt: args.searchQueuedAt,
       enrichmentApiKeyHash: args.apiKeyHash,
       enrichmentStartedAt: undefined,
       updatedAt: Date.now(),
-    });
+    };
+
+    if (isReenrich) {
+      patch.enrichmentTargetSearchId = args.searchId;
+    } else {
+      patch.enrichmentTargetSearchId = undefined;
+    }
+
+    await ctx.db.patch(args.leadId, patch);
 
     console.log(
-      `[EnrichmentQueue] Re-queued lead ${args.leadId} for API key ${args.apiKeyHash.substring(0, 8)}...`,
+      `[EnrichmentQueue] Re-queued lead ${args.leadId} for API key ${args.apiKeyHash.substring(0, 8)}...${isReenrich ? " (re-enrich)" : ""}`,
     );
 
     return { queued: true };

@@ -633,6 +633,8 @@ export default defineSchema({
     enrichmentQueuedAt: v.optional(v.number()),        // When this lead was queued for enrichment
     enrichmentSearchQueuedAt: v.optional(v.number()), // Denormalized: search.createdAt for FIFO ordering
     enrichmentApiKeyHash: v.optional(v.string()),     // For tenant isolation (API key partitioning)
+  /** When re-enriching a prior-account lead for a new search, targets that search (not lead.searchId). */
+    enrichmentTargetSearchId: v.optional(v.id("searches")),
 
     createdAt: v.number(),
     updatedAt: v.number(),

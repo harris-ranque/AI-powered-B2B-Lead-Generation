@@ -487,7 +487,7 @@ export const enrichSingleLeadWorkpool = internalAction({
       );
       const searchQueuedAt = search?.createdAt || Date.now();
 
-      if (args._fromQueue) {
+      if (args._fromQueue || args.reenrichForSearch) {
         const lead = await ctx.runQuery(
           internal.leads.internal.getLeadInternal,
           { leadId: args.leadId },
@@ -502,6 +502,7 @@ export const enrichSingleLeadWorkpool = internalAction({
             searchId: args.searchId,
             apiKeyHash: queuedApiKeyHash,
             searchQueuedAt,
+            reenrichForSearch: args.reenrichForSearch,
           },
         );
 
@@ -512,16 +513,34 @@ export const enrichSingleLeadWorkpool = internalAction({
         };
       }
 
-      // Queue the lead - cron will process it when slots are available
-      await ctx.runMutation(
+      const queueResult = await ctx.runMutation(
         internal.leads.internal.queueLeadForEnrichment,
         {
           leadId: args.leadId,
           searchId: args.searchId,
           apiKeyHash,
           searchQueuedAt,
+          reenrichForSearch: false,
         },
       );
+
+      if (!queueResult.queued) {
+        logWithCorrelation(
+          "warn",
+          correlation,
+          "⚠️ [Workpool] Failed to queue lead for enrichment — will retry via workpool",
+          {
+            leadId: args.leadId,
+            reason: queueResult.reason,
+          },
+        );
+        return {
+          success: false,
+          retrying: true,
+          reason: "queue_failed",
+          queueReason: queueResult.reason,
+        };
+      }
 
       // Return success with queued flag - tells Workpool this job is "done"
       // The single-consumer cron (enrichmentQueueProcessor) will process it

@@ -649,6 +649,42 @@ export const deleteSearch = mutation({
   },
 });
 
+/** Resume FindyMail enrichment for pending linked duplicate businesses on a stuck search. */
+export const resumeLinkedReenrichment = mutation({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const search = await ctx.db.get(args.searchId);
+
+    if (!search || search.userId !== user._id) {
+      throw createConvexError("authorization", "Search not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        retryable: false,
+      });
+    }
+
+    const pendingLinked = await ctx.db
+      .query("searchLinkedLeads")
+      .withIndex("by_search_status", (q) =>
+        q.eq("searchId", args.searchId).eq("status", "pending"),
+      )
+      .collect();
+
+    await ctx.scheduler.runAfter(0, (api as any).leads.actions.enrichLeads, {
+      searchId: args.searchId,
+    });
+
+    return {
+      success: true,
+      searchId: args.searchId,
+      pendingLinkedCount: pendingLinked.length,
+    };
+  },
+});
+
 // Duplicate a search
 export const duplicateSearch = mutation({
   args: {

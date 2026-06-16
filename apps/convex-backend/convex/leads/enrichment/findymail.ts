@@ -503,6 +503,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
       try {
         const findyMailData = await response.json();
         console.log(`[FindyMail] Response for ${domain}:`, {
+          roles,
           hasData: !!findyMailData,
           contactCount: findyMailData?.contacts?.length || 0,
           emailCount: findyMailData?.emails?.length || 0,

@@ -89,6 +89,13 @@ export const markSearchLinkedLeadEnriched = internalMutation({
       status: args.failed ? "failed" : "enriched",
       enrichedAt: Date.now(),
     });
+
+    await ctx.db.patch(args.leadId, {
+      enrichmentTargetSearchId: undefined,
+      enrichmentQueuedAt: undefined,
+      enrichmentSearchQueuedAt: undefined,
+      updatedAt: Date.now(),
+    });
   },
 });
 
@@ -130,5 +137,49 @@ export const getLinkedLeadIdsForSearch = internalQuery({
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
       .collect();
     return links.map((link) => link.leadId);
+  },
+});
+
+/** Re-queue pending linked businesses and restart enrichment (recovery for stuck searches). */
+export const resumePendingLinkedReenrichment = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    apiKeyHash: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      return { requeued: 0, reason: "search_not_found" };
+    }
+
+    const pendingLinks = await ctx.db
+      .query("searchLinkedLeads")
+      .withIndex("by_search_status", (q) =>
+        q.eq("searchId", args.searchId).eq("status", "pending"),
+      )
+      .collect();
+
+    let requeued = 0;
+    const searchQueuedAt = search.createdAt;
+
+    for (const link of pendingLinks) {
+      const lead = await ctx.db.get(link.leadId);
+      if (!lead) {
+        continue;
+      }
+
+      await ctx.db.patch(link.leadId, {
+        enrichmentStatus: "pending",
+        enrichmentQueuedAt: Date.now(),
+        enrichmentSearchQueuedAt: searchQueuedAt,
+        enrichmentApiKeyHash: args.apiKeyHash,
+        enrichmentTargetSearchId: args.searchId,
+        enrichmentStartedAt: undefined,
+        updatedAt: Date.now(),
+      });
+      requeued += 1;
+    }
+
+    return { requeued, searchId: args.searchId };
   },
 });
