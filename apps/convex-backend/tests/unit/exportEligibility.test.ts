@@ -3,6 +3,8 @@ import {
   extractContactDetails,
   hasWrittenEmail,
   formatExportPhone,
+  classifyContactExportReadiness,
+  summarizeExportReadiness,
   isContactEmailExportable,
   isContactExportable,
   isContactFullyExportable,
@@ -176,6 +178,73 @@ describe("exportEligibility", () => {
         { companyResearchPayload: researchPayload },
       ),
     ).toBe(false);
+  });
+
+  it("classifies export readiness blockers", () => {
+    const researchPayload = {
+      raw_data: {
+        research_metadata: {
+          comprehensive_report: "Full report",
+          citations: ["https://example.com"],
+          confidence_score: 0.85,
+        },
+      },
+    };
+
+    expect(
+      classifyContactExportReadiness({
+        email: "a@co.com",
+        analysisStatus: "pending",
+        status: "accepted",
+      }),
+    ).toBe("awaiting_email_writing");
+
+    expect(
+      classifyContactExportReadiness(
+        {
+          email: "b@co.com",
+          analysisStatus: "completed",
+          emailContent: { subject: "Hi", body: "Body" },
+          status: "accepted",
+          title: "CEO",
+        },
+        { companyResearchPayload: researchPayload },
+      ),
+    ).toBe("exportable");
+
+    expect(
+      classifyContactExportReadiness(
+        {
+          email: "c@co.com",
+          analysisStatus: "completed",
+          emailContent: { subject: "Hi", body: "Body" },
+          status: "accepted",
+          title: "",
+        },
+        { companyResearchPayload: researchPayload },
+      ),
+    ).toBe("missing_title");
+
+    const summary = summarizeExportReadiness(
+      [
+        {
+          email: "a@co.com",
+          analysisStatus: "pending",
+          status: "accepted",
+        },
+        {
+          email: "b@co.com",
+          analysisStatus: "completed",
+          emailContent: { subject: "Hi", body: "Body" },
+          status: "accepted",
+          title: "VP",
+        },
+      ],
+      new Map(),
+      () => undefined,
+    );
+    expect(summary.awaitingEmailWriting).toBe(1);
+    expect(summary.incompleteResearch).toBe(1);
   });
 
   it("formatExportPhone uses placeholder when phone is missing", () => {

@@ -87,7 +87,7 @@ export async function publishAnalysisProgressHandler(
     discovered,
     enriched,
     analyzed: analysis.personalized,
-    total: analysis.total,
+    total: discovered,
   };
   let searchPatch: Record<string, unknown> = {
     progress,

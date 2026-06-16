@@ -431,6 +431,7 @@ export const processMultiContactEnrichment = internalMutation({
     enrichmentResult: v.any(),
     enableRoleExpansion: v.boolean(),
     roleMatchPatterns: v.optional(v.array(v.string())),
+    semanticTitleAccepted: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const acceptedEmails = new Set(
@@ -521,6 +522,10 @@ export const processMultiContactEnrichment = internalMutation({
       confidence: number;
     }> = [];
 
+    const semanticTitleAccepted = args.semanticTitleAccepted
+      ? new Set(args.semanticTitleAccepted)
+      : undefined;
+
     for (const candidate of candidates) {
       const evaluation = evaluateContactCandidate(
         {
@@ -541,6 +546,7 @@ export const processMultiContactEnrichment = internalMutation({
           fromRoleContact: candidate.fromRoleContact,
           sourceRole: candidate.sourceRole,
           roleMatchPatterns: args.roleMatchPatterns,
+          semanticTitleAccepted,
         },
       );
 

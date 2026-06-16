@@ -58,7 +58,14 @@ import {
   isMultiContactPipelineEnabled,
 } from "../lib/featureFlags";
 import { resolveEnrichmentRoles } from "../lib/enrichmentRoles";
-import { resolveEnrichmentRolePatterns } from "../lib/roleExpansion";
+import {
+  resolveEnrichmentRolePatterns,
+  resolveTitleMatchPatterns,
+} from "../lib/roleExpansion";
+import {
+  collectTitlesNeedingSemanticReview,
+} from "../lib/contactAcceptance";
+import { normalizeRoleText } from "../lib/roleFamilies";
 
 // Note: Workpool instance is created per-call in enrichLeads action
 // This is because we need ctx.runMutation which is only available in action context
@@ -80,6 +87,41 @@ function hasRawEnrichmentCandidates(
   return Boolean(
     result &&
       ((result.emails?.length ?? 0) > 0 || (result.contacts?.length ?? 0) > 0),
+  );
+}
+
+async function resolveSemanticTitleAcceptance(
+  ctx: { runAction: (action: any, args: any) => Promise<any> },
+  userId: string,
+  requestedRoles: string[],
+  enrichmentResult: EnrichmentResult,
+  titleMatchPatterns: string[],
+): Promise<Set<string>> {
+  const rawTitles = (enrichmentResult.contacts ?? [])
+    .map((contact) => contact.title?.trim())
+    .filter((title): title is string => Boolean(title));
+
+  const needsReview = collectTitlesNeedingSemanticReview(
+    rawTitles,
+    requestedRoles,
+    titleMatchPatterns,
+    true,
+  );
+  if (needsReview.length === 0) {
+    return new Set();
+  }
+
+  const aiResult = (await ctx.runAction(
+    internal.search.roleSemanticMatchActions.batchEvaluateSemanticTitles,
+    {
+      userId,
+      requestedRoles,
+      titles: needsReview,
+    },
+  )) as { acceptedTitles?: string[] };
+
+  return new Set(
+    (aiResult.acceptedTitles ?? []).map((title) => normalizeRoleText(title)),
   );
 }
 
@@ -495,7 +537,11 @@ export const enrichSingleLeadWorkpool = internalAction({
       }
 
       const requestedRoles = resolveEnrichmentRoles(args.roles, search.parameters);
-      const roleMatchPatterns = resolveEnrichmentRolePatterns(
+      const enrichmentRolePatterns = resolveEnrichmentRolePatterns(
+        requestedRoles,
+        search.parameters,
+      );
+      const titleMatchPatterns = resolveTitleMatchPatterns(
         requestedRoles,
         search.parameters,
       );
@@ -654,7 +700,7 @@ export const enrichSingleLeadWorkpool = internalAction({
           const providerAttempt = await tryProvider("findymail", domain, {
             retries: 3,
             roles: requestedRoles,
-            rolePatterns: roleMatchPatterns,
+            rolePatterns: enrichmentRolePatterns,
             userApiKey: args.userApiKey,
           });
           result = providerAttempt.result;
@@ -672,7 +718,7 @@ export const enrichSingleLeadWorkpool = internalAction({
         const providerAttempt = await tryProvider("findymail", domain, {
           retries: 3,
           roles: requestedRoles,
-          rolePatterns: roleMatchPatterns,
+          rolePatterns: enrichmentRolePatterns,
           userApiKey: args.userApiKey,
         });
         result = providerAttempt.result;
@@ -767,6 +813,14 @@ export const enrichSingleLeadWorkpool = internalAction({
       const hasRawCandidates = hasRawEnrichmentCandidates(result);
 
       if (hasRawCandidates && isMultiContactPipelineEnabled()) {
+        const semanticTitleAccepted = await resolveSemanticTitleAcceptance(
+          ctx,
+          args.userId,
+          requestedRoles,
+          result!,
+          titleMatchPatterns,
+        );
+
         const processResult = await ctx.runMutation(
           internal.leads.contactInternal.processMultiContactEnrichment,
           {
@@ -777,7 +831,8 @@ export const enrichSingleLeadWorkpool = internalAction({
             companyWebsite: lead.website,
             enrichmentResult: result,
             enableRoleExpansion: true,
-            roleMatchPatterns,
+            roleMatchPatterns: titleMatchPatterns,
+            semanticTitleAccepted: Array.from(semanticTitleAccepted),
           },
         );
 
@@ -1170,7 +1225,11 @@ export const enrichSingleLead = internalAction({
       args.roles,
       searchForRoles?.parameters,
     );
-    const roleMatchPatterns = resolveEnrichmentRolePatterns(
+    const enrichmentRolePatterns = resolveEnrichmentRolePatterns(
+      requestedRoles,
+      searchForRoles?.parameters,
+    );
+    const titleMatchPatterns = resolveTitleMatchPatterns(
       requestedRoles,
       searchForRoles?.parameters,
     );
@@ -1553,7 +1612,7 @@ export const enrichSingleLead = internalAction({
       const { result, pipelineBlockingError } = await tryProvider("findymail", domain, {
         retries: 3,
         roles: requestedRoles,
-        rolePatterns: roleMatchPatterns,
+        rolePatterns: enrichmentRolePatterns,
         userApiKey: args.userApiKey,
       });
 
@@ -1622,6 +1681,14 @@ export const enrichSingleLead = internalAction({
       let acceptedCount = 0;
 
       if (hasRawCandidates && isMultiContactPipelineEnabled()) {
+        const semanticTitleAccepted = await resolveSemanticTitleAcceptance(
+          ctx,
+          args.userId,
+          requestedRoles,
+          result!,
+          titleMatchPatterns,
+        );
+
         const processResult = await ctx.runMutation(
           internal.leads.contactInternal.processMultiContactEnrichment,
           {
@@ -1632,7 +1699,8 @@ export const enrichSingleLead = internalAction({
             companyWebsite: lead.website,
             enrichmentResult: result,
             enableRoleExpansion: true,
-            roleMatchPatterns,
+            roleMatchPatterns: titleMatchPatterns,
+            semanticTitleAccepted: Array.from(semanticTitleAccepted),
           },
         );
         acceptedCount = processResult.acceptedCount;

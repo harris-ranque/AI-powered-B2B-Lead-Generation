@@ -36,6 +36,75 @@ function isEligibleLegacyLead(lead: Doc<"leads">): boolean {
   return enrichmentComplete && hasEmail && hasContactName;
 }
 
+export type ContactAnalysisRow = {
+  status: string;
+  email: string;
+  analysisStatus?: string;
+  emailContent?: { subject?: string; body?: string };
+};
+
+function contactHasWrittenEmail(
+  emailContent?: { subject?: string; body?: string },
+): boolean {
+  return Boolean(
+    emailContent?.subject?.trim() || emailContent?.body?.trim(),
+  );
+}
+
+/** Progress totals for accepted contacts that have an email to write to. */
+export function summarizeAcceptedContactAnalysis(
+  contacts: ContactAnalysisRow[],
+): Omit<AnalysisCompletionState, "mode"> {
+  const eligible = contacts.filter(
+    (contact) => contact.status === "accepted" && contact.email.trim().length > 0,
+  );
+
+  const pending = eligible.filter(
+    (contact) =>
+      !contact.analysisStatus || contact.analysisStatus === "pending",
+  ).length;
+  const scheduled = eligible.filter(
+    (contact) => contact.analysisStatus === "scheduled",
+  ).length;
+  const processing = eligible.filter(
+    (contact) => contact.analysisStatus === "processing",
+  ).length;
+  const completed = eligible.filter(
+    (contact) => contact.analysisStatus === "completed",
+  ).length;
+  const failed = eligible.filter(
+    (contact) =>
+      contact.analysisStatus === "failed" ||
+      contact.analysisStatus === "timeout",
+  ).length;
+  const skipped = eligible.filter(
+    (contact) => contact.analysisStatus === "skipped",
+  ).length;
+  const personalized = eligible.filter(
+    (contact) =>
+      contact.analysisStatus === "completed" &&
+      contactHasWrittenEmail(contact.emailContent),
+  ).length;
+
+  const total = eligible.length;
+  const inProgress = pending + scheduled + processing;
+  const processed = completed + failed + skipped;
+
+  return {
+    total,
+    pending,
+    scheduled,
+    processing,
+    inProgress,
+    completed,
+    failed,
+    skipped,
+    personalized,
+    processed,
+    isComplete: total > 0 && inProgress === 0,
+  };
+}
+
 async function collectContactsByAnalysisStatus(
   ctx: AnalysisProgressCtx,
   searchId: Id<"searches">,
@@ -74,10 +143,6 @@ export async function getAnalysisCompletionState(
   ctx: AnalysisProgressCtx,
   searchId: Id<"searches">,
 ): Promise<AnalysisCompletionState> {
-  const search = await ctx.db.get(searchId);
-  const progressTotal = search?.progress?.total ?? 0;
-  const progressAnalyzed = search?.progress?.analyzed ?? 0;
-
   const acceptedSample = await ctx.db
     .query("leadContacts")
     .withIndex("by_search_status", (q) =>
@@ -86,64 +151,16 @@ export async function getAnalysisCompletionState(
     .take(1);
 
   if (acceptedSample.length > 0) {
-    const pendingContacts = await collectContactsByAnalysisStatus(
-      ctx,
-      searchId,
-      "pending",
-    );
-    const scheduledContacts = await collectContactsByAnalysisStatus(
-      ctx,
-      searchId,
-      "scheduled",
-    );
-    const processingContacts = await collectContactsByAnalysisStatus(
-      ctx,
-      searchId,
-      "processing",
-    );
-    const failedContacts = await collectContactsByAnalysisStatus(
-      ctx,
-      searchId,
-      "failed",
-    );
-    const timeoutContacts = await collectContactsByAnalysisStatus(
-      ctx,
-      searchId,
-      "timeout",
-    );
-    const skippedContacts = await collectContactsByAnalysisStatus(
-      ctx,
-      searchId,
-      "skipped",
-    );
-
-    const pending = pendingContacts.length;
-    const scheduled = scheduledContacts.length;
-    const processing = processingContacts.length;
-    const failed = failedContacts.length + timeoutContacts.length;
-    const skipped = skippedContacts.length;
-    const inProgress = pending + scheduled + processing;
-    const personalized = progressAnalyzed;
-    const total =
-      progressTotal > 0
-        ? progressTotal
-        : personalized + inProgress + failed + skipped;
-    const completed = Math.max(0, total - inProgress - failed - skipped);
-    const processed = completed + failed + skipped;
+    const acceptedContacts = await ctx.db
+      .query("leadContacts")
+      .withIndex("by_search_status", (q) =>
+        q.eq("searchId", searchId).eq("status", "accepted"),
+      )
+      .collect();
 
     return {
       mode: "contact",
-      total,
-      pending,
-      scheduled,
-      processing,
-      inProgress,
-      completed,
-      failed,
-      skipped,
-      personalized,
-      processed,
-      isComplete: total > 0 && inProgress === 0,
+      ...summarizeAcceptedContactAnalysis(acceptedContacts),
     };
   }
 

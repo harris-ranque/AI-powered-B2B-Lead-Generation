@@ -7,13 +7,13 @@ import { resolveEnrichmentRoles } from "../lib/enrichmentRoles";
 import {
   buildStaticRolePatterns,
   mergeRolePatterns,
+  mergeTitleMatchers,
   parseAiRoleExpansionResponse,
-  rolesNeedingAiExpansion,
   ROLE_EXPANSION_SYSTEM_PROMPT,
 } from "../lib/roleExpansion";
 
 async function resolveOpenAiKeyForRoleExpansion(
-  ctx: { runAction: (...args: unknown[]) => Promise<unknown> },
+  ctx: { runAction: (action: any, args: any) => Promise<any> },
   userId: string,
 ): Promise<string | null> {
   try {
@@ -38,8 +38,8 @@ async function resolveOpenAiKeyForRoleExpansion(
 
 async function fetchAiRolePatterns(
   apiKey: string,
-  rolesNeedingAi: string[],
-): Promise<string[]> {
+  userRoles: string[],
+): Promise<{ findymailPatterns: string[]; titleSynonyms: string[] }> {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -55,9 +55,9 @@ async function fetchAiRolePatterns(
         {
           role: "user",
           content: JSON.stringify({
-            roles: rolesNeedingAi,
+            roles: userRoles,
             instruction:
-              "Expand each role into senior decision-maker title patterns for the same lane.",
+              "For each role, return findymail_patterns and title_synonyms in the same functional lane.",
           }),
         },
       ],
@@ -75,7 +75,7 @@ async function fetchAiRolePatterns(
     choices?: Array<{ message?: { content?: string } }>;
   };
   const content = payload.choices?.[0]?.message?.content ?? "";
-  return parseAiRoleExpansionResponse(content, rolesNeedingAi);
+  return parseAiRoleExpansionResponse(content, userRoles);
 }
 
 export const expandSearchRolePatterns = internalAction({
@@ -98,46 +98,54 @@ export const expandSearchRolePatterns = internalAction({
     }
 
     const staticPatterns = buildStaticRolePatterns(userRoles);
-    const rolesForAi = rolesNeedingAiExpansion(userRoles);
 
-    let aiPatterns: string[] = [];
+    let findymailAiPatterns: string[] = [];
+    let titleSynonyms: string[] = [];
     let source: "static" | "static+ai" = "static";
 
-    if (rolesForAi.length > 0) {
-      const apiKey = await resolveOpenAiKeyForRoleExpansion(ctx, args.userId);
-      if (apiKey) {
-        try {
-          aiPatterns = await fetchAiRolePatterns(apiKey, rolesForAi);
-          if (aiPatterns.length > 0) {
-            source = "static+ai";
-          }
-        } catch (error) {
-          console.warn("[roleExpansion] AI expansion failed, using static patterns only:", error);
+    const apiKey = await resolveOpenAiKeyForRoleExpansion(ctx, args.userId);
+    if (apiKey) {
+      try {
+        const aiExpansion = await fetchAiRolePatterns(apiKey, userRoles);
+        findymailAiPatterns = aiExpansion.findymailPatterns;
+        titleSynonyms = aiExpansion.titleSynonyms;
+        if (findymailAiPatterns.length > 0 || titleSynonyms.length > 0) {
+          source = "static+ai";
         }
-      } else {
+      } catch (error) {
         console.warn(
-          "[roleExpansion] No OpenAI key available; using static role patterns only",
+          "[roleExpansion] AI expansion failed, using static patterns only:",
+          error,
         );
       }
+    } else {
+      console.warn(
+        "[roleExpansion] No OpenAI key available; using static role patterns only",
+      );
     }
 
     const expandedRolePatterns = mergeRolePatterns(
       userRoles,
       staticPatterns,
-      aiPatterns,
+      findymailAiPatterns,
     );
+    const expandedTitleMatchers = mergeTitleMatchers(userRoles, staticPatterns, [
+      ...findymailAiPatterns,
+      ...titleSynonyms,
+    ]);
 
     await ctx.runMutation(internal.search.internal.updateSearchExpandedRolePatterns, {
       searchId: args.searchId,
       expandedRolePatterns,
+      expandedTitleMatchers,
       roleExpansionSource: source,
     });
 
     return {
       skipped: false,
       patternCount: expandedRolePatterns.length,
+      titleMatcherCount: expandedTitleMatchers.length,
       source,
-      aiRoles: rolesForAi.length,
     };
   },
 });

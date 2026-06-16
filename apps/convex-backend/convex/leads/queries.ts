@@ -5,6 +5,7 @@ import { requireAuth, getCurrentUser } from "../auth";
 import {
   countExportableLeads,
   countExportableSummaryForSearch,
+  computeExportReadinessForContacts,
   filterFullyExportableContacts,
   formatExportPhone,
   resolveContactExportTitle,
@@ -679,6 +680,10 @@ export const getAcceptedContactCountsBySearch = query({
       ctx,
       contacts,
     );
+    const exportReadiness = await computeExportReadinessForContacts(
+      ctx,
+      contacts,
+    );
     const exportResolution = await resolveSearchExportData(
       ctx,
       args.searchId,
@@ -702,6 +707,7 @@ export const getAcceptedContactCountsBySearch = query({
       duplicateSkips: exportResolution.duplicateSkips,
       byLead,
       multiContactEnabled: true,
+      exportReadiness,
     };
   },
 });

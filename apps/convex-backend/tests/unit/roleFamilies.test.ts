@@ -64,4 +64,15 @@ describe("roleFamilies", () => {
     );
     expect(match.score).toBe(0);
   });
+
+  it("lane match accepts Co-Founder when user requested Founder", () => {
+    const match = scoreRoleLaneMatch("Co-Founder", ["Founder"], true);
+    expect(match.score).toBe(ROLE_LANE_MATCH_SCORE);
+    expect(match.reason).toBe("lane_match");
+  });
+
+  it("pattern match accepts Co-Founder title against Founder search patterns", () => {
+    const match = scoreTitleAgainstRoles("Co-Founder", ["Founder"], true);
+    expect(match.score).toBeGreaterThanOrEqual(TITLE_MATCH_ACCEPT_THRESHOLD);
+  });
 });

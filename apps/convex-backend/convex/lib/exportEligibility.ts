@@ -189,6 +189,117 @@ export function isContactExportable(
   return isContactFullyExportable(contact, context);
 }
 
+export type ExportReadinessCategory =
+  | "exportable"
+  | "awaiting_email_writing"
+  | "analysis_failed"
+  | "missing_title"
+  | "incomplete_research";
+
+export type ExportReadinessSummary = {
+  totalAccepted: number;
+  exportable: number;
+  awaitingEmailWriting: number;
+  analysisFailed: number;
+  missingTitle: number;
+  incompleteResearch: number;
+};
+
+/** Primary blocker for UI breakdown (one category per contact). */
+export function classifyContactExportReadiness(
+  contact: ExportableContact,
+  context?: ContactExportContext,
+): ExportReadinessCategory {
+  if (contact.status && contact.status !== "accepted") {
+    return "analysis_failed";
+  }
+  if (!contact.email.trim()) {
+    return "analysis_failed";
+  }
+  if (
+    contact.analysisStatus === "failed" ||
+    contact.analysisStatus === "skipped" ||
+    contact.analysisStatus === "timeout"
+  ) {
+    return "analysis_failed";
+  }
+  if (
+    contact.analysisStatus !== "completed" ||
+    !hasWrittenEmail(contact.emailContent)
+  ) {
+    return "awaiting_email_writing";
+  }
+  if (!resolveContactExportTitle(contact).trim()) {
+    return "missing_title";
+  }
+  const leadAnalysis = contact.aiAnalysis?.leadAnalysis;
+  const exportResearch = resolveExportResearchFields(
+    leadAnalysis,
+    context?.companyResearchPayload,
+  );
+  if (!hasCompleteExportResearch(exportResearch)) {
+    return "incomplete_research";
+  }
+  return "exportable";
+}
+
+export function summarizeExportReadiness(
+  contacts: ExportableContact[],
+  researchById: Map<string, unknown>,
+  contactResearchId?: (contact: ExportableContact) => string | undefined,
+): ExportReadinessSummary {
+  const summary: ExportReadinessSummary = {
+    totalAccepted: contacts.length,
+    exportable: 0,
+    awaitingEmailWriting: 0,
+    analysisFailed: 0,
+    missingTitle: 0,
+    incompleteResearch: 0,
+  };
+
+  for (const contact of contacts) {
+    const researchId = contactResearchId?.(contact);
+    const companyResearchPayload = researchId
+      ? researchById.get(researchId)
+      : undefined;
+    const category = classifyContactExportReadiness(contact, {
+      companyResearchPayload,
+    });
+    switch (category) {
+      case "exportable":
+        summary.exportable++;
+        break;
+      case "awaiting_email_writing":
+        summary.awaitingEmailWriting++;
+        break;
+      case "analysis_failed":
+        summary.analysisFailed++;
+        break;
+      case "missing_title":
+        summary.missingTitle++;
+        break;
+      case "incomplete_research":
+        summary.incompleteResearch++;
+        break;
+    }
+  }
+
+  return summary;
+}
+
+export async function computeExportReadinessForContacts(
+  ctx: { db: GenericDatabaseReader<DataModel> },
+  contacts: LeadContactDoc[],
+): Promise<ExportReadinessSummary> {
+  const researchById = await loadExportContextForContacts(ctx, contacts);
+  return summarizeExportReadiness(
+    contacts,
+    researchById,
+    (contact) =>
+      contact.companyResearchId ? String(contact.companyResearchId) : undefined,
+  );
+}
+
 type LeadContactDoc = DataModel["leadContacts"]["document"];
 
 async function loadExportContextForContacts(

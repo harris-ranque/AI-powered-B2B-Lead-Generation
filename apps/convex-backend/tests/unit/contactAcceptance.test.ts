@@ -34,7 +34,7 @@ describe("contactAcceptance", () => {
     );
   });
 
-  it("accepts FindyMail role contact without job title when sourceRole matches requested roles", () => {
+  it("rejects FindyMail role contact without provider job title", () => {
     const result = evaluateContactCandidate(
       {
         name: "Thalia Castillo",
@@ -52,15 +52,54 @@ describe("contactAcceptance", () => {
       },
     );
 
+    expect(result.accepted).toBe(false);
+    expect(result.rejectionReason).toBe("missing_title");
+  });
+
+  it("accepts when provider title semantically matches the FindyMail queried role", () => {
+    const result = evaluateContactCandidate(
+      {
+        name: "Jane Doe",
+        title: "DevOps practitioner",
+        email: "jane@acme.com",
+        verified: true,
+      },
+      {
+        requestedRoles: ["DevOps Engineer"],
+        companyWebsite: "https://acme.com",
+        acceptedEmailsInSearch: new Set(),
+        enableRoleExpansion: true,
+        requireVerifiedEmail: true,
+        fromRoleContact: true,
+        sourceRole: "DevOps Engineer",
+      },
+    );
+
     expect(result.accepted).toBe(true);
-    expect(result.emailVerified).toBe(true);
-    expect(result.domainMatchVerified).toBe(true);
-    expect(
-      resolveDisplayableContactTitle({
-        matchedRole: result.matchedRole,
-        sourceRole: "CEO",
-      }),
-    ).toBeTruthy();
+    expect(result.titleMatchReason).toBe("queried_role_match");
+  });
+
+  it("accepts Co-Founder provider title when user requested Founder", () => {
+    const result = evaluateContactCandidate(
+      {
+        name: "Jane Doe",
+        title: "Co-Founder",
+        email: "jane@acme.com",
+        verified: true,
+      },
+      {
+        requestedRoles: ["Founder"],
+        companyWebsite: "https://acme.com",
+        acceptedEmailsInSearch: new Set(),
+        enableRoleExpansion: true,
+        requireVerifiedEmail: true,
+      },
+    );
+
+    expect(result.accepted).toBe(true);
+    expect(result.titleMatchScore ?? 0).toBeGreaterThanOrEqual(
+      TITLE_MATCH_ACCEPT_THRESHOLD,
+    );
   });
 
   it("rejects provider title that does not match requested roles", () => {
@@ -202,6 +241,37 @@ describe("contactAcceptance", () => {
     for (const title of titles) {
       const match = scoreTitleAgainstRoles(title, ["Marketing Manager"], true);
       expect(match.score).toBeGreaterThanOrEqual(TITLE_MATCH_ACCEPT_THRESHOLD);
+    }
+  });
+
+  it("accepts DevOps provider titles when user requested DevOps Engineer", () => {
+    const titles = [
+      "Senior DevOps Engineer",
+      "DevOps practitioner",
+      "DevOps Developer",
+    ];
+
+    for (const title of titles) {
+      const result = evaluateContactCandidate(
+        {
+          name: "Jane Doe",
+          title,
+          email: "jane@acme.com",
+          verified: true,
+        },
+        {
+          requestedRoles: ["DevOps Engineer"],
+          companyWebsite: "https://acme.com",
+          acceptedEmailsInSearch: new Set(),
+          enableRoleExpansion: true,
+          requireVerifiedEmail: true,
+        },
+      );
+
+      expect(result.accepted).toBe(true);
+      expect(result.titleMatchScore ?? 0).toBeGreaterThanOrEqual(
+        TITLE_MATCH_ACCEPT_THRESHOLD,
+      );
     }
   });
 });

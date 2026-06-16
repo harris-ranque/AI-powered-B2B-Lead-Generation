@@ -59,6 +59,7 @@ import { useQuery } from "convex/react";
 import { api } from "@genni/convex-types";
 import type { Id } from "@genni/convex-types/dataModel";
 import { featureFlags } from "@/lib/featureFlags";
+import { ExportReadinessBreakdown } from "./ExportReadinessBreakdown";
 
 const EXPORT_FORMATS = [
   {
@@ -790,15 +791,28 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
                 <Target className="h-6 w-6 text-teal-300" />
               </div>
               <div className="mt-3 text-2xl font-semibold text-slate-100">
-                {enrichmentRateLabel}
+                {featureFlags.multiContactPipeline
+                  ? formatNumber(exportableContactCount)
+                  : enrichmentRateLabel}
               </div>
               <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                Contact Rate
+                {featureFlags.multiContactPipeline
+                  ? "CSV Exportable"
+                  : "Contact Rate"}
               </p>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {featureFlags.multiContactPipeline &&
+        contactCounts?.exportReadiness && (
+          <ExportReadinessBreakdown
+            readiness={contactCounts.exportReadiness}
+            acceptedCount={enrichedCount}
+            exportableCount={exportableContactCount}
+          />
+        )}
 
       <Tabs defaultValue="export" className="w-full">
         <TabsList className="grid w-full grid-cols-3 rounded-xl border border-slate-800/60 bg-slate-900/60 p-1">

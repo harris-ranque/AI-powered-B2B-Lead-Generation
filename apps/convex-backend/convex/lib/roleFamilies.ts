@@ -125,17 +125,35 @@ const ROLE_ABBREVIATIONS = new Set([
 /** Lane match score — same functional area, different seniority/title wording. */
 export const ROLE_LANE_MATCH_SCORE = 0.85;
 
-function normalizeRoleToken(value: string): string {
+/** Single-word titles that are decision-makers within their lane (e.g. founder, owner). */
+const SINGLE_WORD_DECISION_MAKER_TITLES = new Set([
+  "founder",
+  "owner",
+  "president",
+  "partner",
+]);
+
+export function normalizeRoleText(value: string): string {
   return value
     .toLowerCase()
     .trim()
-    .replace(/[^\w\s&/-]/g, " ")
+    .replace(/-/g, " ")
+    .replace(/[^\w\s&/]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
+function normalizeRoleToken(value: string): string {
+  return normalizeRoleText(value);
+}
+
 function isDecisionMakerPattern(pattern: string): boolean {
-  return pattern.includes(" ") || ROLE_ABBREVIATIONS.has(pattern);
+  const norm = normalizeRoleToken(pattern);
+  return (
+    norm.includes(" ") ||
+    ROLE_ABBREVIATIONS.has(norm) ||
+    SINGLE_WORD_DECISION_MAKER_TITLES.has(norm)
+  );
 }
 
 function patternMatchesText(textNorm: string, patternNorm: string): boolean {

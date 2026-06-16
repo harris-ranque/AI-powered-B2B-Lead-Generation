@@ -14,6 +14,9 @@ import { useSearch } from "@/hooks/useSearches";
 import { useSearchBroadcasts } from "@/hooks/useStatusBroadcasts";
 import type { AnalysisBreakdown, AnalysisBroadcastData } from "@/types/analysis";
 import {
+  ExportReadinessBreakdown,
+} from "./ExportReadinessBreakdown";
+import {
   PenTool,
   CheckCircle,
   Clock,
@@ -83,6 +86,11 @@ export function AIPersonalizationStage() {
     searchId ? { searchId } : "skip",
   );
 
+  const acceptedContactCounts = useQuery(
+    api.leads.queries.getAcceptedContactCountsBySearch,
+    searchId ? { searchId } : "skip",
+  );
+
   const leads = useMemo(() => {
     if (searchId && searchLeads && searchLeads.length > 0) {
       return searchLeads;
@@ -110,8 +118,7 @@ export function AIPersonalizationStage() {
 
   const totalToWrite = Math.max(
     analysisProgress?.total ?? 0,
-    search?.progress?.total ?? 0,
-    state.enrichedLeads.length,
+    acceptedContactCounts?.totalAccepted ?? 0,
     leads.filter((lead) => lead.contactInfo?.emails?.length).length,
   );
 
@@ -293,7 +300,7 @@ export function AIPersonalizationStage() {
               <div className="space-y-1">
                 <h4 className="font-semibold">Write Emails Progress</h4>
                 <p className="text-sm text-muted-foreground">
-                  {emailsWritten} of {displayTotal} emails written
+                  {emailsWritten} of {displayTotal} contact emails written
                   {pendingCount > 0 && ` · ${pendingCount} queued`}
                   {scheduledCount > 0 && ` · ${scheduledCount} scheduled`}
                   {processingCount > 0 && ` · ${processingCount} in worker`}
@@ -318,6 +325,13 @@ export function AIPersonalizationStage() {
               {analysisProgress?.failed > 0 &&
                 ` · ${analysisProgress.failed} failed`}
             </p>
+
+            {acceptedContactCounts?.exportReadiness && (
+              <ExportReadinessBreakdown
+                readiness={acceptedContactCounts.exportReadiness}
+                variant="compact"
+              />
+            )}
 
             {analysisComplete && (
               <div className="flex items-center justify-center gap-2 text-green-600">

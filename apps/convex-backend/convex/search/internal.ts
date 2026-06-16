@@ -482,6 +482,7 @@ export const updateSearchExpandedRolePatterns = internalMutation({
   args: {
     searchId: v.id("searches"),
     expandedRolePatterns: v.array(v.string()),
+    expandedTitleMatchers: v.optional(v.array(v.string())),
     roleExpansionSource: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -496,6 +497,7 @@ export const updateSearchExpandedRolePatterns = internalMutation({
         parameters: {
           ...search.parameters,
           expandedRolePatterns: args.expandedRolePatterns,
+          expandedTitleMatchers: args.expandedTitleMatchers,
           roleExpansionSource: args.roleExpansionSource,
         },
       },
