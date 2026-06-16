@@ -5,16 +5,92 @@
  * once all eligible leads have finished async analysis.
  */
 
-import { internalAction } from "../_generated/server";
+import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import {
   createCorrelationContext,
   logWithCorrelation,
   OPERATION_TYPES,
 } from "../lib/correlation";
-import { Doc } from "../_generated/dataModel";
+import { Doc, Id } from "../_generated/dataModel";
+import {
+  ANALYSIS_RECOVERY_GRACE_MS,
+  hasPendingEnrichment,
+  isAllEnrichmentTerminal,
+} from "../lib/searchAnalysisRecovery";
 
-const FINAL_ANALYSIS_STATUSES = new Set(["completed", "failed", "timeout"]);
+const FINAL_ANALYSIS_STATUSES = new Set([
+  "completed",
+  "failed",
+  "timeout",
+  "skipped",
+]);
+
+type CorrelationContext = ReturnType<typeof createCorrelationContext>;
+
+/**
+ * Schedule Write Emails when enrichment finished but analyzeLeads never ran.
+ */
+async function triggerAnalysisRecovery(
+  ctx: ActionCtx,
+  correlation: CorrelationContext,
+  searchId: Id<"searches">,
+  logContext: Record<string, unknown>,
+): Promise<boolean> {
+  const shouldTrigger = await ctx.runMutation(
+    internal.leads.internal.tryTriggerAnalysisPhase,
+    { searchId },
+  );
+
+  if (shouldTrigger) {
+    await ctx.scheduler.runAfter(
+      0,
+      (internal as any)["leads/actions"].analyzeLeads,
+      { searchId },
+    );
+    logWithCorrelation(
+      "info",
+      correlation,
+      "🔄 Analysis recovery: scheduled via tryTriggerAnalysisPhase",
+      { searchId, ...logContext },
+    );
+    return true;
+  }
+
+  const evaluation = await ctx.runQuery(
+    internal.leads.internal.evaluateAnalysisRecoveryNeed,
+    { searchId },
+  );
+
+  if (!evaluation.shouldScheduleDirect) {
+    return false;
+  }
+
+  await ctx.runMutation(internal.search.internal.reopenSearchForAnalysisRecovery, {
+    searchId,
+  });
+
+  await ctx.scheduler.runAfter(
+    0,
+    (internal as any)["leads/actions"].analyzeLeads,
+    { searchId },
+  );
+
+  logWithCorrelation(
+    "info",
+    correlation,
+    "🔄 Analysis recovery: direct analyzeLeads schedule",
+    {
+      searchId,
+      reason: evaluation.reason,
+      pending: evaluation.pending,
+      total: evaluation.total,
+      ...logContext,
+    },
+  );
+
+  return true;
+}
 
 export const checkPendingCompletions: any = internalAction({
   args: {},
@@ -230,6 +306,33 @@ export const recoverStuckSearches: any = internalAction({
         continue;
       }
 
+      // Recover missed Write Emails trigger (enrichment done, analysis never started)
+      if (
+        (search.status === "processing" || search.status === "failed") &&
+        age >= ANALYSIS_RECOVERY_GRACE_MS
+      ) {
+        const leadsForRecovery = (await ctx.runQuery(
+          internal.leads.internal.getSearchLeadsInternal,
+          { searchId: search._id as any },
+        )) as Doc<"leads">[];
+
+        if (
+          isAllEnrichmentTerminal(leadsForRecovery) &&
+          !hasPendingEnrichment(leadsForRecovery)
+        ) {
+          const analysisRecovered = await triggerAnalysisRecovery(
+            ctx,
+            correlation,
+            search._id,
+            { ageMinutes: Math.floor(age / 60000), phase: "stuck_search_recovery" },
+          );
+          if (analysisRecovered) {
+            recoveredCount++;
+            continue;
+          }
+        }
+      }
+
       // Check if stuck in processing phase
       if (search.status === "processing" && age > PROCESSING_TIMEOUT_MS) {
         // Get leads to see what phase we're stuck in
@@ -251,6 +354,28 @@ export const recoverStuckSearches: any = internalAction({
         );
 
         if (pendingEnrichment.length > 0 || failedEnrichment.length > 0 || pendingAnalysis.length > 0) {
+          // Last-chance recovery: enrichment finished but Write Emails never started
+          if (
+            pendingEnrichment.length === 0 &&
+            failedEnrichment.length === 0 &&
+            pendingAnalysis.length > 0
+          ) {
+            const analysisRecovered = await triggerAnalysisRecovery(
+              ctx,
+              correlation,
+              search._id,
+              {
+                ageMinutes: Math.floor(age / 60000),
+                phase: "processing_timeout_last_chance",
+                pendingAnalysis: pendingAnalysis.length,
+              },
+            );
+            if (analysisRecovered) {
+              recoveredCount++;
+              continue;
+            }
+          }
+
           logWithCorrelation(
             "warn",
             correlation,
@@ -442,15 +567,18 @@ export const monitorSearchHealth: any = internalAction({
 
     const results = {
       completions: { searchesChecked: 0, searchesEvaluated: 0, completionsScheduled: 0 },
-      recovery: { searchesChecked: 0, searchesRecovered: 0 },
+      recovery: {
+        searchesChecked: 0,
+        searchesRecovered: 0,
+        analysisRecoveryScheduled: 0,
+      },
     };
 
     try {
       // Get all in-progress searches (one query for both checks)
-      const statusesToCheck: Array<"processing" | "in_progress"> = [
-        "processing",
-        "in_progress",
-      ];
+      const statusesToCheck: Array<
+        "processing" | "in_progress" | "failed"
+      > = ["processing", "in_progress", "failed"];
 
       const candidateSearches = (await ctx.runQuery(
         internal.search.internal.getSearchesByStatusesInternal,
@@ -485,6 +613,36 @@ export const monitorSearchHealth: any = internalAction({
 
         const startedAt = search.startedAt || search.createdAt;
         const age = now - startedAt;
+
+        // ======================================================================
+        // CHECK 0: Recover missed Write Emails trigger
+        // ======================================================================
+        if (
+          (search.status === "processing" || search.status === "failed") &&
+          age >= ANALYSIS_RECOVERY_GRACE_MS
+        ) {
+          const leadsForRecovery = (await ctx.runQuery(
+            internal.leads.internal.getSearchLeadsInternal,
+            { searchId: search._id as any },
+          )) as Doc<"leads">[];
+
+          if (
+            isAllEnrichmentTerminal(leadsForRecovery) &&
+            !hasPendingEnrichment(leadsForRecovery)
+          ) {
+            const analysisRecovered = await triggerAnalysisRecovery(
+              ctx,
+              correlation,
+              search._id,
+              { ageMinutes: Math.floor(age / 60000), phase: "health_monitor" },
+            );
+            if (analysisRecovered) {
+              results.recovery.searchesRecovered++;
+              results.recovery.analysisRecoveryScheduled++;
+              continue;
+            }
+          }
+        }
 
         // ======================================================================
         // CHECK 1: Stuck Search Recovery (timeouts)
@@ -529,6 +687,28 @@ export const monitorSearchHealth: any = internalAction({
           );
 
           if (pendingEnrichment.length > 0 || failedEnrichment.length > 0 || pendingAnalysis.length > 0) {
+            if (
+              pendingEnrichment.length === 0 &&
+              failedEnrichment.length === 0 &&
+              pendingAnalysis.length > 0
+            ) {
+              const analysisRecovered = await triggerAnalysisRecovery(
+                ctx,
+                correlation,
+                search._id,
+                {
+                  ageMinutes: Math.floor(age / 60000),
+                  phase: "processing_timeout_last_chance",
+                  pendingAnalysis: pendingAnalysis.length,
+                },
+              );
+              if (analysisRecovered) {
+                results.recovery.searchesRecovered++;
+                results.recovery.analysisRecoveryScheduled++;
+                continue;
+              }
+            }
+
             logWithCorrelation(
               "warn",
               correlation,

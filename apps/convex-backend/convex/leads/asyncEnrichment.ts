@@ -1720,11 +1720,37 @@ export const enrichSingleLead = internalAction({
               },
             );
 
-            await ctx.scheduler.runAfter(
-              0,
-              (internal as any)["leads/actions"].analyzeLeads,
-              { searchId: args.searchId },
-            );
+            try {
+              await ctx.scheduler.runAfter(
+                0,
+                (internal as any)["leads/actions"].analyzeLeads,
+                { searchId: args.searchId },
+              );
+            } catch (scheduleError) {
+              const scheduleErrorMsg =
+                scheduleError instanceof Error
+                  ? scheduleError.message
+                  : String(scheduleError);
+              logWithCorrelation(
+                "error",
+                correlation,
+                "❌ Failed to schedule analysis after enrichment complete",
+                {
+                  searchId: args.searchId,
+                  error: scheduleErrorMsg,
+                },
+              );
+              await ctx.runMutation(
+                internal.leads.deadLetterQueue.recordFailedOperation,
+                {
+                  operationType: "analysis_trigger",
+                  searchId: args.searchId,
+                  error: `Analysis scheduling failed after enrichment: ${scheduleErrorMsg}`,
+                  context: { leadId: args.leadId, triggeredBy: "enrich_single_lead" },
+                  maxRetries: 5,
+                },
+              );
+            }
           } else {
             logWithCorrelation(
               "info",
@@ -1878,11 +1904,40 @@ export const enrichSingleLead = internalAction({
           },
         );
 
-        await ctx.scheduler.runAfter(
-          0,
-          (internal as any)["leads/actions"].analyzeLeads,
-          { searchId: args.searchId },
-        );
+        try {
+          await ctx.scheduler.runAfter(
+            0,
+            (internal as any)["leads/actions"].analyzeLeads,
+            { searchId: args.searchId },
+          );
+        } catch (scheduleError) {
+          const scheduleErrorMsg =
+            scheduleError instanceof Error
+              ? scheduleError.message
+              : String(scheduleError);
+          logWithCorrelation(
+            "error",
+            correlation,
+            "❌ Failed to schedule analysis after enrichment complete (no contacts path)",
+            {
+              searchId: args.searchId,
+              error: scheduleErrorMsg,
+            },
+          );
+          await ctx.runMutation(
+            internal.leads.deadLetterQueue.recordFailedOperation,
+            {
+              operationType: "analysis_trigger",
+              searchId: args.searchId,
+              error: `Analysis scheduling failed after enrichment: ${scheduleErrorMsg}`,
+              context: {
+                leadId: args.leadId,
+                triggeredBy: "enrich_single_lead_no_contacts",
+              },
+              maxRetries: 5,
+            },
+          );
+        }
       } else {
         logWithCorrelation(
           "info",

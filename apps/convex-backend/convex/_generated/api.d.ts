@@ -89,6 +89,7 @@ import type * as lib_profileLogic from "../lib/profileLogic.js";
 import type * as lib_rateLimiter from "../lib/rateLimiter.js";
 import type * as lib_roleFamilies from "../lib/roleFamilies.js";
 import type * as lib_sanitization from "../lib/sanitization.js";
+import type * as lib_searchAnalysisRecovery from "../lib/searchAnalysisRecovery.js";
 import type * as lib_searchLogic from "../lib/searchLogic.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as middleware_subscriptionMiddleware from "../middleware/subscriptionMiddleware.js";
@@ -224,6 +225,7 @@ declare const fullApi: ApiFromModules<{
   "lib/rateLimiter": typeof lib_rateLimiter;
   "lib/roleFamilies": typeof lib_roleFamilies;
   "lib/sanitization": typeof lib_sanitization;
+  "lib/searchAnalysisRecovery": typeof lib_searchAnalysisRecovery;
   "lib/searchLogic": typeof lib_searchLogic;
   "lib/validators": typeof lib_validators;
   "middleware/subscriptionMiddleware": typeof middleware_subscriptionMiddleware;

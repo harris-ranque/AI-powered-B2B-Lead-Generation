@@ -118,6 +118,37 @@ export const getSearchesByStatusesInternal = internalQuery({
   },
 });
 
+/** Re-open a failed search so Write Emails recovery can run (analysis timeout only). */
+export const reopenSearchForAnalysisRecovery = internalMutation({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search || search.status !== "failed") {
+      return { reopened: false };
+    }
+
+    const now = Date.now();
+    let updates: Record<string, unknown> = {
+      status: "processing",
+      error: undefined,
+      completedAt: undefined,
+    };
+    updates = withUpdatedAtIfSupported(updates, search, now);
+
+    try {
+      await ctx.db.patch(args.searchId, updates);
+    } catch (error) {
+      if (!isUpdatedAtSchemaError(error)) {
+        throw error;
+      }
+      const { updatedAt: _u, ...withoutUpdatedAt } = updates;
+      await ctx.db.patch(args.searchId, withoutUpdatedAt);
+    }
+
+    return { reopened: true };
+  },
+});
+
 // Internal mutation to update search status without auth
 export const updateSearchStatusInternal = internalMutation({
   args: {

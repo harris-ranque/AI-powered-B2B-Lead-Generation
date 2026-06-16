@@ -6,6 +6,11 @@ import {
   extractPrimaryEmail,
 } from "../lib/deduplication";
 import { resolveSearchExportData } from "../lib/exportEligibility";
+import { getAnalysisCompletionState } from "../lib/analysisProgress";
+import {
+  isAllEnrichmentTerminal,
+  isFailedSearchAnalysisTimeout,
+} from "../lib/searchAnalysisRecovery";
 
 // Internal query to get lead without auth check
 export const getLeadInternal = internalQuery({
@@ -1232,6 +1237,74 @@ export const markLeadAnalysisTimeout = internalMutation({
       lastAnalysisAttempt: Date.now(),
       updatedAt: Date.now(),
     });
+  },
+});
+
+/**
+ * Evaluate whether analyzeLeads should be scheduled directly (recovery path).
+ * Used when tryTriggerAnalysisPhase returns false but contacts are still pending.
+ */
+export const evaluateAnalysisRecoveryNeed = internalQuery({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      return { shouldScheduleDirect: false, reason: "search_not_found" };
+    }
+
+    if (search.status === "cancelled") {
+      return { shouldScheduleDirect: false, reason: "cancelled" };
+    }
+
+    const recoverableProcessing = search.status === "processing";
+    const recoverableFailed =
+      search.status === "failed" &&
+      isFailedSearchAnalysisTimeout(search.error);
+
+    if (!recoverableProcessing && !recoverableFailed) {
+      return { shouldScheduleDirect: false, reason: "status_not_recoverable" };
+    }
+
+    if (search.enrichmentCheckpoint?.errorCode && search.enrichmentCheckpoint.resumable) {
+      return { shouldScheduleDirect: false, reason: "checkpoint_paused" };
+    }
+
+    const leads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    if (!isAllEnrichmentTerminal(leads)) {
+      return { shouldScheduleDirect: false, reason: "enrichment_incomplete" };
+    }
+
+    const completion = await getAnalysisCompletionState(ctx, args.searchId);
+
+    if (completion.isComplete) {
+      return { shouldScheduleDirect: false, reason: "analysis_complete" };
+    }
+
+    // Pending contacts/leads were never sent to LangGraph (no scheduled/processing).
+    if (
+      completion.pending > 0 &&
+      completion.scheduled === 0 &&
+      completion.processing === 0
+    ) {
+      return {
+        shouldScheduleDirect: true,
+        reason: "pending_never_scheduled",
+        pending: completion.pending,
+        total: completion.total,
+      };
+    }
+
+    return {
+      shouldScheduleDirect: false,
+      reason: "analysis_in_flight_or_no_pending",
+      pending: completion.pending,
+      scheduled: completion.scheduled,
+      processing: completion.processing,
+    };
   },
 });
 

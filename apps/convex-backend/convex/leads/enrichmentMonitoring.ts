@@ -223,13 +223,15 @@ export const checkSearchEnrichmentState = internalMutation({
       pending: 0,
       in_progress: 0,
       completed: 0,
+      completed_fallback: 0,
+      no_contacts_found: 0,
       failed: 0,
     };
 
     for (const lead of leads) {
       const status = lead.enrichmentStatus ?? "pending";
-      if (status in statusCounts) {
-        statusCounts[status as keyof typeof statusCounts]++;
+      if (Object.prototype.hasOwnProperty.call(statusCounts, status)) {
+        statusCounts[status as keyof typeof statusCounts] += 1;
       }
     }
 
