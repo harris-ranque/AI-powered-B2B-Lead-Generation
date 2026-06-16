@@ -13,6 +13,7 @@ import {
   type ApiError,
 } from "../../lib/apiErrors";
 import { expandRolesForMatching } from "../../lib/roleFamilies";
+import { normalizeRolePattern } from "../../lib/roleExpansion";
 import { isContactEmailVerified } from "../../lib/contactVerification";
 
 const FINDYMAIL_BASE_URL = "https://app.findymail.com/api";
@@ -32,7 +33,52 @@ const DEFAULT_ROLES = ["ceo", "founder", "owner"] as const;
 const MAX_ROLES_PER_API_REQUEST = 3;
 /** Contacts fetched per user-requested role (and per expanded pattern) */
 const DEFAULT_PER_ROLE_CONTACT_LIMIT = 5;
-const PER_ROLE_FETCH_CONCURRENCY = 3;
+/** One in-flight FindyMail /search/domain call per domain enrichment batch */
+const PER_ROLE_FETCH_CONCURRENCY = 1;
+/** Pause between per-role API calls to avoid 429 bursts */
+const PER_ROLE_FETCH_DELAY_MS = 500;
+/** Max role patterns sent to FindyMail per domain (title matching may use more) */
+const MAX_FINDYMAIL_PATTERNS_PER_DOMAIN = 12;
+/** Stop per-role fetch once enough named contacts are found */
+const PER_ROLE_EARLY_EXIT_CONTACTS = 3;
+/** Retries inside a single /search/domain request (429/504) */
+const SINGLE_REQUEST_MAX_RETRIES = 5;
+const SINGLE_REQUEST_BASE_DELAY_MS = 2000;
+const SINGLE_REQUEST_MAX_DELAY_MS = 45_000;
+
+const DECISION_MAKER_PATTERN =
+  /\b(vp|vice president|chief|head|director|cmo|cro|cto|cfo|coo|president|owner|founder|partner|managing)\b/i;
+
+function prioritizeFindyMailRolePatterns(
+  patterns: string[],
+  userRoles: string[],
+): string[] {
+  const seen = new Set<string>();
+  const userNormalized = new Set(userRoles.map((role) => normalizeRolePattern(role)));
+  const userBucket: string[] = [];
+  const decisionMakerBucket: string[] = [];
+  const otherBucket: string[] = [];
+
+  for (const pattern of patterns) {
+    const normalized = normalizeRolePattern(pattern);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    if (userNormalized.has(normalized)) {
+      userBucket.push(normalized);
+    } else if (DECISION_MAKER_PATTERN.test(normalized)) {
+      decisionMakerBucket.push(normalized);
+    } else {
+      otherBucket.push(normalized);
+    }
+  }
+
+  return [...userBucket, ...decisionMakerBucket, ...otherBucket].slice(
+    0,
+    MAX_FINDYMAIL_PATTERNS_PER_DOMAIN,
+  );
+}
 
 /**
  * Sanitize and normalize roles for FindyMail API.
@@ -103,17 +149,26 @@ function resolveRoles(options?: EnrichmentOptions): string[] {
 }
 
 function resolveRolesForPerRoleFetch(options?: EnrichmentOptions): string[] {
-  if (options?.rolePatterns && options.rolePatterns.length > 0) {
-    return options.rolePatterns;
-  }
-
   const userRoles = sanitizeRoles(options?.roles).roles;
 
-  if (options?.enableRoleExpansion) {
-    return expandRolesForMatching(userRoles, true);
+  let patterns: string[];
+  if (options?.rolePatterns && options.rolePatterns.length > 0) {
+    patterns = options.rolePatterns
+      .map((pattern) => normalizeRolePattern(pattern))
+      .filter((pattern) => pattern.length > 0);
+  } else if (options?.enableRoleExpansion) {
+    patterns = expandRolesForMatching(userRoles, true);
+  } else {
+    patterns = userRoles;
   }
 
-  return userRoles;
+  const capped = prioritizeFindyMailRolePatterns(patterns, userRoles);
+  if (patterns.length > capped.length) {
+    console.warn(
+      `[FindyMail] Capped role patterns for API: ${patterns.length} -> ${capped.length}`,
+    );
+  }
+  return capped;
 }
 
 export class FindyMailProvider implements EnrichmentProviderInterface {
@@ -179,9 +234,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
               return { domain, result: null, apiError };
             }
 
-            // Only retry on transient errors (rate limits, gateway timeouts, network errors)
-            const isRateLimitError = error?.message?.includes("429") || error?.message?.includes("Too Many Requests");
-            const isGatewayError = error?.message?.includes("504") || error?.message?.includes("Gateway");
+            // Only retry network errors at batch level — 429/504 are retried inside fetchDomainSearch
             const isNetworkError = error?.message?.includes("ECONNRESET") ||
                                    error?.message?.includes("ETIMEDOUT") ||
                                    error?.message?.includes("ENOTFOUND") ||
@@ -189,6 +242,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
 
             // Check if this is a non-retriable error (4xx client errors except 429)
             const is4xxError = error?.message?.match(/API error: (4\d{2})/);
+            const isRateLimitError = error?.message?.includes("429") || error?.message?.includes("Too Many Requests");
             const isNonRetriable = is4xxError && !isRateLimitError;
 
             if (isNonRetriable) {
@@ -197,7 +251,7 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
               return { domain, result: null };
             }
 
-            if ((isRateLimitError || isGatewayError || isNetworkError) && attempt < RETRY_ATTEMPTS) {
+            if (isNetworkError && attempt < RETRY_ATTEMPTS) {
               // Exponential backoff for transient errors: 1s, 2s, 4s, 8s, max 15s
               const backoffDelay = Math.min(1000 * Math.pow(2, attempt), 15000);
               console.log(`[FindyMail] Transient error for ${domain}, retrying in ${backoffDelay}ms (attempt ${attempt + 1}/${RETRY_ATTEMPTS})`);
@@ -272,81 +326,140 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
 
     console.log(`[FindyMail] Enriching domain: ${domain}`);
     const limit = options?.limit ?? 1;
-    const timeout = createTimeoutController(FINDYMAIL_TIMEOUT_MS);
-    let response: Response;
-    try {
-      response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          domain: domain,
-          roles: resolveRoles(options),
-          limit,
-        }),
-        signal: timeout.signal,
-      });
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new Error(
-          `FindyMail request timed out after ${FINDYMAIL_TIMEOUT_MS}ms`,
-        );
-      }
-      throw error;
-    } finally {
-      timeout.clear();
-    }
+    return await this.fetchDomainSearch(domain, resolveRoles(options), limit);
+  }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorBody: any;
+  /**
+   * POST /search/domain with retries for transient 429/504 responses.
+   */
+  private async fetchDomainSearch(
+    domain: string,
+    roles: string[],
+    limit: number,
+  ): Promise<EnrichmentResult | null> {
+    let attempt = 0;
+
+    while (attempt < SINGLE_REQUEST_MAX_RETRIES) {
+      attempt += 1;
+      const timeout = createTimeoutController(FINDYMAIL_TIMEOUT_MS);
+      let response: Response;
+
       try {
-        errorBody = JSON.parse(errorText);
-      } catch {
-        errorBody = errorText;
+        response = await fetch(`${FINDYMAIL_BASE_URL}/search/domain`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            domain,
+            roles,
+            limit,
+          }),
+          signal: timeout.signal,
+        });
+      } catch (error) {
+        timeout.clear();
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new Error(
+            `FindyMail request timed out after ${FINDYMAIL_TIMEOUT_MS}ms`,
+          );
+        }
+        throw error;
+      } finally {
+        timeout.clear();
       }
 
-      // Classify the error for proper handling
-      const apiError = classifyFindyMailError(response.status, errorBody);
+      if (response.status === 429 || response.status === 504) {
+        const errorText = await response.text();
+        const apiError = classifyFindyMailError(response.status, errorText);
 
-      console.error(`[FindyMail] API error for ${domain}:`, {
-        status: response.status,
-        statusText: response.statusText,
-        errorCode: apiError.errorCode,
-        category: apiError.category,
-        userMessage: apiError.userMessage,
-        retryable: apiError.retryable,
-      });
+        if (shouldBlockPipeline(apiError)) {
+          const error = new Error(
+            `FindyMail API error: ${response.status} ${response.statusText}`,
+          ) as Error & { apiError?: ApiError };
+          error.apiError = apiError;
+          throw error;
+        }
 
-      // For user-actionable errors (auth failed, credits exhausted), attach the ApiError
-      const error = new Error(
-        `FindyMail API error: ${response.status} ${response.statusText}`
-      ) as Error & { apiError?: ApiError };
-      error.apiError = apiError;
-      throw error;
+        if (attempt >= SINGLE_REQUEST_MAX_RETRIES) {
+          const error = new Error(
+            `FindyMail API error: ${response.status} ${response.statusText}`,
+          ) as Error & { apiError?: ApiError; retryAfterMs?: number };
+          error.apiError = apiError;
+          error.retryAfterMs =
+            apiError.retryAfterMs ??
+            parseRetryAfter(response.headers.get("retry-after")) ??
+            undefined;
+          throw error;
+        }
+
+        const retryAfterHeader = parseRetryAfter(response.headers.get("retry-after"));
+        const delayMs =
+          retryAfterHeader ??
+          apiError.retryAfterMs ??
+          withJitter(
+            Math.min(
+              SINGLE_REQUEST_MAX_DELAY_MS,
+              SINGLE_REQUEST_BASE_DELAY_MS * 2 ** (attempt - 1),
+            ),
+          );
+
+        console.warn(
+          `[FindyMail] ${domain} transient status=${response.status}, retry ${attempt}/${SINGLE_REQUEST_MAX_RETRIES} in ${Math.round(delayMs)}ms`,
+        );
+        await sleep(delayMs);
+        continue;
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorBody: unknown = errorText;
+        try {
+          errorBody = JSON.parse(errorText);
+        } catch {
+          // keep text body
+        }
+
+        const apiError = classifyFindyMailError(response.status, errorBody);
+
+        console.error(`[FindyMail] API error for ${domain}:`, {
+          status: response.status,
+          statusText: response.statusText,
+          errorCode: apiError.errorCode,
+          category: apiError.category,
+          userMessage: apiError.userMessage,
+          retryable: apiError.retryable,
+        });
+
+        const error = new Error(
+          `FindyMail API error: ${response.status} ${response.statusText}`,
+        ) as Error & { apiError?: ApiError };
+        error.apiError = apiError;
+        throw error;
+      }
+
+      try {
+        const findyMailData = await response.json();
+        console.log(`[FindyMail] Response for ${domain}:`, {
+          hasData: !!findyMailData,
+          contactCount: findyMailData?.contacts?.length || 0,
+          emailCount: findyMailData?.emails?.length || 0,
+        });
+
+        return this.transformToEnrichmentResult(findyMailData);
+      } catch (error) {
+        console.error(`[FindyMail] Failed to parse response for ${domain}:`, error);
+        return null;
+      }
     }
 
-    try {
-      const findyMailData = await response.json();
-      console.log(`[FindyMail] Response for ${domain}:`, {
-        hasData: !!findyMailData,
-        contactCount: findyMailData?.contacts?.length || 0,
-        emailCount: findyMailData?.emails?.length || 0,
-      });
-
-      return this.transformToEnrichmentResult(findyMailData);
-    } catch (error) {
-      // JSON parsing error - return null without retrying
-      console.error(`[FindyMail] Failed to parse response for ${domain}:`, error);
-      return null;
-    }
+    return null;
   }
 
   /**
    * Fetch contacts per role pattern (one API call per pattern), merge by email.
-   * Uses expanded role families when enabled — no backend cap on expansion count.
+   * Patterns are capped and fetched sequentially with delays to reduce 429s.
    */
   async enrichPerRoles(
     domain: string,
@@ -367,45 +480,62 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
     const mergedEmails: EnrichmentResult["emails"] = [];
     const seenEmails = new Set<string>();
 
-    const singleRoleResults = await mapWithConcurrency(
-      rolesToFetch,
-      PER_ROLE_FETCH_CONCURRENCY,
-      async (role) => {
-        const result = await this.enrichSingle(domain, {
+    for (let index = 0; index < rolesToFetch.length; index += 1) {
+      const role = rolesToFetch[index]!;
+
+      if (mergedContacts.length >= PER_ROLE_EARLY_EXIT_CONTACTS) {
+        console.log(
+          `[FindyMail] Early exit for ${domain} after ${mergedContacts.length} contacts`,
+        );
+        break;
+      }
+
+      try {
+        const singleRoleResult = await this.enrichSingle(domain, {
           roles: [role],
           limit: perRoleLimit,
           perRole: false,
         });
-        return { role, result };
-      },
-    );
 
-    for (const { role, result: singleRoleResult } of singleRoleResults) {
-      if (!singleRoleResult) {
-        continue;
-      }
-
-      for (const contact of singleRoleResult.contacts) {
-        const email = contact.email?.toLowerCase().trim();
-        if (!email || seenEmails.has(email)) {
+        if (!singleRoleResult) {
           continue;
         }
-        seenEmails.add(email);
-        mergedContacts.push({
-          ...contact,
-          domain,
-          sourceRole: role,
-          title: contact.title?.trim() || undefined,
-        });
+
+        for (const contact of singleRoleResult.contacts) {
+          const email = contact.email?.toLowerCase().trim();
+          if (!email || seenEmails.has(email)) {
+            continue;
+          }
+          seenEmails.add(email);
+          mergedContacts.push({
+            ...contact,
+            domain,
+            sourceRole: role,
+            title: contact.title?.trim() || undefined,
+          });
+        }
+
+        for (const emailEntry of singleRoleResult.emails) {
+          const email = emailEntry.email?.toLowerCase().trim();
+          if (!email || seenEmails.has(email)) {
+            continue;
+          }
+          seenEmails.add(email);
+          mergedEmails.push(emailEntry);
+        }
+      } catch (error) {
+        const apiError = (error as Error & { apiError?: ApiError }).apiError;
+        if (apiError && shouldBlockPipeline(apiError)) {
+          throw error;
+        }
+        console.warn(
+          `[FindyMail] Per-role fetch failed for ${domain} role="${role}":`,
+          error instanceof Error ? error.message : String(error),
+        );
       }
 
-      for (const emailEntry of singleRoleResult.emails) {
-        const email = emailEntry.email?.toLowerCase().trim();
-        if (!email || seenEmails.has(email)) {
-          continue;
-        }
-        seenEmails.add(email);
-        mergedEmails.push(emailEntry);
+      if (index < rolesToFetch.length - 1) {
+        await sleep(PER_ROLE_FETCH_DELAY_MS);
       }
     }
 

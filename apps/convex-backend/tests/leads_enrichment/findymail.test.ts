@@ -19,6 +19,14 @@ import type {
   EnrichmentOptions,
 } from '../../convex/leads/enrichment/types';
 
+vi.mock('../../convex/utils/http', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../convex/utils/http')>();
+  return {
+    ...actual,
+    sleep: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 // Mock fetch globally
 const mockFetch = vi.fn();
 global.fetch = mockFetch as any;
@@ -310,7 +318,8 @@ describe('Lead Enrichment Tests - Batch 7', () => {
           ok: false,
           status: 429,
           statusText: 'Too Many Requests',
-          text: async () => 'Rate limit exceeded',
+          headers: { get: () => null },
+          text: async () => 'Too many requests',
         })
         .mockResolvedValueOnce({
           ok: true,
@@ -346,6 +355,7 @@ describe('Lead Enrichment Tests - Batch 7', () => {
           ok: false,
           status: 504,
           statusText: 'Gateway Timeout',
+          headers: { get: () => null },
           text: async () => 'Gateway timeout',
         })
         .mockResolvedValueOnce({
@@ -696,24 +706,27 @@ describe('Lead Enrichment Tests - Batch 7', () => {
       const provider = new FindyMailProvider(apiKey);
       const domain = 'example.com';
 
-      // Mock 3 failures then success
+      // Mock 3 failures then success (internal fetchDomainSearch retries)
       mockFetch
         .mockResolvedValueOnce({
           ok: false,
           status: 504,
           statusText: 'Gateway Timeout',
+          headers: { get: () => null },
           text: async () => 'Timeout',
         })
         .mockResolvedValueOnce({
           ok: false,
           status: 504,
           statusText: 'Gateway Timeout',
+          headers: { get: () => null },
           text: async () => 'Timeout',
         })
         .mockResolvedValueOnce({
           ok: false,
           status: 504,
           statusText: 'Gateway Timeout',
+          headers: { get: () => null },
           text: async () => 'Timeout',
         })
         .mockResolvedValueOnce({
@@ -732,8 +745,8 @@ describe('Lead Enrichment Tests - Batch 7', () => {
       // Act
       const result = await provider.enrichBatch([domain]);
 
-      // Assert
-      expect(mockFetch).toHaveBeenCalledTimes(4); // 3 retries + 1 success
+      // Assert — retries happen inside fetchDomainSearch
+      expect(mockFetch).toHaveBeenCalledTimes(4); // 3 failures + success
       expect(result[domain]).toBeTruthy();
     });
 
@@ -748,16 +761,17 @@ describe('Lead Enrichment Tests - Batch 7', () => {
         ok: false,
         status: 504,
         statusText: 'Gateway Timeout',
+        headers: { get: () => null },
         text: async () => 'Timeout',
       });
 
       // Act
       const result = await provider.enrichBatch([domain]);
 
-      // Assert
-      expect(mockFetch).toHaveBeenCalledTimes(5); // Initial + 4 retries
-      expect(result[domain]).toBeNull(); // Failed after exhausting retries
-    }, 20000); // 20s timeout for exponential backoff (1s + 2s + 4s + 8s = 15s + buffer)
+      // Assert — internal fetchDomainSearch max retries = 5
+      expect(mockFetch).toHaveBeenCalledTimes(5);
+      expect(result[domain]).toBeNull();
+    }, 20000);
 
     it('should handle network errors with retry', async () => {
       // Arrange

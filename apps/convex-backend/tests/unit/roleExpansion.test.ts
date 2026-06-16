@@ -26,7 +26,7 @@ describe("roleExpansion", () => {
 
     expect(merged).toContain("demand gen");
     expect(merged).toContain("vp demand generation");
-    expect(merged.length).toBeLessThanOrEqual(30);
+    expect(merged.length).toBeLessThanOrEqual(18);
   });
 
   it("uses cached expandedRolePatterns from search parameters", () => {

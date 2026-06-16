@@ -2,6 +2,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@genni/convex-types";
 import type { Id } from "@genni/convex-types/dataModel";
 import { useCallback } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { createLogger, timeOperation } from "@/utils/logger";
 
 const logger = createLogger("useStatusBroadcasts");
@@ -34,16 +35,28 @@ export interface StatusBroadcast {
 }
 
 export function useStatusBroadcastsBase() {
-  const broadcasts = useQuery(api.realtime.queries.getUserBroadcasts, {
-    limit: 50,
-    includeDelivered: true,
-  });
+  const { isAuthenticated, user, isLoading: authLoading } = useAuth();
+  const canQueryBroadcasts = isAuthenticated && user !== null;
 
-  const urgentBroadcasts = useQuery(api.realtime.queries.getUrgentBroadcasts, {
-    limit: 20,
-  });
+  const broadcasts = useQuery(
+    api.realtime.queries.getUserBroadcasts,
+    canQueryBroadcasts
+      ? {
+          limit: 50,
+          includeDelivered: true,
+        }
+      : "skip",
+  );
 
-  const unreadCounts = useQuery(api.realtime.queries.getUnreadBroadcastCount);
+  const urgentBroadcasts = useQuery(
+    api.realtime.queries.getUrgentBroadcasts,
+    canQueryBroadcasts ? { limit: 20 } : "skip",
+  );
+
+  const unreadCounts = useQuery(
+    api.realtime.queries.getUnreadBroadcastCount,
+    canQueryBroadcasts ? {} : "skip",
+  );
 
   const acknowledgeAction = useMutation(
     api.realtime.mutations.acknowledgeBroadcast,
@@ -106,7 +119,7 @@ export function useStatusBroadcastsBase() {
     getByTags,
     acknowledgeBroadcast,
     markAsRead,
-    isLoading: broadcasts === undefined,
+    isLoading: authLoading || (canQueryBroadcasts && broadcasts === undefined),
     hasUrgent: (urgentBroadcasts?.length || 0) > 0,
     needsAcknowledgment:
       broadcasts?.filter((b) => b.requiresAck && !b.acknowledged).length || 0,
@@ -123,17 +136,21 @@ export function useSearchBroadcastsBase(
   searchId: Id<"searches"> | undefined,
   statusBroadcasts: UseStatusBroadcastsResult,
 ) {
+  const { isAuthenticated, user } = useAuth();
+  const canQueryBroadcasts = isAuthenticated && user !== null;
+
   // Skip queries for temp IDs to avoid validation errors
   const validSearchId = searchId && !isTempId(searchId);
+  const canQuerySearch = canQueryBroadcasts && validSearchId;
 
   const searchBroadcasts = useQuery(
     api.realtime.queries.getSearchBroadcasts,
-    validSearchId ? { searchId, limit: 50 } : "skip",
+    canQuerySearch ? { searchId, limit: 50 } : "skip",
   );
 
   const latestPipelineStatus = useQuery(
     api.realtime.queries.getSearchPipelineStatus,
-    validSearchId ? { searchId } : "skip",
+    canQuerySearch ? { searchId } : "skip",
   );
 
   const sortedBroadcasts = (searchBroadcasts || []).sort(
@@ -175,10 +192,18 @@ export function useBatchBroadcastsBase(
   batchPlanId: string | undefined,
   statusBroadcasts: UseStatusBroadcastsResult,
 ) {
-  const broadcasts = useQuery(api.realtime.queries.getBroadcastsByType, {
-    type: "batch_progress",
-    limit: 50,
-  });
+  const { isAuthenticated, user } = useAuth();
+  const canQueryBroadcasts = isAuthenticated && user !== null;
+
+  const broadcasts = useQuery(
+    api.realtime.queries.getBroadcastsByType,
+    canQueryBroadcasts
+      ? {
+          type: "batch_progress",
+          limit: 50,
+        }
+      : "skip",
+  );
 
   const batchBroadcasts = (broadcasts || []).filter(
     (b) =>
@@ -211,7 +236,7 @@ export function useBatchBroadcastsBase(
     completedBatches: getDataField(latestProgress?.data, "completedBatches") || 0,
     totalBatches: getDataField(latestProgress?.data, "totalBatches") || 0,
     progressPercent: getDataField(latestProgress?.data, "progressPercent") || 0,
-    isLoading: broadcasts === undefined,
+    isLoading: canQueryBroadcasts && broadcasts === undefined,
   };
 }
 
@@ -220,9 +245,13 @@ export type UseBatchBroadcastsResult = ReturnType<typeof useBatchBroadcastsBase>
 export function useCreditBroadcastsBase(
   statusBroadcasts: UseStatusBroadcastsResult,
 ) {
-  const creditBroadcasts = useQuery(api.realtime.queries.getCreditBroadcasts, {
-    limit: 30,
-  });
+  const { isAuthenticated, user } = useAuth();
+  const canQueryBroadcasts = isAuthenticated && user !== null;
+
+  const creditBroadcasts = useQuery(
+    api.realtime.queries.getCreditBroadcasts,
+    canQueryBroadcasts ? { limit: 30 } : "skip",
+  );
 
   const hasLowCredits = (data: unknown): data is { isLowCredits?: boolean } =>
     typeof data === "object" &&
@@ -255,7 +284,7 @@ export function useCreditBroadcastsBase(
       "newBalance" in latestCreditUpdate.data
         ? (latestCreditUpdate.data as Record<string, unknown>).newBalance as number
         : undefined,
-    isLoading: creditBroadcasts === undefined,
+    isLoading: canQueryBroadcasts && creditBroadcasts === undefined,
   };
 }
 

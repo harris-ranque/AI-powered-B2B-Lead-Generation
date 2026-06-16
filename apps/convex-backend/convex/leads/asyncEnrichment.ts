@@ -51,6 +51,7 @@ import { createHash } from "crypto";
 import {
   classifyFindyMailError,
   shouldBlockPipeline,
+  API_ERROR_CODES,
   type ApiError,
 } from "../lib/apiErrors";
 import {
@@ -254,9 +255,14 @@ async function tryProvider(
         break;
       }
 
-      // Only retry on actual API errors (network, timeout, 500 errors)
-      // Exponential backoff: 1s, 2s, 4s, 8s, 16s (max 15s)
-      const backoffDelay = Math.min(Math.pow(2, attempt) * 1000, 15000);
+      let backoffDelay = Math.min(Math.pow(2, attempt) * 1000, 15000);
+      if (apiError?.errorCode === API_ERROR_CODES.FINDYMAIL_RATE_LIMITED) {
+        const retryAfterMs = (error as { retryAfterMs?: number }).retryAfterMs ??
+          apiError.retryAfterMs;
+        backoffDelay = retryAfterMs ??
+          Math.min(Math.pow(2, attempt) * 3000, 30_000);
+      }
+
       console.log(`[${provider}] ⏳ Backing off ${backoffDelay}ms before retry...`);
       await sleep(backoffDelay);
     }

@@ -6,7 +6,8 @@ import { expandRolesForMatching } from "./roleFamilies";
 import { normalizeEnrichmentRoles } from "./enrichmentRoles";
 
 export const MAX_AI_PATTERNS_PER_ROLE = 10;
-export const MAX_TOTAL_ROLE_PATTERNS = 30;
+/** Stored on search for title matching; FindyMail API uses a lower cap */
+export const MAX_TOTAL_ROLE_PATTERNS = 18;
 
 export type SearchRoleParameters = {
   roles?: unknown;
