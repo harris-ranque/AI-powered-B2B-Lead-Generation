@@ -258,6 +258,14 @@ export const discoverPeopleForLead = internalAction({
       (p) => p.name?.trim() && p.title?.trim(),
     );
 
+    const sanitizeOptionalString = (value: unknown): string | undefined => {
+      if (typeof value !== "string") {
+        return undefined;
+      }
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    };
+
     const companyResearchPayload = {
       company_overview: data.companyOverview ?? "",
       raw_data: {
@@ -280,12 +288,12 @@ export const discoverPeopleForLead = internalAction({
         people: people.map((person) => ({
           name: person.name.trim(),
           title: person.title.trim(),
-          matchedRole: person.matchedRole,
+          matchedRole: sanitizeOptionalString(person.matchedRole),
           confidence:
             typeof person.confidence === "number" ? person.confidence : 0.7,
           source: "perplexity" as const,
-          sourceUrl: person.sourceUrl,
-          linkedinUrl: person.linkedinUrl,
+          sourceUrl: sanitizeOptionalString(person.sourceUrl),
+          linkedinUrl: sanitizeOptionalString(person.linkedinUrl),
           rawDiscoveryData: person,
         })),
         companyOverview: data.companyOverview,

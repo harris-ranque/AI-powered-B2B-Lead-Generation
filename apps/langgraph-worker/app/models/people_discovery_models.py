@@ -24,7 +24,11 @@ class DiscoverPeopleRequest(BaseModel):
 
 
 class DiscoveredPerson(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    model_config = ConfigDict(
+        populate_by_name=True,
+        extra="ignore",
+        ser_json_exclude_none=True,
+    )
 
     name: str
     title: str
@@ -36,7 +40,11 @@ class DiscoveredPerson(BaseModel):
 
 
 class DiscoverPeopleResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    model_config = ConfigDict(
+        populate_by_name=True,
+        extra="ignore",
+        ser_json_exclude_none=True,
+    )
 
     people: List[DiscoveredPerson] = Field(default_factory=list)
     company_overview: str = Field(default="", alias="companyOverview")
