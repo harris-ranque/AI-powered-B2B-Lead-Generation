@@ -1,9 +1,10 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireAuth, getCurrentUser } from "../auth";
+import { getCurrentUser } from "../auth";
 
 // Real-time broadcast queries using Convex's native subscriptions
-// These replace the deprecated SSE implementation
+// These replace the deprecated SSE implementation.
+// All queries return empty/null when auth is hydrating — never throw.
 
 // Get user's real-time status broadcasts
 export const getUserBroadcasts = query({
@@ -13,26 +14,25 @@ export const getUserBroadcasts = query({
     includeDelivered: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return [];
     }
 
     const limit = args.limit || 50;
     const offset = args.offset || 0;
     const includeDelivered = args.includeDelivered ?? true;
 
-    let query = ctx.db
+    let statusQuery = ctx.db
       .query("statusBroadcasts")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .order("desc");
 
     if (!includeDelivered) {
-      query = query.filter((q) => q.eq(q.field("delivered"), false));
+      statusQuery = statusQuery.filter((q) => q.eq(q.field("delivered"), false));
     }
 
-    const broadcasts = await query
-      .take(limit + offset);
+    const broadcasts = await statusQuery.take(limit + offset);
 
     return broadcasts.slice(offset);
   },
@@ -45,14 +45,13 @@ export const getSearchBroadcasts = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return [];
     }
 
     const limit = args.limit || 50;
 
-    // Get broadcasts related to this search
     const broadcasts = await ctx.db
       .query("statusBroadcasts")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
@@ -70,12 +69,11 @@ export const getSearchPipelineStatus = query({
     searchId: v.id("searches"),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return null;
     }
 
-    // Get the most recent pipeline update for this search
     const latestBroadcast = await ctx.db
       .query("statusBroadcasts")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
@@ -94,9 +92,9 @@ export const getUrgentBroadcasts = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return [];
     }
 
     const limit = args.limit || 20;
@@ -104,11 +102,11 @@ export const getUrgentBroadcasts = query({
     const urgentBroadcasts = await ctx.db
       .query("statusBroadcasts")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .filter((q) => 
+      .filter((q) =>
         q.or(
           q.eq(q.field("priority"), "urgent"),
-          q.eq(q.field("priority"), "critical")
-        )
+          q.eq(q.field("priority"), "critical"),
+        ),
       )
       .filter((q) => q.eq(q.field("delivered"), false))
       .order("desc")
@@ -125,9 +123,9 @@ export const getBroadcastsByType = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return [];
     }
 
     const limit = args.limit || 30;
@@ -160,12 +158,12 @@ export const getUnreadBroadcastCount = query({
       .collect();
 
     const urgentUnacknowledged = unacknowledgedBroadcasts.filter(
-      (b) => b.priority === "urgent" || b.priority === "critical"
+      (b) => b.priority === "urgent" || b.priority === "critical",
     );
 
-    return { 
-      total: unacknowledgedBroadcasts.length, 
-      urgent: urgentUnacknowledged.length 
+    return {
+      total: unacknowledgedBroadcasts.length,
+      urgent: urgentUnacknowledged.length,
     };
   },
 });
@@ -176,9 +174,9 @@ export const getCreditBroadcasts = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return [];
     }
 
     const limit = args.limit || 20;
@@ -200,9 +198,9 @@ export const getRateLimitWarnings = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return [];
     }
 
     const limit = args.limit || 10;
@@ -224,9 +222,9 @@ export const getSystemAlerts = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await getCurrentUser(ctx);
     if (!user) {
-      throw new Error("Authentication required");
+      return [];
     }
 
     const limit = args.limit || 10;

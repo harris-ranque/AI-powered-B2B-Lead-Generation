@@ -89,6 +89,110 @@ export type ExportResearchFields = {
   researchConfidenceScore: string | number;
 };
 
+export function hasCompleteExportResearch(
+  fields: ExportResearchFields,
+): boolean {
+  return (
+    fields.fullResearchReport.trim().length > 0 &&
+    fields.citations.length > 0 &&
+    typeof fields.researchConfidenceScore === "number" &&
+    !Number.isNaN(fields.researchConfidenceScore)
+  );
+}
+
+function firstNonEmptyString(...values: Array<unknown>): string {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+/**
+ * Ensure stored companyResearch payloads include export-ready research_metadata
+ * (comprehensive report, citations, confidence) under raw_data.
+ */
+export function enrichResearchPayloadForExport(payload: unknown): unknown {
+  const record = asRecord(payload);
+  if (!record) {
+    return payload;
+  }
+
+  const rawData = { ...(asRecord(record.raw_data) ?? {}) };
+  const existingMeta = { ...(asRecord(rawData.research_metadata) ?? {}) };
+  const leadAnalysis = asRecord(record.lead_analysis) ?? asRecord(record.leadAnalysis);
+
+  const comprehensiveReport = firstNonEmptyString(
+    existingMeta.comprehensive_report,
+    rawData.comprehensive_report,
+    leadAnalysis?.comprehensive_report,
+    (asRecord(leadAnalysis?.research_metadata)?.comprehensive_report as
+      | string
+      | undefined),
+    record.comprehensive_report,
+    record.company_overview,
+    rawData.company_overview,
+    rawData.research_summary,
+  );
+
+  let citations = normalizeCitations(existingMeta.citations);
+  if (citations.length === 0) {
+    citations = normalizeCitations(rawData.citations);
+  }
+  if (citations.length === 0 && leadAnalysis) {
+    const leadMeta = asRecord(leadAnalysis.research_metadata);
+    citations = normalizeCitations(leadMeta?.citations);
+  }
+  if (citations.length === 0) {
+    citations = extractTavilyCitationUrls(existingMeta);
+  }
+  if (citations.length === 0) {
+    citations = extractTavilyCitationUrls(rawData);
+  }
+
+  const confidenceScore =
+    typeof existingMeta.confidence_score === "number"
+      ? existingMeta.confidence_score
+      : typeof rawData.confidence_score === "number"
+        ? rawData.confidence_score
+        : typeof record.confidence_score === "number"
+          ? record.confidence_score
+          : typeof leadAnalysis?.confidence_score === "number"
+            ? leadAnalysis.confidence_score
+            : typeof asRecord(leadAnalysis?.research_metadata)?.confidence_score ===
+                "number"
+              ? (asRecord(leadAnalysis?.research_metadata)?.confidence_score as number)
+              : undefined;
+
+  const researchMetadata = {
+    ...existingMeta,
+    ...(comprehensiveReport ? { comprehensive_report: comprehensiveReport } : {}),
+    ...(citations.length > 0 ? { citations } : {}),
+    ...(typeof confidenceScore === "number" ? { confidence_score: confidenceScore } : {}),
+  };
+
+  if (
+    comprehensiveReport ||
+    citations.length > 0 ||
+    typeof confidenceScore === "number"
+  ) {
+    rawData.research_metadata = researchMetadata;
+    if (comprehensiveReport && !rawData.comprehensive_report) {
+      rawData.comprehensive_report = comprehensiveReport;
+    }
+  }
+
+  return {
+    ...record,
+    raw_data: rawData,
+    ...(comprehensiveReport && !record.company_overview
+      ? { company_overview: comprehensiveReport }
+      : {}),
+    ...(typeof confidenceScore === "number" ? { confidence_score: confidenceScore } : {}),
+  };
+}
+
 export function resolveExportResearchFields(
   leadAnalysis: Record<string, unknown> | undefined,
   companyResearchPayload?: unknown,
@@ -98,6 +202,7 @@ export function resolveExportResearchFields(
     companyResearchPayload,
   );
   const payload = asRecord(companyResearchPayload);
+  const rawData = asRecord(payload?.raw_data);
 
   let fullResearchReport = "";
   if (researchMetadata) {
@@ -121,6 +226,8 @@ export function resolveExportResearchFields(
   let researchConfidenceScore: string | number = "";
   if (typeof researchMetadata?.confidence_score === "number") {
     researchConfidenceScore = researchMetadata.confidence_score;
+  } else if (typeof rawData?.confidence_score === "number") {
+    researchConfidenceScore = rawData.confidence_score;
   } else if (typeof payload?.confidence_score === "number") {
     researchConfidenceScore = payload.confidence_score;
   }

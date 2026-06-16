@@ -10,6 +10,7 @@ import {
   isValidCompanyResearchCache,
   normalizeCompanyResearchPayload,
 } from "../lib/companyResearchCache";
+import { enrichResearchPayloadForExport } from "../lib/exportResearchFields";
 import { deriveLeadAnalysisStatusFromContacts } from "../lib/contactAnalysisSync";
 
 const contactStatusValidator = v.union(
@@ -277,12 +278,13 @@ export const upsertCompanyResearch = internalMutation({
       .first();
 
     const now = Date.now();
+    const enrichedPayload = enrichResearchPayloadForExport(args.researchPayload);
     const data = {
       searchId: args.searchId,
       userId: args.userId,
       leadId: args.leadId,
       domain: args.domain,
-      researchPayload: args.researchPayload,
+      researchPayload: enrichedPayload,
       confidence: args.confidence,
       citations: args.citations,
       provider: args.provider,
@@ -545,7 +547,9 @@ export const processMultiContactEnrichment = internalMutation({
         title: candidate.title,
         raw: candidate.raw,
       });
-      const storedTitle = resolveContactTitleForStorage(providerTitle);
+      const storedTitle = resolveContactTitleForStorage(
+        providerTitle ?? evaluation.matchedRole ?? candidate.sourceRole,
+      );
 
       const status: "accepted" | "rejected" = evaluation.accepted
         ? "accepted"
@@ -734,8 +738,9 @@ export const saveCompanyResearchFromWebhook = internalMutation({
     researchPayload: v.any(),
   },
   handler: async (ctx, args) => {
-    const normalized = normalizeCompanyResearchPayload(args.researchPayload);
-    const payloadToStore = normalized ?? args.researchPayload;
+    const enriched = enrichResearchPayloadForExport(args.researchPayload);
+    const normalized = normalizeCompanyResearchPayload(enriched);
+    const payloadToStore = normalized ?? enriched;
 
     const researchId = await ctx.db
       .query("companyResearch")

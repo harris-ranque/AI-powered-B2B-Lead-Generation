@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   extractContactDetails,
   hasWrittenEmail,
+  isContactEmailExportable,
   isContactExportable,
+  isContactFullyExportable,
   isLeadExportable,
   noExportableLeadsMessage,
   resolveContactExportTitle,
@@ -89,7 +91,7 @@ describe("exportEligibility", () => {
 
   it("exports only completed contacts with written email content", () => {
     expect(
-      isContactExportable({
+      isContactEmailExportable({
         email: "alex@company.com",
         analysisStatus: "completed",
         emailContent: { subject: "Hi Alex", body: "..." },
@@ -100,7 +102,7 @@ describe("exportEligibility", () => {
 
   it("rejects contacts with failed analysis", () => {
     expect(
-      isContactExportable({
+      isContactEmailExportable({
         email: "alex@company.com",
         analysisStatus: "failed",
         status: "accepted",
@@ -110,18 +112,74 @@ describe("exportEligibility", () => {
 
   it("rejects contacts still pending or scheduled without written email", () => {
     expect(
-      isContactExportable({
+      isContactEmailExportable({
         email: "alex@company.com",
         analysisStatus: "scheduled",
         status: "accepted",
       }),
     ).toBe(false);
     expect(
-      isContactExportable({
+      isContactEmailExportable({
         email: "alex@company.com",
         analysisStatus: "completed",
         status: "accepted",
       }),
+    ).toBe(false);
+  });
+
+  it("requires title, phone, and research for full CSV export", () => {
+    const baseContact = {
+      email: "alex@company.com",
+      analysisStatus: "completed",
+      emailContent: { subject: "Hi", body: "Body" },
+      status: "accepted",
+      title: "VP Marketing",
+      aiAnalysis: {
+        leadAnalysis: {
+          research_metadata: {
+            comprehensive_report: "Full report",
+            citations: ["https://example.com"],
+            confidence_score: 0.85,
+          },
+        },
+      },
+    };
+    const researchPayload = {
+      raw_data: {
+        research_metadata: {
+          comprehensive_report: "Full report",
+          citations: ["https://example.com"],
+          confidence_score: 0.85,
+        },
+      },
+    };
+
+    expect(
+      isContactFullyExportable(baseContact, {
+        leadPhone: "+1 555-0100",
+        companyResearchPayload: researchPayload,
+      }),
+    ).toBe(true);
+    expect(
+      isContactExportable(baseContact, {
+        leadPhone: "+1 555-0100",
+        companyResearchPayload: researchPayload,
+      }),
+    ).toBe(true);
+    expect(
+      isContactFullyExportable(baseContact, {
+        leadPhone: "",
+        companyResearchPayload: researchPayload,
+      }),
+    ).toBe(false);
+    expect(
+      isContactFullyExportable(
+        { ...baseContact, title: "" },
+        {
+          leadPhone: "+1 555-0100",
+          companyResearchPayload: researchPayload,
+        },
+      ),
     ).toBe(false);
   });
 
@@ -133,8 +191,9 @@ describe("exportEligibility", () => {
     ).toBe("Chief Marketing Officer");
   });
 
-  it("resolveContactExportTitle uses provider title only", () => {
+  it("resolveContactExportTitle uses provider title and matchedRole fallback", () => {
     expect(resolveContactExportTitle({ title: "VP Sales" })).toBe("VP Sales");
+    expect(resolveContactExportTitle({ matchedRole: "CMO" })).toBe("CMO");
     expect(resolveContactExportTitle({})).toBe("");
   });
 

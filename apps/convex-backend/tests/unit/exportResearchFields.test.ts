@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolveExportResearchFields } from "../../convex/lib/exportResearchFields";
+import {
+  enrichResearchPayloadForExport,
+  hasCompleteExportResearch,
+  resolveExportResearchFields,
+} from "../../convex/lib/exportResearchFields";
 
 describe("resolveExportResearchFields", () => {
   it("reads citations from companyResearch when contact analysis is slimmed", () => {
@@ -66,5 +70,60 @@ describe("resolveExportResearchFields", () => {
 
     expect(result.fullResearchReport).toBe("From lead");
     expect(result.citations).toEqual(["https://lead.com"]);
+  });
+
+  it("hasCompleteExportResearch requires report, citations, and numeric confidence", () => {
+    expect(
+      hasCompleteExportResearch({
+        fullResearchReport: "Report",
+        citations: ["https://a.com"],
+        researchConfidenceScore: 0.7,
+      }),
+    ).toBe(true);
+    expect(
+      hasCompleteExportResearch({
+        fullResearchReport: "",
+        citations: ["https://a.com"],
+        researchConfidenceScore: 0.7,
+      }),
+    ).toBe(false);
+    expect(
+      hasCompleteExportResearch({
+        fullResearchReport: "Report",
+        citations: [],
+        researchConfidenceScore: 0.7,
+      }),
+    ).toBe(false);
+  });
+
+  it("enrichResearchPayloadForExport normalizes webhook-shaped payloads", () => {
+    const enriched = enrichResearchPayloadForExport({
+      company_overview: "Summary",
+      raw_data: {
+        research_summary: "Summary",
+        research_metadata: {
+          langchain_tavily_result: {
+            results: [{ url: "https://tavily.com/1" }],
+          },
+        },
+      },
+      confidence_score: 0.66,
+    }) as {
+      raw_data: {
+        research_metadata: {
+          comprehensive_report: string;
+          citations: string[];
+          confidence_score: number;
+        };
+      };
+    };
+
+    expect(enriched.raw_data.research_metadata.comprehensive_report).toBe(
+      "Summary",
+    );
+    expect(enriched.raw_data.research_metadata.citations).toEqual([
+      "https://tavily.com/1",
+    ]);
+    expect(enriched.raw_data.research_metadata.confidence_score).toBe(0.66);
   });
 });

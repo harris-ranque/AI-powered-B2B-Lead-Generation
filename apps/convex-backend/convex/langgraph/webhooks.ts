@@ -1240,12 +1240,23 @@ export const handleBatchCompleted = internalMutation({
             }
 
             const leadAnalysisPayload = result.lead_analysis || {};
+            const researchMetadata = (leadAnalysisPayload.research_metadata ??
+              {}) as Record<string, unknown>;
             const companyDomain = extractDomainFromWebsite(lead.website);
             if (
               companyDomain &&
               (leadAnalysisPayload.company_overview ||
                 leadAnalysisPayload.research_summary)
             ) {
+              const researchConfidence =
+                typeof researchMetadata.confidence_score === "number"
+                  ? researchMetadata.confidence_score
+                  : typeof result.research_confidence === "number"
+                    ? result.research_confidence
+                    : typeof result.relevance_score === "number"
+                      ? result.relevance_score
+                      : 0.5;
+
               await ctx.runMutation(
                 internal.leads.contactInternal.saveCompanyResearchFromWebhook,
                 {
@@ -1259,7 +1270,7 @@ export const handleBatchCompleted = internalMutation({
                       leadAnalysisPayload.research_summary ||
                       "",
                     raw_data: leadAnalysisPayload,
-                    confidence_score: result.relevance_score || 0.5,
+                    confidence_score: researchConfidence,
                     research_tier: result.deep_research_used
                       ? "perplexity"
                       : "tavily",

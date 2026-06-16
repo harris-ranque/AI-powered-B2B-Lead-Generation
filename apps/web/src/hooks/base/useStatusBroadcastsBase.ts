@@ -36,7 +36,8 @@ export interface StatusBroadcast {
 
 export function useStatusBroadcastsBase() {
   const { isAuthenticated, user, isLoading: authLoading } = useAuth();
-  const canQueryBroadcasts = isAuthenticated && user !== null;
+  const canQueryBroadcasts =
+    !authLoading && isAuthenticated && user !== null;
 
   const broadcasts = useQuery(
     api.realtime.queries.getUserBroadcasts,
@@ -136,8 +137,9 @@ export function useSearchBroadcastsBase(
   searchId: Id<"searches"> | undefined,
   statusBroadcasts: UseStatusBroadcastsResult,
 ) {
-  const { isAuthenticated, user } = useAuth();
-  const canQueryBroadcasts = isAuthenticated && user !== null;
+  const { isAuthenticated, user, isLoading: authLoading } = useAuth();
+  const canQueryBroadcasts =
+    !authLoading && isAuthenticated && user !== null;
 
   // Skip queries for temp IDs to avoid validation errors
   const validSearchId = searchId && !isTempId(searchId);
@@ -192,8 +194,9 @@ export function useBatchBroadcastsBase(
   batchPlanId: string | undefined,
   statusBroadcasts: UseStatusBroadcastsResult,
 ) {
-  const { isAuthenticated, user } = useAuth();
-  const canQueryBroadcasts = isAuthenticated && user !== null;
+  const { isAuthenticated, user, isLoading: authLoading } = useAuth();
+  const canQueryBroadcasts =
+    !authLoading && isAuthenticated && user !== null;
 
   const broadcasts = useQuery(
     api.realtime.queries.getBroadcastsByType,
@@ -245,8 +248,9 @@ export type UseBatchBroadcastsResult = ReturnType<typeof useBatchBroadcastsBase>
 export function useCreditBroadcastsBase(
   statusBroadcasts: UseStatusBroadcastsResult,
 ) {
-  const { isAuthenticated, user } = useAuth();
-  const canQueryBroadcasts = isAuthenticated && user !== null;
+  const { isAuthenticated, user, isLoading: authLoading } = useAuth();
+  const canQueryBroadcasts =
+    !authLoading && isAuthenticated && user !== null;
 
   const creditBroadcasts = useQuery(
     api.realtime.queries.getCreditBroadcasts,

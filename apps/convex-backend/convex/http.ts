@@ -18,7 +18,8 @@ import {
 import {
   extractContactDetails,
   isLeadExportable,
-  isContactExportable,
+  isContactEmailExportable,
+  isContactFullyExportable,
   noExportableLeadsMessage,
   resolveContactExportTitle,
 } from "./lib/exportEligibility";
@@ -1140,14 +1141,34 @@ http.route({
       let csvRows: string[];
 
       if (searchId) {
-        const exportableContacts = exportContacts.filter((contact) =>
-          isContactExportable({
-            email: contact.email,
-            analysisStatus: contact.analysisStatus,
-            status: "accepted",
-            emailContent: contact.emailContent,
-          }),
-        );
+        const allCompanyResearchIds = [
+          ...new Set(
+            exportContacts
+              .map((contact) => contact.companyResearchId)
+              .filter((id): id is Id<"companyResearch"> => Boolean(id)),
+          ),
+        ];
+        const companyResearchById = new Map<string, unknown>();
+        if (allCompanyResearchIds.length > 0) {
+          const researchRows = await ctx.runQuery(
+            internal.leads.contactInternal.getCompanyResearchPayloadsForExport,
+            { ids: allCompanyResearchIds },
+          );
+          for (const row of researchRows) {
+            companyResearchById.set(String(row._id), row.researchPayload);
+          }
+        }
+
+        const exportableContacts = exportContacts.filter((contact) => {
+          const lead = leadById.get(String(contact.leadId));
+          const companyResearchPayload = contact.companyResearchId
+            ? companyResearchById.get(String(contact.companyResearchId))
+            : undefined;
+          return isContactFullyExportable(contact, {
+            leadPhone: lead?.phone,
+            companyResearchPayload,
+          });
+        });
 
         if (exportableContacts.length === 0) {
           return new Response(
@@ -1156,7 +1177,7 @@ http.route({
               withoutEmail: exportContacts.filter((c) => !c.email.trim()).length,
               analysisFailed: exportContacts.filter(
                 (c) =>
-                  !isContactExportable({
+                  !isContactEmailExportable({
                     email: c.email,
                     analysisStatus: c.analysisStatus,
                     status: "accepted",
@@ -1172,24 +1193,6 @@ http.route({
               headers: baseHeaders,
             },
           );
-        }
-
-        const companyResearchIds = [
-          ...new Set(
-            exportableContacts
-              .map((contact) => contact.companyResearchId)
-              .filter((id): id is Id<"companyResearch"> => Boolean(id)),
-          ),
-        ];
-        const companyResearchById = new Map<string, unknown>();
-        if (companyResearchIds.length > 0) {
-          const researchRows = await ctx.runQuery(
-            internal.leads.contactInternal.getCompanyResearchPayloadsForExport,
-            { ids: companyResearchIds },
-          );
-          for (const row of researchRows) {
-            companyResearchById.set(String(row._id), row.researchPayload);
-          }
         }
 
         csvRows = exportableContacts.map((contact) => {

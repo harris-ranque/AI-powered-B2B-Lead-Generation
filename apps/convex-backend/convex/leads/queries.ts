@@ -2,7 +2,13 @@ import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { requireAuth, getCurrentUser } from "../auth";
-import { countExportableLeads, countExportableSummaryForSearch, isContactExportable, resolveContactExportTitle, resolveSearchExportData } from "../lib/exportEligibility";
+import {
+  countExportableLeads,
+  countExportableSummaryForSearch,
+  filterFullyExportableContacts,
+  resolveContactExportTitle,
+  resolveSearchExportData,
+} from "../lib/exportEligibility";
 import { resolveExportResearchFields } from "../lib/exportResearchFields";
 import { computeAnalysisProgress } from "../lib/analysisProgress";
 
@@ -122,7 +128,10 @@ export const exportLeads = query({
         user._id,
       );
       const allContacts = exportResolution.contacts;
-      const exportableContacts = allContacts.filter(isContactExportable);
+      const exportableContacts = await filterFullyExportableContacts(
+        ctx,
+        allContacts,
+      );
 
       const startIndex = args.cursor ? Number.parseInt(args.cursor, 10) : 0;
       const pageContacts = exportableContacts.slice(
@@ -665,7 +674,10 @@ export const getAcceptedContactCountsBySearch = query({
       )
       .collect();
 
-    const exportableContacts = contacts.filter(isContactExportable);
+    const exportableContacts = await filterFullyExportableContacts(
+      ctx,
+      contacts,
+    );
     const exportResolution = await resolveSearchExportData(
       ctx,
       args.searchId,
@@ -677,8 +689,8 @@ export const getAcceptedContactCountsBySearch = query({
       byLead[key] = (byLead[key] ?? 0) + 1;
     }
 
-    const totalExportableIncludingPrior = exportResolution.contacts.filter(
-      isContactExportable,
+    const totalExportableIncludingPrior = (
+      await filterFullyExportableContacts(ctx, exportResolution.contacts)
     ).length;
 
     return {

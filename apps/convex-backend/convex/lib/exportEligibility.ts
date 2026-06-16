@@ -2,6 +2,10 @@ import type { GenericDatabaseReader } from "convex/server";
 import type { DataModel } from "../_generated/dataModel";
 import type { Id } from "../_generated/dataModel";
 import { resolveContactTitleForStorage } from "./contactAcceptance";
+import {
+  hasCompleteExportResearch,
+  resolveExportResearchFields,
+} from "./exportResearchFields";
 
 export type WrittenEmailContent = {
   subject?: string;
@@ -110,15 +114,29 @@ export type ExportableContact = {
   analysisStatus?: string;
   status?: string;
   emailContent?: WrittenEmailContent;
+  title?: string;
+  matchedRole?: string;
+  aiAnalysis?: {
+    leadAnalysis?: Record<string, unknown>;
+  };
+};
+
+export type ContactExportContext = {
+  leadPhone?: string;
+  companyResearchPayload?: unknown;
 };
 
 export function resolveContactExportTitle(contact: {
   title?: string;
+  matchedRole?: string;
 }): string {
-  return resolveContactTitleForStorage(contact.title) ?? "";
+  return (
+    resolveContactTitleForStorage(contact.title ?? contact.matchedRole) ?? ""
+  );
 }
 
-export function isContactExportable(contact: ExportableContact): boolean {
+/** Email + written content complete (pipeline milestone, not full CSV row). */
+export function isContactEmailExportable(contact: ExportableContact): boolean {
   if (contact.status && contact.status !== "accepted") {
     return false;
   }
@@ -134,6 +152,102 @@ export function isContactExportable(contact: ExportableContact): boolean {
   return (
     contact.analysisStatus === "completed" &&
     hasWrittenEmail(contact.emailContent)
+  );
+}
+
+/** Full CSV row: email content, title, phone, and complete research fields. */
+export function isContactFullyExportable(
+  contact: ExportableContact,
+  context?: ContactExportContext,
+): boolean {
+  if (!isContactEmailExportable(contact)) {
+    return false;
+  }
+  if (!resolveContactExportTitle(contact).trim()) {
+    return false;
+  }
+  if (!context?.leadPhone?.trim()) {
+    return false;
+  }
+  const leadAnalysis = contact.aiAnalysis?.leadAnalysis;
+  const exportResearch = resolveExportResearchFields(
+    leadAnalysis,
+    context?.companyResearchPayload,
+  );
+  return hasCompleteExportResearch(exportResearch);
+}
+
+/** Alias used by export paths — every exported row must be fully populated. */
+export function isContactExportable(
+  contact: ExportableContact,
+  context?: ContactExportContext,
+): boolean {
+  return isContactFullyExportable(contact, context);
+}
+
+type LeadContactDoc = DataModel["leadContacts"]["document"];
+
+async function loadExportContextForContacts(
+  ctx: { db: GenericDatabaseReader<DataModel> },
+  contacts: LeadContactDoc[],
+): Promise<{
+  leadPhoneByLeadId: Map<string, string | undefined>;
+  researchById: Map<string, unknown>;
+}> {
+  const leadPhoneByLeadId = new Map<string, string | undefined>();
+  const researchById = new Map<string, unknown>();
+
+  const researchIds = new Set<string>();
+  for (const contact of contacts) {
+    if (contact.companyResearchId) {
+      researchIds.add(String(contact.companyResearchId));
+    }
+  }
+
+  for (const researchId of researchIds) {
+    const doc = await ctx.db.get(researchId as Id<"companyResearch">);
+    if (doc?.status === "completed") {
+      researchById.set(researchId, doc.researchPayload);
+    }
+  }
+
+  const leadIdsToLoad = new Set<string>();
+  for (const contact of contacts) {
+    leadIdsToLoad.add(String(contact.leadId));
+  }
+
+  for (const leadId of leadIdsToLoad) {
+    const lead = await ctx.db.get(leadId as Id<"leads">);
+    leadPhoneByLeadId.set(leadId, lead?.phone);
+  }
+
+  return { leadPhoneByLeadId, researchById };
+}
+
+function isContactDocFullyExportable(
+  contact: LeadContactDoc,
+  leadPhoneByLeadId: Map<string, string | undefined>,
+  researchById: Map<string, unknown>,
+): boolean {
+  const companyResearchPayload = contact.companyResearchId
+    ? researchById.get(String(contact.companyResearchId))
+    : undefined;
+  return isContactFullyExportable(contact, {
+    leadPhone: leadPhoneByLeadId.get(String(contact.leadId)),
+    companyResearchPayload,
+  });
+}
+
+export async function filterFullyExportableContacts(
+  ctx: { db: GenericDatabaseReader<DataModel> },
+  contacts: LeadContactDoc[],
+): Promise<LeadContactDoc[]> {
+  const { leadPhoneByLeadId, researchById } = await loadExportContextForContacts(
+    ctx,
+    contacts,
+  );
+  return contacts.filter((contact) =>
+    isContactDocFullyExportable(contact, leadPhoneByLeadId, researchById),
   );
 }
 
@@ -153,7 +267,8 @@ export async function countExportableContacts(
       q.eq("searchId", searchId).eq("status", "accepted"),
     )
     .collect();
-  return contacts.filter(isContactExportable).length;
+  const exportable = await filterFullyExportableContacts(ctx, contacts);
+  return exportable.length;
 }
 
 export type ExportableCountSummary = {
@@ -170,13 +285,9 @@ export async function countExportableSummaryForSearch(
   userId: Id<"users">,
 ): Promise<ExportableCountSummary> {
   const resolution = await resolveSearchExportData(ctx, searchId, userId);
-  const exportable = resolution.contacts.filter((contact) =>
-    isContactExportable({
-      email: contact.email,
-      analysisStatus: contact.analysisStatus,
-      status: contact.status,
-      emailContent: contact.emailContent,
-    }),
+  const exportable = await filterFullyExportableContacts(
+    ctx,
+    resolution.contacts,
   );
 
   const businessIds = new Set<string>();
@@ -211,14 +322,7 @@ export async function countExportableSummary(
     )
     .collect();
 
-  const exportable = contacts.filter((contact) =>
-    isContactExportable({
-      email: contact.email,
-      analysisStatus: contact.analysisStatus,
-      status: contact.status,
-      emailContent: contact.emailContent,
-    }),
-  );
+  const exportable = await filterFullyExportableContacts(ctx, contacts);
 
   const businessIds = new Set<string>();
   for (const contact of exportable) {
@@ -305,8 +409,6 @@ export async function getDuplicateOriginalLeadIds(
   return [...leadIds];
 }
 
-type LeadContactDoc = DataModel["leadContacts"]["document"];
-
 export async function getExportableContactsForLeadIds(
   ctx: { db: GenericDatabaseReader<DataModel> },
   leadIds: Id<"leads">[],
@@ -319,9 +421,9 @@ export async function getExportableContactsForLeadIds(
         q.eq("leadId", leadId).eq("status", "accepted"),
       )
       .collect();
-    contacts.push(...leadContacts.filter(isContactExportable));
+    contacts.push(...leadContacts);
   }
-  return contacts;
+  return filterFullyExportableContacts(ctx, contacts);
 }
 
 export type SearchExportResolution = {
