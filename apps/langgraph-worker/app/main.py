@@ -64,6 +64,10 @@ from .models.lead_models import (
     BatchEmailGenerationResponse,
     BatchLeadResult,
 )
+from .models.people_discovery_models import (
+    DiscoverPeopleRequest,
+    DiscoverPeopleResponse,
+)
 from .langgraph.state import EmailGenerationState
 from .langgraph.workflow import create_email_generation_workflow, execute_email_generation, execute_with_streaming
 from .utils.webhook import WebhookClient
@@ -876,6 +880,78 @@ async def research_company(
         raise HTTPException(
             status_code=500,
             detail=f"Company research failed: {str(e)}",
+        )
+
+@app.post("/discover-people", response_model=DiscoverPeopleResponse)
+async def discover_people(
+    request: DiscoverPeopleRequest,
+    authenticated: bool = Depends(verify_api_key),
+):
+    """
+    Identify decision makers at a company before email lookup.
+    Returns structured people[] with names and titles for FindyMail name search.
+    """
+    start_time = datetime.utcnow()
+
+    provider_keys_payload = (
+        request.provider_keys.model_dump(exclude_none=True)
+        if request.provider_keys
+        else None
+    )
+
+    capture_event(
+        "api_discover_people_started",
+        {
+            "company_name": request.company_name,
+            "domain": request.domain,
+            "user_id": request.user_id,
+            "requested_roles": request.requested_roles,
+        },
+    )
+
+    try:
+        from .utils.people_discovery import discover_people_at_company
+
+        result = await discover_people_at_company(
+            company_name=request.company_name,
+            domain=request.domain,
+            location=request.location or "",
+            industry=request.industry or "",
+            requested_roles=request.requested_roles,
+            expanded_role_patterns=request.expanded_role_patterns,
+            provider_keys=provider_keys_payload,
+        )
+
+        duration = (datetime.utcnow() - start_time).total_seconds()
+        capture_event(
+            "api_discover_people_completed",
+            {
+                "company_name": request.company_name,
+                "domain": request.domain,
+                "user_id": request.user_id,
+                "people_found": len(result.people),
+                "duration_ms": duration * 1000,
+            },
+        )
+
+        return DiscoverPeopleResponse(
+            people=result.people,
+            company_overview=result.company_overview,
+            processing_time=duration,
+            research_tier=result.research_tier,
+            additional_credits_used=result.additional_credits_used,
+            raw_data=result.raw_data,
+        )
+    except Exception as e:
+        logger.error(f"People discovery failed for {request.company_name}: {e}")
+        capture_error(e, {
+            "company_name": request.company_name,
+            "domain": request.domain,
+            "user_id": request.user_id,
+        })
+        raise HTTPException(
+            status_code=500,
+            detail=f"People discovery failed: {str(e)}",
         )
 
 @app.post("/batch-generate-emails", response_model=BatchEmailGenerationResponse)

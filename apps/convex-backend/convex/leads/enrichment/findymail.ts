@@ -23,6 +23,7 @@ import { isContactEmailVerified } from "../../lib/contactVerification";
 
 const FINDYMAIL_BASE_URL = "https://app.findymail.com/api";
 const FINDYMAIL_TIMEOUT_MS = 50_000;
+const FINDYMAIL_NAME_TIMEOUT_MS = 15_000;
 
 function createTimeoutController(timeoutMs: number) {
   const controller = new AbortController();
@@ -388,6 +389,113 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
     console.log(`[FindyMail] Enriching domain: ${domain}`);
     const limit = options?.limit ?? 1;
     return await this.fetchDomainSearch(domain, resolveRoles(options), limit);
+  }
+
+  /**
+   * Find email for a known person via POST /search/name.
+   */
+  async enrichByName(domain: string, name: string): Promise<EnrichmentResult | null> {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      return null;
+    }
+    console.log(`[FindyMail] Name search: ${trimmedName} @ ${domain}`);
+    return await this.fetchNameSearch(domain, trimmedName);
+  }
+
+  /**
+   * POST /search/name with retries for transient 429/504 responses.
+   */
+  private async fetchNameSearch(
+    domain: string,
+    name: string,
+  ): Promise<EnrichmentResult | null> {
+    let attempt = 0;
+
+    while (attempt < SINGLE_REQUEST_MAX_RETRIES) {
+      attempt += 1;
+      const timeout = createTimeoutController(FINDYMAIL_NAME_TIMEOUT_MS);
+      let response: Response;
+
+      try {
+        response = await fetch(`${FINDYMAIL_BASE_URL}/search/name`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            domain,
+            name,
+          }),
+          signal: timeout.signal,
+        });
+      } catch (error) {
+        timeout.clear();
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new Error(
+            `FindyMail name search timed out after ${FINDYMAIL_NAME_TIMEOUT_MS}ms`,
+          );
+        }
+        throw error;
+      } finally {
+        timeout.clear();
+      }
+
+      if (response.status === 429 || response.status === 504) {
+        if (attempt >= SINGLE_REQUEST_MAX_RETRIES) {
+          const errorText = await response.text();
+          const apiError = classifyFindyMailError(response.status, errorText);
+          const error = new Error(
+            `FindyMail API error: ${response.status} ${response.statusText}`,
+          ) as Error & { apiError?: ApiError };
+          error.apiError = apiError;
+          throw error;
+        }
+        const delayMs = withJitter(
+          Math.min(
+            SINGLE_REQUEST_MAX_DELAY_MS,
+            SINGLE_REQUEST_BASE_DELAY_MS * 2 ** (attempt - 1),
+          ),
+        );
+        await sleep(delayMs);
+        continue;
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorBody: unknown = errorText;
+        try {
+          errorBody = JSON.parse(errorText);
+        } catch {
+          // keep text
+        }
+        const apiError = classifyFindyMailError(response.status, errorBody);
+        const error = new Error(
+          `FindyMail API error: ${response.status} ${response.statusText}`,
+        ) as Error & { apiError?: ApiError };
+        error.apiError = apiError;
+        throw error;
+      }
+
+      try {
+        const findyMailData = await response.json();
+        console.log(`[FindyMail] Name search response for ${name} @ ${domain}:`, {
+          hasData: !!findyMailData,
+          contactCount: findyMailData?.contacts?.length || 0,
+          emailCount: findyMailData?.emails?.length || 0,
+        });
+        return this.transformToEnrichmentResult(findyMailData);
+      } catch (error) {
+        console.error(
+          `[FindyMail] Failed to parse name search response for ${name} @ ${domain}:`,
+          error,
+        );
+        return null;
+      }
+    }
+
+    return null;
   }
 
   /**

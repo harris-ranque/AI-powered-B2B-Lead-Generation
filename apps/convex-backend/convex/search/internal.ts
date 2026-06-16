@@ -4,6 +4,8 @@ import { Doc } from "../_generated/dataModel";
 import { withUpdatedAtIfSupported, isUpdatedAtSchemaError } from "./utils";
 import { countExportableSummaryForSearch } from "../lib/exportEligibility";
 import { getSearchAnalysisCompletionReadiness } from "../lib/searchCompletion";
+import { getAnalysisCompletionState } from "../lib/analysisProgress";
+import { computeAnalysisCreditBreakdown } from "../lib/helpers";
 
 // Internal query to get search without auth check
 export const getSearchInternal = internalQuery({
@@ -26,30 +28,82 @@ export const getSearchResults = internalQuery({
       };
     }
 
-    // Get all leads for this search
     const leads = await ctx.db
       .query("leads")
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
       .collect();
 
-    const enrichedLeads = leads.filter(
-      (l) => l.enrichmentStatus === "completed",
-    );
+    const acceptedContacts = await ctx.db
+      .query("leadContacts")
+      .withIndex("by_search_status", (q) =>
+        q.eq("searchId", args.searchId).eq("status", "accepted"),
+      )
+      .collect();
 
-    const analyzedLeads = leads.filter((l) => l.aiAnalysis !== undefined);
+    const enrichedCount = new Set(acceptedContacts.map((c) => c.leadId)).size;
+
+    const completion = await getAnalysisCompletionState(ctx, args.searchId);
+    const analyzedCount = completion.personalized;
+
+    const contactsWithScores = acceptedContacts.filter(
+      (contact) =>
+        contact.analysisStatus === "completed" &&
+        contact.aiAnalysis?.relevanceScore !== undefined,
+    );
+    const avgRelevanceScore =
+      contactsWithScores.length > 0
+        ? contactsWithScores.reduce(
+            (sum, contact) => sum + (contact.aiAnalysis?.relevanceScore ?? 0),
+            0,
+          ) / contactsWithScores.length
+        : 0;
+
+    const totalFound =
+      search.progress?.discovered ??
+      search.results?.totalFound ??
+      leads.length;
 
     return {
-      totalFound: leads.length,
-      enrichedCount: enrichedLeads.length,
-      analyzedCount: analyzedLeads.length,
-      avgRelevanceScore:
-        analyzedLeads.length > 0
-          ? analyzedLeads.reduce(
-              (sum, l) => sum + (l.aiAnalysis?.relevanceScore || 0),
-              0,
-            ) / analyzedLeads.length
-          : 0,
+      totalFound,
+      enrichedCount,
+      analyzedCount,
+      avgRelevanceScore,
     };
+  },
+});
+
+function contactHasWrittenEmail(
+  emailContent?: { subject?: string; body?: string },
+): boolean {
+  return Boolean(
+    emailContent?.subject?.trim() || emailContent?.body?.trim(),
+  );
+}
+
+export const getAnalysisCreditBreakdown = internalQuery({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    const acceptedContacts = await ctx.db
+      .query("leadContacts")
+      .withIndex("by_search_status", (q) =>
+        q.eq("searchId", args.searchId).eq("status", "accepted"),
+      )
+      .collect();
+
+    const personalizedContacts = acceptedContacts.filter(
+      (contact) =>
+        contact.email.trim().length > 0 &&
+        contact.analysisStatus === "completed" &&
+        contactHasWrittenEmail(contact.emailContent),
+    );
+
+    const withTier: Array<{ deepResearchUsed?: boolean }> = [];
+    for (const contact of personalizedContacts) {
+      const lead = await ctx.db.get(contact.leadId);
+      withTier.push({ deepResearchUsed: lead?.deepResearchUsed });
+    }
+
+    return computeAnalysisCreditBreakdown(withTier);
   },
 });
 

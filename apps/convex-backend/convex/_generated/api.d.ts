@@ -42,6 +42,7 @@ import type * as leads_actions from "../leads/actions.js";
 import type * as leads_analysisProgress from "../leads/analysisProgress.js";
 import type * as leads_asyncAnalysis from "../leads/asyncAnalysis.js";
 import type * as leads_asyncEnrichment from "../leads/asyncEnrichment.js";
+import type * as leads_asyncPeopleDiscovery from "../leads/asyncPeopleDiscovery.js";
 import type * as leads_contactInternal from "../leads/contactInternal.js";
 import type * as leads_deadLetterProcessor from "../leads/deadLetterProcessor.js";
 import type * as leads_deadLetterQueue from "../leads/deadLetterQueue.js";
@@ -57,6 +58,7 @@ import type * as leads_enrichmentQueueProcessor from "../leads/enrichmentQueuePr
 import type * as leads_internal from "../leads/internal.js";
 import type * as leads_monitoring from "../leads/monitoring.js";
 import type * as leads_mutations from "../leads/mutations.js";
+import type * as leads_peopleDiscoveryInternal from "../leads/peopleDiscoveryInternal.js";
 import type * as leads_queries from "../leads/queries.js";
 import type * as leads_searchLinkedLeads from "../leads/searchLinkedLeads.js";
 import type * as leads_testEnrichmentProgress from "../leads/testEnrichmentProgress.js";
@@ -89,6 +91,7 @@ import type * as lib_helpers from "../lib/helpers.js";
 import type * as lib_langgraphClient from "../lib/langgraphClient.js";
 import type * as lib_logger from "../lib/logger.js";
 import type * as lib_logging from "../lib/logging.js";
+import type * as lib_pipelineHandoff from "../lib/pipelineHandoff.js";
 import type * as lib_profileLogic from "../lib/profileLogic.js";
 import type * as lib_rateLimiter from "../lib/rateLimiter.js";
 import type * as lib_roleExpansion from "../lib/roleExpansion.js";
@@ -188,6 +191,7 @@ declare const fullApi: ApiFromModules<{
   "leads/analysisProgress": typeof leads_analysisProgress;
   "leads/asyncAnalysis": typeof leads_asyncAnalysis;
   "leads/asyncEnrichment": typeof leads_asyncEnrichment;
+  "leads/asyncPeopleDiscovery": typeof leads_asyncPeopleDiscovery;
   "leads/contactInternal": typeof leads_contactInternal;
   "leads/deadLetterProcessor": typeof leads_deadLetterProcessor;
   "leads/deadLetterQueue": typeof leads_deadLetterQueue;
@@ -203,6 +207,7 @@ declare const fullApi: ApiFromModules<{
   "leads/internal": typeof leads_internal;
   "leads/monitoring": typeof leads_monitoring;
   "leads/mutations": typeof leads_mutations;
+  "leads/peopleDiscoveryInternal": typeof leads_peopleDiscoveryInternal;
   "leads/queries": typeof leads_queries;
   "leads/searchLinkedLeads": typeof leads_searchLinkedLeads;
   "leads/testEnrichmentProgress": typeof leads_testEnrichmentProgress;
@@ -235,6 +240,7 @@ declare const fullApi: ApiFromModules<{
   "lib/langgraphClient": typeof lib_langgraphClient;
   "lib/logger": typeof lib_logger;
   "lib/logging": typeof lib_logging;
+  "lib/pipelineHandoff": typeof lib_pipelineHandoff;
   "lib/profileLogic": typeof lib_profileLogic;
   "lib/rateLimiter": typeof lib_rateLimiter;
   "lib/roleExpansion": typeof lib_roleExpansion;

@@ -659,11 +659,58 @@ export default defineSchema({
     // OCC-safe enrichment queue index: tenant → status → oldest search first → oldest lead first
     .index("by_enrichment_queue", ["enrichmentApiKeyHash", "enrichmentStatus", "enrichmentSearchQueuedAt", "enrichmentQueuedAt"]),
 
+  // People discovered before email lookup (Phase 2A)
+  leadProspects: defineTable({
+    leadId: v.id("leads"),
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+
+    name: v.string(),
+    title: v.string(),
+    linkedinUrl: v.optional(v.string()),
+    matchedRole: v.optional(v.string()),
+    confidence: v.number(),
+
+    source: v.union(
+      v.literal("perplexity"),
+      v.literal("tavily"),
+      v.literal("website_inference"),
+      v.literal("manual"),
+    ),
+    sourceUrl: v.optional(v.string()),
+
+    status: v.union(
+      v.literal("discovered"),
+      v.literal("email_pending"),
+      v.literal("email_found"),
+      v.literal("email_not_found"),
+      v.literal("rejected"),
+    ),
+    emailDiscoveryStatus: v.union(
+      v.literal("pending"),
+      v.literal("in_progress"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("skipped"),
+    ),
+
+    companyResearchId: v.optional(v.id("companyResearch")),
+    rawDiscoveryData: v.optional(v.any()),
+
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_lead", ["leadId"])
+    .index("by_search", ["searchId"])
+    .index("by_search_status", ["searchId", "status"])
+    .index("by_search_email_status", ["searchId", "emailDiscoveryStatus"]),
+
   // Accepted contacts per company lead (multi-contact pipeline)
   leadContacts: defineTable({
     leadId: v.id("leads"),
     searchId: v.id("searches"),
     userId: v.id("users"),
+    leadProspectId: v.optional(v.id("leadProspects")),
 
     // Contact identity
     name: v.string(),

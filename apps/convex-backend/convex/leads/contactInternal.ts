@@ -666,6 +666,233 @@ export const processMultiContactEnrichment = internalMutation({
   },
 });
 
+export const processProspectEmailEnrichment = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+    requestedRoles: v.array(v.string()),
+    companyWebsite: v.optional(v.string()),
+    prospects: v.array(
+      v.object({
+        prospectId: v.id("leadProspects"),
+        name: v.string(),
+        title: v.string(),
+        matchedRole: v.optional(v.string()),
+        enrichmentResult: v.any(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const acceptedEmails = new Set(
+      (
+        await ctx.db
+          .query("leadContacts")
+          .withIndex("by_search_status", (q) =>
+            q.eq("searchId", args.searchId).eq("status", "accepted"),
+          )
+          .collect()
+      ).map((c) => c.normalizedEmail),
+    );
+
+    let acceptedCount = 0;
+    const acceptedForDualWrite: Array<{
+      name: string;
+      title?: string;
+      email: string;
+      linkedin?: string;
+      confidence: number;
+    }> = [];
+
+    for (const prospectInput of args.prospects) {
+      const result = prospectInput.enrichmentResult as {
+        contacts?: Array<{
+          name?: string;
+          email?: string;
+          confidence?: number;
+          verified?: boolean;
+          linkedin?: string;
+        }>;
+        emails?: Array<{
+          email: string;
+          confidence?: number;
+          verified?: boolean;
+        }>;
+      };
+
+      const emailCandidates: Array<{
+        email: string;
+        confidence: number;
+        verified?: boolean;
+        linkedin?: string;
+      }> = [];
+
+      for (const contact of result.contacts ?? []) {
+        if (contact.email?.trim()) {
+          emailCandidates.push({
+            email: contact.email.trim(),
+            confidence: contact.confidence ?? 0.7,
+            verified: contact.verified,
+            linkedin: contact.linkedin,
+          });
+        }
+      }
+      for (const emailEntry of result.emails ?? []) {
+        if (emailEntry.email?.trim()) {
+          emailCandidates.push({
+            email: emailEntry.email.trim(),
+            confidence: emailEntry.confidence ?? 0.6,
+            verified: emailEntry.verified,
+          });
+        }
+      }
+
+      let prospectAccepted = false;
+
+      for (const emailCandidate of emailCandidates) {
+        const evaluation = evaluateContactCandidate(
+          {
+            name: prospectInput.name,
+            title: prospectInput.title,
+            email: emailCandidate.email,
+            linkedin: emailCandidate.linkedin,
+            confidence: emailCandidate.confidence,
+            verified: emailCandidate.verified,
+          },
+          {
+            requestedRoles: args.requestedRoles,
+            companyWebsite: args.companyWebsite,
+            acceptedEmailsInSearch: acceptedEmails,
+            enableRoleExpansion: true,
+            requireVerifiedEmail: true,
+            fromProspect: true,
+            prospectTitle: prospectInput.title,
+            prospectMatchedRole: prospectInput.matchedRole,
+          },
+        );
+
+        const storedTitle = resolveDisplayableContactTitle({
+          providerTitle: prospectInput.title,
+          matchedRole: prospectInput.matchedRole ?? evaluation.matchedRole,
+        });
+
+        const acceptedForStorage =
+          evaluation.accepted && Boolean(storedTitle);
+        const status: "accepted" | "rejected" = acceptedForStorage
+          ? "accepted"
+          : "rejected";
+
+        const normalizedEmail =
+          evaluation.normalizedEmail ??
+          emailCandidate.email.toLowerCase().trim();
+
+        const existingContact = await ctx.db
+          .query("leadContacts")
+          .withIndex("by_search_email", (q) =>
+            q.eq("searchId", args.searchId).eq("normalizedEmail", normalizedEmail),
+          )
+          .first();
+
+        const contactData = {
+          leadId: args.leadId,
+          searchId: args.searchId,
+          userId: args.userId,
+          leadProspectId: prospectInput.prospectId,
+          name: prospectInput.name,
+          title: storedTitle,
+          email: emailCandidate.email,
+          normalizedEmail,
+          linkedin: emailCandidate.linkedin,
+          confidence: emailCandidate.confidence,
+          source: "findymail" as const,
+          requestedRoles: args.requestedRoles,
+          matchedRole: evaluation.matchedRole ?? prospectInput.matchedRole,
+          titleMatchScore: evaluation.titleMatchScore,
+          titleMatchReason: evaluation.titleMatchReason,
+          emailVerified: evaluation.emailVerified,
+          domainMatchVerified: evaluation.domainMatchVerified,
+          status,
+          rejectionReason: acceptedForStorage
+            ? undefined
+            : evaluation.rejectionReason,
+          updatedAt: Date.now(),
+        };
+
+        if (existingContact) {
+          await ctx.db.patch(existingContact._id, {
+            ...contactData,
+            analysisStatus: acceptedForStorage
+              ? existingContact.analysisStatus === "completed"
+                ? "completed"
+                : "pending"
+              : "skipped",
+          });
+        } else {
+          await ctx.db.insert("leadContacts", {
+            ...contactData,
+            analysisStatus: acceptedForStorage ? "pending" : "skipped",
+            createdAt: Date.now(),
+          });
+        }
+
+        if (acceptedForStorage) {
+          acceptedEmails.add(normalizedEmail);
+          acceptedCount += 1;
+          prospectAccepted = true;
+          acceptedForDualWrite.push({
+            name: prospectInput.name,
+            title: storedTitle,
+            email: emailCandidate.email,
+            linkedin: emailCandidate.linkedin,
+            confidence: emailCandidate.confidence,
+          });
+          break;
+        }
+      }
+
+      await ctx.db.patch(prospectInput.prospectId, {
+        emailDiscoveryStatus: "completed",
+        status: prospectAccepted ? "email_found" : "email_not_found",
+        updatedAt: Date.now(),
+      });
+    }
+
+    const enrichmentStatus =
+      acceptedCount > 0 ? "completed" : "no_contacts_found";
+
+    await ctx.db.patch(args.leadId, {
+      enrichmentStatus,
+      enrichmentProvider: acceptedCount > 0 ? "findymail" : undefined,
+      enrichmentCompletedAt: Date.now(),
+      updatedAt: Date.now(),
+      enrichmentError:
+        acceptedCount === 0
+          ? "No emails found for discovered prospects"
+          : undefined,
+    });
+
+    if (acceptedForDualWrite.length > 0) {
+      const emails = acceptedForDualWrite.map((contact) => ({
+        email: contact.email,
+        type: "work",
+        confidence: contact.confidence,
+      }));
+      const contactInfo = {
+        emails,
+        contacts: acceptedForDualWrite,
+        socialProfiles: {},
+      };
+      const primaryEmail = extractPrimaryEmail(contactInfo);
+      await ctx.db.patch(args.leadId, {
+        contactInfo,
+        primaryEmail: primaryEmail?.toLowerCase().trim(),
+      });
+    }
+
+    return { acceptedCount, candidateCount: args.prospects.length };
+  },
+});
+
 export const getContactByAnalysisRequestId = internalQuery({
   args: { requestId: v.string() },
   handler: async (ctx, args) => {

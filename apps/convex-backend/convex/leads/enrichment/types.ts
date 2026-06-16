@@ -88,6 +88,7 @@ export interface EnrichmentProviderInterface {
     domain: string,
     options?: EnrichmentOptions,
   ): Promise<EnrichmentResult | null>;
+  enrichByName(domain: string, name: string): Promise<EnrichmentResult | null>;
   validateApiKey(apiKey: string): Promise<boolean>;
   getCredits(apiKey: string): Promise<number>;
 }

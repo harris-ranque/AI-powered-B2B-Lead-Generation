@@ -18,6 +18,7 @@ import {
 import { createConvexError, ERROR_CODES } from "../lib/errorHandling";
 import { isAdmin } from "../lib/helpers";
 import { canUseAsFrozenDiscoverySource } from "../lib/discoveryFreeze";
+import { schedulePostDiscoveryPipeline } from "../lib/pipelineHandoff";
 
 // Create a new search
 export const createSearch = mutation({
@@ -681,6 +682,32 @@ export const resumeLinkedReenrichment = mutation({
       success: true,
       searchId: args.searchId,
       pendingLinkedCount: pendingLinked.length,
+    };
+  },
+});
+
+/** Re-run people discovery then email enrichment for a search (e.g. after acceptance fix). */
+export const resumePeopleDiscoveryAndEnrichment = mutation({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const search = await ctx.db.get(args.searchId);
+
+    if (!search || search.userId !== user._id) {
+      throw createConvexError("authorization", "Search not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        retryable: false,
+      });
+    }
+
+    await schedulePostDiscoveryPipeline(ctx, args.searchId);
+
+    return {
+      success: true,
+      searchId: args.searchId,
     };
   },
 });

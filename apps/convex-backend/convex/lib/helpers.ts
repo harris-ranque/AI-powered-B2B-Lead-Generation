@@ -97,6 +97,51 @@ export function calculateSearchCost(
   return tier2Cost + tier3Cost;
 }
 
+export type AnalysisCreditBreakdown = {
+  analyzedCount: number;
+  tier2Leads: number;
+  tier3Leads: number;
+  tier2Cost: number;
+  tier3Cost: number;
+  total: number;
+};
+
+/**
+ * Analysis credits for completed search — only personalized contacts count.
+ * Tier is per contact based on whether deep research ran for that lead.
+ */
+export function computeAnalysisCreditBreakdown(
+  personalizedContacts: Array<{ deepResearchUsed?: boolean }>,
+): AnalysisCreditBreakdown {
+  const analyzedCount = personalizedContacts.length;
+  if (analyzedCount === 0) {
+    return {
+      analyzedCount: 0,
+      tier2Leads: 0,
+      tier3Leads: 0,
+      tier2Cost: 0,
+      tier3Cost: 0,
+      total: 0,
+    };
+  }
+
+  const tier3Leads = personalizedContacts.filter(
+    (contact) => contact.deepResearchUsed === true,
+  ).length;
+  const tier2Leads = analyzedCount - tier3Leads;
+  const tier2Cost = tier2Leads * CREDIT_COSTS.AI_ANALYSIS_TIER2;
+  const tier3Cost = tier3Leads * CREDIT_COSTS.AI_ANALYSIS_TIER3;
+
+  return {
+    analyzedCount,
+    tier2Leads,
+    tier3Leads,
+    tier2Cost,
+    tier3Cost,
+    total: tier2Cost + tier3Cost,
+  };
+}
+
 export function formatPhoneNumber(phone: string): string {
   // Remove all non-digit characters
   const digits = phone.replace(/\D/g, "");

@@ -79,6 +79,20 @@ export const diagnoseSearch = internalQuery({
       ),
     };
 
+    const prospects = await ctx.db
+      .query("leadProspects")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    const prospectStats = {
+      total: prospects.length,
+      discovered: prospects.filter((p) => p.status === "discovered").length,
+      email_pending: prospects.filter((p) => p.status === "email_pending").length,
+      email_found: prospects.filter((p) => p.status === "email_found").length,
+      email_not_found: prospects.filter((p) => p.status === "email_not_found").length,
+      rejected: prospects.filter((p) => p.status === "rejected").length,
+    };
+
     return {
       search: {
         id: search._id,
@@ -92,6 +106,7 @@ export const diagnoseSearch = internalQuery({
         enrichmentStats,
         analysisStats,
       },
+      prospects: prospectStats,
       batches: batches.map((b) => ({
         batchId: b.batchId,
         status: b.status,

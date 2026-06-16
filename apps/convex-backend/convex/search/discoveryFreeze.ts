@@ -15,6 +15,7 @@ import {
 } from "../lib/discoveryFreeze";
 import { isUpdatedAtSchemaError, withUpdatedAtIfSupported } from "./utils";
 import { createConvexError, ERROR_CODES } from "../lib/errorHandling";
+import { schedulePostDiscoveryPipeline } from "../lib/pipelineHandoff";
 
 const DISCOVERY_METADATA_FIELDS = [
   "initialSearchRadius",
@@ -358,9 +359,7 @@ export const applyFrozenDiscovery = internalAction({
       status: "in_progress",
     });
 
-    await ctx.scheduler.runAfter(0, "leads/actions:enrichLeads" as any, {
-      searchId: args.searchId,
-    });
+    await schedulePostDiscoveryPipeline(ctx, args.searchId);
 
     return {
       success: true,

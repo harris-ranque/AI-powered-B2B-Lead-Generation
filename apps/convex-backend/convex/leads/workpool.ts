@@ -622,6 +622,123 @@ export const reportQueuedLeadCompletion = internalMutation({
 });
 
 /**
+ * OnComplete handler for people discovery (Phase 2A).
+ * When all leads finish, triggers FindyMail email discovery (enrichLeads).
+ */
+export const onPeopleDiscoveryComplete = internalMutation({
+  args: vOnCompleteArgs(
+    v.object({
+      searchId: v.id("searches"),
+      userId: v.id("users"),
+      leadId: v.id("leads"),
+      batchId: v.string(),
+    }),
+  ),
+  handler: async (ctx, { workId, context, result }) => {
+    const { searchId, userId, leadId, batchId } = context;
+
+    try {
+      const batch = await ctx.db
+        .query("enrichmentBatches")
+        .withIndex("by_batch_id", (q) => q.eq("batchId", batchId))
+        .first();
+
+      if (!batch) {
+        console.error(
+          `[Workpool] People discovery batch ${batchId} not found for workId ${workId}`,
+        );
+        return;
+      }
+
+      const returnValue =
+        result.kind === "success" ? (result.returnValue as unknown) : undefined;
+      const prospectCount =
+        returnValue &&
+        typeof returnValue === "object" &&
+        "prospectCount" in returnValue &&
+        typeof (returnValue as { prospectCount?: number }).prospectCount ===
+          "number"
+          ? (returnValue as { prospectCount: number }).prospectCount
+          : 0;
+      const isSuccess =
+        result.kind === "success" &&
+        typeof returnValue === "object" &&
+        (returnValue as { success?: boolean }).success === true &&
+        prospectCount > 0;
+      const isFailed = result.kind === "failed" || result.kind === "canceled";
+
+      const newCompletedLeads = batch.completedLeads + 1;
+      const newSuccessfulLeads = batch.successfulLeads + (isSuccess ? 1 : 0);
+      const newFailedLeads = batch.failedLeads + (isFailed ? 1 : 0);
+      const isComplete = newCompletedLeads >= batch.totalLeads;
+
+      await ctx.db.patch(batch._id, {
+        completedLeads: newCompletedLeads,
+        successfulLeads: newSuccessfulLeads,
+        failedLeads: newFailedLeads,
+        status: isComplete ? "completed" : "running",
+        completedAt: isComplete ? Date.now() : undefined,
+      });
+
+      const progressPercent = Math.round(
+        (newCompletedLeads / batch.totalLeads) * 100,
+      );
+      console.log(
+        `[Workpool] People discovery lead ${leadId} ${result.kind} (${newCompletedLeads}/${batch.totalLeads} = ${progressPercent}%)`,
+      );
+
+      await publishEnrichmentProgress(ctx, {
+        userId,
+        searchId,
+        batchId,
+        totalLeads: batch.totalLeads,
+        completedLeads: newCompletedLeads,
+        successfulLeads: newSuccessfulLeads,
+        failedLeads: newFailedLeads,
+        analyzed: 0,
+      });
+
+      if (isComplete) {
+        console.log(
+          `[Workpool] People discovery complete for search ${searchId}, scheduling email discovery`,
+        );
+
+        const prospectStats = await ctx.runQuery(
+          internal.leads.peopleDiscoveryInternal.countProspectsBySearch,
+          { searchId },
+        );
+
+        await ctx.runMutation(
+          internal.realtime.broadcaster.broadcastPipelineUpdate,
+          {
+            userId,
+            searchId,
+            stage: "people_discovery",
+            progress: 100,
+            message: `Found ${prospectStats.total} decision makers across ${batch.totalLeads} businesses`,
+            data: {
+              peopleDiscovery: {
+                totalProspects: prospectStats.total,
+                byStatus: prospectStats.byStatus,
+              },
+            },
+          },
+        );
+
+        await ctx.scheduler.runAfter(0, "leads/actions:enrichLeads" as any, {
+          searchId,
+        });
+      }
+    } catch (error) {
+      console.error(
+        `[Workpool] onPeopleDiscoveryComplete error for lead ${leadId}:`,
+        error,
+      );
+    }
+  },
+});
+
+/**
  * Cancel all pending enrichment work for a search
  * Useful when user wants to stop a search mid-enrichment
  */

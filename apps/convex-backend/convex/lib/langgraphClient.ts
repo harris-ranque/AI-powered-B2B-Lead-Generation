@@ -6,7 +6,8 @@ const KNOWN_PATH_SUFFIXES = [
   "/batch-generate-emails",
   "/generate-emails",
   "/analyze-lead",
-  "/company-research",
+  "/research-company",
+  "/discover-people",
   "/health",
   "/validate-keys",
 ];

@@ -163,6 +163,10 @@ export class EnrichmentService {
     return await this.provider.enrichSingle(domain, options);
   }
 
+  async enrichByName(domain: string, name: string): Promise<EnrichmentResult | null> {
+    return await this.provider.enrichByName(domain, name);
+  }
+
   /**
    * Validate API key
    */

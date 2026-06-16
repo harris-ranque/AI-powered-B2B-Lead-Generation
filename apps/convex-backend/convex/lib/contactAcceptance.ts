@@ -263,6 +263,10 @@ export function evaluateContactCandidate(
     roleMatchPatterns?: string[];
     /** Provider titles pre-approved by semantic AI review (normalized lowercase). */
     semanticTitleAccepted?: Set<string>;
+    /** Email lookup from a people-discovery prospect (title already verified). */
+    fromProspect?: boolean;
+    prospectTitle?: string;
+    prospectMatchedRole?: string;
   },
 ): ContactAcceptanceResult {
   const normalizedEmail = normalizeContactEmail(candidate.email);
@@ -310,6 +314,31 @@ export function evaluateContactCandidate(
       emailVerified,
       domainMatchVerified: false,
       normalizedEmail,
+    };
+  }
+
+  if (options.fromProspect && options.prospectTitle?.trim()) {
+    const displayableTitle = resolveDisplayableContactTitle({
+      providerTitle: options.prospectTitle,
+      matchedRole: options.prospectMatchedRole,
+    });
+    if (!displayableTitle) {
+      return {
+        accepted: false,
+        rejectionReason: "missing_title",
+        emailVerified,
+        domainMatchVerified,
+        normalizedEmail,
+      };
+    }
+    return {
+      accepted: true,
+      emailVerified,
+      domainMatchVerified,
+      normalizedEmail,
+      matchedRole: options.prospectMatchedRole,
+      titleMatchScore: 1,
+      titleMatchReason: "prospect_discovery",
     };
   }
 

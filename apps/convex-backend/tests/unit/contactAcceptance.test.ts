@@ -56,6 +56,30 @@ describe("contactAcceptance", () => {
     expect(result.rejectionReason).toBe("missing_title");
   });
 
+  it("accepts contact from people-discovery prospect with known title", () => {
+    const result = evaluateContactCandidate(
+      {
+        name: "John Doe",
+        email: "john@acme.com",
+        verified: true,
+      },
+      {
+        requestedRoles: ["Founder"],
+        companyWebsite: "https://acme.com",
+        acceptedEmailsInSearch: new Set(),
+        enableRoleExpansion: true,
+        requireVerifiedEmail: true,
+        fromProspect: true,
+        prospectTitle: "CEO",
+        prospectMatchedRole: "Founder",
+      },
+    );
+
+    expect(result.accepted).toBe(true);
+    expect(result.titleMatchReason).toBe("prospect_discovery");
+    expect(result.domainMatchVerified).toBe(true);
+  });
+
   it("accepts when provider title semantically matches the FindyMail queried role", () => {
     const result = evaluateContactCandidate(
       {

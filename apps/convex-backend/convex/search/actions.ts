@@ -11,7 +11,6 @@ import {
   OPERATION_TYPES,
   formatCorrelationForLogging,
 } from "../lib/correlation";
-import { CREDIT_COSTS } from "../lib/helpers";
 import {
   searchPlacesWithTiling,
   Bounds,
@@ -27,6 +26,7 @@ import {
 } from "../lib/apiErrors";
 import { normalizeAddress } from "../lib/deduplication";
 import { shouldEndDiscoveryWithoutEnrichment } from "../lib/searchAnalysisRecovery";
+import { schedulePostDiscoveryPipeline } from "../lib/pipelineHandoff";
 // Note: This action can be scheduled by the orchestrator (no user auth).
 
 const METERS_PER_MILE = 1609.34;
@@ -1846,7 +1846,7 @@ export const searchGoogleMaps: any = action({
           logWithCorrelation(
             "info",
             correlation,
-            "🔄 PHASE TRANSITION: Triggering Phase 2 (Lead Enrichment)",
+            "🔄 PHASE TRANSITION: Triggering Phase 2 (People Discovery / Enrichment)",
             {
               leadsToEnrich: pipelineLeadCount,
               newLeads: deliveredLeads,
@@ -1854,10 +1854,8 @@ export const searchGoogleMaps: any = action({
               schedulingDelay: "immediate",
             },
           );
-          
-          await ctx.scheduler.runAfter(0, "leads/actions:enrichLeads" as any, {
-            searchId: args.searchId,
-          });
+
+          await schedulePostDiscoveryPipeline(ctx, args.searchId);
         }
       }
 
@@ -1969,34 +1967,22 @@ export const completeSearch: any = action({
         { searchId: args.searchId },
       );
 
-      // Get all leads to count tier 2 vs tier 3 usage
-      const allLeads = await ctx.runQuery(internal.leads.internal.getSearchLeadsInternal, {
-        searchId: args.searchId,
-      });
-
-      // Count leads by research tier
-      const tier3Leads = allLeads.filter((lead: any) => lead.deepResearchUsed === true).length;
-      const tier2Leads = analyzedCount - tier3Leads; // All analyzed leads minus tier 3
-
-      // Calculate per-lead pricing: 1 credit per tier 2 lead, 2 credits per tier 3 lead
-      const tier2Cost = tier2Leads * CREDIT_COSTS.AI_ANALYSIS_TIER2;
-      const tier3Cost = tier3Leads * CREDIT_COSTS.AI_ANALYSIS_TIER3;
-      const totalCreditsUsed = tier2Cost + tier3Cost;
-
-      // For analytics, track breakdown
-      const creditBreakdown = {
+      const creditBreakdown = await ctx.runQuery(
+        internal.search.internal.getAnalysisCreditBreakdown,
+        { searchId: args.searchId },
+      );
+      const {
         tier2Leads,
-        tier2Cost,
         tier3Leads,
-        tier3Cost,
         total: totalCreditsUsed,
-      } as const;
+      } = creditBreakdown;
 
       const previouslyRecordedCredits = search.creditsUsed || 0;
       const creditsToCharge = Math.max(
         totalCreditsUsed - previouslyRecordedCredits,
         0,
       );
+      const finalCreditsUsed = previouslyRecordedCredits + creditsToCharge;
 
       // BYOK: Check if enterprise user with own API keys (skip credit charging)
       // Use internal query since action contexts don't have ctx.db
@@ -2066,7 +2052,7 @@ export const completeSearch: any = action({
           analyzed: analyzedCount,
           total: totalFound,
         },
-        creditsUsed: totalCreditsUsed,
+        creditsUsed: finalCreditsUsed,
       });
 
       // Build completion message with partial results awareness
@@ -2103,7 +2089,7 @@ export const completeSearch: any = action({
               analyzed: analyzedCount,
               total: totalFound,
             },
-            creditsUsed: totalCreditsUsed,
+            creditsUsed: finalCreditsUsed,
             creditBreakdown,
             partialResults: isPartialResults,
             requestedCount: isPartialResults ? requestedCount : undefined,
@@ -2121,12 +2107,13 @@ export const completeSearch: any = action({
           totalLeads: totalFound,
           enrichedLeads: enrichedCount,
           analyzedLeads: analyzedCount,
+          exportableContacts: exportableCount,
           avgRelevanceScore: results.avgRelevanceScore,
           completionDurationMs: performanceData?.duration || 0,
           enrichmentRate: totalFound > 0 ? (enrichedCount / totalFound) * 100 : 0,
           analysisRate: totalFound > 0 ? (analyzedCount / totalFound) * 100 : 0,
           finalStatus: "completed",
-          creditsUsed: totalCreditsUsed,
+          creditsUsed: finalCreditsUsed,
           creditBreakdown,
         },
       );
@@ -2135,7 +2122,7 @@ export const completeSearch: any = action({
         success: true,
         message: "Search completed successfully",
         results: results,
-        creditsUsed: totalCreditsUsed,
+        creditsUsed: finalCreditsUsed,
       };
     } catch (error) {
       const performanceData = endPerformanceTracking(performanceTracker);
