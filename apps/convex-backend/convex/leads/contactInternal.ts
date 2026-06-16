@@ -10,6 +10,7 @@ import {
   isValidCompanyResearchCache,
   normalizeCompanyResearchPayload,
 } from "../lib/companyResearchCache";
+import { deriveLeadAnalysisStatusFromContacts } from "../lib/contactAnalysisSync";
 
 const contactStatusValidator = v.union(
   v.literal("candidate"),
@@ -670,27 +671,9 @@ async function syncLeadAnalysisStatusFromContacts(
     return;
   }
 
-  const anyCompleted = accepted.some(
-    (contact) => contact.analysisStatus === "completed",
-  );
-  const allDone = accepted.every(
-    (contact) =>
-      contact.analysisStatus === "completed" ||
-      contact.analysisStatus === "skipped" ||
-      contact.analysisStatus === "failed",
-  );
-
-  if (!anyCompleted && !allDone) {
+  const analysisStatus = deriveLeadAnalysisStatusFromContacts(accepted);
+  if (!analysisStatus) {
     return;
-  }
-
-  let analysisStatus: "completed" | "skipped" | "failed";
-  if (anyCompleted) {
-    analysisStatus = "completed";
-  } else if (accepted.every((contact) => contact.analysisStatus === "skipped")) {
-    analysisStatus = "skipped";
-  } else {
-    analysisStatus = "failed";
   }
 
   await ctx.db.patch(leadId, {

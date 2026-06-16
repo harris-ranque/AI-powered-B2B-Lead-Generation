@@ -3,6 +3,8 @@ import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 
 const DEFAULT_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
+/** Skip duplicate pipeline broadcasts for the same stage within this window. */
+export const PIPELINE_BROADCAST_COALESCE_MS = 1500;
 
 type BroadcastPriority = "low" | "normal" | "high" | "urgent" | "critical";
 type BroadcastStatus = "pending" | "delivered" | "failed" | "expired" | "active";
@@ -84,23 +86,59 @@ function createBroadcastDocument(args: {
   return doc;
 }
 
-async function upsertPipelineBroadcast(
+export type PipelineBroadcastArgs = {
+  userId: Id<"users">;
+  searchId: string;
+  stage: string;
+  progress: number;
+  message: string;
+  data?: unknown;
+  error?: string;
+  priority?: BroadcastPriority;
+};
+
+export function shouldCoalescePipelineBroadcast(
+  latest: { createdAt: number; data?: unknown } | null,
+  stage: string,
+  now: number,
+  coalesceMs = PIPELINE_BROADCAST_COALESCE_MS,
+): boolean {
+  if (!latest?.data || typeof latest.data !== "object") {
+    return false;
+  }
+  const latestStage = (latest.data as Record<string, unknown>).stage;
+  return latestStage === stage && now - latest.createdAt < coalesceMs;
+}
+
+/**
+ * Insert a pipeline status broadcast. Never patches existing rows — concurrent
+ * batch progress webhooks were causing OCC conflicts on a single hot document.
+ * Coalesces rapid same-stage updates; search.progress holds live counters.
+ */
+export async function insertPipelineBroadcast(
   ctx: any,
-  args: {
-    userId: Id<"users">;
-    searchId: string;
-    stage: string;
-    progress: number;
-    message: string;
-    data?: unknown;
-    error?: string;
-    priority?: BroadcastPriority;
-  },
-) {
+  args: PipelineBroadcastArgs,
+): Promise<void> {
   const now = Date.now();
   const hasError = Boolean(args.error);
   const priority: BroadcastPriority =
     args.priority ?? (hasError ? "high" : "normal");
+
+  if (!hasError) {
+    const latest = await ctx.db
+      .query("statusBroadcasts")
+      .withIndex("by_entity", (q: any) =>
+        q.eq("entityType", "search").eq("entityId", args.searchId),
+      )
+      .filter((q: any) => q.eq(q.field("type"), "pipeline_update"))
+      .order("desc")
+      .first();
+
+    if (shouldCoalescePipelineBroadcast(latest, args.stage, now)) {
+      return;
+    }
+  }
+
   const baseDoc = createBroadcastDocument({
     userId: args.userId,
     entityType: "search",
@@ -123,53 +161,8 @@ async function upsertPipelineBroadcast(
     tags: ["pipeline", args.stage],
     status: hasError ? "failed" : "delivered",
     delivered: !hasError,
+    acknowledged: !hasError,
   });
-
-  const latest = await ctx.db
-    .query("statusBroadcasts")
-    .withIndex("by_entity", (q: any) =>
-      q.eq("entityType", "search").eq("entityId", args.searchId),
-    )
-    .filter((q: any) => q.eq(q.field("type"), "pipeline_update"))
-    .order("desc")
-    .first();
-
-  if (latest && latest.data && typeof latest.data === "object") {
-    const latestStage = (latest.data as Record<string, unknown>).stage;
-    if (latestStage === args.stage) {
-      const patch: Record<string, unknown> = {
-        title: baseDoc.title,
-        message: baseDoc.message,
-        data: baseDoc.data,
-        priority: baseDoc.priority,
-        status: baseDoc.status,
-        requiresAck: baseDoc.requiresAck,
-        expiresAt: baseDoc.expiresAt,
-        error: args.error,
-        tags: baseDoc.tags,
-        category: baseDoc.category,
-      };
-
-      if (baseDoc.delivered) {
-        patch.delivered = true;
-        patch.deliveredAt = now;
-      } else {
-        patch.delivered = false;
-      }
-
-      try {
-        await ctx.db.patch(latest._id, patch);
-        return;
-      } catch (error) {
-        // If patch fails due to concurrent modification, fall through to insert
-        // This prevents the error from propagating while ensuring status is updated
-        console.warn(
-          `Concurrent modification detected for broadcast ${latest._id}, creating new broadcast instead`,
-          { searchId: args.searchId, stage: args.stage }
-        );
-      }
-    }
-  }
 
   await ctx.db.insert("statusBroadcasts", baseDoc);
 }
@@ -194,7 +187,7 @@ export const broadcastPipelineUpdate = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
-    await upsertPipelineBroadcast(ctx, {
+    await insertPipelineBroadcast(ctx, {
       userId: args.userId,
       searchId: args.searchId,
       stage: args.stage,

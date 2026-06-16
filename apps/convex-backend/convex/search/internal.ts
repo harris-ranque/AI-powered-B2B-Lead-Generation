@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { Doc } from "../_generated/dataModel";
 import { withUpdatedAtIfSupported, isUpdatedAtSchemaError } from "./utils";
 import { countExportableSummaryForSearch } from "../lib/exportEligibility";
+import { getSearchAnalysisCompletionReadiness } from "../lib/searchCompletion";
 
 // Internal query to get search without auth check
 export const getSearchInternal = internalQuery({
@@ -66,6 +67,13 @@ export const getExportableCount = internalQuery({
       search.userId,
     );
     return summary.exportableContacts;
+  },
+});
+
+export const getSearchCompletionReadinessInternal = internalQuery({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    return await getSearchAnalysisCompletionReadiness(ctx, args.searchId);
   },
 });
 

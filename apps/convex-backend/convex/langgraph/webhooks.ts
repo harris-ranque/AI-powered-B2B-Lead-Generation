@@ -6,6 +6,7 @@ import { Id } from "../_generated/dataModel";
 import { extractDomainFromWebsite } from "../lib/contactVerification";
 import { getAnalysisCompletionState } from "../lib/analysisProgress";
 import { slimLeadAnalysisForContactStorage } from "../lib/contactAnalysisStorage";
+import { publishAnalysisProgressHandler } from "../leads/analysisProgress";
 
 // TODO: Add webhook idempotency table to prevent duplicate processing
 // Current implementation has partial checks but no dedicated tracking.
@@ -485,16 +486,13 @@ export const handleEmailGenerationCompleted = internalMutation({
             ? Math.round((completion.personalized / completion.total) * 100)
             : 0;
 
-        await ctx.runMutation(
-          internal.leads.analysisProgress.publishAnalysisProgress,
-          {
-            userId: search.userId,
-            searchId: searchId as Id<"searches">,
-            progressPercent,
-            currentLead: lead.businessName,
-            message: `Wrote email for ${lead.businessName} (${completion.personalized}/${completion.total} complete)`,
-          },
-        );
+        await publishAnalysisProgressHandler(ctx, {
+          userId: search.userId,
+          searchId: searchId as Id<"searches">,
+          progressPercent,
+          currentLead: lead.businessName,
+          message: `Wrote email for ${lead.businessName} (${completion.personalized}/${completion.total} complete)`,
+        });
 
         // Check if all eligible leads are complete and trigger search completion
         // Use idempotency guard to prevent race conditions when multiple webhooks complete simultaneously
@@ -620,16 +618,13 @@ export const handleEmailGenerationCompleted = internalMutation({
             ? Math.round((completion.processed / completion.total) * 100)
             : 0;
 
-        await ctx.runMutation(
-          internal.leads.analysisProgress.publishAnalysisProgress,
-          {
-            userId: search.userId,
-            searchId: searchId as Id<"searches">,
-            progressPercent,
-            currentLead: lead.businessName,
-            message: `Failed writing email for ${lead.businessName}: ${errorMessage}`,
-          },
-        );
+        await publishAnalysisProgressHandler(ctx, {
+          userId: search.userId,
+          searchId: searchId as Id<"searches">,
+          progressPercent,
+          currentLead: lead.businessName,
+          message: `Failed writing email for ${lead.businessName}: ${errorMessage}`,
+        });
 
         if (completion.isComplete && completion.total > 0) {
           // Verify search is still in processing state (idempotency check)
@@ -1003,10 +998,7 @@ export const handleBatchProgress = internalMutation({
       const searchIdTyped = searchId as Id<"searches">;
 
       // Get search
-      const search = await ctx.runQuery(
-        internal.search.internal.getSearchInternal,
-        { searchId: searchIdTyped },
-      );
+      const search = await ctx.db.get(searchIdTyped);
 
       if (!search) {
         logger.error(`Search not found: ${searchId}`, { batchId });
@@ -1014,7 +1006,7 @@ export const handleBatchProgress = internalMutation({
       }
 
       // Sync search progress + broadcast live Write Emails metrics
-      await ctx.runMutation(internal.leads.analysisProgress.publishAnalysisProgress, {
+      await publishAnalysisProgressHandler(ctx, {
         searchId: searchIdTyped,
         userId: search.userId,
         progressPercent,
@@ -1419,7 +1411,7 @@ export const handleBatchCompleted = internalMutation({
         completionMessage = `Batch complete: ${completedLeads} analyzed, ${failedLeads} skipped (${processedLeads}/${totalLeads} total)`;
       }
 
-      await ctx.runMutation(internal.leads.analysisProgress.publishAnalysisProgress, {
+      await publishAnalysisProgressHandler(ctx, {
         searchId: searchIdTyped,
         userId: search.userId,
         progressPercent,

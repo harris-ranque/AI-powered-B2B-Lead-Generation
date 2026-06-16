@@ -885,17 +885,39 @@ export const analyzeLeads: any = internalAction({
       );
 
       if (leads.length === 0) {
+        const readiness = await ctx.runQuery(
+          internal.search.internal.getSearchCompletionReadinessInternal,
+          { searchId: args.searchId },
+        );
+
+        if (!readiness.ready) {
+          logWithCorrelation(
+            "info",
+            correlation,
+            "⏳ No contacts queued for analysis — Write Emails still in progress or pending",
+            {
+              reason: readiness.reason,
+              inProgress: readiness.inProgress,
+              total: readiness.total,
+            },
+          );
+          return {
+            success: true,
+            message: "Analysis in progress or not ready for completion",
+            scheduledCount: 0,
+          };
+        }
+
         logWithCorrelation(
           "warn",
           correlation,
-          "⚠️ PHASE 3 COMPLETE: No Leads to Analyze - Completing Search",
+          "⚠️ PHASE 3 COMPLETE: No pending analysis work - Completing Search",
           {
-            reason: "zero_leads_for_analysis",
+            reason: readiness.reason,
             nextPhase: "search_completion",
           },
         );
 
-        // No leads to analyze, complete the search
         await ctx.scheduler.runAfter(
           0,
           "search/actions:completeSearch" as any,

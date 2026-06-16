@@ -11,6 +11,7 @@ import {
   isAllEnrichmentTerminal,
   isFailedSearchAnalysisTimeout,
 } from "../lib/searchAnalysisRecovery";
+import { isMultiContactPipelineEnabled } from "../lib/featureFlags";
 
 // Internal query to get lead without auth check
 export const getLeadInternal = internalQuery({
@@ -1372,7 +1373,38 @@ export const tryTriggerAnalysisPhase = internalMutation({
       return false; // Still waiting for enrichment to complete
     }
 
-    // Block only when analysis is actively in-flight
+    if (isMultiContactPipelineEnabled()) {
+      const acceptedSample = await ctx.db
+        .query("leadContacts")
+        .withIndex("by_search_status", (q) =>
+          q.eq("searchId", args.searchId).eq("status", "accepted"),
+        )
+        .take(1);
+
+      if (acceptedSample.length > 0) {
+        const completion = await getAnalysisCompletionState(ctx, args.searchId);
+
+        if (completion.inProgress > 0) {
+          return false;
+        }
+
+        if (completion.isComplete) {
+          return false;
+        }
+
+        const workRemaining = completion.pending + completion.failed;
+        if (workRemaining === 0) {
+          return false;
+        }
+
+        console.log(
+          `[Analysis Trigger] Search ${args.searchId}: ${workRemaining} contacts pending Write Emails (multi-contact)`,
+        );
+        return true;
+      }
+    }
+
+    // Block only when analysis is actively in-flight (legacy lead pipeline)
     const analysisInFlight = allLeads.some(
       (lead) =>
         lead.analysisStatus === "scheduled" ||

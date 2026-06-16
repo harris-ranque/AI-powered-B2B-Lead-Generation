@@ -19,13 +19,6 @@ import {
   isAllEnrichmentTerminal,
 } from "../lib/searchAnalysisRecovery";
 
-const FINAL_ANALYSIS_STATUSES = new Set([
-  "completed",
-  "failed",
-  "timeout",
-  "skipped",
-]);
-
 type CorrelationContext = ReturnType<typeof createCorrelationContext>;
 
 /**
@@ -144,51 +137,26 @@ export const checkPendingCompletions: any = internalAction({
         continue;
       }
 
-      const leads = (await ctx.runQuery(
-        internal.leads.internal.getSearchLeadsInternal,
-        {
-          searchId: search._id as any,
-        },
-      )) as Doc<"leads">[];
+      const readiness = await ctx.runQuery(
+        internal.search.internal.getSearchCompletionReadinessInternal,
+        { searchId: search._id as Id<"searches"> },
+      );
 
-      const eligibleLeads = leads.filter((lead: Doc<"leads">) => {
-        const enrichmentComplete =
-          lead.enrichmentStatus === "completed" ||
-          lead.enrichmentStatus === "completed_fallback";
-        const hasEmail = Boolean(lead.contactInfo?.emails?.length);
-        const hasContactName = Boolean(lead.contactInfo?.contacts?.[0]?.name);
-
-        return enrichmentComplete && hasEmail && hasContactName;
-      });
-
-      if (eligibleLeads.length === 0) {
+      if (!readiness.ready) {
         continue;
       }
 
       searchesEvaluated++;
-
-      const finishedLeads = eligibleLeads.filter((lead: Doc<"leads">) =>
-        FINAL_ANALYSIS_STATUSES.has(lead.analysisStatus ?? ""),
-      );
-
-      const activeLeads = eligibleLeads.filter(
-        (lead: Doc<"leads">) =>
-          !FINAL_ANALYSIS_STATUSES.has(lead.analysisStatus ?? ""),
-      );
-
-      if (activeLeads.length > 0) {
-        continue;
-      }
-
       completionsScheduled++;
 
       logWithCorrelation(
         "info",
         correlation,
-        "🏁 All leads complete - scheduling search completion",
+        "🏁 Write Emails complete - scheduling search completion",
         {
           searchId: search._id,
-          analyzedLeads: finishedLeads.length,
+          reason: readiness.reason,
+          total: readiness.total,
         },
       );
 
@@ -832,49 +800,27 @@ export const monitorSearchHealth: any = internalAction({
         // ======================================================================
         // CHECK 3: Search Completion (all leads done)
         // ======================================================================
-        const leads = (await ctx.runQuery(
-          internal.leads.internal.getSearchLeadsInternal,
-          { searchId: search._id as any },
-        )) as Doc<"leads">[];
+        const readiness = await ctx.runQuery(
+          internal.search.internal.getSearchCompletionReadinessInternal,
+          { searchId: search._id as Id<"searches"> },
+        );
 
-        const eligibleLeads = leads.filter((lead: Doc<"leads">) => {
-          const enrichmentComplete =
-            lead.enrichmentStatus === "completed" ||
-            lead.enrichmentStatus === "completed_fallback";
-          const hasEmail = Boolean(lead.contactInfo?.emails?.length);
-          const hasContactName = Boolean(lead.contactInfo?.contacts?.[0]?.name);
-
-          return enrichmentComplete && hasEmail && hasContactName;
-        });
-
-        if (eligibleLeads.length === 0) {
+        if (!readiness.ready) {
           continue;
         }
 
         results.completions.searchesEvaluated++;
-
-        const finishedLeads = eligibleLeads.filter((lead: Doc<"leads">) =>
-          FINAL_ANALYSIS_STATUSES.has(lead.analysisStatus ?? ""),
-        );
-
-        const activeLeads = eligibleLeads.filter(
-          (lead: Doc<"leads">) =>
-            !FINAL_ANALYSIS_STATUSES.has(lead.analysisStatus ?? ""),
-        );
-
-        if (activeLeads.length > 0) {
-          continue;
-        }
 
         results.completions.completionsScheduled++;
 
         logWithCorrelation(
           "info",
           correlation,
-          "🏁 All leads complete - scheduling search completion",
+          "🏁 Write Emails complete - scheduling search completion",
           {
             searchId: search._id,
-            analyzedLeads: finishedLeads.length,
+            reason: readiness.reason,
+            total: readiness.total,
           },
         );
 
