@@ -1341,7 +1341,14 @@ export const evaluateAnalysisRecoveryNeed = internalQuery({
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
       .collect();
 
-    if (!isAllEnrichmentTerminal(leads)) {
+    const pendingLinked = await ctx.db
+      .query("searchLinkedLeads")
+      .withIndex("by_search_status", (q) =>
+        q.eq("searchId", args.searchId).eq("status", "pending"),
+      )
+      .take(1);
+
+    if (!isAllEnrichmentTerminal(leads) || pendingLinked.length > 0) {
       return { shouldScheduleDirect: false, reason: "enrichment_incomplete" };
     }
 
@@ -1390,14 +1397,58 @@ export const tryTriggerAnalysisPhase = internalMutation({
     searchId: v.id("searches"),
   },
   handler: async (ctx, args) => {
-    // Get all leads for this search
+    const pendingLinked = await ctx.db
+      .query("searchLinkedLeads")
+      .withIndex("by_search_status", (q) =>
+        q.eq("searchId", args.searchId).eq("status", "pending"),
+      )
+      .take(1);
+
+    if (pendingLinked.length > 0) {
+      return false;
+    }
+
+    // Get all native leads for this search
     const allLeads = await ctx.db
       .query("leads")
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
       .collect();
 
     if (allLeads.length === 0) {
-      return false; // No leads to analyze
+      if (!isMultiContactPipelineEnabled()) {
+        return false;
+      }
+
+      const acceptedSample = await ctx.db
+        .query("leadContacts")
+        .withIndex("by_search_status", (q) =>
+          q.eq("searchId", args.searchId).eq("status", "accepted"),
+        )
+        .take(1);
+
+      if (acceptedSample.length === 0) {
+        return false;
+      }
+
+      const completion = await getAnalysisCompletionState(ctx, args.searchId);
+
+      if (completion.inProgress > 0) {
+        return false;
+      }
+
+      if (completion.isComplete) {
+        return false;
+      }
+
+      const workRemaining = completion.pending + completion.failed;
+      if (workRemaining === 0) {
+        return false;
+      }
+
+      console.log(
+        `[Analysis Trigger] Search ${args.searchId}: ${workRemaining} linked-business contacts pending Write Emails`,
+      );
+      return true;
     }
 
     const analysisStatusCounts = {

@@ -26,6 +26,7 @@ import {
   type ApiError,
 } from "../lib/apiErrors";
 import { normalizeAddress } from "../lib/deduplication";
+import { shouldEndDiscoveryWithoutEnrichment } from "../lib/searchAnalysisRecovery";
 // Note: This action can be scheduled by the orchestrator (no user auth).
 
 const METERS_PER_MILE = 1609.34;
@@ -1787,8 +1788,8 @@ export const searchGoogleMaps: any = action({
         },
       );
 
-      // If no leads found, complete the search immediately
-      if (deliveredLeads === 0) {
+      // If nothing was discovered or linked, complete immediately
+      if (shouldEndDiscoveryWithoutEnrichment(deliveredLeads, pipelineLeadCount)) {
         logWithCorrelation(
           "warn",
           correlation,
@@ -1847,7 +1848,9 @@ export const searchGoogleMaps: any = action({
             correlation,
             "🔄 PHASE TRANSITION: Triggering Phase 2 (Lead Enrichment)",
             {
-              leadsToEnrich: deliveredLeads,
+              leadsToEnrich: pipelineLeadCount,
+              newLeads: deliveredLeads,
+              linkedLeads: pipelineLeadCount - deliveredLeads,
               schedulingDelay: "immediate",
             },
           );

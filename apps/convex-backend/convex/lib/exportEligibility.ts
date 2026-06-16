@@ -372,6 +372,7 @@ export type ExportableCountSummary = {
   priorSearchExportable: number;
   duplicateSkips: number;
   linkedForReenrichment: number;
+  acceptedContacts: number;
 };
 
 export async function countExportableSummaryForSearch(
@@ -409,6 +410,7 @@ export async function countExportableSummaryForSearch(
         .withIndex("by_search", (q) => q.eq("searchId", searchId))
         .collect()
     ).length,
+    acceptedContacts: resolution.contacts.length,
   };
 }
 
@@ -437,6 +439,7 @@ export async function countExportableSummary(
     priorSearchExportable: 0,
     duplicateSkips: 0,
     linkedForReenrichment: 0,
+    acceptedContacts: contacts.length,
   };
 }
 

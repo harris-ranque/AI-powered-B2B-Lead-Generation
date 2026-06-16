@@ -38,6 +38,14 @@ export function hasPendingEnrichment(
   );
 }
 
+/** Discovery should only end without enrichment when nothing was discovered or linked. */
+export function shouldEndDiscoveryWithoutEnrichment(
+  deliveredLeads: number,
+  pipelineLeadCount: number,
+): boolean {
+  return pipelineLeadCount === 0;
+}
+
 /** Failed searches that timed out with analysis never started. */
 export function isFailedSearchAnalysisTimeout(error?: string): boolean {
   if (!error) {

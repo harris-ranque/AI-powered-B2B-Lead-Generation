@@ -3,6 +3,19 @@ import type { Id } from "../_generated/dataModel";
 import { getAnalysisCompletionState } from "./analysisProgress";
 import { isAllEnrichmentTerminal } from "./searchAnalysisRecovery";
 
+async function hasPendingLinkedEnrichment(
+  ctx: QueryCtx,
+  searchId: Id<"searches">,
+): Promise<boolean> {
+  const pending = await ctx.db
+    .query("searchLinkedLeads")
+    .withIndex("by_search_status", (q) =>
+      q.eq("searchId", searchId).eq("status", "pending"),
+    )
+    .take(1);
+  return pending.length > 0;
+}
+
 export type SearchCompletionReadiness = {
   ready: boolean;
   reason: string;
@@ -35,10 +48,14 @@ export async function getSearchAnalysisCompletionReadiness(
     .withIndex("by_search", (q) => q.eq("searchId", searchId))
     .collect();
 
-  if (!isAllEnrichmentTerminal(leads)) {
+  const linkedEnrichmentPending = await hasPendingLinkedEnrichment(ctx, searchId);
+
+  if (!isAllEnrichmentTerminal(leads) || linkedEnrichmentPending) {
     return {
       ready: false,
-      reason: "enrichment_incomplete",
+      reason: linkedEnrichmentPending
+        ? "linked_enrichment_incomplete"
+        : "enrichment_incomplete",
       inProgress: 0,
       total: 0,
       isComplete: false,
