@@ -25,6 +25,7 @@ export type ContactAcceptanceResult = {
   accepted: boolean;
   rejectionReason?:
     | "title_mismatch"
+    | "missing_title"
     | "domain_mismatch"
     | "email_unverified"
     | "duplicate_email"
@@ -178,6 +179,17 @@ export function resolveContactTitleForStorage(
   return trimmedTitle || undefined;
 }
 
+/** Best displayable title for storage/export after provider + match fallbacks. */
+export function resolveDisplayableContactTitle(input: {
+  providerTitle?: string;
+  matchedRole?: string;
+  sourceRole?: string;
+}): string | undefined {
+  return resolveContactTitleForStorage(
+    input.providerTitle ?? input.matchedRole ?? input.sourceRole,
+  );
+}
+
 export function evaluateContactCandidate(
   candidate: ContactCandidateInput,
   options: {
@@ -285,6 +297,23 @@ export function evaluateContactCandidate(
     return {
       accepted: false,
       rejectionReason: "title_mismatch",
+      emailVerified,
+      domainMatchVerified,
+      normalizedEmail,
+      titleMatchScore: titleMatch.score,
+      titleMatchReason: titleMatch.reason,
+    };
+  }
+
+  const displayableTitle = resolveDisplayableContactTitle({
+    providerTitle,
+    matchedRole: titleMatch.matchedRole,
+    sourceRole: options.sourceRole,
+  });
+  if (!displayableTitle) {
+    return {
+      accepted: false,
+      rejectionReason: "missing_title",
       emailVerified,
       domainMatchVerified,
       normalizedEmail,

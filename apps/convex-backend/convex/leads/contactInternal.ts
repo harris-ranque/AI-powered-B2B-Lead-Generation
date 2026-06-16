@@ -2,7 +2,7 @@ import { internalMutation, internalQuery, type MutationCtx } from "../_generated
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { extractPrimaryEmail } from "../lib/deduplication";
-import { evaluateContactCandidate, extractProviderTitle, resolveContactTitleForStorage } from "../lib/contactAcceptance";
+import { evaluateContactCandidate, extractProviderTitle, resolveDisplayableContactTitle } from "../lib/contactAcceptance";
 import { slimContactAiAnalysisForStorage } from "../lib/contactAnalysisStorage";
 import { extractDomainFromWebsite } from "../lib/contactVerification";
 import { resolveEnrichmentRoles } from "../lib/enrichmentRoles";
@@ -123,6 +123,7 @@ export const upsertLeadContact = internalMutation({
     rejectionReason: v.optional(
       v.union(
         v.literal("title_mismatch"),
+        v.literal("missing_title"),
         v.literal("domain_mismatch"),
         v.literal("email_unverified"),
         v.literal("duplicate_email"),
@@ -547,13 +548,21 @@ export const processMultiContactEnrichment = internalMutation({
         title: candidate.title,
         raw: candidate.raw,
       });
-      const storedTitle = resolveContactTitleForStorage(
-        providerTitle ?? evaluation.matchedRole ?? candidate.sourceRole,
-      );
+      const storedTitle = resolveDisplayableContactTitle({
+        providerTitle,
+        matchedRole: evaluation.matchedRole,
+        sourceRole: candidate.sourceRole,
+      });
 
-      const status: "accepted" | "rejected" = evaluation.accepted
+      const acceptedForStorage =
+        evaluation.accepted && Boolean(storedTitle);
+      const status: "accepted" | "rejected" = acceptedForStorage
         ? "accepted"
         : "rejected";
+      const rejectionReason = acceptedForStorage
+        ? undefined
+        : evaluation.rejectionReason ??
+          (evaluation.accepted ? "missing_title" : undefined);
 
       const normalizedEmail =
         evaluation.normalizedEmail ?? candidate.email.toLowerCase().trim();
@@ -583,7 +592,7 @@ export const processMultiContactEnrichment = internalMutation({
         emailVerified: evaluation.emailVerified,
         domainMatchVerified: evaluation.domainMatchVerified,
         status,
-        rejectionReason: evaluation.rejectionReason,
+        rejectionReason,
         updatedAt: Date.now(),
       };
 
@@ -591,7 +600,7 @@ export const processMultiContactEnrichment = internalMutation({
         await ctx.db.patch(existingContact._id, {
           ...contactData,
           analysisStatus:
-            evaluation.accepted
+            acceptedForStorage
               ? existingContact.analysisStatus === "completed"
                 ? "completed"
                 : "pending"
@@ -600,12 +609,12 @@ export const processMultiContactEnrichment = internalMutation({
       } else {
         await ctx.db.insert("leadContacts", {
           ...contactData,
-          analysisStatus: evaluation.accepted ? "pending" : "skipped",
+          analysisStatus: acceptedForStorage ? "pending" : "skipped",
           createdAt: Date.now(),
         });
       }
 
-      if (evaluation.accepted && evaluation.normalizedEmail) {
+      if (acceptedForStorage && evaluation.normalizedEmail) {
         acceptedEmails.add(evaluation.normalizedEmail);
         acceptedCount += 1;
         acceptedForDualWrite.push({

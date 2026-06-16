@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractContactDetails,
   hasWrittenEmail,
+  formatExportPhone,
   isContactEmailExportable,
   isContactExportable,
   isContactFullyExportable,
@@ -127,7 +128,7 @@ describe("exportEligibility", () => {
     ).toBe(false);
   });
 
-  it("requires title, phone, and research for full CSV export", () => {
+  it("requires title and research for full CSV export (phone optional)", () => {
     const baseContact = {
       email: "alex@company.com",
       analysisStatus: "completed",
@@ -156,31 +157,31 @@ describe("exportEligibility", () => {
 
     expect(
       isContactFullyExportable(baseContact, {
-        leadPhone: "+1 555-0100",
         companyResearchPayload: researchPayload,
       }),
     ).toBe(true);
     expect(
       isContactExportable(baseContact, {
-        leadPhone: "+1 555-0100",
         companyResearchPayload: researchPayload,
       }),
     ).toBe(true);
     expect(
       isContactFullyExportable(baseContact, {
-        leadPhone: "",
         companyResearchPayload: researchPayload,
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isContactFullyExportable(
         { ...baseContact, title: "" },
-        {
-          leadPhone: "+1 555-0100",
-          companyResearchPayload: researchPayload,
-        },
+        { companyResearchPayload: researchPayload },
       ),
     ).toBe(false);
+  });
+
+  it("formatExportPhone uses placeholder when phone is missing", () => {
+    expect(formatExportPhone(undefined)).toBe("phone number not available.");
+    expect(formatExportPhone("  ")).toBe("phone number not available.");
+    expect(formatExportPhone("+1 555-0100")).toBe("+1 555-0100");
   });
 
   it("extractProviderTitle reads job title from raw payload", () => {

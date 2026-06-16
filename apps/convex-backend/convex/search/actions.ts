@@ -696,23 +696,6 @@ export const searchGoogleMaps: any = action({
         // END ADDRESS DEDUPLICATION
         // ========================================================================
 
-        const discoveryPhone =
-          detailedPlace.international_phone_number ||
-          detailedPlace.formatted_phone_number;
-        if (!discoveryPhone?.trim()) {
-          logWithCorrelation(
-            "debug",
-            discoveryCorrelation,
-            "⏭️ Skipping lead without phone from Google Places",
-            {
-              placeId: place.place_id,
-              businessName: detailedPlace.name || "Unknown",
-              reason: "no_phone",
-            },
-          );
-          return;
-        }
-
         const leadResult = await ctx.runMutation(
           internal.leads.internal.createLeadInternal,
           {
@@ -741,7 +724,10 @@ export const searchGoogleMaps: any = action({
                 country: country ?? undefined,
                 postalCode: postalCode ?? undefined,
               },
-              phone: discoveryPhone.trim(),
+              phone:
+                detailedPlace.international_phone_number ||
+                detailedPlace.formatted_phone_number ||
+                undefined,
               website: detailedPlace.website, // Always has value due to filter above
               rating: detailedPlace.rating || undefined,
               reviewCount: detailedPlace.user_ratings_total || undefined,

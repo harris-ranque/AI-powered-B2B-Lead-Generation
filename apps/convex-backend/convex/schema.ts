@@ -663,6 +663,7 @@ export default defineSchema({
     rejectionReason: v.optional(
       v.union(
         v.literal("title_mismatch"),
+        v.literal("missing_title"),
         v.literal("domain_mismatch"),
         v.literal("email_unverified"),
         v.literal("duplicate_email"),

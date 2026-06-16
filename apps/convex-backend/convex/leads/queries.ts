@@ -6,6 +6,7 @@ import {
   countExportableLeads,
   countExportableSummaryForSearch,
   filterFullyExportableContacts,
+  formatExportPhone,
   resolveContactExportTitle,
   resolveSearchExportData,
 } from "../lib/exportEligibility";
@@ -190,7 +191,7 @@ export const exportLeads = query({
           contactName: contact.name,
           title: resolveContactExportTitle(contact),
           address: lead.location.formattedAddress,
-          phone: lead.phone || "",
+          phone: formatExportPhone(lead.phone),
           website: lead.website || "",
           email: contact.email,
           rating: lead.rating || 0,

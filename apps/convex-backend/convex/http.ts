@@ -21,6 +21,7 @@ import {
   isContactEmailExportable,
   isContactFullyExportable,
   noExportableLeadsMessage,
+  formatExportPhone,
   resolveContactExportTitle,
 } from "./lib/exportEligibility";
 import { resolveExportResearchFields } from "./lib/exportResearchFields";
@@ -1120,7 +1121,7 @@ http.route({
           contactDetails.fullName,
           contactDetails.email,
           contactTitle,
-          lead.phone ?? "",
+          formatExportPhone(lead.phone),
           lead.category ?? "",
           primarySubject,
           primaryBody,
@@ -1165,7 +1166,6 @@ http.route({
             ? companyResearchById.get(String(contact.companyResearchId))
             : undefined;
           return isContactFullyExportable(contact, {
-            leadPhone: lead?.phone,
             companyResearchPayload,
           });
         });

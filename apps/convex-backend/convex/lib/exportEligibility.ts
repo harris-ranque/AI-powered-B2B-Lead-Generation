@@ -1,7 +1,7 @@
 import type { GenericDatabaseReader } from "convex/server";
 import type { DataModel } from "../_generated/dataModel";
 import type { Id } from "../_generated/dataModel";
-import { resolveContactTitleForStorage } from "./contactAcceptance";
+import { resolveDisplayableContactTitle } from "./contactAcceptance";
 import {
   hasCompleteExportResearch,
   resolveExportResearchFields,
@@ -122,17 +122,24 @@ export type ExportableContact = {
 };
 
 export type ContactExportContext = {
-  leadPhone?: string;
   companyResearchPayload?: unknown;
 };
+
+export const PHONE_UNAVAILABLE_LABEL = "phone number not available.";
+
+export function formatExportPhone(phone?: string): string {
+  const trimmed = phone?.trim();
+  return trimmed ? trimmed : PHONE_UNAVAILABLE_LABEL;
+}
 
 export function resolveContactExportTitle(contact: {
   title?: string;
   matchedRole?: string;
 }): string {
-  return (
-    resolveContactTitleForStorage(contact.title ?? contact.matchedRole) ?? ""
-  );
+  return resolveDisplayableContactTitle({
+    providerTitle: contact.title,
+    matchedRole: contact.matchedRole,
+  }) ?? "";
 }
 
 /** Email + written content complete (pipeline milestone, not full CSV row). */
@@ -155,7 +162,7 @@ export function isContactEmailExportable(contact: ExportableContact): boolean {
   );
 }
 
-/** Full CSV row: email content, title, phone, and complete research fields. */
+/** Full CSV row: email content, title, and complete research fields. Phone is optional. */
 export function isContactFullyExportable(
   contact: ExportableContact,
   context?: ContactExportContext,
@@ -164,9 +171,6 @@ export function isContactFullyExportable(
     return false;
   }
   if (!resolveContactExportTitle(contact).trim()) {
-    return false;
-  }
-  if (!context?.leadPhone?.trim()) {
     return false;
   }
   const leadAnalysis = contact.aiAnalysis?.leadAnalysis;
@@ -190,11 +194,7 @@ type LeadContactDoc = DataModel["leadContacts"]["document"];
 async function loadExportContextForContacts(
   ctx: { db: GenericDatabaseReader<DataModel> },
   contacts: LeadContactDoc[],
-): Promise<{
-  leadPhoneByLeadId: Map<string, string | undefined>;
-  researchById: Map<string, unknown>;
-}> {
-  const leadPhoneByLeadId = new Map<string, string | undefined>();
+): Promise<Map<string, unknown>> {
   const researchById = new Map<string, unknown>();
 
   const researchIds = new Set<string>();
@@ -211,43 +211,26 @@ async function loadExportContextForContacts(
     }
   }
 
-  const leadIdsToLoad = new Set<string>();
-  for (const contact of contacts) {
-    leadIdsToLoad.add(String(contact.leadId));
-  }
-
-  for (const leadId of leadIdsToLoad) {
-    const lead = await ctx.db.get(leadId as Id<"leads">);
-    leadPhoneByLeadId.set(leadId, lead?.phone);
-  }
-
-  return { leadPhoneByLeadId, researchById };
+  return researchById;
 }
 
 function isContactDocFullyExportable(
   contact: LeadContactDoc,
-  leadPhoneByLeadId: Map<string, string | undefined>,
   researchById: Map<string, unknown>,
 ): boolean {
   const companyResearchPayload = contact.companyResearchId
     ? researchById.get(String(contact.companyResearchId))
     : undefined;
-  return isContactFullyExportable(contact, {
-    leadPhone: leadPhoneByLeadId.get(String(contact.leadId)),
-    companyResearchPayload,
-  });
+  return isContactFullyExportable(contact, { companyResearchPayload });
 }
 
 export async function filterFullyExportableContacts(
   ctx: { db: GenericDatabaseReader<DataModel> },
   contacts: LeadContactDoc[],
 ): Promise<LeadContactDoc[]> {
-  const { leadPhoneByLeadId, researchById } = await loadExportContextForContacts(
-    ctx,
-    contacts,
-  );
+  const researchById = await loadExportContextForContacts(ctx, contacts);
   return contacts.filter((contact) =>
-    isContactDocFullyExportable(contact, leadPhoneByLeadId, researchById),
+    isContactDocFullyExportable(contact, researchById),
   );
 }
 

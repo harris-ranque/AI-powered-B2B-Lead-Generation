@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateContactCandidate,
   extractProviderTitle,
+  resolveDisplayableContactTitle,
   scoreTitleAgainstRoles,
   TITLE_MATCH_ACCEPT_THRESHOLD,
 } from "../../convex/lib/contactAcceptance";
@@ -54,6 +55,12 @@ describe("contactAcceptance", () => {
     expect(result.accepted).toBe(true);
     expect(result.emailVerified).toBe(true);
     expect(result.domainMatchVerified).toBe(true);
+    expect(
+      resolveDisplayableContactTitle({
+        matchedRole: result.matchedRole,
+        sourceRole: "CEO",
+      }),
+    ).toBeTruthy();
   });
 
   it("rejects provider title that does not match requested roles", () => {
@@ -162,6 +169,26 @@ describe("contactAcceptance", () => {
 
     expect(result.accepted).toBe(false);
     expect(result.rejectionReason).toBe("duplicate_email");
+  });
+
+  it("resolveDisplayableContactTitle prefers provider title then matchedRole then sourceRole", () => {
+    expect(
+      resolveDisplayableContactTitle({
+        providerTitle: "CMO",
+        matchedRole: "CEO",
+        sourceRole: "Owner",
+      }),
+    ).toBe("CMO");
+    expect(
+      resolveDisplayableContactTitle({
+        matchedRole: "VP Marketing",
+        sourceRole: "Marketing",
+      }),
+    ).toBe("VP Marketing");
+    expect(
+      resolveDisplayableContactTitle({ sourceRole: "CEO" }),
+    ).toBe("CEO");
+    expect(resolveDisplayableContactTitle({})).toBeUndefined();
   });
 
   it("accepts related marketing decision-makers when user requested Marketing Manager", () => {
