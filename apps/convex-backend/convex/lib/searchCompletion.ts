@@ -1,10 +1,12 @@
-import type { QueryCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { getAnalysisCompletionState } from "./analysisProgress";
 import { isAllEnrichmentTerminal } from "./searchAnalysisRecovery";
 
+type CompletionCtx = QueryCtx | MutationCtx;
+
 async function hasPendingLinkedEnrichment(
-  ctx: QueryCtx,
+  ctx: CompletionCtx,
   searchId: Id<"searches">,
 ): Promise<boolean> {
   const pending = await ctx.db
@@ -14,6 +16,47 @@ async function hasPendingLinkedEnrichment(
     )
     .take(1);
   return pending.length > 0;
+}
+
+/** Whether enrichment finished for native leads and linked re-enrichment queue. */
+export async function isSearchEnrichmentComplete(
+  ctx: CompletionCtx,
+  searchId: Id<"searches">,
+): Promise<boolean> {
+  const leads = await ctx.db
+    .query("leads")
+    .withIndex("by_search", (q) => q.eq("searchId", searchId))
+    .collect();
+
+  const linkedEnrichmentPending = await hasPendingLinkedEnrichment(ctx, searchId);
+  const nativeEnrichmentTerminal =
+    leads.length === 0 || isAllEnrichmentTerminal(leads);
+
+  return nativeEnrichmentTerminal && !linkedEnrichmentPending;
+}
+
+export async function scheduleSearchCompletionIfReady(
+  ctx: MutationCtx,
+  searchId: Id<"searches">,
+): Promise<{ scheduled: boolean; reason: string }> {
+  const readiness = await getSearchAnalysisCompletionReadiness(ctx, searchId);
+  if (!readiness.ready) {
+    return { scheduled: false, reason: readiness.reason };
+  }
+
+  const search = await ctx.db.get(searchId);
+  if (
+    !search ||
+    (search.status !== "processing" && search.status !== "in_progress")
+  ) {
+    return { scheduled: false, reason: "search_not_processing" };
+  }
+
+  await ctx.scheduler.runAfter(0, "search/actions:completeSearch" as any, {
+    searchId,
+  });
+
+  return { scheduled: true, reason: readiness.reason };
 }
 
 export type SearchCompletionReadiness = {
@@ -43,14 +86,11 @@ export async function getSearchAnalysisCompletionReadiness(
     };
   }
 
-  const leads = await ctx.db
-    .query("leads")
-    .withIndex("by_search", (q) => q.eq("searchId", searchId))
-    .collect();
-
-  const linkedEnrichmentPending = await hasPendingLinkedEnrichment(ctx, searchId);
-
-  if (!isAllEnrichmentTerminal(leads) || linkedEnrichmentPending) {
+  if (!await isSearchEnrichmentComplete(ctx, searchId)) {
+    const linkedEnrichmentPending = await hasPendingLinkedEnrichment(
+      ctx,
+      searchId,
+    );
     return {
       ready: false,
       reason: linkedEnrichmentPending

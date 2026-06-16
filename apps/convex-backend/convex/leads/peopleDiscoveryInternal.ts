@@ -3,18 +3,55 @@ import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { normalizeCompanyResearchPayload } from "../lib/companyResearchCache";
 
+/**
+ * Native new leads on this search plus linked prior-account businesses queued
+ * for re-enrichment (duplicate address/place re-runs with new roles).
+ */
 export const getLeadsForPeopleDiscovery = internalQuery({
   args: { searchId: v.id("searches") },
   handler: async (ctx, args) => {
-    const leads = await ctx.db
+    const nativeLeads = await ctx.db
       .query("leads")
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
       .collect();
 
-    return leads.filter(
-      (lead) =>
-        lead.sourceType === "new" || lead.sourceType === undefined,
+    const newNativeLeads = nativeLeads.filter(
+      (lead) => lead.sourceType === "new" || lead.sourceType === undefined,
     );
+
+    const pendingLinks = await ctx.db
+      .query("searchLinkedLeads")
+      .withIndex("by_search_status", (q) =>
+        q.eq("searchId", args.searchId).eq("status", "pending"),
+      )
+      .collect();
+
+    const nativeIds = new Set(newNativeLeads.map((lead) => String(lead._id)));
+    const linkedLeads: Doc<"leads">[] = [];
+
+    for (const link of pendingLinks) {
+      if (nativeIds.has(String(link.leadId))) {
+        continue;
+      }
+      const lead = await ctx.db.get(link.leadId);
+      if (lead) {
+        linkedLeads.push(lead);
+      }
+    }
+
+    const seen = new Set<string>();
+    const result: Doc<"leads">[] = [];
+
+    for (const lead of [...newNativeLeads, ...linkedLeads]) {
+      const id = String(lead._id);
+      if (seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
+      result.push(lead);
+    }
+
+    return result;
   },
 });
 

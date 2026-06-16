@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { Doc } from "../_generated/dataModel";
 import { withUpdatedAtIfSupported, isUpdatedAtSchemaError } from "./utils";
 import { countExportableSummaryForSearch } from "../lib/exportEligibility";
-import { getSearchAnalysisCompletionReadiness } from "../lib/searchCompletion";
+import { getSearchAnalysisCompletionReadiness, scheduleSearchCompletionIfReady } from "../lib/searchCompletion";
 import { getAnalysisCompletionState } from "../lib/analysisProgress";
 import { computeAnalysisCreditBreakdown } from "../lib/helpers";
 
@@ -572,5 +572,13 @@ export const updateSearchExpandedRolePatterns = internalMutation({
       };
       await ctx.db.patch(args.searchId, patchWithoutTimestamp);
     }
+  },
+});
+
+/** Finalize search when enrichment finished but there is nothing to analyze. */
+export const tryScheduleSearchCompletion = internalMutation({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    return await scheduleSearchCompletionIfReady(ctx, args.searchId);
   },
 });

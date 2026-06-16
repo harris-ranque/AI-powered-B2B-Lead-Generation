@@ -23,6 +23,65 @@ import { internalMutation, internalQuery, type MutationCtx } from "../_generated
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
+import { scheduleSearchCompletionIfReady } from "../lib/searchCompletion";
+
+async function triggerAnalysisOrCompleteSearch(
+  ctx: MutationCtx,
+  searchId: Id<"searches">,
+  batchId: string,
+  triggeredBy: string,
+): Promise<void> {
+  const shouldTriggerAnalysis = await ctx.runMutation(
+    internal.leads.internal.tryTriggerAnalysisPhase,
+    { searchId },
+  );
+
+  if (shouldTriggerAnalysis) {
+    console.log(`[Workpool] Analysis phase triggered for search ${searchId}`);
+
+    try {
+      await ctx.scheduler.runAfter(
+        0,
+        (internal as any)["leads/actions"].analyzeLeads,
+        { searchId },
+      );
+      console.log(
+        `[Workpool] ✅ Analysis scheduled successfully for search ${searchId}`,
+      );
+    } catch (scheduleError) {
+      const scheduleErrorMsg =
+        scheduleError instanceof Error
+          ? scheduleError.message
+          : String(scheduleError);
+      console.error(
+        `[Workpool] ❌ Failed to schedule analysis for search ${searchId}: ${scheduleErrorMsg}`,
+      );
+
+      await ctx.runMutation(
+        internal.leads.deadLetterQueue.recordFailedOperation,
+        {
+          operationType: "analysis_trigger",
+          searchId,
+          error: `Analysis scheduling failed: ${scheduleErrorMsg}`,
+          context: { batchId, triggeredBy },
+          maxRetries: 5,
+        },
+      );
+    }
+    return;
+  }
+
+  const completion = await scheduleSearchCompletionIfReady(ctx, searchId);
+  if (completion.scheduled) {
+    console.log(
+      `[Workpool] ✅ Search completion scheduled for ${searchId} (${completion.reason})`,
+    );
+  } else {
+    console.log(
+      `[Workpool] Analysis not triggered for search ${searchId} (${completion.reason})`,
+    );
+  }
+}
 
 function isEnrichmentReturnSuccessful(returnValue: unknown): boolean {
   if (!returnValue || typeof returnValue !== "object") {
@@ -336,40 +395,7 @@ export const onEnrichmentComplete = internalMutation({
         );
 
         // Use the existing tryTriggerAnalysisPhase for race-safe transition
-        const shouldTriggerAnalysis = await ctx.runMutation(
-          internal.leads.internal.tryTriggerAnalysisPhase,
-          { searchId }
-        );
-
-        if (shouldTriggerAnalysis) {
-          console.log(`[Workpool] Analysis phase triggered for search ${searchId}`);
-
-          // Schedule the analysis phase with DLQ fallback for guaranteed delivery
-          try {
-            await ctx.scheduler.runAfter(
-              0,
-              (internal as any)["leads/actions"].analyzeLeads,
-              { searchId }
-            );
-            console.log(`[Workpool] ✅ Analysis scheduled successfully for search ${searchId}`);
-          } catch (scheduleError) {
-            // CRITICAL: Analysis scheduling failed - record to DLQ for retry
-            const scheduleErrorMsg = scheduleError instanceof Error ? scheduleError.message : String(scheduleError);
-            console.error(
-              `[Workpool] ❌ Failed to schedule analysis for search ${searchId}: ${scheduleErrorMsg}`
-            );
-
-            await ctx.runMutation(internal.leads.deadLetterQueue.recordFailedOperation, {
-              operationType: "analysis_trigger",
-              searchId,
-              error: `Analysis scheduling failed: ${scheduleErrorMsg}`,
-              context: { batchId, triggeredBy: "workpool_onComplete" },
-              maxRetries: 5,
-            });
-          }
-        } else {
-          console.log(`[Workpool] Analysis already triggered for search ${searchId}`);
-        }
+        await triggerAnalysisOrCompleteSearch(ctx, searchId, batchId, "workpool_onComplete");
 
         // Calculate and log final stats
         const duration = Date.now() - batch.startedAt;
@@ -490,9 +516,22 @@ export const reportQueuedLeadCompletion = internalMutation({
           }
 
           return { updated: false, reason: "no_running_batch_analysis_triggered" };
-        } else {
-          console.log(`[Workpool] Analysis not needed or already triggered for search ${args.searchId}`);
         }
+
+        const completion = await scheduleSearchCompletionIfReady(ctx, args.searchId);
+        if (completion.scheduled) {
+          console.log(
+            `[Workpool] ✅ Search completion scheduled for ${args.searchId} (${completion.reason})`,
+          );
+          return {
+            updated: false,
+            reason: "no_running_batch_completion_scheduled",
+          };
+        }
+
+        console.log(
+          `[Workpool] Analysis not needed for search ${args.searchId} (${completion.reason})`,
+        );
 
         return { updated: false, reason: "no_running_batch" };
       }
@@ -551,40 +590,12 @@ export const reportQueuedLeadCompletion = internalMutation({
         );
 
         // Use the existing tryTriggerAnalysisPhase for race-safe transition
-        const shouldTriggerAnalysis = await ctx.runMutation(
-          internal.leads.internal.tryTriggerAnalysisPhase,
-          { searchId: args.searchId }
+        await triggerAnalysisOrCompleteSearch(
+          ctx,
+          args.searchId,
+          batch.batchId,
+          "queued_lead_completion",
         );
-
-        if (shouldTriggerAnalysis) {
-          console.log(`[Workpool] Analysis phase triggered for search ${args.searchId}`);
-
-          // Schedule the analysis phase with DLQ fallback for guaranteed delivery
-          try {
-            await ctx.scheduler.runAfter(
-              0,
-              (internal as any)["leads/actions"].analyzeLeads,
-              { searchId: args.searchId }
-            );
-            console.log(`[Workpool] ✅ Analysis scheduled successfully for search ${args.searchId}`);
-          } catch (scheduleError) {
-            // CRITICAL: Analysis scheduling failed - record to DLQ for retry
-            const scheduleErrorMsg = scheduleError instanceof Error ? scheduleError.message : String(scheduleError);
-            console.error(
-              `[Workpool] ❌ Failed to schedule analysis for search ${args.searchId}: ${scheduleErrorMsg}`
-            );
-
-            await ctx.runMutation(internal.leads.deadLetterQueue.recordFailedOperation, {
-              operationType: "analysis_trigger",
-              searchId: args.searchId,
-              error: `Analysis scheduling failed: ${scheduleErrorMsg}`,
-              context: { batchId: batch.batchId, triggeredBy: "queued_lead_completion" },
-              maxRetries: 5,
-            });
-          }
-        } else {
-          console.log(`[Workpool] Analysis already triggered for search ${args.searchId}`);
-        }
       }
 
       return { updated: true, isComplete, progressPercent };

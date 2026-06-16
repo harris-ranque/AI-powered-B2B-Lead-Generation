@@ -27,7 +27,7 @@ type DiscoverPeopleApiPerson = {
 };
 
 /**
- * Orchestrate people discovery for all native leads on a search (Phase 2A).
+ * Orchestrate people discovery for native and linked re-enrichment leads (Phase 2A).
  */
 export const discoverPeopleForSearch = internalAction({
   args: {
