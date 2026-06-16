@@ -469,3 +469,42 @@ export const trackDuplicateMetric = internalMutation({
     }
   },
 });
+
+export const updateSearchExpandedRolePatterns = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    expandedRolePatterns: v.array(v.string()),
+    roleExpansionSource: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      return;
+    }
+
+    const now = Date.now();
+    const patch = withUpdatedAtIfSupported(
+      {
+        parameters: {
+          ...search.parameters,
+          expandedRolePatterns: args.expandedRolePatterns,
+          roleExpansionSource: args.roleExpansionSource,
+        },
+      },
+      search,
+      now,
+    );
+
+    try {
+      await ctx.db.patch(args.searchId, patch);
+    } catch (error) {
+      if (!isUpdatedAtSchemaError(error)) {
+        throw error;
+      }
+      const { updatedAt: _unused, ...patchWithoutTimestamp } = patch as typeof patch & {
+        updatedAt?: number;
+      };
+      await ctx.db.patch(args.searchId, patchWithoutTimestamp);
+    }
+  },
+});

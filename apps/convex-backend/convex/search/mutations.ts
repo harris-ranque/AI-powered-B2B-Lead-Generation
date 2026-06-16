@@ -200,6 +200,9 @@ export const createSearchCompleted = mutation({
       });
     }
 
+    const user = await requireAuth(ctx);
+    const sanitizedRoles = sanitizeRoles(args.parameters.roles);
+
     const searchId = await withSubscriptionCheck(
       ctx.db,
       identity,
@@ -220,15 +223,11 @@ export const createSearchCompleted = mutation({
         }
 
         // Use adjusted max leads if necessary (using extracted pure function)
-        const sanitizedRoles = sanitizeRoles(args.parameters.roles);
-
         const adjustedParameters = {
           ...args.parameters,
           maxResults: validation.adjustedMaxLeads || args.parameters.maxResults,
           roles: sanitizedRoles,
         };
-
-        const user = await requireAuth(ctx);
 
         // NOTE: Plan-based restrictions removed - all users can create searches (limited only by credits)
 
@@ -293,6 +292,17 @@ export const createSearchCompleted = mutation({
         }
       },
     );
+
+    if (sanitizedRoles.length > 0) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.search.roleExpansionActions.expandSearchRolePatterns,
+        {
+          searchId,
+          userId: user._id,
+        },
+      );
+    }
 
     // If autoStart is true, schedule the orchestration
     if (args.autoStart) {

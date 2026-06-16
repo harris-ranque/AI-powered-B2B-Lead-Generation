@@ -112,6 +112,8 @@ export default defineSchema({
       excludeTerms: v.optional(v.array(v.string())),
       roles: v.optional(v.array(v.string())),
       expandRelatedRoles: v.optional(v.boolean()),
+      expandedRolePatterns: v.optional(v.array(v.string())),
+      roleExpansionSource: v.optional(v.string()),
       minRating: v.optional(v.number()),
       maxResults: v.number(),
       // Legacy filters field for backwards compatibility with old search records

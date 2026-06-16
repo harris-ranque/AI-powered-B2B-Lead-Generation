@@ -72,6 +72,8 @@ export interface EnrichmentOptions {
   enableRoleExpansion?: boolean;
   /** Max contacts per role/pattern request (multi-contact default: 5) */
   limit?: number;
+  /** Pre-expanded role patterns (static + AI) for FindyMail per-role fetch */
+  rolePatterns?: string[];
 }
 
 export interface EnrichmentProviderInterface {

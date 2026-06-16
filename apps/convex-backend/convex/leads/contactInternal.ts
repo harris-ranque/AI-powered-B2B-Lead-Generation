@@ -426,6 +426,7 @@ export const processMultiContactEnrichment = internalMutation({
     companyWebsite: v.optional(v.string()),
     enrichmentResult: v.any(),
     enableRoleExpansion: v.boolean(),
+    roleMatchPatterns: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const acceptedEmails = new Set(
@@ -535,6 +536,7 @@ export const processMultiContactEnrichment = internalMutation({
           requireVerifiedEmail: true,
           fromRoleContact: candidate.fromRoleContact,
           sourceRole: candidate.sourceRole,
+          roleMatchPatterns: args.roleMatchPatterns,
         },
       );
 
@@ -803,6 +805,27 @@ export const saveCompanyResearchFromWebhook = internalMutation({
     }
 
     return companyResearchId;
+  },
+});
+
+/** Batch-load company research payloads for CSV export. */
+export const getCompanyResearchPayloadsForExport = internalQuery({
+  args: { ids: v.array(v.id("companyResearch")) },
+  handler: async (ctx, args) => {
+    const rows: Array<{
+      _id: Id<"companyResearch">;
+      researchPayload: unknown;
+    }> = [];
+
+    for (const id of args.ids) {
+      const doc = await ctx.db.get(id);
+      if (!doc || doc.status !== "completed") {
+        continue;
+      }
+      rows.push({ _id: doc._id, researchPayload: doc.researchPayload });
+    }
+
+    return rows;
   },
 });
 

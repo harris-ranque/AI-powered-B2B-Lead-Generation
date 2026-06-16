@@ -77,17 +77,15 @@ function expandTitleTokens(title: string): string[] {
   return Array.from(tokens);
 }
 
-export function scoreTitleAgainstRoles(
+export function scoreTitleAgainstPatterns(
   title: string | undefined,
-  requestedRoles: string[],
-  enableRoleExpansion: boolean,
+  rolePatterns: string[],
 ): { score: number; matchedRole?: string; reason: string } {
   if (!title || !title.trim()) {
     return { score: 0, reason: "missing_title" };
   }
 
   const titleVariants = expandTitleTokens(title);
-  const rolePatterns = expandRolesForMatching(requestedRoles, enableRoleExpansion);
 
   let bestScore = 0;
   let matchedRole: string | undefined;
@@ -101,7 +99,8 @@ export function scoreTitleAgainstRoles(
         return { score: 1, matchedRole: rolePattern, reason: "exact_match" };
       }
       if (titleVariant.includes(roleNorm) || roleNorm.includes(titleVariant)) {
-        const score = Math.min(roleNorm.length, titleVariant.length) /
+        const score =
+          Math.min(roleNorm.length, titleVariant.length) /
           Math.max(roleNorm.length, titleVariant.length);
         if (score > bestScore) {
           bestScore = score;
@@ -122,18 +121,29 @@ export function scoreTitleAgainstRoles(
     }
   }
 
-  if (enableRoleExpansion && bestScore < TITLE_MATCH_ACCEPT_THRESHOLD) {
-    const laneMatch = scoreRoleLaneMatch(title, requestedRoles, true);
-    if (laneMatch.score > bestScore) {
-      return laneMatch;
-    }
-  }
-
   return {
     score: bestScore,
     matchedRole,
     reason: bestScore > 0 ? "partial_match" : "no_match",
   };
+}
+
+export function scoreTitleAgainstRoles(
+  title: string | undefined,
+  requestedRoles: string[],
+  enableRoleExpansion: boolean,
+): { score: number; matchedRole?: string; reason: string } {
+  const rolePatterns = expandRolesForMatching(requestedRoles, enableRoleExpansion);
+  let titleMatch = scoreTitleAgainstPatterns(title, rolePatterns);
+
+  if (enableRoleExpansion && titleMatch.score < TITLE_MATCH_ACCEPT_THRESHOLD) {
+    const laneMatch = scoreRoleLaneMatch(title, requestedRoles, true);
+    if (laneMatch.score > titleMatch.score) {
+      return laneMatch;
+    }
+  }
+
+  return titleMatch;
 }
 
 /** Provider-reported job title only — never the searched role pattern. */
@@ -180,6 +190,8 @@ export function evaluateContactCandidate(
     fromRoleContact?: boolean;
     /** Role pattern used in the API call that surfaced this contact (matching only, not storage). */
     sourceRole?: string;
+    /** Cached static + AI patterns from search parameters. */
+    roleMatchPatterns?: string[];
   },
 ): ContactAcceptanceResult {
   const normalizedEmail = normalizeContactEmail(candidate.email);
@@ -232,11 +244,15 @@ export function evaluateContactCandidate(
 
   const providerTitle = extractProviderTitle(candidate);
 
-  let titleMatch = scoreTitleAgainstRoles(
-    providerTitle,
-    options.requestedRoles,
-    options.enableRoleExpansion,
-  );
+  const rolePatternsForMatch =
+    options.roleMatchPatterns && options.roleMatchPatterns.length > 0
+      ? options.roleMatchPatterns
+      : expandRolesForMatching(
+          options.requestedRoles,
+          options.enableRoleExpansion,
+        );
+
+  let titleMatch = scoreTitleAgainstPatterns(providerTitle, rolePatternsForMatch);
 
   // When FindyMail omits job title, use the searched role pattern for matching only.
   if (
@@ -245,11 +261,24 @@ export function evaluateContactCandidate(
     options.fromRoleContact &&
     options.sourceRole?.trim()
   ) {
-    titleMatch = scoreTitleAgainstRoles(
+    titleMatch = scoreTitleAgainstPatterns(
       options.sourceRole,
-      options.requestedRoles,
-      options.enableRoleExpansion,
+      rolePatternsForMatch,
     );
+  }
+
+  if (
+    titleMatch.score < TITLE_MATCH_ACCEPT_THRESHOLD &&
+    options.enableRoleExpansion
+  ) {
+    const laneMatch = scoreRoleLaneMatch(
+      providerTitle ?? options.sourceRole,
+      options.requestedRoles,
+      true,
+    );
+    if (laneMatch.score > titleMatch.score) {
+      titleMatch = laneMatch;
+    }
   }
 
   if (titleMatch.score < TITLE_MATCH_ACCEPT_THRESHOLD) {

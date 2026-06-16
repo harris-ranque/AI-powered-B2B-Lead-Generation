@@ -22,6 +22,7 @@ import {
   noExportableLeadsMessage,
   resolveContactExportTitle,
 } from "./lib/exportEligibility";
+import { resolveExportResearchFields } from "./lib/exportResearchFields";
 
 const http = httpRouter();
 
@@ -865,6 +866,7 @@ http.route({
         title?: string;
         email: string;
         analysisStatus?: string;
+        companyResearchId?: Id<"companyResearch">;
         emailContent?: {
           subject: string;
           body: string;
@@ -1065,6 +1067,7 @@ http.route({
         contactEmailContent?: { subject?: string; body?: string },
         contactFollowUps?: Array<{ subject: string; body: string; delay_days?: number }>,
         contactAiAnalysis?: Record<string, unknown>,
+        companyResearchPayload?: unknown,
       ) => {
         let followUps = emailDetails?.followUps ?? [];
         if (followUps.length === 0 && contactFollowUps?.length) {
@@ -1098,18 +1101,13 @@ http.route({
         const leadAnalysis = (aiAnalysis?.leadAnalysis ?? aiAnalysis) as
           | Record<string, unknown>
           | undefined;
-        const researchMetadata = leadAnalysis?.research_metadata as
-          | Record<string, unknown>
-          | undefined;
-        const fullResearchReport =
-          researchMetadata?.comprehensive_report ||
-          leadAnalysis?.comprehensive_report ||
-          "";
-        const perplexityCitations = JSON.stringify(
-          researchMetadata?.citations || [],
+        const exportResearch = resolveExportResearchFields(
+          leadAnalysis,
+          companyResearchPayload,
         );
-        const researchConfidenceScore =
-          researchMetadata?.confidence_score || "";
+        const fullResearchReport = exportResearch.fullResearchReport;
+        const perplexityCitations = JSON.stringify(exportResearch.citations);
+        const researchConfidenceScore = exportResearch.researchConfidenceScore;
 
         const rowValues: unknown[] = [
           leadKey,
@@ -1176,6 +1174,24 @@ http.route({
           );
         }
 
+        const companyResearchIds = [
+          ...new Set(
+            exportableContacts
+              .map((contact) => contact.companyResearchId)
+              .filter((id): id is Id<"companyResearch"> => Boolean(id)),
+          ),
+        ];
+        const companyResearchById = new Map<string, unknown>();
+        if (companyResearchIds.length > 0) {
+          const researchRows = await ctx.runQuery(
+            internal.leads.contactInternal.getCompanyResearchPayloadsForExport,
+            { ids: companyResearchIds },
+          );
+          for (const row of researchRows) {
+            companyResearchById.set(String(row._id), row.researchPayload);
+          }
+        }
+
         csvRows = exportableContacts.map((contact) => {
           const lead = leadById.get(String(contact.leadId));
           if (!lead) {
@@ -1195,6 +1211,9 @@ http.route({
             contact.emailContent,
             contact.followUpEmails,
             contact.aiAnalysis,
+            contact.companyResearchId
+              ? companyResearchById.get(String(contact.companyResearchId))
+              : undefined,
           );
         }).filter((row) => row.length > 0);
       } else {

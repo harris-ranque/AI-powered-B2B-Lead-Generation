@@ -103,6 +103,10 @@ function resolveRoles(options?: EnrichmentOptions): string[] {
 }
 
 function resolveRolesForPerRoleFetch(options?: EnrichmentOptions): string[] {
+  if (options?.rolePatterns && options.rolePatterns.length > 0) {
+    return options.rolePatterns;
+  }
+
   const userRoles = sanitizeRoles(options?.roles).roles;
 
   if (options?.enableRoleExpansion) {

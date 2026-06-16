@@ -1,7 +1,9 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
+import { Id } from "../_generated/dataModel";
 import { requireAuth, getCurrentUser } from "../auth";
 import { countExportableLeads, countExportableSummaryForSearch, isContactExportable, resolveContactExportTitle, resolveSearchExportData } from "../lib/exportEligibility";
+import { resolveExportResearchFields } from "../lib/exportResearchFields";
 import { computeAnalysisProgress } from "../lib/analysisProgress";
 
 // Get leads for a search (FULL documents - use sparingly, prefer getLeadsListView)
@@ -137,6 +139,21 @@ export const exportLeads = query({
         unknown: "Not Available",
       };
 
+      const pageCompanyResearchIds = [
+        ...new Set(
+          pageContacts
+            .map((contact) => contact.companyResearchId)
+            .filter((id): id is Id<"companyResearch"> => Boolean(id)),
+        ),
+      ];
+      const companyResearchById = new Map<string, unknown>();
+      for (const researchId of pageCompanyResearchIds) {
+        const doc = await ctx.db.get(researchId);
+        if (doc?.status === "completed") {
+          companyResearchById.set(String(researchId), doc.researchPayload);
+        }
+      }
+
       const formattedLeads = [];
       for (const contact of pageContacts) {
         const lead = await ctx.db.get(contact.leadId);
@@ -145,7 +162,16 @@ export const exportLeads = query({
         const aiAnalysis = contact.aiAnalysis ?? lead.aiAnalysis;
         const companyData = aiAnalysis?.companyData;
         const researchTier = aiAnalysis?.researchTier || "unknown";
-        const leadAnalysis = aiAnalysis?.leadAnalysis;
+        const leadAnalysis = aiAnalysis?.leadAnalysis as
+          | Record<string, unknown>
+          | undefined;
+        const companyResearchPayload = contact.companyResearchId
+          ? companyResearchById.get(String(contact.companyResearchId))
+          : undefined;
+        const exportResearch = resolveExportResearchFields(
+          leadAnalysis,
+          companyResearchPayload,
+        );
 
         formattedLeads.push({
           id: contact._id,
@@ -186,15 +212,9 @@ export const exportLeads = query({
           fundingTotalRaised: companyData?.funding_details?.total_raised || "",
           fundingLatestRound: companyData?.funding_details?.latest_round || "",
           fundingSource: companyData?.funding_details?.source || "",
-          fullResearchReport:
-            leadAnalysis?.research_metadata?.comprehensive_report ||
-            leadAnalysis?.comprehensive_report ||
-            "",
-          perplexityCitations: JSON.stringify(
-            leadAnalysis?.research_metadata?.citations || [],
-          ),
-          researchConfidenceScore:
-            leadAnalysis?.research_metadata?.confidence_score || "",
+          fullResearchReport: exportResearch.fullResearchReport,
+          perplexityCitations: JSON.stringify(exportResearch.citations),
+          researchConfidenceScore: exportResearch.researchConfidenceScore,
           emailSubject: contact.emailContent?.subject || "",
           emailBody: contact.emailContent?.body || "",
           createdAt: new Date(
