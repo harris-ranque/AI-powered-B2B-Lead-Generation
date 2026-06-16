@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildExpandedPatternsByRole,
+  buildRoundRobinExpandedPatterns,
   buildStaticRolePatterns,
   mergeRolePatterns,
   mergeTitleMatchers,
   parseAiRoleExpansionResponse,
   resolveEnrichmentRolePatterns,
+  resolveExpandedPatternsByRole,
   resolveTitleMatchPatterns,
   rolesNeedingAiExpansion,
 } from "../../convex/lib/roleExpansion";
@@ -112,5 +115,41 @@ describe("roleExpansion", () => {
     expect(parsed.findymailPatterns).toContain("senior devops engineer");
     expect(parsed.titleSynonyms).toContain("devops practitioner");
     expect(parsed.titleSynonyms).toContain("devops developer");
+  });
+
+  it("builds per-role expanded lanes without literal UI roles", () => {
+    const lanes = buildExpandedPatternsByRole(["CEO", "Founder"], {
+      ceo: ["chief revenue officer"],
+    });
+
+    expect(lanes.ceo).toContain("chief revenue officer");
+    expect(lanes.ceo).not.toContain("ceo");
+    expect(lanes.founder).not.toContain("founder");
+  });
+
+  it("round-robins lanes in user role order", () => {
+    const ordered = buildRoundRobinExpandedPatterns(
+      ["CEO", "Founder", "Owner"],
+      {
+        ceo: ["president"],
+        founder: ["co founder"],
+        owner: ["partner"],
+      },
+      3,
+    );
+
+    expect(ordered).toEqual(["president", "co founder", "partner"]);
+  });
+
+  it("reads expandedPatternsByRole from search parameters", () => {
+    const lanes = resolveExpandedPatternsByRole(["CEO", "Owner"], {
+      expandedPatternsByRole: {
+        CEO: ["chief executive officer"],
+        Owner: ["managing partner"],
+      },
+    });
+
+    expect(lanes.ceo).toEqual(["chief executive officer"]);
+    expect(lanes.owner).toEqual(["managing partner"]);
   });
 });

@@ -15,6 +15,7 @@ export const MAX_TOTAL_TITLE_MATCHERS = 50;
 export type SearchRoleParameters = {
   roles?: unknown;
   expandedRolePatterns?: unknown;
+  expandedPatternsByRole?: unknown;
   expandedTitleMatchers?: unknown;
   roleExpansionSource?: unknown;
 };
@@ -22,6 +23,7 @@ export type SearchRoleParameters = {
 export type ParsedAiRoleExpansion = {
   findymailPatterns: string[];
   titleSynonyms: string[];
+  findymailPatternsByRole: Record<string, string[]>;
 };
 
 export function normalizeRolePattern(value: string): string {
@@ -152,16 +154,17 @@ export function parseAiRoleExpansionResponse(
   try {
     parsed = JSON.parse(content);
   } catch {
-    return { findymailPatterns: [], titleSynonyms: [] };
+    return { findymailPatterns: [], titleSynonyms: [], findymailPatternsByRole: {} };
   }
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { findymailPatterns: [], titleSynonyms: [] };
+    return { findymailPatterns: [], titleSynonyms: [], findymailPatternsByRole: {} };
   }
 
   const record = parsed as Record<string, unknown>;
   const findymailPatterns: string[] = [];
   const titleSynonyms: string[] = [];
+  const findymailPatternsByRole: Record<string, string[]> = {};
 
   const expansionsByRole = record.expansions_by_role;
   if (
@@ -174,16 +177,24 @@ export function parseAiRoleExpansionResponse(
       const value = key
         ? (expansionsByRole as Record<string, unknown>)[key]
         : undefined;
+      const roleNorm = normalizeRolePattern(role);
+      const rolePatterns: string[] = [];
 
       if (Array.isArray(value)) {
-        findymailPatterns.push(...collectStringArray(value));
+        rolePatterns.push(...collectStringArray(value));
       } else if (value && typeof value === "object" && !Array.isArray(value)) {
         const structured = value as Record<string, unknown>;
-        findymailPatterns.push(
-          ...collectStringArray(structured.findymail_patterns),
-        );
+        rolePatterns.push(...collectStringArray(structured.findymail_patterns));
         titleSynonyms.push(...collectStringArray(structured.title_synonyms));
       }
+
+      if (roleNorm && rolePatterns.length > 0) {
+        findymailPatternsByRole[roleNorm] = rolePatterns
+          .map((pattern) => normalizeRolePattern(pattern))
+          .filter(Boolean);
+      }
+
+      findymailPatterns.push(...rolePatterns);
     }
   }
 
@@ -211,7 +222,133 @@ export function parseAiRoleExpansionResponse(
   const flatSynonyms = record.title_synonyms;
   titleSynonyms.push(...collectStringArray(flatSynonyms));
 
-  return { findymailPatterns, titleSynonyms };
+  return { findymailPatterns, titleSynonyms, findymailPatternsByRole };
+}
+
+/** Static + optional AI patterns grouped per user role (excludes the literal role). */
+export function buildExpandedPatternsByRole(
+  userRoles: string[],
+  aiPatternsByRole: Record<string, string[]> = {},
+): Record<string, string[]> {
+  const groups: Record<string, string[]> = {};
+
+  for (const role of userRoles) {
+    const roleNorm = normalizeRolePattern(role);
+    if (!roleNorm) continue;
+
+    const merged = new Set<string>();
+    for (const pattern of expandRolesForMatching([role], true)) {
+      const normalized = normalizeRolePattern(pattern);
+      if (normalized && normalized !== roleNorm) {
+        merged.add(normalized);
+      }
+    }
+
+    const aiPatterns = aiPatternsByRole[roleNorm] ?? [];
+    for (const pattern of aiPatterns) {
+      const normalized = normalizeRolePattern(pattern);
+      if (normalized && normalized !== roleNorm) {
+        merged.add(normalized);
+      }
+    }
+
+    groups[roleNorm] = Array.from(merged);
+  }
+
+  return groups;
+}
+
+/**
+ * Round-robin expanded patterns across role groups: A1, B1, C1, A2, B2, C2, ...
+ */
+export function buildRoundRobinExpandedPatterns(
+  userRoles: string[],
+  patternsByRole: Record<string, string[]>,
+  maxPatterns: number,
+): string[] {
+  const userRoleNorms = userRoles
+    .map((role) => normalizeRolePattern(role))
+    .filter(Boolean);
+  const userRoleSet = new Set(userRoleNorms);
+
+  const queues: string[][] = [];
+  for (const roleNorm of userRoleNorms) {
+    const seenInGroup = new Set<string>();
+    const queue: string[] = [];
+    for (const pattern of patternsByRole[roleNorm] ?? []) {
+      const normalized = normalizeRolePattern(pattern);
+      if (
+        !normalized ||
+        normalized === roleNorm ||
+        userRoleSet.has(normalized) ||
+        seenInGroup.has(normalized)
+      ) {
+        continue;
+      }
+      seenInGroup.add(normalized);
+      queue.push(normalized);
+    }
+    queues.push(queue);
+  }
+
+  if (queues.length === 0 || maxPatterns <= 0) {
+    return [];
+  }
+
+  const result: string[] = [];
+  const globalSeen = new Set<string>(userRoleSet);
+  let round = 0;
+
+  while (result.length < maxPatterns) {
+    let addedInRound = false;
+    for (const queue of queues) {
+      const pattern = queue[round];
+      if (!pattern || globalSeen.has(pattern)) {
+        continue;
+      }
+      globalSeen.add(pattern);
+      result.push(pattern);
+      addedInRound = true;
+      if (result.length >= maxPatterns) {
+        break;
+      }
+    }
+    if (!addedInRound) {
+      break;
+    }
+    round += 1;
+  }
+
+  return result;
+}
+
+export function resolveExpandedPatternsByRole(
+  userRoles: string[],
+  searchParameters?: SearchRoleParameters,
+): Record<string, string[]> {
+  const raw = searchParameters?.expandedPatternsByRole;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const record = raw as Record<string, unknown>;
+    const groups: Record<string, string[]> = {};
+    for (const role of userRoles) {
+      const roleNorm = normalizeRolePattern(role);
+      const key = Object.keys(record).find(
+        (candidate) => normalizeRolePattern(candidate) === roleNorm,
+      );
+      const value = key ? record[key] : undefined;
+      if (Array.isArray(value)) {
+        groups[roleNorm] = value
+          .filter((item): item is string => typeof item === "string")
+          .map((item) => normalizeRolePattern(item))
+          .filter(Boolean);
+      }
+    }
+    if (Object.keys(groups).length > 0) {
+      return groups;
+    }
+  }
+
+  return buildExpandedPatternsByRole(userRoles);
 }
 
 export function mergeTitleMatchers(

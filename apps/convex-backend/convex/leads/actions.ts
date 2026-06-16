@@ -351,9 +351,9 @@ export const enrichLeads: any = action({
         return { success: false, message: "Cancelled" } as any;
       }
 
-      // Get leads that need enrichment
+      // Get leads that need enrichment (new + linked prior-account businesses)
       const leads: any = await ctx.runQuery(
-        internal.leads.internal.getUnenrichedLeads,
+        internal.leads.internal.getLeadsForEnrichment,
         {
           searchId: args.searchId,
         },
@@ -474,6 +474,7 @@ export const enrichLeads: any = action({
               userId: search.userId,
               roles: requestedRoles,
               userApiKey,
+              reenrichForSearch: Boolean(lead.reenrichForSearch),
             },
             {
               // Context passed to onComplete handler for tracking

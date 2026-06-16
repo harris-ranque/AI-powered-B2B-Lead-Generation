@@ -1,41 +1,92 @@
 import { describe, expect, it } from "vitest";
-import { expandRolesForMatching } from "../../convex/lib/roleFamilies";
-import { normalizeRolePattern } from "../../convex/lib/roleExpansion";
+import { buildFindyMailPerRoleFetchPlan } from "../../convex/leads/enrichment/findymail";
+import {
+  buildExpandedPatternsByRole,
+  buildRoundRobinExpandedPatterns,
+  mergeRolePatterns,
+  buildStaticRolePatterns,
+} from "../../convex/lib/roleExpansion";
 
-const DECISION_MAKER_PATTERN =
-  /\b(vp|vice president|chief|head|director|cmo|cro|cto|cfo|coo|president|owner|founder|partner|managing)\b/i;
+describe("FindyMail per-role fetch plan", () => {
+  it("runs all UI roles first, then expanded patterns without duplicates", () => {
+    const userRoles = ["CEO", "Founder", "Owner"];
+    const staticPatterns = buildStaticRolePatterns(userRoles);
+    const aiPatterns = [
+      "vp marketing",
+      "chief marketing officer",
+      "head of marketing",
+      "marketing director",
+      "president",
+      "partner",
+      "managing director",
+      "co founder",
+      "chief executive officer",
+      "executive director",
+      "general manager",
+      "operations director",
+      "sales director",
+    ];
+    const rolePatterns = mergeRolePatterns(userRoles, staticPatterns, aiPatterns);
 
-function prioritizeFindyMailRolePatterns(
-  patterns: string[],
-  userRoles: string[],
-  max = 12,
-): string[] {
-  const seen = new Set<string>();
-  const userNormalized = new Set(userRoles.map((role) => normalizeRolePattern(role)));
-  const userBucket: string[] = [];
-  const decisionMakerBucket: string[] = [];
-  const otherBucket: string[] = [];
+    const plan = buildFindyMailPerRoleFetchPlan({
+      roles: userRoles,
+      rolePatterns,
+      enableRoleExpansion: true,
+    });
 
-  for (const pattern of patterns) {
-    const normalized = normalizeRolePattern(pattern);
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    if (userNormalized.has(normalized)) userBucket.push(normalized);
-    else if (DECISION_MAKER_PATTERN.test(normalized)) decisionMakerBucket.push(normalized);
-    else otherBucket.push(normalized);
-  }
+    expect(plan.userRoles).toEqual(["ceo", "founder", "owner"]);
+    expect(plan.expandedPatterns[0]).not.toBe("ceo");
+    expect(plan.userRoles.every((role) => !plan.expandedPatterns.includes(role))).toBe(
+      true,
+    );
+    expect(plan.expandedPatterns.length).toBeLessThanOrEqual(12);
+    expect(
+      plan.expandedPatterns.some((pattern) =>
+        /\b(vp|chief|head|director)\b/.test(pattern),
+      ),
+    ).toBe(true);
+  });
 
-  return [...userBucket, ...decisionMakerBucket, ...otherBucket].slice(0, max);
-}
+  it("orders user roles before expanded when combined into a single list", () => {
+    const plan = buildFindyMailPerRoleFetchPlan({
+      roles: ["CEO", "Founder", "Owner"],
+      rolePatternsByRole: {
+        ceo: ["vp sales"],
+        founder: ["head of sales"],
+      },
+      enableRoleExpansion: true,
+    });
 
-describe("FindyMail role pattern cap", () => {
-  it("prioritizes user roles and decision-maker patterns when capping", () => {
-    const userRoles = ["Marketing"];
-    const patterns = expandRolesForMatching(userRoles, true);
-    const capped = prioritizeFindyMailRolePatterns(patterns, userRoles, 5);
+    const combined = [...plan.userRoles, ...plan.expandedPatterns];
+    expect(combined.slice(0, 3)).toEqual(["ceo", "founder", "owner"]);
+    expect(combined.slice(3)).toEqual(["vp sales", "head of sales"]);
+  });
 
-    expect(capped.length).toBe(5);
-    expect(capped[0]).toBe("marketing");
-    expect(capped.some((p) => DECISION_MAKER_PATTERN.test(p))).toBe(true);
+  it("round-robins expanded patterns across role lanes A1, B1, C1, A2...", () => {
+    const userRoles = ["CEO", "Founder", "Owner"];
+    const patternsByRole = {
+      ceo: ["chief executive officer", "president"],
+      founder: ["co founder", "cofounder"],
+      owner: ["partner", "managing director"],
+    };
+
+    const roundRobin = buildRoundRobinExpandedPatterns(userRoles, patternsByRole, 12);
+    expect(roundRobin).toEqual([
+      "chief executive officer",
+      "co founder",
+      "partner",
+      "president",
+      "cofounder",
+      "managing director",
+    ]);
+
+    const plan = buildFindyMailPerRoleFetchPlan({
+      roles: userRoles,
+      rolePatternsByRole: patternsByRole,
+      enableRoleExpansion: true,
+    });
+
+    expect(plan.userRoles).toEqual(["ceo", "founder", "owner"]);
+    expect(plan.expandedPatterns).toEqual(roundRobin);
   });
 });

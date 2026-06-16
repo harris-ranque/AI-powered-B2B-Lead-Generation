@@ -2,6 +2,7 @@ import { mutation } from "../_generated/server";
 import { api } from "../_generated/api";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
+import type { Doc } from "../_generated/dataModel";
 import { requireAuth } from "../auth";
 import { withSubscriptionCheck } from "../middleware/subscriptionMiddleware";
 import {
@@ -15,6 +16,8 @@ import {
   validateEnterpriseKeys,
 } from "../lib/searchLogic";
 import { createConvexError, ERROR_CODES } from "../lib/errorHandling";
+import { isAdmin } from "../lib/helpers";
+import { canUseAsFrozenDiscoverySource } from "../lib/discoveryFreeze";
 
 // Create a new search
 export const createSearch = mutation({
@@ -189,6 +192,9 @@ export const createSearchCompleted = mutation({
       ),
     }),
     autoStart: v.optional(v.boolean()),
+    skipDiscovery: v.optional(v.boolean()),
+    discoverySourceSearchId: v.optional(v.id("searches")),
+    skipRoleExpansion: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -202,6 +208,41 @@ export const createSearchCompleted = mutation({
 
     const user = await requireAuth(ctx);
     const sanitizedRoles = sanitizeRoles(args.parameters.roles);
+
+    if (args.skipDiscovery && !args.discoverySourceSearchId) {
+      throw createConvexError(
+        "validation",
+        "discoverySourceSearchId is required when skipDiscovery is true",
+        {
+          code: ERROR_CODES.VALIDATION_FAILED,
+          severity: "medium",
+          retryable: false,
+        },
+      );
+    }
+
+    let discoverySourceSearch: Doc<"searches"> | null = null;
+    if (args.skipDiscovery && args.discoverySourceSearchId) {
+      discoverySourceSearch = await ctx.db.get(args.discoverySourceSearchId);
+      if (
+        !discoverySourceSearch ||
+        !canUseAsFrozenDiscoverySource(
+          discoverySourceSearch,
+          user._id,
+          isAdmin(user),
+        )
+      ) {
+        throw createConvexError(
+          "validation",
+          "Discovery source search not found, not frozen, or access denied",
+          {
+            code: ERROR_CODES.VALIDATION_FAILED,
+            severity: "medium",
+            retryable: false,
+          },
+        );
+      }
+    }
 
     const searchId = await withSubscriptionCheck(
       ctx.db,
@@ -223,11 +264,29 @@ export const createSearchCompleted = mutation({
         }
 
         // Use adjusted max leads if necessary (using extracted pure function)
-        const adjustedParameters = {
+        let adjustedParameters = {
           ...args.parameters,
           maxResults: validation.adjustedMaxLeads || args.parameters.maxResults,
           roles: sanitizedRoles,
         };
+
+        if (
+          args.skipDiscovery &&
+          args.skipRoleExpansion &&
+          discoverySourceSearch
+        ) {
+          adjustedParameters = {
+            ...adjustedParameters,
+            expandedRolePatterns:
+              discoverySourceSearch.parameters.expandedRolePatterns,
+            expandedPatternsByRole:
+              discoverySourceSearch.parameters.expandedPatternsByRole,
+            expandedTitleMatchers:
+              discoverySourceSearch.parameters.expandedTitleMatchers,
+            roleExpansionSource:
+              discoverySourceSearch.parameters.roleExpansionSource,
+          } as typeof adjustedParameters;
+        }
 
         // NOTE: Plan-based restrictions removed - all users can create searches (limited only by credits)
 
@@ -275,6 +334,9 @@ export const createSearchCompleted = mutation({
             avgRelevanceScore: 0,
           },
           creditsUsed: 0,
+          skipDiscovery: args.skipDiscovery ?? undefined,
+          discoverySourceSearchId: args.discoverySourceSearchId ?? undefined,
+          skipRoleExpansion: args.skipRoleExpansion ?? undefined,
           createdAt: now,
         };
 
@@ -293,7 +355,7 @@ export const createSearchCompleted = mutation({
       },
     );
 
-    if (sanitizedRoles.length > 0) {
+    if (sanitizedRoles.length > 0 && !args.skipRoleExpansion) {
       await ctx.scheduler.runAfter(
         0,
         internal.search.roleExpansionActions.expandSearchRolePatterns,
@@ -344,11 +406,19 @@ export const createSearchCompleted = mutation({
         });
       }
 
-      // Schedule the Google Maps search action
-      await ctx.scheduler.runAfter(0, (api as any).search.actions.searchGoogleMaps, {
-        searchId,
-        forceRestart: false,
-      });
+      if (args.skipDiscovery && args.discoverySourceSearchId) {
+        await ctx.scheduler.runAfter(
+          0,
+          (internal as any).search.discoveryFreeze.applyFrozenDiscovery,
+          { searchId },
+        );
+      } else {
+        // Schedule the Google Maps search action
+        await ctx.scheduler.runAfter(0, (api as any).search.actions.searchGoogleMaps, {
+          searchId,
+          forceRestart: false,
+        });
+      }
     }
 
     return { searchId };

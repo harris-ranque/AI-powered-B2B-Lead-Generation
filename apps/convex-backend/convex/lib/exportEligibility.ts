@@ -371,6 +371,7 @@ export type ExportableCountSummary = {
   fromThisSearch: number;
   priorSearchExportable: number;
   duplicateSkips: number;
+  linkedForReenrichment: number;
 };
 
 export async function countExportableSummaryForSearch(
@@ -402,6 +403,12 @@ export async function countExportableSummaryForSearch(
     fromThisSearch,
     priorSearchExportable,
     duplicateSkips: resolution.duplicateSkips,
+    linkedForReenrichment: (
+      await ctx.db
+        .query("searchLinkedLeads")
+        .withIndex("by_search", (q) => q.eq("searchId", searchId))
+        .collect()
+    ).length,
   };
 }
 
@@ -429,6 +436,7 @@ export async function countExportableSummary(
     fromThisSearch: exportable.length,
     priorSearchExportable: 0,
     duplicateSkips: 0,
+    linkedForReenrichment: 0,
   };
 }
 

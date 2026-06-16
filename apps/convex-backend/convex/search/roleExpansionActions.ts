@@ -6,6 +6,7 @@ import { internal } from "../_generated/api";
 import { resolveEnrichmentRoles } from "../lib/enrichmentRoles";
 import {
   buildStaticRolePatterns,
+  buildExpandedPatternsByRole,
   mergeRolePatterns,
   mergeTitleMatchers,
   parseAiRoleExpansionResponse,
@@ -39,7 +40,11 @@ async function resolveOpenAiKeyForRoleExpansion(
 async function fetchAiRolePatterns(
   apiKey: string,
   userRoles: string[],
-): Promise<{ findymailPatterns: string[]; titleSynonyms: string[] }> {
+): Promise<{
+  findymailPatterns: string[];
+  titleSynonyms: string[];
+  findymailPatternsByRole: Record<string, string[]>;
+}> {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -101,6 +106,7 @@ export const expandSearchRolePatterns = internalAction({
 
     let findymailAiPatterns: string[] = [];
     let titleSynonyms: string[] = [];
+    let aiPatternsByRole: Record<string, string[]> = {};
     let source: "static" | "static+ai" = "static";
 
     const apiKey = await resolveOpenAiKeyForRoleExpansion(ctx, args.userId);
@@ -109,6 +115,7 @@ export const expandSearchRolePatterns = internalAction({
         const aiExpansion = await fetchAiRolePatterns(apiKey, userRoles);
         findymailAiPatterns = aiExpansion.findymailPatterns;
         titleSynonyms = aiExpansion.titleSynonyms;
+        aiPatternsByRole = aiExpansion.findymailPatternsByRole;
         if (findymailAiPatterns.length > 0 || titleSynonyms.length > 0) {
           source = "static+ai";
         }
@@ -129,6 +136,10 @@ export const expandSearchRolePatterns = internalAction({
       staticPatterns,
       findymailAiPatterns,
     );
+    const expandedPatternsByRole = buildExpandedPatternsByRole(
+      userRoles,
+      aiPatternsByRole,
+    );
     const expandedTitleMatchers = mergeTitleMatchers(userRoles, staticPatterns, [
       ...findymailAiPatterns,
       ...titleSynonyms,
@@ -137,6 +148,7 @@ export const expandSearchRolePatterns = internalAction({
     await ctx.runMutation(internal.search.internal.updateSearchExpandedRolePatterns, {
       searchId: args.searchId,
       expandedRolePatterns,
+      expandedPatternsByRole,
       expandedTitleMatchers,
       roleExpansionSource: source,
     });

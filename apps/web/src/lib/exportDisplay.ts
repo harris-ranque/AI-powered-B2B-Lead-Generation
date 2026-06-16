@@ -4,6 +4,7 @@ export type ExportSummary = {
   fromThisSearch?: number;
   priorSearchExportable?: number;
   duplicateSkips?: number;
+  linkedForReenrichment?: number;
 };
 
 export function formatExportableResultsLabel(
@@ -19,7 +20,11 @@ export function formatExportableResultsLabel(
 
     if (summary.exportableContacts === 0) {
       if ((summary.duplicateSkips ?? 0) > 0) {
-        return "0 new contacts (businesses already in your account)";
+        const linked = summary.linkedForReenrichment ?? 0;
+        if (linked > 0) {
+          return `0 exportable contacts (${linked.toLocaleString()} prior businesses re-queued for this search's roles)`;
+        }
+        return "0 new contacts (businesses already in your account — re-enrichment queued if roles differ)";
       }
       return "0 exportable contacts";
     }

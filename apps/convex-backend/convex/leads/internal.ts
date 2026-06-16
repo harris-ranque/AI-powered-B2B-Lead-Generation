@@ -21,14 +21,36 @@ export const getLeadInternal = internalQuery({
   },
 });
 
-// Internal query to get all leads for a search
+// Internal query to get all leads for a search (includes linked prior-account leads)
 export const getSearchLeadsInternal = internalQuery({
   args: { searchId: v.id("searches") },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const nativeLeads = await ctx.db
       .query("leads")
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
       .collect();
+
+    const links = await ctx.db
+      .query("searchLinkedLeads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    const seen = new Set(nativeLeads.map((lead) => String(lead._id)));
+    const merged = [...nativeLeads];
+
+    for (const link of links) {
+      const key = String(link.leadId);
+      if (seen.has(key)) {
+        continue;
+      }
+      const lead = await ctx.db.get(link.leadId);
+      if (lead) {
+        seen.add(key);
+        merged.push(lead);
+      }
+    }
+
+    return merged;
   },
 });
 
@@ -46,6 +68,50 @@ export const getUnenrichedLeads = internalQuery({
         ),
       )
       .collect();
+  },
+});
+
+/** Native unenriched leads plus linked prior-account leads queued for re-enrichment. */
+export const getLeadsForEnrichment = internalQuery({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    const nativeLeads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("enrichmentStatus"), "pending"),
+          q.eq(q.field("enrichmentStatus"), "failed"),
+        ),
+      )
+      .collect();
+
+    const pendingLinks = await ctx.db
+      .query("searchLinkedLeads")
+      .withIndex("by_search_status", (q) =>
+        q.eq("searchId", args.searchId).eq("status", "pending"),
+      )
+      .collect();
+
+    const nativeIds = new Set(nativeLeads.map((lead) => String(lead._id)));
+    const reenrichLeads: Array<
+      typeof nativeLeads[number] & { reenrichForSearch?: boolean }
+    > = [];
+
+    for (const link of pendingLinks) {
+      if (nativeIds.has(String(link.leadId))) {
+        continue;
+      }
+      const lead = await ctx.db.get(link.leadId);
+      if (lead) {
+        reenrichLeads.push({ ...lead, reenrichForSearch: true });
+      }
+    }
+
+    return [
+      ...nativeLeads.map((lead) => ({ ...lead, reenrichForSearch: false })),
+      ...reenrichLeads,
+    ];
   },
 });
 

@@ -113,6 +113,7 @@ export default defineSchema({
       roles: v.optional(v.array(v.string())),
       expandRelatedRoles: v.optional(v.boolean()),
       expandedRolePatterns: v.optional(v.array(v.string())),
+      expandedPatternsByRole: v.optional(v.record(v.string(), v.array(v.string()))),
       expandedTitleMatchers: v.optional(v.array(v.string())),
       roleExpansionSource: v.optional(v.string()),
       minRating: v.optional(v.number()),
@@ -264,6 +265,13 @@ export default defineSchema({
       }),
     ),
 
+    // Pipeline testing: freeze Google Maps output and reuse for downstream stages
+    discoveryFrozenAt: v.optional(v.number()),
+    clonedFromSearchId: v.optional(v.id("searches")),
+    skipDiscovery: v.optional(v.boolean()),
+    discoverySourceSearchId: v.optional(v.id("searches")),
+    skipRoleExpansion: v.optional(v.boolean()),
+
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
   })
@@ -355,6 +363,27 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_user_status", ["userId", "status"])
     .index("by_created", ["createdAt"]),
+
+  // Links existing account leads to a new search for role-targeted re-enrichment
+  searchLinkedLeads: defineTable({
+    searchId: v.id("searches"),
+    leadId: v.id("leads"),
+    userId: v.id("users"),
+    linkReason: v.union(
+      v.literal("duplicate_reenrichment"),
+    ),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("enriched"),
+      v.literal("failed"),
+    ),
+    originalSearchId: v.optional(v.id("searches")),
+    createdAt: v.number(),
+    enrichedAt: v.optional(v.number()),
+  })
+    .index("by_search", ["searchId"])
+    .index("by_search_lead", ["searchId", "leadId"])
+    .index("by_search_status", ["searchId", "status"]),
 
   // Leads - Individual business leads with enrichment data
   leads: defineTable({

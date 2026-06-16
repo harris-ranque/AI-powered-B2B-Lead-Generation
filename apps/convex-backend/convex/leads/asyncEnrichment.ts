@@ -60,6 +60,7 @@ import {
 import { resolveEnrichmentRoles } from "../lib/enrichmentRoles";
 import {
   resolveEnrichmentRolePatterns,
+  resolveExpandedPatternsByRole,
   resolveTitleMatchPatterns,
 } from "../lib/roleExpansion";
 import {
@@ -242,6 +243,7 @@ async function tryProvider(
     retries: number;
     roles?: string[];
     rolePatterns?: string[];
+    rolePatternsByRole?: Record<string, string[]>;
     userApiKey?: string;
   }
 ): Promise<TryProviderResult> {
@@ -250,6 +252,7 @@ async function tryProvider(
   const enrichOptions: EnrichmentOptions = {
     roles: options.roles,
     rolePatterns: options.rolePatterns,
+    rolePatternsByRole: options.rolePatternsByRole,
     perRole: multiContact,
     enableRoleExpansion: multiContact,
     limit: multiContact ? 5 : undefined,
@@ -357,6 +360,7 @@ export const enrichSingleLeadWorkpool = internalAction({
     userId: v.id("users"),
     roles: v.optional(v.array(v.string())),
     userApiKey: v.optional(v.string()),
+    reenrichForSearch: v.optional(v.boolean()),
     // Queue-based retry fields (set when triggered from slot queue)
     _fromQueue: v.optional(v.boolean()),
     correlationId: v.optional(v.string()),
@@ -376,6 +380,37 @@ export const enrichSingleLeadWorkpool = internalAction({
     );
 
     const performanceTracker = startPerformanceTracking();
+
+    const completeReenrichLink = async (failed = false) => {
+      if (!args.reenrichForSearch) {
+        return;
+      }
+      await ctx.runMutation(
+        internal.leads.searchLinkedLeads.markSearchLinkedLeadEnriched,
+        {
+          searchId: args.searchId,
+          leadId: args.leadId,
+          failed,
+        },
+      );
+    };
+
+    const updateLeadEnrichmentStatus = async (params: {
+      status: string;
+      error?: string;
+      enrichmentStartedAt?: number;
+    }) => {
+      if (args.reenrichForSearch) {
+        return;
+      }
+      await ctx.runMutation(
+        internal.leads.internal.updateEnrichmentStatus,
+        {
+          leadId: args.leadId,
+          ...params,
+        },
+      );
+    };
 
     // CHECK: Skip if search is already paused due to pipeline-blocking error
     // This prevents all workpool items from hitting the same error (e.g., credits exhausted)
@@ -516,14 +551,10 @@ export const enrichSingleLeadWorkpool = internalAction({
     // are marked with a terminal status so the pipeline can advance to analysis.
 
     // Mark lead as in_progress with timestamp for stuck detection
-    await ctx.runMutation(
-      internal.leads.internal.updateEnrichmentStatus,
-      {
-        leadId: args.leadId,
-        status: "in_progress",
-        enrichmentStartedAt: Date.now(),
-      },
-    );
+    await updateLeadEnrichmentStatus({
+      status: "in_progress",
+      enrichmentStartedAt: Date.now(),
+    });
 
     try {
       // Check if enrichment is paused for this search
@@ -538,6 +569,10 @@ export const enrichSingleLeadWorkpool = internalAction({
 
       const requestedRoles = resolveEnrichmentRoles(args.roles, search.parameters);
       const enrichmentRolePatterns = resolveEnrichmentRolePatterns(
+        requestedRoles,
+        search.parameters,
+      );
+      const enrichmentRolePatternsByRole = resolveExpandedPatternsByRole(
         requestedRoles,
         search.parameters,
       );
@@ -576,6 +611,7 @@ export const enrichSingleLeadWorkpool = internalAction({
 
       // CHECK: Skip enrichment if lead already has emails (e.g., from CSV upload)
       if (
+        !args.reenrichForSearch &&
         lead.contactInfo?.emails &&
         Array.isArray(lead.contactInfo.emails) &&
         lead.contactInfo.emails.length > 0 &&
@@ -633,10 +669,11 @@ export const enrichSingleLeadWorkpool = internalAction({
           { leadId: args.leadId, businessName: lead.businessName },
         );
 
-        await ctx.runMutation(
-          internal.leads.internal.updateEnrichmentStatus,
-          { leadId: args.leadId, status: "completed_fallback", error: "No valid domain available" },
-        );
+        await updateLeadEnrichmentStatus({
+          status: "completed_fallback",
+          error: "No valid domain available",
+        });
+        await completeReenrichLink(true);
 
         // Release slot
         await ctx.runMutation(
@@ -701,6 +738,7 @@ export const enrichSingleLeadWorkpool = internalAction({
             retries: 3,
             roles: requestedRoles,
             rolePatterns: enrichmentRolePatterns,
+            rolePatternsByRole: enrichmentRolePatternsByRole,
             userApiKey: args.userApiKey,
           });
           result = providerAttempt.result;
@@ -719,6 +757,7 @@ export const enrichSingleLeadWorkpool = internalAction({
           retries: 3,
           roles: requestedRoles,
           rolePatterns: enrichmentRolePatterns,
+          rolePatternsByRole: enrichmentRolePatternsByRole,
           userApiKey: args.userApiKey,
         });
         result = providerAttempt.result;
@@ -775,14 +814,10 @@ export const enrichSingleLeadWorkpool = internalAction({
         );
 
         // Mark lead as failed with specific error
-        await ctx.runMutation(
-          internal.leads.internal.updateEnrichmentStatus,
-          {
-            leadId: args.leadId,
-            status: "failed",
-            error: `Pipeline blocked: ${pipelineBlockingError.userMessage}`,
-          },
-        );
+        await updateLeadEnrichmentStatus({
+          status: "failed",
+          error: `Pipeline blocked: ${pipelineBlockingError.userMessage}`,
+        });
 
         // Release slot
         await ctx.runMutation(
@@ -879,6 +914,8 @@ export const enrichSingleLeadWorkpool = internalAction({
             );
           }
 
+          await completeReenrichLink(false);
+
           return {
             success: true,
             provider: "findymail",
@@ -886,12 +923,12 @@ export const enrichSingleLeadWorkpool = internalAction({
           };
         }
 
-        await ctx.runMutation(internal.leads.internal.updateEnrichmentStatus, {
-          leadId: args.leadId,
+        await updateLeadEnrichmentStatus({
           status: "no_contacts_found",
           error:
             "Contacts found but none passed role/domain/verification acceptance",
         });
+        await completeReenrichLink(true);
 
         await ctx.runMutation(
           internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
@@ -911,20 +948,18 @@ export const enrichSingleLeadWorkpool = internalAction({
       {
         // No accepted contacts (API returned nothing or candidates failed acceptance)
         // This distinguishes between "API succeeded but no results" vs "API error"
-        await ctx.runMutation(
-          internal.leads.internal.updateEnrichmentStatus,
-          {
-            leadId: args.leadId,
-            status: "no_contacts_found",
-            error: "FindyMail API succeeded but no discoverable email contacts found for this domain",
-          },
-        );
+        await updateLeadEnrichmentStatus({
+          status: "no_contacts_found",
+          error:
+            "FindyMail API succeeded but no discoverable email contacts found for this domain",
+        });
 
-        // Update enrichment provider to track that we attempted FindyMail
-        await ctx.runMutation(
-          internal.leads.internal.updateEnrichmentProvider,
-          { leadId: args.leadId, provider: "findymail" },
-        );
+        if (!args.reenrichForSearch) {
+          await ctx.runMutation(
+            internal.leads.internal.updateEnrichmentProvider,
+            { leadId: args.leadId, provider: "findymail" },
+          );
+        }
 
         const perfData = endPerformanceTracking(performanceTracker);
 
@@ -964,6 +999,8 @@ export const enrichSingleLeadWorkpool = internalAction({
           );
         }
 
+        await completeReenrichLink(true);
+
         return { success: false, provider: "findymail", reason: "no_contacts_found", emailsFound: 0 };
       }
     } catch (error) {
@@ -978,10 +1015,11 @@ export const enrichSingleLeadWorkpool = internalAction({
       );
 
       // Mark lead as failed
-      await ctx.runMutation(
-        internal.leads.internal.updateEnrichmentStatus,
-        { leadId: args.leadId, status: "failed", error: error instanceof Error ? error.message : "Enrichment failed" },
-      );
+      await updateLeadEnrichmentStatus({
+        status: "failed",
+        error: error instanceof Error ? error.message : "Enrichment failed",
+      });
+      await completeReenrichLink(true);
 
       trackEnrichmentFailed({
         searchId: args.searchId,
@@ -1226,6 +1264,10 @@ export const enrichSingleLead = internalAction({
       searchForRoles?.parameters,
     );
     const enrichmentRolePatterns = resolveEnrichmentRolePatterns(
+      requestedRoles,
+      searchForRoles?.parameters,
+    );
+    const enrichmentRolePatternsByRole = resolveExpandedPatternsByRole(
       requestedRoles,
       searchForRoles?.parameters,
     );
@@ -1613,6 +1655,7 @@ export const enrichSingleLead = internalAction({
         retries: 3,
         roles: requestedRoles,
         rolePatterns: enrichmentRolePatterns,
+        rolePatternsByRole: enrichmentRolePatternsByRole,
         userApiKey: args.userApiKey,
       });
 

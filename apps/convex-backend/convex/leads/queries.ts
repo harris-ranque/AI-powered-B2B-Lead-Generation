@@ -35,6 +35,24 @@ export const getLeadsBySearch = query({
       .order("desc")
       .collect();
 
+    const links = await ctx.db
+      .query("searchLinkedLeads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    const seen = new Set(leads.map((lead) => String(lead._id)));
+    for (const link of links) {
+      const key = String(link.leadId);
+      if (seen.has(key)) {
+        continue;
+      }
+      const linkedLead = await ctx.db.get(link.leadId);
+      if (linkedLead) {
+        seen.add(key);
+        leads.push(linkedLead);
+      }
+    }
+
     return leads;
   },
 });

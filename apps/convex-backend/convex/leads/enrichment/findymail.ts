@@ -13,7 +13,12 @@ import {
   type ApiError,
 } from "../../lib/apiErrors";
 import { expandRolesForMatching } from "../../lib/roleFamilies";
-import { normalizeRolePattern } from "../../lib/roleExpansion";
+import {
+  buildExpandedPatternsByRole,
+  buildRoundRobinExpandedPatterns,
+  normalizeRolePattern,
+  resolveExpandedPatternsByRole,
+} from "../../lib/roleExpansion";
 import { isContactEmailVerified } from "../../lib/contactVerification";
 
 const FINDYMAIL_BASE_URL = "https://app.findymail.com/api";
@@ -45,40 +50,6 @@ const PER_ROLE_EARLY_EXIT_CONTACTS = 3;
 const SINGLE_REQUEST_MAX_RETRIES = 5;
 const SINGLE_REQUEST_BASE_DELAY_MS = 2000;
 const SINGLE_REQUEST_MAX_DELAY_MS = 45_000;
-
-const DECISION_MAKER_PATTERN =
-  /\b(vp|vice president|chief|head|director|cmo|cro|cto|cfo|coo|president|owner|founder|partner|managing)\b/i;
-
-function prioritizeFindyMailRolePatterns(
-  patterns: string[],
-  userRoles: string[],
-): string[] {
-  const seen = new Set<string>();
-  const userNormalized = new Set(userRoles.map((role) => normalizeRolePattern(role)));
-  const userBucket: string[] = [];
-  const decisionMakerBucket: string[] = [];
-  const otherBucket: string[] = [];
-
-  for (const pattern of patterns) {
-    const normalized = normalizeRolePattern(pattern);
-    if (!normalized || seen.has(normalized)) {
-      continue;
-    }
-    seen.add(normalized);
-    if (userNormalized.has(normalized)) {
-      userBucket.push(normalized);
-    } else if (DECISION_MAKER_PATTERN.test(normalized)) {
-      decisionMakerBucket.push(normalized);
-    } else {
-      otherBucket.push(normalized);
-    }
-  }
-
-  return [...userBucket, ...decisionMakerBucket, ...otherBucket].slice(
-    0,
-    MAX_FINDYMAIL_PATTERNS_PER_DOMAIN,
-  );
-}
 
 /**
  * Sanitize and normalize roles for FindyMail API.
@@ -148,27 +119,117 @@ function resolveRoles(options?: EnrichmentOptions): string[] {
   return sanitizeRoles(options?.roles, MAX_ROLES_PER_API_REQUEST).roles;
 }
 
-function resolveRolesForPerRoleFetch(options?: EnrichmentOptions): string[] {
-  const userRoles = sanitizeRoles(options?.roles).roles;
+export type FindyMailPerRoleFetchPlan = {
+  /** UI roles — always queried first, one API call each, no early exit. */
+  userRoles: string[];
+  /** Expanded patterns after user roles — capped, early exit applies. */
+  expandedPatterns: string[];
+};
 
-  let patterns: string[];
-  if (options?.rolePatterns && options.rolePatterns.length > 0) {
-    patterns = options.rolePatterns
-      .map((pattern) => normalizeRolePattern(pattern))
-      .filter((pattern) => pattern.length > 0);
-  } else if (options?.enableRoleExpansion) {
-    patterns = expandRolesForMatching(userRoles, true);
-  } else {
-    patterns = userRoles;
-  }
+/**
+ * Build phased FindyMail queries: all user-input roles first, then expanded patterns.
+ */
+export function buildFindyMailPerRoleFetchPlan(
+  options?: EnrichmentOptions,
+): FindyMailPerRoleFetchPlan {
+  const userRoles = sanitizeRoles(options?.roles).roles
+    .map((role) => normalizeRolePattern(role))
+    .filter((pattern) => pattern.length > 0);
 
-  const capped = prioritizeFindyMailRolePatterns(patterns, userRoles);
-  if (patterns.length > capped.length) {
+  const patternsByRole =
+    options?.rolePatternsByRole &&
+    Object.keys(options.rolePatternsByRole).length > 0
+      ? Object.fromEntries(
+          Object.entries(options.rolePatternsByRole).map(([role, patterns]) => [
+            normalizeRolePattern(role),
+            patterns
+              .map((pattern) => normalizeRolePattern(pattern))
+              .filter(Boolean),
+          ]),
+        )
+      : resolveExpandedPatternsFromOptions(options, userRoles);
+
+  const expandedPatterns = buildRoundRobinExpandedPatterns(
+    sanitizeRoles(options?.roles).roles,
+    patternsByRole,
+    MAX_FINDYMAIL_PATTERNS_PER_DOMAIN,
+  );
+
+  const totalExpandedCandidates = Object.values(patternsByRole).reduce(
+    (sum, patterns) => sum + patterns.length,
+    0,
+  );
+  if (totalExpandedCandidates > expandedPatterns.length) {
     console.warn(
-      `[FindyMail] Capped role patterns for API: ${patterns.length} -> ${capped.length}`,
+      `[FindyMail] Round-robin capped expanded patterns: ${totalExpandedCandidates} candidates -> ${expandedPatterns.length}`,
     );
   }
-  return capped;
+
+  return {
+    userRoles,
+    expandedPatterns,
+  };
+}
+
+function resolveExpandedPatternsFromOptions(
+  options?: EnrichmentOptions,
+  userRoles: string[],
+): Record<string, string[]> {
+  if (options?.rolePatternsByRole) {
+    return options.rolePatternsByRole;
+  }
+
+  const sanitizedRoles = sanitizeRoles(options?.roles).roles;
+  if (options?.rolePatterns && options.rolePatterns.length > 0) {
+    return buildExpandedPatternsByRoleFromFlat(
+      sanitizedRoles,
+      options.rolePatterns,
+    );
+  }
+
+  if (options?.enableRoleExpansion) {
+    return resolveExpandedPatternsByRole(sanitizedRoles);
+  }
+
+  return buildExpandedPatternsByRole(sanitizedRoles);
+}
+
+function buildExpandedPatternsByRoleFromFlat(
+  userRoles: string[],
+  flatPatterns: string[],
+): Record<string, string[]> {
+  const groups = buildExpandedPatternsByRole(userRoles);
+  const assigned = new Set<string>();
+  for (const patterns of Object.values(groups)) {
+    for (const pattern of patterns) {
+      assigned.add(pattern);
+    }
+  }
+
+  const userRoleSet = new Set(
+    userRoles.map((role) => normalizeRolePattern(role)).filter(Boolean),
+  );
+
+  for (const pattern of flatPatterns) {
+    const normalized = normalizeRolePattern(pattern);
+    if (!normalized || userRoleSet.has(normalized) || assigned.has(normalized)) {
+      continue;
+    }
+
+    for (const role of userRoles) {
+      const roleNorm = normalizeRolePattern(role);
+      const lanePatterns = expandRolesForMatching([role], true).map((item) =>
+        normalizeRolePattern(item),
+      );
+      if (lanePatterns.includes(normalized)) {
+        groups[roleNorm] = [...(groups[roleNorm] ?? []), normalized];
+        assigned.add(normalized);
+        break;
+      }
+    }
+  }
+
+  return groups;
 }
 
 export class FindyMailProvider implements EnrichmentProviderInterface {
@@ -466,30 +527,49 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
     roles: string[],
     options?: EnrichmentOptions,
   ): Promise<EnrichmentResult | null> {
-    const rolesToFetch = resolveRolesForPerRoleFetch({
+    const fetchPlan = buildFindyMailPerRoleFetchPlan({
       ...options,
       roles,
     });
     const perRoleLimit = options?.limit ?? DEFAULT_PER_ROLE_CONTACT_LIMIT;
 
     console.log(
-      `[FindyMail] Per-role enrichment for ${domain}: ${rolesToFetch.length} role pattern(s), limit=${perRoleLimit} per pattern`,
+      `[FindyMail] Per-role enrichment for ${domain}: ${fetchPlan.userRoles.length} user role(s) + ${fetchPlan.expandedPatterns.length} expanded pattern(s), limit=${perRoleLimit} per call`,
     );
 
     const mergedContacts: EnrichmentResult["contacts"] = [];
     const mergedEmails: EnrichmentResult["emails"] = [];
     const seenEmails = new Set<string>();
 
-    for (let index = 0; index < rolesToFetch.length; index += 1) {
-      const role = rolesToFetch[index]!;
-
-      if (mergedContacts.length >= PER_ROLE_EARLY_EXIT_CONTACTS) {
-        console.log(
-          `[FindyMail] Early exit for ${domain} after ${mergedContacts.length} contacts`,
-        );
-        break;
+    const mergeSingleRoleResult = (
+      role: string,
+      singleRoleResult: EnrichmentResult,
+    ) => {
+      for (const contact of singleRoleResult.contacts) {
+        const email = contact.email?.toLowerCase().trim();
+        if (!email || seenEmails.has(email)) {
+          continue;
+        }
+        seenEmails.add(email);
+        mergedContacts.push({
+          ...contact,
+          domain,
+          sourceRole: role,
+          title: contact.title?.trim() || undefined,
+        });
       }
 
+      for (const emailEntry of singleRoleResult.emails) {
+        const email = emailEntry.email?.toLowerCase().trim();
+        if (!email || seenEmails.has(email)) {
+          continue;
+        }
+        seenEmails.add(email);
+        mergedEmails.push(emailEntry);
+      }
+    };
+
+    const fetchRolePattern = async (role: string): Promise<void> => {
       try {
         const singleRoleResult = await this.enrichSingle(domain, {
           roles: [role],
@@ -498,31 +578,10 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
         });
 
         if (!singleRoleResult) {
-          continue;
+          return;
         }
 
-        for (const contact of singleRoleResult.contacts) {
-          const email = contact.email?.toLowerCase().trim();
-          if (!email || seenEmails.has(email)) {
-            continue;
-          }
-          seenEmails.add(email);
-          mergedContacts.push({
-            ...contact,
-            domain,
-            sourceRole: role,
-            title: contact.title?.trim() || undefined,
-          });
-        }
-
-        for (const emailEntry of singleRoleResult.emails) {
-          const email = emailEntry.email?.toLowerCase().trim();
-          if (!email || seenEmails.has(email)) {
-            continue;
-          }
-          seenEmails.add(email);
-          mergedEmails.push(emailEntry);
-        }
+        mergeSingleRoleResult(role, singleRoleResult);
       } catch (error) {
         const apiError = (error as Error & { apiError?: ApiError }).apiError;
         if (apiError && shouldBlockPipeline(apiError)) {
@@ -533,8 +592,30 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
           error instanceof Error ? error.message : String(error),
         );
       }
+    };
 
-      if (index < rolesToFetch.length - 1) {
+    // Phase A: all UI user roles (no early exit)
+    for (let index = 0; index < fetchPlan.userRoles.length; index += 1) {
+      const role = fetchPlan.userRoles[index]!;
+      await fetchRolePattern(role);
+      if (index < fetchPlan.userRoles.length - 1) {
+        await sleep(PER_ROLE_FETCH_DELAY_MS);
+      }
+    }
+
+    // Phase B: expanded patterns (early exit once enough contacts)
+    for (let index = 0; index < fetchPlan.expandedPatterns.length; index += 1) {
+      if (mergedContacts.length >= PER_ROLE_EARLY_EXIT_CONTACTS) {
+        console.log(
+          `[FindyMail] Early exit for ${domain} after ${mergedContacts.length} contacts (user roles + expanded)`,
+        );
+        break;
+      }
+
+      const role = fetchPlan.expandedPatterns[index]!;
+      await fetchRolePattern(role);
+
+      if (index < fetchPlan.expandedPatterns.length - 1) {
         await sleep(PER_ROLE_FETCH_DELAY_MS);
       }
     }

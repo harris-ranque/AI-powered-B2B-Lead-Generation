@@ -1,6 +1,7 @@
 import { action } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
+import { Id } from "../_generated/dataModel";
 import {
   createCorrelationContext,
   createChildContext,
@@ -687,6 +688,15 @@ export const searchGoogleMaps: any = action({
                 },
               );
 
+              await ctx.runMutation(
+                internal.leads.searchLinkedLeads.linkLeadForSearchReenrichment,
+                {
+                  searchId: args.searchId,
+                  userId: search.userId,
+                  leadId: duplicateAddressLeadId as Id<"leads">,
+                },
+              );
+
               duplicateCounters.address++;
               return;
             }
@@ -752,6 +762,19 @@ export const searchGoogleMaps: any = action({
             leadResult.reason === "user_level"
           ) {
             duplicateCounters.placeId++;
+            if (
+              leadResult.reason === "user_level" &&
+              leadResult.duplicateLeadId
+            ) {
+              await ctx.runMutation(
+                internal.leads.searchLinkedLeads.linkLeadForSearchReenrichment,
+                {
+                  searchId: args.searchId,
+                  userId: search.userId,
+                  leadId: leadResult.duplicateLeadId,
+                },
+              );
+            }
           } else if (leadResult.reason === "place_name") {
             duplicateCounters.placeName++;
           }
@@ -1525,17 +1548,23 @@ export const searchGoogleMaps: any = action({
       const totalDuplicatesPlaceId =
         duplicateCounters.placeId + duplicatesFromTiles;
 
+      const linkedLeadCount = await ctx.runQuery(
+        internal.leads.searchLinkedLeads.countSearchLinkedLeads,
+        { searchId: args.searchId },
+      );
+      const pipelineLeadCount = deliveredLeads + linkedLeadCount;
+
       await ctx.runMutation(
         internal.search.internal.updateSearchProgressInternal,
         {
           searchId: args.searchId,
           progress: {
-            discovered: deliveredLeads,
+            discovered: pipelineLeadCount,
             enriched: 0,
             analyzed: 0,
-            total: deliveredLeads,
+            total: pipelineLeadCount,
           },
-          partialResults: deliveredLeads < requestedResults,
+          partialResults: pipelineLeadCount < requestedResults,
           requestedCount: requestedResults,
         },
       );
@@ -1662,16 +1691,16 @@ export const searchGoogleMaps: any = action({
       await ctx.runMutation(internal.search.internal.updateSearchResults, {
         searchId: args.searchId,
         results: {
-          totalFound: deliveredLeads,
+          totalFound: pipelineLeadCount,
           enrichedCount: 0, // Will be updated during enrichment phase
           analyzedCount: 0, // Will be updated during analysis phase
           avgRelevanceScore: 0, // Will be updated during analysis phase
         },
         progress: {
-          discovered: deliveredLeads,
+          discovered: pipelineLeadCount,
           enriched: 0,
           analyzed: 0,
-          total: deliveredLeads,
+          total: pipelineLeadCount,
         },
       });
 

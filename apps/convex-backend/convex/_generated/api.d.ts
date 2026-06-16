@@ -58,6 +58,7 @@ import type * as leads_internal from "../leads/internal.js";
 import type * as leads_monitoring from "../leads/monitoring.js";
 import type * as leads_mutations from "../leads/mutations.js";
 import type * as leads_queries from "../leads/queries.js";
+import type * as leads_searchLinkedLeads from "../leads/searchLinkedLeads.js";
 import type * as leads_testEnrichmentProgress from "../leads/testEnrichmentProgress.js";
 import type * as leads_workpool from "../leads/workpool.js";
 import type * as lib_analysisProgress from "../lib/analysisProgress.js";
@@ -201,6 +202,7 @@ declare const fullApi: ApiFromModules<{
   "leads/monitoring": typeof leads_monitoring;
   "leads/mutations": typeof leads_mutations;
   "leads/queries": typeof leads_queries;
+  "leads/searchLinkedLeads": typeof leads_searchLinkedLeads;
   "leads/testEnrichmentProgress": typeof leads_testEnrichmentProgress;
   "leads/workpool": typeof leads_workpool;
   "lib/analysisProgress": typeof lib_analysisProgress;

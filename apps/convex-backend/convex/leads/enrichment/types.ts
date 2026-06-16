@@ -74,6 +74,8 @@ export interface EnrichmentOptions {
   limit?: number;
   /** Pre-expanded role patterns (static + AI) for FindyMail per-role fetch */
   rolePatterns?: string[];
+  /** Expanded patterns grouped by user role lane for round-robin fetch */
+  rolePatternsByRole?: Record<string, string[]>;
 }
 
 export interface EnrichmentProviderInterface {
