@@ -763,7 +763,7 @@ export const processProspectEmailEnrichment = internalMutation({
             requestedRoles: args.requestedRoles,
             companyWebsite: args.companyWebsite,
             acceptedEmailsInSearch: acceptedEmails,
-            enableRoleExpansion: true,
+            enableRoleExpansion: false,
             requireVerifiedEmail: true,
             fromProspect: true,
             prospectTitle: prospectInput.title,

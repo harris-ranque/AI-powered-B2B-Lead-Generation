@@ -273,24 +273,6 @@ export const createSearchCompleted = mutation({
           roles: sanitizedRoles,
         };
 
-        if (
-          args.skipDiscovery &&
-          args.skipRoleExpansion &&
-          discoverySourceSearch
-        ) {
-          adjustedParameters = {
-            ...adjustedParameters,
-            expandedRolePatterns:
-              discoverySourceSearch.parameters.expandedRolePatterns,
-            expandedPatternsByRole:
-              discoverySourceSearch.parameters.expandedPatternsByRole,
-            expandedTitleMatchers:
-              discoverySourceSearch.parameters.expandedTitleMatchers,
-            roleExpansionSource:
-              discoverySourceSearch.parameters.roleExpansionSource,
-          } as typeof adjustedParameters;
-        }
-
         // NOTE: Plan-based restrictions removed - all users can create searches (limited only by credits)
 
         // Validate enterprise users have required API keys (using extracted pure function)
@@ -357,17 +339,6 @@ export const createSearchCompleted = mutation({
         }
       },
     );
-
-    if (sanitizedRoles.length > 0 && !args.skipRoleExpansion) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.search.roleExpansionActions.expandSearchRolePatterns,
-        {
-          searchId,
-          userId: user._id,
-        },
-      );
-    }
 
     // If autoStart is true, schedule the orchestration
     if (args.autoStart) {

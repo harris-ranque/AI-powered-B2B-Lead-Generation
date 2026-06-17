@@ -192,7 +192,14 @@ function resolveExpandedPatternsFromOptions(
     return resolveExpandedPatternsByRole(sanitizedRoles);
   }
 
-  return buildExpandedPatternsByRole(sanitizedRoles);
+  const literalGroups: Record<string, string[]> = {};
+  for (const role of sanitizedRoles) {
+    const roleNorm = normalizeRolePattern(role);
+    if (roleNorm) {
+      literalGroups[roleNorm] = [];
+    }
+  }
+  return literalGroups;
 }
 
 function buildExpandedPatternsByRoleFromFlat(

@@ -60,15 +60,7 @@ import {
   isPeopleDiscoveryEnabled,
 } from "../lib/featureFlags";
 import { resolveEnrichmentRoles } from "../lib/enrichmentRoles";
-import {
-  resolveEnrichmentRolePatterns,
-  resolveExpandedPatternsByRole,
-  resolveTitleMatchPatterns,
-} from "../lib/roleExpansion";
-import {
-  collectTitlesNeedingSemanticReview,
-} from "../lib/contactAcceptance";
-import { normalizeRoleText } from "../lib/roleFamilies";
+import { normalizeRolePattern } from "../lib/roleExpansion";
 
 // Note: Workpool instance is created per-call in enrichLeads action
 // This is because we need ctx.runMutation which is only available in action context
@@ -83,6 +75,25 @@ function getApiKeyHash(apiKey: string | undefined): string {
   return createHash("sha256").update(keyToHash).digest("hex");
 }
 
+function buildLiteralRolePatterns(userRoles: string[]): string[] {
+  return userRoles
+    .map((role) => normalizeRolePattern(role))
+    .filter((pattern) => pattern.length > 0);
+}
+
+function buildLiteralRolePatternsByRole(
+  userRoles: string[],
+): Record<string, string[]> {
+  const groups: Record<string, string[]> = {};
+  for (const role of userRoles) {
+    const normalized = normalizeRolePattern(role);
+    if (normalized) {
+      groups[normalized] = [];
+    }
+  }
+  return groups;
+}
+
 // Helper to detect raw provider candidates before acceptance filtering
 function hasRawEnrichmentCandidates(
   result: EnrichmentResult | null | undefined,
@@ -90,41 +101,6 @@ function hasRawEnrichmentCandidates(
   return Boolean(
     result &&
       ((result.emails?.length ?? 0) > 0 || (result.contacts?.length ?? 0) > 0),
-  );
-}
-
-async function resolveSemanticTitleAcceptance(
-  ctx: { runAction: (action: any, args: any) => Promise<any> },
-  userId: string,
-  requestedRoles: string[],
-  enrichmentResult: EnrichmentResult,
-  titleMatchPatterns: string[],
-): Promise<Set<string>> {
-  const rawTitles = (enrichmentResult.contacts ?? [])
-    .map((contact) => contact.title?.trim())
-    .filter((title): title is string => Boolean(title));
-
-  const needsReview = collectTitlesNeedingSemanticReview(
-    rawTitles,
-    requestedRoles,
-    titleMatchPatterns,
-    true,
-  );
-  if (needsReview.length === 0) {
-    return new Set();
-  }
-
-  const aiResult = (await ctx.runAction(
-    internal.search.roleSemanticMatchActions.batchEvaluateSemanticTitles,
-    {
-      userId,
-      requestedRoles,
-      titles: needsReview,
-    },
-  )) as { acceptedTitles?: string[] };
-
-  return new Set(
-    (aiResult.acceptedTitles ?? []).map((title) => normalizeRoleText(title)),
   );
 }
 
@@ -256,7 +232,7 @@ async function tryProvider(
     rolePatterns: options.rolePatterns,
     rolePatternsByRole: options.rolePatternsByRole,
     perRole: multiContact,
-    enableRoleExpansion: multiContact,
+    enableRoleExpansion: false,
     limit: multiContact ? 3 : undefined,
   };
 
@@ -701,18 +677,9 @@ export const enrichSingleLeadWorkpool = internalAction({
       }
 
       const requestedRoles = resolveEnrichmentRoles(args.roles, search.parameters);
-      const enrichmentRolePatterns = resolveEnrichmentRolePatterns(
-        requestedRoles,
-        search.parameters,
-      );
-      const enrichmentRolePatternsByRole = resolveExpandedPatternsByRole(
-        requestedRoles,
-        search.parameters,
-      );
-      const titleMatchPatterns = resolveTitleMatchPatterns(
-        requestedRoles,
-        search.parameters,
-      );
+      const literalRolePatterns = buildLiteralRolePatterns(requestedRoles);
+      const literalRolePatternsByRole =
+        buildLiteralRolePatternsByRole(requestedRoles);
 
       if (search.enrichmentPaused) {
         // Release slot and skip
@@ -849,20 +816,20 @@ export const enrichSingleLeadWorkpool = internalAction({
 
       let pipelineBlockingError: ApiError | undefined;
 
-      const prospectAttempt = await tryProspectEmailDiscovery(ctx, {
-        leadId: args.leadId,
-        searchId: args.searchId,
-        userId: args.userId,
-        domain,
-        requestedRoles,
-        companyWebsite: lead.website,
-        userApiKey: args.userApiKey,
-      });
+      if (isPeopleDiscoveryEnabled()) {
+        const prospectAttempt = await tryProspectEmailDiscovery(ctx, {
+          leadId: args.leadId,
+          searchId: args.searchId,
+          userId: args.userId,
+          domain,
+          requestedRoles,
+          companyWebsite: lead.website,
+          userApiKey: args.userApiKey,
+        });
 
-      if (prospectAttempt?.pipelineBlockingError) {
-        pipelineBlockingError = prospectAttempt.pipelineBlockingError;
-      } else if (prospectAttempt?.hadProspects) {
-        if (prospectAttempt.acceptedCount > 0) {
+        if (prospectAttempt?.pipelineBlockingError) {
+          pipelineBlockingError = prospectAttempt.pipelineBlockingError;
+        } else if (prospectAttempt && prospectAttempt.acceptedCount > 0) {
           await checkEmailDuplicateWithPagination(
             ctx,
             args.leadId,
@@ -913,20 +880,49 @@ export const enrichSingleLeadWorkpool = internalAction({
             acceptedCount: prospectAttempt.acceptedCount,
             source: "prospect_name_search",
           };
-        }
+        } else if (!pipelineBlockingError) {
+          const noContactError = prospectAttempt?.hadProspects
+            ? "Role-matched prospects found but no verified emails from FindyMail name search"
+            : "No role-matched people discovered from website";
 
-        logWithCorrelation(
-          "info",
-          correlation,
-          "[Workpool] Prospect name search found no accepted emails — falling back to role/domain search",
-          {
-            leadId: args.leadId,
-            candidateCount: prospectAttempt.candidateCount,
-          },
-        );
+          logWithCorrelation(
+            "info",
+            correlation,
+            "[Workpool] People discovery path complete — no accepted contacts",
+            {
+              leadId: args.leadId,
+              hadProspects: prospectAttempt?.hadProspects ?? false,
+              candidateCount: prospectAttempt?.candidateCount ?? 0,
+            },
+          );
+
+          await updateLeadEnrichmentStatus({
+            status: "no_contacts_found",
+            error: noContactError,
+          });
+          await completeReenrichLink(true);
+
+          await ctx.runMutation(
+            internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+            { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+          );
+
+          if (args._fromQueue) {
+            await ctx.runMutation(
+              internal.leads.workpool.reportQueuedLeadCompletion,
+              { searchId: args.searchId, leadId: args.leadId, success: false },
+            );
+          }
+
+          return {
+            success: false,
+            provider: "findymail",
+            reason: "no_accepted_contacts",
+          };
+        }
       }
 
-      // FindyMail role/domain search (no prospects, or hybrid fallback after prospect name search)
+      // Legacy enrichment (people discovery disabled): FindyMail domain search using literal UI roles only.
       let result: (EnrichmentResult & { provider: "findymail" }) | null = null;
 
       if (isMultiContactPipelineEnabled()) {
@@ -948,8 +944,8 @@ export const enrichSingleLeadWorkpool = internalAction({
           const providerAttempt = await tryProvider("findymail", domain, {
             retries: 3,
             roles: requestedRoles,
-            rolePatterns: enrichmentRolePatterns,
-            rolePatternsByRole: enrichmentRolePatternsByRole,
+            rolePatterns: literalRolePatterns,
+            rolePatternsByRole: literalRolePatternsByRole,
             userApiKey: args.userApiKey,
           });
           result = providerAttempt.result;
@@ -967,8 +963,8 @@ export const enrichSingleLeadWorkpool = internalAction({
         const providerAttempt = await tryProvider("findymail", domain, {
           retries: 3,
           roles: requestedRoles,
-          rolePatterns: enrichmentRolePatterns,
-          rolePatternsByRole: enrichmentRolePatternsByRole,
+          rolePatterns: literalRolePatterns,
+          rolePatternsByRole: literalRolePatternsByRole,
           userApiKey: args.userApiKey,
         });
         result = providerAttempt.result;
@@ -1059,14 +1055,6 @@ export const enrichSingleLeadWorkpool = internalAction({
       const hasRawCandidates = hasRawEnrichmentCandidates(result);
 
       if (hasRawCandidates && isMultiContactPipelineEnabled()) {
-        const semanticTitleAccepted = await resolveSemanticTitleAcceptance(
-          ctx,
-          args.userId,
-          requestedRoles,
-          result!,
-          titleMatchPatterns,
-        );
-
         const processResult = await ctx.runMutation(
           internal.leads.contactInternal.processMultiContactEnrichment,
           {
@@ -1076,9 +1064,8 @@ export const enrichSingleLeadWorkpool = internalAction({
             requestedRoles,
             companyWebsite: lead.website,
             enrichmentResult: result,
-            enableRoleExpansion: true,
-            roleMatchPatterns: titleMatchPatterns,
-            semanticTitleAccepted: Array.from(semanticTitleAccepted),
+            enableRoleExpansion: false,
+            roleMatchPatterns: literalRolePatterns,
           },
         );
 
@@ -1474,18 +1461,9 @@ export const enrichSingleLead = internalAction({
       args.roles,
       searchForRoles?.parameters,
     );
-    const enrichmentRolePatterns = resolveEnrichmentRolePatterns(
-      requestedRoles,
-      searchForRoles?.parameters,
-    );
-    const enrichmentRolePatternsByRole = resolveExpandedPatternsByRole(
-      requestedRoles,
-      searchForRoles?.parameters,
-    );
-    const titleMatchPatterns = resolveTitleMatchPatterns(
-      requestedRoles,
-      searchForRoles?.parameters,
-    );
+    const literalRolePatterns = buildLiteralRolePatterns(requestedRoles);
+    const literalRolePatternsByRole =
+      buildLiteralRolePatternsByRole(requestedRoles);
 
     // Try to acquire API key slot for rate limiting (5 concurrent per unique API key)
     const apiKeyHash = getApiKeyHash(args.userApiKey);
@@ -1865,8 +1843,8 @@ export const enrichSingleLead = internalAction({
       const { result, pipelineBlockingError } = await tryProvider("findymail", domain, {
         retries: 3,
         roles: requestedRoles,
-        rolePatterns: enrichmentRolePatterns,
-        rolePatternsByRole: enrichmentRolePatternsByRole,
+        rolePatterns: literalRolePatterns,
+        rolePatternsByRole: literalRolePatternsByRole,
         userApiKey: args.userApiKey,
       });
 
@@ -1935,14 +1913,6 @@ export const enrichSingleLead = internalAction({
       let acceptedCount = 0;
 
       if (hasRawCandidates && isMultiContactPipelineEnabled()) {
-        const semanticTitleAccepted = await resolveSemanticTitleAcceptance(
-          ctx,
-          args.userId,
-          requestedRoles,
-          result!,
-          titleMatchPatterns,
-        );
-
         const processResult = await ctx.runMutation(
           internal.leads.contactInternal.processMultiContactEnrichment,
           {
@@ -1952,9 +1922,8 @@ export const enrichSingleLead = internalAction({
             requestedRoles,
             companyWebsite: lead.website,
             enrichmentResult: result,
-            enableRoleExpansion: true,
-            roleMatchPatterns: titleMatchPatterns,
-            semanticTitleAccepted: Array.from(semanticTitleAccepted),
+            enableRoleExpansion: false,
+            roleMatchPatterns: literalRolePatterns,
           },
         );
         acceptedCount = processResult.acceptedCount;

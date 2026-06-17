@@ -919,7 +919,6 @@ async def discover_people(
             location=request.location or "",
             industry=request.industry or "",
             requested_roles=request.requested_roles,
-            expanded_role_patterns=request.expanded_role_patterns,
             provider_keys=provider_keys_payload,
         )
 

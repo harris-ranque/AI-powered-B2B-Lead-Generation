@@ -8,6 +8,16 @@ import {
 } from "../../convex/lib/roleExpansion";
 
 describe("FindyMail per-role fetch plan", () => {
+  it("uses only literal UI roles when role expansion is disabled", () => {
+    const plan = buildFindyMailPerRoleFetchPlan({
+      roles: ["CEO", "Founder", "Marketing"],
+      enableRoleExpansion: false,
+    });
+
+    expect(plan.userRoles).toEqual(["ceo", "founder", "marketing"]);
+    expect(plan.expandedPatterns).toEqual([]);
+  });
+
   it("runs all UI roles first, then expanded patterns without duplicates", () => {
     const userRoles = ["CEO", "Founder", "Owner"];
     const staticPatterns = buildStaticRolePatterns(userRoles);

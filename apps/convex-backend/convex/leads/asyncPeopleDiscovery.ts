@@ -29,7 +29,7 @@ type DiscoverPeopleApiPerson = {
 function mapProspectSource(
   source: string | undefined,
 ): "perplexity" | "website_inference" {
-  if (source === "website_inference") {
+  if (source === "website_inference" || source === "website_llm") {
     return "website_inference";
   }
   return "perplexity";
@@ -188,15 +188,6 @@ export const discoverPeopleForLead = internalAction({
         )
       : ["CEO", "Founder", "Owner"];
 
-    const expandedRolePatterns = Array.isArray(
-      search.parameters?.expandedRolePatterns,
-    )
-      ? search.parameters.expandedRolePatterns.filter(
-          (p: unknown): p is string =>
-            typeof p === "string" && p.trim().length > 0,
-        )
-      : undefined;
-
     const user = await ctx.runQuery(internal.users.internal.getUserInternal, {
       userId: args.userId,
     });
@@ -213,8 +204,8 @@ export const discoverPeopleForLead = internalAction({
           },
         )) as Record<string, string>;
 
-        if (resolvedKeys.perplexity) {
-          providerKeys = { perplexity: resolvedKeys.perplexity };
+        if (resolvedKeys.openai) {
+          providerKeys = { openai: resolvedKeys.openai };
         }
       } catch {
         // fall back to platform keys
@@ -232,12 +223,11 @@ export const discoverPeopleForLead = internalAction({
           location: lead.address,
           industry: lead.category,
           requestedRoles,
-          expandedRolePatterns,
           userId: args.userId,
           userTier: user?.plan ?? "free",
           providerKeys: providerKeys
             ? {
-                perplexity: providerKeys.perplexity,
+                openai: providerKeys.openai,
               }
             : undefined,
         }),

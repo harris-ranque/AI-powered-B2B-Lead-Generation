@@ -4,6 +4,7 @@ import pytest
 
 from app.utils.people_discovery import _merge_discovered_people, _normalize
 from app.utils.website_people_scraper import (
+    _extract_candidate_links,
     _looks_like_job_title,
     _looks_like_person_name,
     _parse_people_from_html,
@@ -13,7 +14,10 @@ from app.utils.website_people_scraper import (
 def test_looks_like_person_name():
     assert _looks_like_person_name("Jane Doe")
     assert _looks_like_person_name("Robert Smith Jr")
+    assert _looks_like_person_name("Esma Çalış")
+    assert _looks_like_person_name("Betül Sarıteke")
     assert not _looks_like_person_name("CEO")
+    assert not _looks_like_person_name("About Mailsoftly")
     assert not _looks_like_person_name("Click here")
     assert not _looks_like_person_name("john@company.com")
 
@@ -21,6 +25,9 @@ def test_looks_like_person_name():
 def test_looks_like_job_title():
     assert _looks_like_job_title("VP of Marketing")
     assert _looks_like_job_title("Co-Founder & CEO")
+    assert _looks_like_job_title("Business Development Manager")
+    assert _looks_like_job_title("UX UI Designer")
+    assert _looks_like_job_title("Full Stack Software Engineer")
     assert not _looks_like_job_title("We build great software")
 
 
@@ -55,6 +62,64 @@ def test_parse_heading_pair():
     seen: set[str] = set()
     people, _ = _parse_people_from_html(html, "https://example.com/about", seen)
     assert any(p.name == "Bob Martinez" for p in people)
+
+
+def test_parse_mailsoftly_about_heading_pairs_with_unicode_names():
+    html = """
+    <html><body>
+      <main>
+        <h2>Meet the Team</h2>
+        <h2>Alkan Balkaya</h2>
+        <h3>Founder</h3>
+        <h2>Esma Çalış</h2>
+        <h3>Business Development Manager</h3>
+        <h2>Ozlem Yildirimer</h2>
+        <h3>Digital Marketing Specialist</h3>
+        <h2>Tu Nguyen</h2>
+        <h3>UX UI Designer</h3>
+        <h2>Didem KIRAN</h2>
+        <h3>Business Development Specialist</h3>
+        <h2>Isabella Torres</h2>
+        <h3>Business Development Representative</h3>
+        <h2>Betül Sarıteke</h2>
+        <h3>Full Stack Software Engineer</h3>
+      </main>
+    </body></html>
+    """
+    seen: set[str] = set()
+    people, _ = _parse_people_from_html(html, "https://mailsoftly.com/about-us/", seen)
+    pairs = {(p.name, p.title) for p in people}
+
+    assert ("Alkan Balkaya", "Founder") in pairs
+    assert ("Esma Çalış", "Business Development Manager") in pairs
+    assert ("Tu Nguyen", "UX UI Designer") in pairs
+    assert ("Betül Sarıteke", "Full Stack Software Engineer") in pairs
+    assert not any(p.name == "Meet the Team" for p in people)
+
+
+def test_extract_candidate_links_scores_real_internal_people_pages_first():
+    html = """
+    <html><body>
+      <a href="/pricing">Pricing</a>
+      <a href="/company/about-mailsoftly">About Mailsoftly</a>
+      <a href="/about-us/company">About our company</a>
+      <a href="/blog/founder-story">Founder story blog</a>
+      <a href="https://external.example.com/team">External Team</a>
+      <a href="/about/team-members">Team Members</a>
+    </body></html>
+    """
+
+    links = _extract_candidate_links(
+        html,
+        "https://mailsoftly.com/",
+        "mailsoftly.com",
+    )
+
+    assert "https://mailsoftly.com/about/team-members" in links
+    assert "https://mailsoftly.com/company/about-mailsoftly" in links
+    assert "https://mailsoftly.com/about-us/company" in links
+    assert all("pricing" not in link for link in links)
+    assert all("external.example.com" not in link for link in links)
 
 
 def test_merge_prefers_website_on_duplicate_name():
