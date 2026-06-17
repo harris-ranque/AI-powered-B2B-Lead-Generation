@@ -567,28 +567,72 @@ export const getEnrichmentProgress = query({
       linkedRows.map((r) => [String(r.leadId), r.status]),
     );
 
-    // Count native lead enrichment statuses
-    const nativePending = nativeLeads.filter(l => l.enrichmentStatus === "pending").length;
-    const nativeInProgress = nativeLeads.filter(l => l.enrichmentStatus === "in_progress").length;
-    const nativeCompleted = nativeLeads.filter(l =>
-      l.enrichmentStatus === "completed" ||
-      l.enrichmentStatus === "completed_fallback"
+    const peopleDiscoveryEnabled =
+      process.env.PEOPLE_DISCOVERY_ENABLED !== "false";
+
+    let scopedNativeLeads = nativeLeads;
+    let scopedLinkedRows = linkedRows;
+    let businessesWithPeople = 0;
+
+    if (peopleDiscoveryEnabled) {
+      const prospects = await ctx.db
+        .query("leadProspects")
+        .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+        .collect();
+
+      const leadIdsWithProspects = new Set(
+        prospects.map((prospect) => String(prospect.leadId)),
+      );
+      businessesWithPeople = leadIdsWithProspects.size;
+
+      scopedNativeLeads = nativeLeads.filter((lead) =>
+        leadIdsWithProspects.has(String(lead._id)),
+      );
+      scopedLinkedRows = linkedRows.filter((row) =>
+        leadIdsWithProspects.has(String(row.leadId)),
+      );
+    }
+
+    // Count native lead enrichment statuses (scoped to step-1 passers when people discovery runs)
+    const nativePending = scopedNativeLeads.filter(
+      (l) => l.enrichmentStatus === "pending",
     ).length;
-    const nativeFailed = nativeLeads.filter(l => l.enrichmentStatus === "failed").length;
-    const nativeNoContacts = nativeLeads.filter(
+    const nativeInProgress = scopedNativeLeads.filter(
+      (l) => l.enrichmentStatus === "in_progress",
+    ).length;
+    const nativeCompleted = scopedNativeLeads.filter(
+      (l) =>
+        l.enrichmentStatus === "completed" ||
+        l.enrichmentStatus === "completed_fallback",
+    ).length;
+    const nativeFailed = scopedNativeLeads.filter(
+      (l) => l.enrichmentStatus === "failed",
+    ).length;
+    const nativeNoContacts = scopedNativeLeads.filter(
       (l) => l.enrichmentStatus === "no_contacts_found",
     ).length;
 
     // Count linked lead statuses from the searchLinkedLeads rows
-    const linkedPending = linkedRows.filter(r => r.status === "pending").length;
-    const linkedEnriched = linkedRows.filter(r => r.status === "enriched").length;
-    const linkedFailed = linkedRows.filter(r => r.status === "failed").length;
+    const linkedPending = scopedLinkedRows.filter(
+      (r) => r.status === "pending",
+    ).length;
+    const linkedEnriched = scopedLinkedRows.filter(
+      (r) => r.status === "enriched",
+    ).length;
+    const linkedFailed = scopedLinkedRows.filter(
+      (r) => r.status === "failed",
+    ).length;
 
     const pending = nativePending + linkedPending;
     const inProgress = nativeInProgress;
     const completed = nativeCompleted + linkedEnriched;
     const failed = nativeFailed + linkedFailed;
     const noContacts = nativeNoContacts;
+
+    const scopedLeadIds = new Set([
+      ...scopedNativeLeads.map((lead) => String(lead._id)),
+      ...scopedLinkedRows.map((row) => String(row.leadId)),
+    ]);
 
     // withEmail: accepted contacts created for this search (new pipeline) or lead-level emails
     const acceptedContacts = await ctx.db
@@ -597,20 +641,31 @@ export const getEnrichmentProgress = query({
         q.eq("searchId", args.searchId).eq("status", "accepted"),
       )
       .collect();
-    const withEmail = acceptedContacts.length > 0
-      ? new Set(acceptedContacts.map((c) => String(c.leadId))).size
-      : allLeads.filter(
-          (l) =>
-            !linkedStatusById.has(String(l._id)) &&
-            (Boolean(l.primaryEmail) ||
-              (l.contactInfo?.emails && l.contactInfo.emails.length > 0)),
-        ).length;
+    const withEmail =
+      acceptedContacts.length > 0
+        ? new Set(
+            acceptedContacts
+              .filter((contact) => scopedLeadIds.has(String(contact.leadId)))
+              .map((contact) => String(contact.leadId)),
+          ).size
+        : allLeads.filter(
+            (l) =>
+              scopedLeadIds.has(String(l._id)) &&
+              !linkedStatusById.has(String(l._id)) &&
+              (Boolean(l.primaryEmail) ||
+                (l.contactInfo?.emails && l.contactInfo.emails.length > 0)),
+          ).length;
 
-    const total = nativeLeads.length + linkedRows.length;
+    const total = peopleDiscoveryEnabled
+      ? businessesWithPeople
+      : nativeLeads.length + linkedRows.length;
     const processed = completed + failed + noContacts;
-    const percentComplete = total > 0 ? Math.round((processed / total) * 100) : 0;
+    const percentComplete =
+      total > 0 ? Math.round((processed / total) * 100) : 0;
 
-    const findymailCount = nativeLeads.filter(l => l.enrichmentProvider === "findymail").length;
+    const findymailCount = scopedNativeLeads.filter(
+      (l) => l.enrichmentProvider === "findymail",
+    ).length;
 
     return {
       searchId: args.searchId,
@@ -624,6 +679,8 @@ export const getEnrichmentProgress = query({
       withEmail,
       processed,
       percentComplete,
+      businessesWithPeople: peopleDiscoveryEnabled ? businessesWithPeople : undefined,
+      peopleDiscoveryScoped: peopleDiscoveryEnabled,
       providers: {
         findymail: findymailCount,
       },
@@ -884,12 +941,20 @@ export const getAcceptedContactCountsBySearch = query({
       await filterFullyExportableContacts(ctx, exportResolution.contacts)
     ).length;
 
+    const linkedForReenrichment = (
+      await ctx.db
+        .query("searchLinkedLeads")
+        .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+        .collect()
+    ).length;
+
     return {
       totalAccepted: contacts.length,
       totalExportable: exportableContacts.length,
       duplicateFallbackExportable: exportResolution.priorSearchExportable,
       totalExportableIncludingPrior,
       duplicateSkips: exportResolution.duplicateSkips,
+      linkedForReenrichment,
       byLead,
       multiContactEnabled: true,
       exportReadiness,

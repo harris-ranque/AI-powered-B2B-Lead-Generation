@@ -267,6 +267,22 @@ describe("exportEligibility", () => {
     expect(resolveContactExportTitle({})).toBe("");
   });
 
+  it("resolveContactExportTitle uses website title only for prospect contacts", () => {
+    expect(
+      resolveContactExportTitle({
+        title: "Managing Partner",
+        matchedRole: "Owner",
+        leadProspectId: "prospect123",
+      }),
+    ).toBe("Managing Partner");
+    expect(
+      resolveContactExportTitle({
+        matchedRole: "Owner",
+        leadProspectId: "prospect123",
+      }),
+    ).toBe("");
+  });
+
   it("message mentions email when all leads lack email", () => {
     const msg = noExportableLeadsMessage({ total: 10, withoutEmail: 10, analysisFailed: 0 });
     expect(msg).toContain("no usable email address");

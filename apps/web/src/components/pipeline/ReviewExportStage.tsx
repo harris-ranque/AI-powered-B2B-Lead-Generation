@@ -407,6 +407,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
     search?.progress?.discovered ?? 0,
     search?.results?.totalFound ?? 0,
     leads.length,
+    contactCounts?.linkedForReenrichment ?? 0,
   );
 
   // enrichedCount: leads with a verified email.
@@ -972,9 +973,18 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
                 <span className="font-medium text-foreground">
                   No new businesses were added
                 </span>
-                — {duplicateSkipCount.toLocaleString()} were already in your account
-                from prior searches. CSV export includes exportable contacts from
-                those prior results
+                — {duplicateSkipCount.toLocaleString()} matched businesses already
+                in your account from prior searches.
+                {(contactCounts?.linkedForReenrichment ?? 0) > 0 && (
+                  <>
+                    {" "}
+                    {contactCounts?.linkedForReenrichment?.toLocaleString()} were
+                    still queued for this search (people discovery → email lookup
+                    with your CEO/Founder/Owner roles).
+                  </>
+                )}
+                {" "}
+                CSV export includes exportable contacts from those prior results
                 {priorSearchExportable > 0
                   ? ` (${priorSearchExportable.toLocaleString()} available now).`
                   : " when available."}

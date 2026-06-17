@@ -208,6 +208,11 @@ export function resolveDisplayableContactTitle(input: {
   );
 }
 
+/** People-discovery prospects: store the website title only (never UI requested roles). */
+export function resolveProspectStoredTitle(websiteTitle?: string): string | undefined {
+  return resolveContactTitleForStorage(websiteTitle);
+}
+
 export function collectTitlesNeedingSemanticReview(
   titles: string[],
   requestedRoles: string[],
@@ -247,6 +252,49 @@ export function collectTitlesNeedingSemanticReview(
   return needsReview;
 }
 
+/**
+ * People-discovery prospect path: title/role already matched on the website.
+ * FindyMail /search/name emails are treated as verified. Only rejects missing
+ * or duplicate emails within the search.
+ */
+export function evaluateProspectEmailCandidate(
+  email: string | undefined,
+  options: {
+    acceptedEmailsInSearch: Set<string>;
+    prospectMatchedRole?: string;
+  },
+): ContactAcceptanceResult {
+  const normalizedEmail = normalizeContactEmail(email);
+  if (!normalizedEmail) {
+    return {
+      accepted: false,
+      rejectionReason: "missing_email",
+      emailVerified: true,
+      domainMatchVerified: true,
+    };
+  }
+
+  if (options.acceptedEmailsInSearch.has(normalizedEmail)) {
+    return {
+      accepted: false,
+      rejectionReason: "duplicate_email",
+      emailVerified: true,
+      domainMatchVerified: true,
+      normalizedEmail,
+    };
+  }
+
+  return {
+    accepted: true,
+    emailVerified: true,
+    domainMatchVerified: true,
+    normalizedEmail,
+    matchedRole: options.prospectMatchedRole,
+    titleMatchScore: 1,
+    titleMatchReason: "prospect_discovery",
+  };
+}
+
 export function evaluateContactCandidate(
   candidate: ContactCandidateInput,
   options: {
@@ -269,6 +317,13 @@ export function evaluateContactCandidate(
     prospectMatchedRole?: string;
   },
 ): ContactAcceptanceResult {
+  if (options.fromProspect) {
+    return evaluateProspectEmailCandidate(candidate.email, {
+      acceptedEmailsInSearch: options.acceptedEmailsInSearch,
+      prospectMatchedRole: options.prospectMatchedRole,
+    });
+  }
+
   const normalizedEmail = normalizeContactEmail(candidate.email);
   if (!normalizedEmail) {
     return {
@@ -314,31 +369,6 @@ export function evaluateContactCandidate(
       emailVerified,
       domainMatchVerified: false,
       normalizedEmail,
-    };
-  }
-
-  if (options.fromProspect && options.prospectTitle?.trim()) {
-    const displayableTitle = resolveDisplayableContactTitle({
-      providerTitle: options.prospectTitle,
-      matchedRole: options.prospectMatchedRole,
-    });
-    if (!displayableTitle) {
-      return {
-        accepted: false,
-        rejectionReason: "missing_title",
-        emailVerified,
-        domainMatchVerified,
-        normalizedEmail,
-      };
-    }
-    return {
-      accepted: true,
-      emailVerified,
-      domainMatchVerified,
-      normalizedEmail,
-      matchedRole: options.prospectMatchedRole,
-      titleMatchScore: 1,
-      titleMatchReason: "prospect_discovery",
     };
   }
 

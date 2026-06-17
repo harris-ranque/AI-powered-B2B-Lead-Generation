@@ -159,17 +159,18 @@ export function EnrichmentStage() {
     acceptedContactCounts?.byLead ?? {},
   ).length;
 
+  const peopleDiscoveryEnabled = peopleDiscoveryProgress?.enabled ?? true;
+
   const totalBusinesses = Math.max(
-    enrichmentProgress?.total ?? 0,
     search?.progress?.total ?? 0,
     search?.progress?.discovered ?? 0,
     search?.results?.totalFound ?? 0,
+    !peopleDiscoveryEnabled ? enrichmentProgress?.total ?? 0 : 0,
     leads.every((l) => (l as { searchId?: string }).searchId === searchId)
       ? leads.length
       : 0,
   );
 
-  const peopleDiscoveryEnabled = peopleDiscoveryProgress?.enabled ?? true;
   const peopleDiscoveryComplete =
     peopleDiscoveryProgress?.isComplete ?? !peopleDiscoveryEnabled;
 
@@ -189,7 +190,19 @@ export function EnrichmentStage() {
   const businessesWithPeople = Math.max(
     peopleDiscoveryProgress?.businessesWithPeople ?? 0,
     broadcastPeopleDiscovery?.businessesWithPeople ?? 0,
+    enrichmentProgress?.businessesWithPeople ?? 0,
   );
+
+  // Step 2 only runs email lookup for businesses that passed step 1 (had role-matched people).
+  const emailLookupTotal = peopleDiscoveryEnabled
+    ? Math.max(
+        businessesWithPeople,
+        enrichmentProgress?.businessesWithPeople ?? 0,
+        enrichmentProgress?.peopleDiscoveryScoped
+          ? enrichmentProgress.total
+          : 0,
+      )
+    : totalBusinesses;
   const peopleScanPercent =
     peopleScanTotal > 0
       ? Math.min(
@@ -229,29 +242,30 @@ export function EnrichmentStage() {
 
   const enrichmentComplete =
     peopleDiscoveryComplete &&
-    (enrichmentProgress?.isComplete ??
-      (totalBusinesses > 0 &&
-        enrichmentProgress !== undefined &&
-        enrichmentProgress.pending === 0 &&
-        enrichmentProgress.inProgress === 0));
+    (emailLookupTotal === 0 ||
+      (enrichmentProgress?.isComplete ??
+        (emailLookupTotal > 0 &&
+          enrichmentProgress !== undefined &&
+          enrichmentProgress.pending === 0 &&
+          enrichmentProgress.inProgress === 0)));
 
   const emailProcessingPercent =
     enrichmentProgress?.percentComplete ??
     broadcastBreakdown?.percentComplete ??
-    (totalBusinesses > 0 && peopleDiscoveryComplete
+    (emailLookupTotal > 0 && peopleDiscoveryComplete
       ? Math.round(
           ((enrichmentProgress?.processed ??
             broadcastBreakdown
               ? broadcastBreakdown.completed + broadcastBreakdown.failed
               : emailsFound) /
-            totalBusinesses) *
+            emailLookupTotal) *
             100,
         )
       : 0);
 
   const emailDiscoveryPercent =
-    totalBusinesses > 0
-      ? Math.min(100, (emailsFound / totalBusinesses) * 100)
+    emailLookupTotal > 0
+      ? Math.min(100, (emailsFound / emailLookupTotal) * 100)
       : 0;
 
   const processingPercent = peopleDiscoveryComplete
@@ -433,8 +447,11 @@ export function EnrichmentStage() {
                 <p className="text-sm text-muted-foreground">
                   {!peopleDiscoveryComplete
                     ? "Waiting for people discovery to finish…"
-                    : `${emailsFound} of ${displayTotal} businesses with verified emails`}
+                    : emailLookupTotal === 0
+                      ? "No businesses had role-matched people from step 1"
+                      : `${emailsFound} of ${emailLookupTotal} businesses with verified emails`}
                   {peopleDiscoveryComplete &&
+                    emailLookupTotal > 0 &&
                     enrichmentProgress &&
                     enrichmentProgress.pending + enrichmentProgress.inProgress > 0 &&
                     ` · ${enrichmentProgress.pending + enrichmentProgress.inProgress} processing`}
@@ -460,9 +477,12 @@ export function EnrichmentStage() {
             />
             <p className="text-xs text-muted-foreground">
               {peopleDiscoveryComplete
-                ? `${processingPercent}% of businesses processed for email lookup`
+                ? emailLookupTotal === 0
+                  ? "Skipped — no businesses passed people discovery"
+                  : `${processingPercent}% of passed businesses processed for email lookup`
                 : "Email lookup starts after people are found on each website"}
               {peopleDiscoveryComplete &&
+                emailLookupTotal > 0 &&
                 enrichmentProgress &&
                 enrichmentProgress.pending + enrichmentProgress.inProgress > 0 &&
                 ` · ${enrichmentProgress.pending + enrichmentProgress.inProgress} still running`}

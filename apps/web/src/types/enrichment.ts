@@ -19,6 +19,8 @@ export interface EnrichmentProgress {
   withEmail?: number;
   processed?: number;
   percentComplete: number;
+  businessesWithPeople?: number;
+  peopleDiscoveryScoped?: boolean;
   providers: {
     findymail: number;
     icypeas: number;

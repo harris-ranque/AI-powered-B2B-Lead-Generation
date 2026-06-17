@@ -72,6 +72,31 @@ describe("resolveExportResearchFields", () => {
     expect(result.citations).toEqual(["https://lead.com"]);
   });
 
+  it("supports people discovery payloads with scraped website citations", () => {
+    const result = resolveExportResearchFields(undefined, {
+      company_overview: "Team found on website",
+      confidence_score: 0.75,
+      raw_data: {
+        company_overview: "Team found on website",
+        people_discovery: true,
+        research_metadata: {
+          comprehensive_report: "Team found on website",
+          citations: [{ url: "https://cafe.com/team", title: "Company website" }],
+          confidence_score: 0.75,
+        },
+        raw: {
+          website: {
+            scraped_urls: ["https://cafe.com/team [http]"],
+          },
+        },
+      },
+    });
+
+    expect(result.fullResearchReport).toBe("Team found on website");
+    expect(result.citations.length).toBeGreaterThan(0);
+    expect(hasCompleteExportResearch(result)).toBe(true);
+  });
+
   it("hasCompleteExportResearch requires report, citations, and numeric confidence", () => {
     expect(
       hasCompleteExportResearch({

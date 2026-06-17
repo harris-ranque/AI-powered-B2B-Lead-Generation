@@ -14,6 +14,7 @@ import {
   normalizeLangGraphBaseUrl,
 } from "../lib/langgraphClient";
 import { extractDomainFromWebsite } from "../lib/contactVerification";
+import { buildPeopleDiscoveryResearchMetadata } from "../lib/exportResearchFields";
 import { enrichmentPool, generateBatchId } from "./workpool";
 
 type DiscoverPeopleApiPerson = {
@@ -321,16 +322,35 @@ export const discoverPeopleForLead = internalAction({
         ? `${people.length} role-matched team member${people.length === 1 ? "" : "s"} found on ${lead.businessName}'s website.`
         : `No role-matched team members found on ${lead.businessName}'s website.`);
 
+    const confidenceScore = people.length > 0 ? 0.75 : 0.3;
+    const rawDiscoveryData = (data.rawData ?? {}) as Record<string, unknown>;
+    const rawDataBody = {
+      company_overview: companyOverview,
+      people_discovery: true,
+      people: people,
+      raw: rawDiscoveryData,
+      research_tier: data.researchTier ?? "pro",
+      confidence_score: confidenceScore,
+    };
+    const researchMetadata = buildPeopleDiscoveryResearchMetadata(
+      companyOverview,
+      {
+        ...rawDataBody,
+        website: (rawDiscoveryData as { website?: unknown }).website,
+      },
+      confidenceScore,
+      domain,
+    );
+
     const companyResearchPayload = {
       company_overview: companyOverview,
       raw_data: {
-        company_overview: companyOverview,
-        people_discovery: true,
-        people: people,
-        raw: data.rawData ?? {},
-        research_tier: data.researchTier ?? "pro",
+        ...rawDataBody,
+        research_metadata: researchMetadata,
+        citations: researchMetadata.citations,
+        comprehensive_report: companyOverview,
       },
-      confidence_score: people.length > 0 ? 0.75 : 0.3,
+      confidence_score: confidenceScore,
       research_tier: data.researchTier ?? "pro",
     };
 

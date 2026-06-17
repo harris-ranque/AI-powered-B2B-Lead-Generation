@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   evaluateContactCandidate,
+  evaluateProspectEmailCandidate,
   extractProviderTitle,
   resolveDisplayableContactTitle,
+  resolveProspectStoredTitle,
   scoreTitleAgainstRoles,
   TITLE_MATCH_ACCEPT_THRESHOLD,
 } from "../../convex/lib/contactAcceptance";
@@ -98,7 +100,42 @@ describe("contactAcceptance", () => {
 
     expect(result.accepted).toBe(true);
     expect(result.titleMatchReason).toBe("prospect_discovery");
+    expect(result.emailVerified).toBe(true);
     expect(result.domainMatchVerified).toBe(true);
+  });
+
+  it("evaluateProspectEmailCandidate accepts without verified flag or domain match", () => {
+    const result = evaluateProspectEmailCandidate("owner@gmail.com", {
+      acceptedEmailsInSearch: new Set(),
+      prospectMatchedRole: "Owner",
+    });
+
+    expect(result.accepted).toBe(true);
+    expect(result.rejectionReason).toBeUndefined();
+    expect(result.emailVerified).toBe(true);
+    expect(result.domainMatchVerified).toBe(true);
+    expect(result.matchedRole).toBe("Owner");
+  });
+
+  it("evaluateProspectEmailCandidate rejects missing email only", () => {
+    expect(
+      evaluateProspectEmailCandidate("", {
+        acceptedEmailsInSearch: new Set(),
+      }).rejectionReason,
+    ).toBe("missing_email");
+    expect(
+      evaluateProspectEmailCandidate(undefined, {
+        acceptedEmailsInSearch: new Set(),
+      }).rejectionReason,
+    ).toBe("missing_email");
+  });
+
+  it("evaluateProspectEmailCandidate rejects duplicate email in search", () => {
+    const result = evaluateProspectEmailCandidate("jane@acme.com", {
+      acceptedEmailsInSearch: new Set(["jane@acme.com"]),
+    });
+    expect(result.accepted).toBe(false);
+    expect(result.rejectionReason).toBe("duplicate_email");
   });
 
   it("accepts when provider title semantically matches the FindyMail queried role", () => {
@@ -253,6 +290,12 @@ describe("contactAcceptance", () => {
 
     expect(result.accepted).toBe(false);
     expect(result.rejectionReason).toBe("duplicate_email");
+  });
+
+  it("resolveProspectStoredTitle uses website title only, never UI matched role", () => {
+    expect(resolveProspectStoredTitle("General Manager")).toBe("General Manager");
+    expect(resolveProspectStoredTitle("")).toBeUndefined();
+    expect(resolveProspectStoredTitle(undefined)).toBeUndefined();
   });
 
   it("resolveDisplayableContactTitle prefers provider title then matchedRole then sourceRole", () => {

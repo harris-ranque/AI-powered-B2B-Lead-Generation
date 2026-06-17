@@ -1,7 +1,7 @@
 import type { GenericDatabaseReader } from "convex/server";
 import type { DataModel } from "../_generated/dataModel";
 import type { Id } from "../_generated/dataModel";
-import { resolveDisplayableContactTitle } from "./contactAcceptance";
+import { resolveDisplayableContactTitle, resolveProspectStoredTitle } from "./contactAcceptance";
 import {
   hasCompleteExportResearch,
   resolveExportResearchFields,
@@ -135,11 +135,17 @@ export function formatExportPhone(phone?: string): string {
 export function resolveContactExportTitle(contact: {
   title?: string;
   matchedRole?: string;
+  leadProspectId?: string;
 }): string {
-  return resolveDisplayableContactTitle({
-    providerTitle: contact.title,
-    matchedRole: contact.matchedRole,
-  }) ?? "";
+  if (contact.leadProspectId) {
+    return resolveProspectStoredTitle(contact.title) ?? "";
+  }
+  return (
+    resolveDisplayableContactTitle({
+      providerTitle: contact.title,
+      matchedRole: contact.matchedRole,
+    }) ?? ""
+  );
 }
 
 /** Email + written content complete (pipeline milestone, not full CSV row). */
@@ -459,17 +465,35 @@ export function noExportableLeadsMessage(
   options?: {
     duplicateSkips?: number;
     priorSearchExportable?: number;
+    linkedForReenrichment?: number;
+    acceptedContacts?: number;
+    exportReadiness?: ExportReadinessSummary;
   },
 ): string {
   const { total, withoutEmail, analysisFailed } = stats;
   const duplicateSkips = options?.duplicateSkips ?? 0;
   const priorSearchExportable = options?.priorSearchExportable ?? 0;
+  const linkedForReenrichment = options?.linkedForReenrichment ?? 0;
+  const acceptedContacts = options?.acceptedContacts ?? 0;
+  const readiness = options?.exportReadiness;
 
   if (total === 0 && duplicateSkips > 0) {
+    const reenrichNote =
+      linkedForReenrichment > 0
+        ? ` ${linkedForReenrichment} were queued for re-enrichment under this search (people discovery + email lookup with your new roles).`
+        : "";
+    const pipelineNote =
+      acceptedContacts > 0
+        ? ` This search has ${acceptedContacts} accepted contact(s) — complete Write Emails and ensure research fields are populated to unlock CSV export.`
+        : " No verified emails were accepted yet — common for restaurants without team pages or without CEO/Founder listed on the website.";
+    const readinessNote = readiness
+      ? ` Breakdown: ${readiness.awaitingEmailWriting} awaiting email writing, ${readiness.incompleteResearch} incomplete research, ${readiness.analysisFailed} failed analysis.`
+      : "";
+
     if (priorSearchExportable > 0) {
-      return `No new leads were added for this search (${duplicateSkips} businesses were already in your account). ${priorSearchExportable} exportable contacts from prior searches can still be downloaded via CSV export.`;
+      return `No new leads were added for this search (${duplicateSkips} businesses were already in your account).${reenrichNote} ${priorSearchExportable} exportable contacts from prior searches can still be downloaded via CSV export.`;
     }
-    return `No new leads were added for this search (${duplicateSkips} businesses were already in your account from prior searches, but none have exportable contacts yet).`;
+    return `No new leads were added for this search (${duplicateSkips} businesses were already in your account from prior searches, but none have exportable contacts yet).${reenrichNote}${pipelineNote}${readinessNote}`;
   }
 
   if (total === 0) return "No leads found for export";

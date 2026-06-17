@@ -193,6 +193,72 @@ export function enrichResearchPayloadForExport(payload: unknown): unknown {
   };
 }
 
+function extractPeopleDiscoveryScrapedUrls(
+  rawData: Record<string, unknown>,
+): string[] {
+  const website =
+    asRecord(rawData.website) ?? asRecord(asRecord(rawData.raw)?.website);
+  const scrapedUrls = website?.scraped_urls;
+  if (!Array.isArray(scrapedUrls)) {
+    return [];
+  }
+
+  const urls: string[] = [];
+  for (const entry of scrapedUrls) {
+    if (typeof entry !== "string" || !entry.trim()) {
+      continue;
+    }
+    const url = entry.replace(/\s+\[[^\]]+\]\s*$/, "").trim();
+    if (url) {
+      urls.push(url);
+    }
+  }
+  return urls;
+}
+
+export function buildPeopleDiscoveryResearchMetadata(
+  companyOverview: string,
+  rawData: Record<string, unknown>,
+  confidenceScore: number,
+  fallbackDomain?: string,
+): Record<string, unknown> {
+  const citationUrls = [...extractPeopleDiscoveryScrapedUrls(rawData)];
+
+  const people = rawData.people;
+  if (Array.isArray(people)) {
+    for (const person of people) {
+      const row = asRecord(person);
+      const sourceUrl =
+        typeof row?.sourceUrl === "string"
+          ? row.sourceUrl
+          : typeof row?.source_url === "string"
+            ? row.source_url
+            : "";
+      if (sourceUrl.trim()) {
+        citationUrls.push(sourceUrl.trim());
+      }
+    }
+  }
+
+  if (citationUrls.length === 0 && fallbackDomain?.trim()) {
+    const domain = fallbackDomain.trim().replace(/^https?:\/\//, "");
+    citationUrls.push(`https://${domain}`);
+  }
+
+  const uniqueUrls = [...new Set(citationUrls)];
+  const citations = uniqueUrls.map((url) => ({
+    url,
+    title: "Company website",
+  }));
+
+  return {
+    comprehensive_report: companyOverview,
+    citations,
+    confidence_score: confidenceScore,
+    source: "people_discovery",
+  };
+}
+
 export function resolveExportResearchFields(
   leadAnalysis: Record<string, unknown> | undefined,
   companyResearchPayload?: unknown,
@@ -217,10 +283,25 @@ export function resolveExportResearchFields(
       fullResearchReport = leadReport.trim();
     }
   }
+  if (!fullResearchReport && payload) {
+    const overview = firstNonEmptyString(
+      payload.company_overview,
+      rawData?.company_overview,
+    );
+    if (overview) {
+      fullResearchReport = overview;
+    }
+  }
 
   let citations = normalizeCitations(researchMetadata?.citations);
   if (citations.length === 0 && researchMetadata) {
     citations = extractTavilyCitationUrls(researchMetadata);
+  }
+  if (citations.length === 0 && rawData) {
+    const scrapedUrls = extractPeopleDiscoveryScrapedUrls(rawData);
+    if (scrapedUrls.length > 0) {
+      citations = normalizeCitations(scrapedUrls);
+    }
   }
 
   let researchConfidenceScore: string | number = "";

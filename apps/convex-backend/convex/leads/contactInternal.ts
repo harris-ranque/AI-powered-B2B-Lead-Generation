@@ -2,7 +2,7 @@ import { internalMutation, internalQuery, type MutationCtx } from "../_generated
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { extractPrimaryEmail } from "../lib/deduplication";
-import { evaluateContactCandidate, extractProviderTitle, resolveDisplayableContactTitle } from "../lib/contactAcceptance";
+import { evaluateContactCandidate, evaluateProspectEmailCandidate, extractProviderTitle, resolveDisplayableContactTitle, resolveProspectStoredTitle } from "../lib/contactAcceptance";
 import { slimContactAiAnalysisForStorage } from "../lib/contactAnalysisStorage";
 import { extractDomainFromWebsite } from "../lib/contactVerification";
 import { resolveEnrichmentRoles } from "../lib/enrichmentRoles";
@@ -750,34 +750,15 @@ export const processProspectEmailEnrichment = internalMutation({
       let prospectAccepted = false;
 
       for (const emailCandidate of emailCandidates) {
-        const evaluation = evaluateContactCandidate(
-          {
-            name: prospectInput.name,
-            title: prospectInput.title,
-            email: emailCandidate.email,
-            linkedin: emailCandidate.linkedin,
-            confidence: emailCandidate.confidence,
-            verified: emailCandidate.verified,
-          },
-          {
-            requestedRoles: args.requestedRoles,
-            companyWebsite: args.companyWebsite,
-            acceptedEmailsInSearch: acceptedEmails,
-            enableRoleExpansion: false,
-            requireVerifiedEmail: true,
-            fromProspect: true,
-            prospectTitle: prospectInput.title,
-            prospectMatchedRole: prospectInput.matchedRole,
-          },
-        );
-
-        const storedTitle = resolveDisplayableContactTitle({
-          providerTitle: prospectInput.title,
-          matchedRole: prospectInput.matchedRole ?? evaluation.matchedRole,
+        const evaluation = evaluateProspectEmailCandidate(emailCandidate.email, {
+          acceptedEmailsInSearch: acceptedEmails,
+          prospectMatchedRole: prospectInput.matchedRole,
         });
 
-        const acceptedForStorage =
-          evaluation.accepted && Boolean(storedTitle);
+        const storedTitle =
+          resolveProspectStoredTitle(prospectInput.title) ?? prospectInput.title.trim();
+
+        const acceptedForStorage = evaluation.accepted;
         const status: "accepted" | "rejected" = acceptedForStorage
           ? "accepted"
           : "rejected";
