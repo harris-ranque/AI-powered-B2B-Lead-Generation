@@ -772,6 +772,61 @@ export const getAcceptedContactCountsBySearch = query({
   },
 });
 
+// Rejected FindyMail candidates for debugging acceptance/rejection behavior.
+export const getRejectedFindyMailContactsBySearch = query({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    const search = await ctx.db.get(args.searchId);
+    if (!search || search.userId !== user._id) {
+      throw new Error("Search not found or access denied");
+    }
+
+    const rejectedContacts = (
+      await ctx.db
+        .query("leadContacts")
+        .withIndex("by_search_status", (q) =>
+          q.eq("searchId", args.searchId).eq("status", "rejected"),
+        )
+        .collect()
+    ).filter((contact) => contact.source === "findymail");
+
+    const rows = [];
+    for (const contact of rejectedContacts) {
+      const lead = await ctx.db.get(contact.leadId);
+      rows.push({
+        contactId: contact._id,
+        leadId: contact.leadId,
+        searchId: contact.searchId,
+        businessName: lead?.businessName ?? "",
+        website: lead?.website ?? "",
+        email: contact.email,
+        normalizedEmail: contact.normalizedEmail,
+        name: contact.name,
+        title: contact.title ?? "",
+        linkedin: contact.linkedin ?? "",
+        confidence: contact.confidence,
+        rejectionReason: contact.rejectionReason ?? "",
+        requestedRoles: contact.requestedRoles,
+        matchedRole: contact.matchedRole ?? "",
+        titleMatchScore: contact.titleMatchScore ?? 0,
+        titleMatchReason: contact.titleMatchReason ?? "",
+        emailVerified: contact.emailVerified,
+        domainMatchVerified: contact.domainMatchVerified,
+        leadProspectId: contact.leadProspectId,
+        createdAt: contact.createdAt,
+        updatedAt: contact.updatedAt,
+      });
+    }
+
+    return rows.sort((a, b) => b.updatedAt - a.updatedAt);
+  },
+});
+
 // Get lead statistics for user
 // OPTIMIZED: Aggregates from searches table (much lighter than leads)
 // Searches already have pre-computed stats in progress/results fields

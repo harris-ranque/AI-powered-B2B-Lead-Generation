@@ -66,8 +66,12 @@ const ROLE_FAMILY_PATTERNS: Record<string, string[]> = {
     "founder",
     "co-founder",
     "owner",
+    "partner",
+    "managing partner",
     "president",
     "managing director",
+    "principal",
+    "principal partner",
   ],
   finance: [
     "cfo",
@@ -249,8 +253,11 @@ export function scoreRoleLaneMatch(
     );
 
     for (const family of sharedFamilies) {
-      const decisionMakerPatterns =
-        ROLE_FAMILY_PATTERNS[family].filter(isDecisionMakerPattern);
+      const familyPatterns = ROLE_FAMILY_PATTERNS[family];
+      if (!familyPatterns) {
+        continue;
+      }
+      const decisionMakerPatterns = familyPatterns.filter(isDecisionMakerPattern);
       const titleIsDecisionMaker = decisionMakerPatterns.some((pattern) =>
         patternMatchesText(titleNorm, normalizeRoleToken(pattern)),
       );

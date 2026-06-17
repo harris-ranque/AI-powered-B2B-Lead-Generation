@@ -344,8 +344,14 @@ export function evaluateContactCandidate(
 
   const providerTitle = extractProviderTitle(candidate);
 
-  // FindyMail named contacts must include a provider job title (no sourceRole fallback).
-  if (options.fromRoleContact && !providerTitle?.trim()) {
+  // FindyMail role-query hits often omit provider titles. If the contact came
+  // from a specific role search, allow that queried role to be used for matching
+  // after verification/domain checks; otherwise reject untitled contacts.
+  if (
+    options.fromRoleContact &&
+    !providerTitle?.trim() &&
+    !options.sourceRole?.trim()
+  ) {
     return {
       accepted: false,
       rejectionReason: "missing_title",

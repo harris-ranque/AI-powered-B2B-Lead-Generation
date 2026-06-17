@@ -101,6 +101,30 @@ type EmailSummary = {
   responseRate: number | null;
 };
 
+type RejectedFindyMailContactRow = {
+  contactId: string;
+  leadId: string;
+  searchId: string;
+  businessName: string;
+  website: string;
+  email: string;
+  normalizedEmail: string;
+  name: string;
+  title: string;
+  linkedin: string;
+  confidence: number;
+  rejectionReason: string;
+  requestedRoles: string[];
+  matchedRole: string;
+  titleMatchScore: number;
+  titleMatchReason: string;
+  emailVerified: boolean;
+  domainMatchVerified: boolean;
+  leadProspectId?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
 function normalizeRate(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return null;
@@ -177,6 +201,85 @@ const formatNumber = (value: number) =>
 const formatPercent = (value: number) =>
   `${percentFormatter.format(Math.max(0, value))}%`;
 
+function escapeCsvValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const text = Array.isArray(value) ? value.join("; ") : String(value);
+  if (/[",\r\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function downloadCsv(filename: string, rows: string[]) {
+  const blob = new Blob(["\uFEFF" + rows.join("\r\n")], {
+    type: "text/csv;charset=utf-8;",
+  });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+}
+
+function buildRejectedFindyMailCsv(rows: RejectedFindyMailContactRow[]) {
+  const headers = [
+    "search_id",
+    "lead_id",
+    "contact_id",
+    "business_name",
+    "website",
+    "email",
+    "normalized_email",
+    "name",
+    "title",
+    "linkedin",
+    "confidence",
+    "rejection_reason",
+    "requested_roles",
+    "matched_role",
+    "title_match_score",
+    "title_match_reason",
+    "email_verified",
+    "domain_match_verified",
+    "lead_prospect_id",
+    "created_at",
+    "updated_at",
+  ];
+
+  const dataRows = rows.map((row) =>
+    [
+      row.searchId,
+      row.leadId,
+      row.contactId,
+      row.businessName,
+      row.website,
+      row.email,
+      row.normalizedEmail,
+      row.name,
+      row.title,
+      row.linkedin,
+      row.confidence,
+      row.rejectionReason,
+      row.requestedRoles,
+      row.matchedRole,
+      row.titleMatchScore,
+      row.titleMatchReason,
+      row.emailVerified,
+      row.domainMatchVerified,
+      row.leadProspectId ?? "",
+      new Date(row.createdAt).toISOString(),
+      new Date(row.updatedAt).toISOString(),
+    ]
+      .map(escapeCsvValue)
+      .join(","),
+  );
+
+  return [headers.join(","), ...dataRows];
+}
+
 interface ReviewExportStageProps {
   onViewResults?: () => void;
 }
@@ -194,11 +297,16 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
       ? { searchId: state.searchId as Id<"searches"> }
       : "skip",
   );
+  const rejectedFindyMailContacts = useQuery(
+    api.leads.queries.getRejectedFindyMailContactsBySearch,
+    state.searchId ? { searchId: state.searchId as Id<"searches"> } : "skip",
+  ) as RejectedFindyMailContactRow[] | undefined;
   const { leads: searchLeads, updateLeadStatus } = useLeads(
     state.searchId || undefined,
   );
 
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingRejected, setIsExportingRejected] = useState(false);
   const [isSendingEmails, setIsSendingEmails] = useState(false);
   const [exportedFormats, setExportedFormats] = useState<string[]>([]);
   const [sentLeadIds, setSentLeadIds] = useState<string[]>([]);
@@ -631,6 +739,41 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
     [getClerkToken, state.searchId, toast, user?._id],
   );
 
+  const handleRejectedFindyMailExport = useCallback(() => {
+    setActionError(null);
+    setIsExportingRejected(true);
+
+    try {
+      const rows = rejectedFindyMailContacts ?? [];
+      if (rows.length === 0) {
+        throw new Error("No rejected FindyMail contacts found for this search.");
+      }
+
+      downloadCsv(
+        `findymail-rejections-${state.searchId ?? "search"}-${Date.now()}.csv`,
+        buildRejectedFindyMailCsv(rows),
+      );
+
+      toast({
+        title: "Rejected Contacts Exported",
+        description: `Downloaded ${rows.length} rejected FindyMail candidate${rows.length === 1 ? "" : "s"}.`,
+      });
+    } catch (error) {
+      const normalizedError = normalizeError(
+        error,
+        "Failed to export rejected FindyMail contacts.",
+      );
+      setActionError(normalizedError.message);
+      toast({
+        title: "Export Failed",
+        description: normalizedError.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsExportingRejected(false);
+    }
+  }, [rejectedFindyMailContacts, state.searchId, toast]);
+
   const handleStartNewPipeline = useCallback(() => {
     resetPipeline();
     toast({
@@ -931,6 +1074,64 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
                 </Card>
               );
             })}
+
+            <Card className="glass-card border border-amber-500/30 bg-slate-900/60 transition-all duration-300">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2">
+                    <MailX className="h-5 w-5 text-amber-200" />
+                  </div>
+                  <div className="flex-1">
+                    <CardTitle className="text-base text-slate-100">
+                      FindyMail Rejections
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      Debug every candidate FindyMail returned but Genni rejected
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+
+              <CardContent>
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Rejected Rows</span>
+                    <Badge variant="outline" className="border-amber-500/40">
+                      {rejectedFindyMailContacts?.length ?? 0}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Includes Reasons</span>
+                    <Badge className="border-amber-500/40 bg-amber-500/15 text-amber-100">
+                      Yes
+                    </Badge>
+                  </div>
+
+                  <Button
+                    onClick={handleRejectedFindyMailExport}
+                    disabled={
+                      isExportingRejected ||
+                      !rejectedFindyMailContacts ||
+                      rejectedFindyMailContacts.length === 0
+                    }
+                    className="w-full border border-amber-500/40 bg-slate-900 text-amber-100 transition-neo hover:bg-amber-500/20 hover:text-amber-50"
+                  >
+                    {isExportingRejected ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Preparing...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="mr-2 h-4 w-4" />
+                        Export Rejections
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 

@@ -34,7 +34,7 @@ describe("contactAcceptance", () => {
     );
   });
 
-  it("rejects FindyMail role contact without provider job title", () => {
+  it("accepts FindyMail role contact without provider job title when queried role matches", () => {
     const result = evaluateContactCandidate(
       {
         name: "Thalia Castillo",
@@ -49,6 +49,27 @@ describe("contactAcceptance", () => {
         requireVerifiedEmail: true,
         fromRoleContact: true,
         sourceRole: "CEO",
+      },
+    );
+
+    expect(result.accepted).toBe(true);
+    expect(result.matchedRole).toBe("CEO");
+  });
+
+  it("rejects untitled FindyMail role contact without a queried role fallback", () => {
+    const result = evaluateContactCandidate(
+      {
+        name: "Thalia Castillo",
+        email: "thalia.castillo@karmaclubchicago.com",
+        confidence: 0,
+      },
+      {
+        requestedRoles: ["CEO", "Owner"],
+        companyWebsite: "https://www.karmaclubchicago.com",
+        acceptedEmailsInSearch: new Set(),
+        enableRoleExpansion: true,
+        requireVerifiedEmail: true,
+        fromRoleContact: true,
       },
     );
 
