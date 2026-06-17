@@ -166,7 +166,7 @@ export function LeadDiscoveryStage({
     userPreferences?.enableAddressDedup ?? true
   );
   const [skipCompaniesWithExistingEmails, setSkipCompaniesWithExistingEmails] =
-    useState(true);
+    useState(false);
 
   // Upload form state
   const [uploadFile, setUploadFile] = useState<File | null>(null);

@@ -79,6 +79,7 @@ export function PipelineOrchestrator({
   const [isPipelineCollapsed, setIsPipelineCollapsed] = useState(false);
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   const lastCompletedSearchIdRef = useRef<string | null>(null);
+  const prevSearchIdRef = useRef<string | null | undefined>(state.searchId);
   const { toast } = useToast();
   const analytics = useAnalytics();
 
@@ -218,6 +219,17 @@ export function PipelineOrchestrator({
     return state.leads;
   }, [searchLeads, state.leads, state.searchId]);
 
+  // When searchId changes, clear stale enrichedLeads immediately so old email
+  // counts from a prior search never bleed into the new search's progress display.
+  useEffect(() => {
+    if (prevSearchIdRef.current !== state.searchId) {
+      prevSearchIdRef.current = state.searchId;
+      if (state.enrichedLeads.length > 0) {
+        setEnrichedLeads([]);
+      }
+    }
+  }, [state.searchId, state.enrichedLeads.length, setEnrichedLeads]);
+
   useEffect(() => {
     if (!state.searchId || !searchLeads || searchLeads.length === 0) {
       return;
@@ -245,7 +257,12 @@ export function PipelineOrchestrator({
       setLeads(searchLeads);
     }
 
-    const enriched = searchLeads.filter(
+    // Only update enrichedLeads from the lead row if these leads belong to the
+    // current search — avoids carrying over counts from a previous search.
+    const leadsForThisSearch = searchLeads.filter(
+      (lead) => (lead as { searchId?: string }).searchId === state.searchId,
+    );
+    const enriched = leadsForThisSearch.filter(
       (lead) =>
         lead.primaryEmail ||
         (lead.contactInfo?.emails && lead.contactInfo.emails.length > 0),
@@ -449,9 +466,14 @@ export function PipelineOrchestrator({
     if (!leadsFromPipeline?.length) {
       return 0;
     }
-    return leadsFromPipeline.filter((lead) => lead.contactInfo?.emails?.length)
-      .length;
-  }, [leadsFromPipeline]);
+    // Only count leads that actually belong to the current search to avoid
+    // stale email counts from prior searches inflating the metric display.
+    return leadsFromPipeline.filter(
+      (lead) =>
+        (lead as { searchId?: string }).searchId === state.searchId &&
+        lead.contactInfo?.emails?.length,
+    ).length;
+  }, [leadsFromPipeline, state.searchId]);
 
   // "Personalized" = leads that actually have AI-written email content.
   // More accurate than progress?.analyzed (counts all analysis attempts including failures)

@@ -538,37 +538,79 @@ export const getEnrichmentProgress = query({
       throw new Error("Search not found or access denied");
     }
 
-    // Get all leads for this search
-    const allLeads = await ctx.db
+    // Native leads created directly on this search
+    const nativeLeads = await ctx.db
       .query("leads")
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
       .collect();
 
-    // Count by enrichment status
-    const pending = allLeads.filter(l => l.enrichmentStatus === "pending").length;
-    const inProgress = allLeads.filter(l => l.enrichmentStatus === "in_progress").length;
-    const completed = allLeads.filter(l =>
+    // Linked leads (duplicates from prior searches being re-enriched under this search)
+    const linkedRows = await ctx.db
+      .query("searchLinkedLeads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    // Fetch each linked lead document (deduplicated vs native set)
+    const nativeIds = new Set(nativeLeads.map((l) => String(l._id)));
+    const linkedLeads: (typeof nativeLeads[number])[] = [];
+    for (const row of linkedRows) {
+      if (nativeIds.has(String(row.leadId))) continue;
+      const lead = await ctx.db.get(row.leadId);
+      if (lead) linkedLeads.push(lead);
+    }
+
+    const allLeads = [...nativeLeads, ...linkedLeads];
+
+    // For linked leads the enrichment state is on searchLinkedLeads, not the lead row.
+    // Map leadId → link status so we can override enrichment counts correctly.
+    const linkedStatusById = new Map(
+      linkedRows.map((r) => [String(r.leadId), r.status]),
+    );
+
+    // Count native lead enrichment statuses
+    const nativePending = nativeLeads.filter(l => l.enrichmentStatus === "pending").length;
+    const nativeInProgress = nativeLeads.filter(l => l.enrichmentStatus === "in_progress").length;
+    const nativeCompleted = nativeLeads.filter(l =>
       l.enrichmentStatus === "completed" ||
       l.enrichmentStatus === "completed_fallback"
     ).length;
-    const failed = allLeads.filter(l => l.enrichmentStatus === "failed").length;
-    const noContacts = allLeads.filter(
+    const nativeFailed = nativeLeads.filter(l => l.enrichmentStatus === "failed").length;
+    const nativeNoContacts = nativeLeads.filter(
       (l) => l.enrichmentStatus === "no_contacts_found",
     ).length;
 
-    const withEmail = allLeads.filter(
-      (l) =>
-        Boolean(l.primaryEmail) ||
-        (l.contactInfo?.emails && l.contactInfo.emails.length > 0),
-    ).length;
+    // Count linked lead statuses from the searchLinkedLeads rows
+    const linkedPending = linkedRows.filter(r => r.status === "pending").length;
+    const linkedEnriched = linkedRows.filter(r => r.status === "enriched").length;
+    const linkedFailed = linkedRows.filter(r => r.status === "failed").length;
 
-    // Calculate completion percentage (all leads processed, regardless of email found)
-    const total = allLeads.length;
+    const pending = nativePending + linkedPending;
+    const inProgress = nativeInProgress;
+    const completed = nativeCompleted + linkedEnriched;
+    const failed = nativeFailed + linkedFailed;
+    const noContacts = nativeNoContacts;
+
+    // withEmail: accepted contacts created for this search (new pipeline) or lead-level emails
+    const acceptedContacts = await ctx.db
+      .query("leadContacts")
+      .withIndex("by_search_status", (q) =>
+        q.eq("searchId", args.searchId).eq("status", "accepted"),
+      )
+      .collect();
+    const withEmail = acceptedContacts.length > 0
+      ? new Set(acceptedContacts.map((c) => String(c.leadId))).size
+      : allLeads.filter(
+          (l) =>
+            !linkedStatusById.has(String(l._id)) &&
+            (Boolean(l.primaryEmail) ||
+              (l.contactInfo?.emails && l.contactInfo.emails.length > 0)),
+        ).length;
+
+    const total = nativeLeads.length + linkedRows.length;
     const processed = completed + failed + noContacts;
     const percentComplete = total > 0 ? Math.round((processed / total) * 100) : 0;
 
-    // Get provider breakdown for completed leads
-    const findymailCount = allLeads.filter(l => l.enrichmentProvider === "findymail").length;
+    const findymailCount = nativeLeads.filter(l => l.enrichmentProvider === "findymail").length;
 
     return {
       searchId: args.searchId,

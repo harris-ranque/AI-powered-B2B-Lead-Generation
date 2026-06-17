@@ -85,11 +85,18 @@ export function EnrichmentStage() {
   );
 
   // Prefer live Convex leads during enrichment — pipeline context leads are discovery-time snapshots.
+  // Only fall back to state.leads when they belong to the current search (avoid stale data from
+  // a prior search bleeding into the new search's progress display).
   const leads = useMemo(() => {
     if (searchId && searchLeads && searchLeads.length > 0) {
       return searchLeads;
     }
-    if (state.leads.length > 0) {
+    if (
+      state.leads.length > 0 &&
+      state.leads.every(
+        (l) => (l as { searchId?: string }).searchId === searchId,
+      )
+    ) {
       return state.leads;
     }
     return searchLeads || [];
@@ -110,23 +117,44 @@ export function EnrichmentStage() {
   ).length;
 
   const totalBusinesses = Math.max(
-    leads.length,
     enrichmentProgress?.total ?? 0,
     search?.progress?.total ?? 0,
     search?.progress?.discovered ?? 0,
     search?.results?.totalFound ?? 0,
+    // Only use leads.length as a fallback when those leads actually belong to this search
+    leads.every((l) => (l as { searchId?: string }).searchId === searchId)
+      ? leads.length
+      : 0,
   );
 
-  const emailsFromLeads = leads.filter((lead) => leadHasEmail(lead)).length;
+  // emailsFromLeads counts leads on THIS search that have emails on their row.
+  // For repeat/linked searches (totalFound=0), skip this fallback entirely — all emails
+  // come through leadContacts (leadsWithAcceptedContacts) instead of the lead row.
+  const hasNativeLeads = (search?.results?.totalFound ?? 0) > 0;
+  const emailsFromLeads = hasNativeLeads
+    ? leads
+        .filter(
+          (l) =>
+            (l as { searchId?: string }).searchId === searchId &&
+            leadHasEmail(l),
+        )
+        .length
+    : 0;
 
-  const emailsFound = Math.max(
-    emailsFromLeads,
-    enrichmentProgress?.withEmail ?? 0,
-    search?.progress?.enriched ?? 0,
-    broadcastEnriched,
-    broadcastBreakdown?.completed ?? 0,
-    leadsWithAcceptedContacts,
-  );
+  // Use the backend-authoritative withEmail from enrichmentProgress as the primary
+  // source when available — it already accounts for both native and linked leads.
+  const emailsFound = enrichmentProgress !== undefined
+    ? Math.max(
+        enrichmentProgress.withEmail,
+        leadsWithAcceptedContacts,
+        broadcastBreakdown?.completed ?? 0,
+      )
+    : Math.max(
+        emailsFromLeads,
+        broadcastEnriched,
+        broadcastBreakdown?.completed ?? 0,
+        leadsWithAcceptedContacts,
+      );
 
   const enrichmentComplete =
     enrichmentProgress?.isComplete ??
