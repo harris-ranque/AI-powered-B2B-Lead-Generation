@@ -14,7 +14,7 @@ from .website_people_scraper import scrape_people_from_website, WebsiteScrapeRes
 
 logger = logging.getLogger(__name__)
 
-MAX_PEOPLE_PER_LEAD = 8
+MAX_PEOPLE_PER_LEAD = 4
 PERPLEXITY_TIMEOUT_SECONDS = 90
 WEBSITE_SOURCE = "website_inference"
 PERPLEXITY_SOURCE = "perplexity"

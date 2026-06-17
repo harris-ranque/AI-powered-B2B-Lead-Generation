@@ -5,12 +5,12 @@
 import { expandRolesForMatching } from "./roleFamilies";
 import { normalizeEnrichmentRoles } from "./enrichmentRoles";
 
-export const MAX_AI_PATTERNS_PER_ROLE = 10;
-export const MAX_AI_TITLE_SYNONYMS_PER_ROLE = 12;
-/** FindyMail API query cap */
-export const MAX_TOTAL_ROLE_PATTERNS = 18;
+export const MAX_AI_PATTERNS_PER_ROLE = 4;
+export const MAX_AI_TITLE_SYNONYMS_PER_ROLE = 6;
+/** FindyMail API query cap (merged static + AI patterns stored on search) */
+export const MAX_TOTAL_ROLE_PATTERNS = 10;
 /** Acceptance matching can use a larger synonym list */
-export const MAX_TOTAL_TITLE_MATCHERS = 50;
+export const MAX_TOTAL_TITLE_MATCHERS = 30;
 
 export type SearchRoleParameters = {
   roles?: unknown;
@@ -181,17 +181,30 @@ export function parseAiRoleExpansionResponse(
       const rolePatterns: string[] = [];
 
       if (Array.isArray(value)) {
-        rolePatterns.push(...collectStringArray(value));
+        rolePatterns.push(
+          ...collectStringArray(value).slice(0, MAX_AI_PATTERNS_PER_ROLE),
+        );
       } else if (value && typeof value === "object" && !Array.isArray(value)) {
         const structured = value as Record<string, unknown>;
-        rolePatterns.push(...collectStringArray(structured.findymail_patterns));
-        titleSynonyms.push(...collectStringArray(structured.title_synonyms));
+        rolePatterns.push(
+          ...collectStringArray(structured.findymail_patterns).slice(
+            0,
+            MAX_AI_PATTERNS_PER_ROLE,
+          ),
+        );
+        titleSynonyms.push(
+          ...collectStringArray(structured.title_synonyms).slice(
+            0,
+            MAX_AI_TITLE_SYNONYMS_PER_ROLE,
+          ),
+        );
       }
 
       if (roleNorm && rolePatterns.length > 0) {
         findymailPatternsByRole[roleNorm] = rolePatterns
           .map((pattern) => normalizeRolePattern(pattern))
-          .filter(Boolean);
+          .filter(Boolean)
+          .slice(0, MAX_AI_PATTERNS_PER_ROLE);
       }
 
       findymailPatterns.push(...rolePatterns);

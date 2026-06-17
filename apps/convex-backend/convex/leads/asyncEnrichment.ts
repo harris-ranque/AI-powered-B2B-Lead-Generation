@@ -257,7 +257,7 @@ async function tryProvider(
     rolePatternsByRole: options.rolePatternsByRole,
     perRole: multiContact,
     enableRoleExpansion: multiContact,
-    limit: multiContact ? 5 : undefined,
+    limit: multiContact ? 3 : undefined,
   };
 
   for (let attempt = 1; attempt <= options.retries; attempt++) {

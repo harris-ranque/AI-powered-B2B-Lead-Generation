@@ -39,7 +39,7 @@ describe("FindyMail per-role fetch plan", () => {
     expect(plan.userRoles.every((role) => !plan.expandedPatterns.includes(role))).toBe(
       true,
     );
-    expect(plan.expandedPatterns.length).toBeLessThanOrEqual(12);
+    expect(plan.expandedPatterns.length).toBeLessThanOrEqual(6);
     expect(
       plan.expandedPatterns.some((pattern) =>
         /\b(vp|chief|head|director)\b/.test(pattern),
@@ -70,7 +70,7 @@ describe("FindyMail per-role fetch plan", () => {
       owner: ["partner", "managing director"],
     };
 
-    const roundRobin = buildRoundRobinExpandedPatterns(userRoles, patternsByRole, 12);
+    const roundRobin = buildRoundRobinExpandedPatterns(userRoles, patternsByRole, 6);
     expect(roundRobin).toEqual([
       "chief executive officer",
       "co founder",

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 WEBSITE_SCRAPE_TIMEOUT_SECONDS = 15
 MAX_PAGES_TO_FETCH = 6
-MAX_PEOPLE_FROM_WEBSITE = 12
+MAX_PEOPLE_FROM_WEBSITE = 6
 
 TEAM_PATHS = (
     "/team",

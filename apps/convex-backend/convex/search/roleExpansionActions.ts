@@ -11,6 +11,7 @@ import {
   mergeTitleMatchers,
   parseAiRoleExpansionResponse,
   ROLE_EXPANSION_SYSTEM_PROMPT,
+  rolesNeedingAiExpansion,
 } from "../lib/roleExpansion";
 
 async function resolveOpenAiKeyForRoleExpansion(
@@ -110,9 +111,10 @@ export const expandSearchRolePatterns = internalAction({
     let source: "static" | "static+ai" = "static";
 
     const apiKey = await resolveOpenAiKeyForRoleExpansion(ctx, args.userId);
-    if (apiKey) {
+    const aiTargetRoles = rolesNeedingAiExpansion(userRoles);
+    if (apiKey && aiTargetRoles.length > 0) {
       try {
-        const aiExpansion = await fetchAiRolePatterns(apiKey, userRoles);
+        const aiExpansion = await fetchAiRolePatterns(apiKey, aiTargetRoles);
         findymailAiPatterns = aiExpansion.findymailPatterns;
         titleSynonyms = aiExpansion.titleSynonyms;
         aiPatternsByRole = aiExpansion.findymailPatternsByRole;
@@ -125,9 +127,13 @@ export const expandSearchRolePatterns = internalAction({
           error,
         );
       }
-    } else {
+    } else if (!apiKey) {
       console.warn(
         "[roleExpansion] No OpenAI key available; using static role patterns only",
+      );
+    } else if (aiTargetRoles.length === 0) {
+      console.log(
+        "[roleExpansion] Skipping AI expansion — static role families cover user roles",
       );
     }
 

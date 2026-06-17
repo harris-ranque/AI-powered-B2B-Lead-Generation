@@ -38,15 +38,15 @@ const DEFAULT_ROLES = ["ceo", "founder", "owner"] as const;
 /** FindyMail combined /search/domain request supports up to 3 roles in one call */
 const MAX_ROLES_PER_API_REQUEST = 3;
 /** Contacts fetched per user-requested role (and per expanded pattern) */
-const DEFAULT_PER_ROLE_CONTACT_LIMIT = 5;
+const DEFAULT_PER_ROLE_CONTACT_LIMIT = 3;
 /** One in-flight FindyMail /search/domain call per domain enrichment batch */
 const PER_ROLE_FETCH_CONCURRENCY = 1;
 /** Pause between per-role API calls to avoid 429 bursts */
 const PER_ROLE_FETCH_DELAY_MS = 500;
 /** Max role patterns sent to FindyMail per domain (title matching may use more) */
-const MAX_FINDYMAIL_PATTERNS_PER_DOMAIN = 12;
+const MAX_FINDYMAIL_PATTERNS_PER_DOMAIN = 6;
 /** Stop per-role fetch once enough named contacts are found */
-const PER_ROLE_EARLY_EXIT_CONTACTS = 3;
+const PER_ROLE_EARLY_EXIT_CONTACTS = 2;
 /** Retries inside a single /search/domain request (429/504) */
 const SINGLE_REQUEST_MAX_RETRIES = 5;
 const SINGLE_REQUEST_BASE_DELAY_MS = 2000;

@@ -31,7 +31,7 @@ describe("roleExpansion", () => {
 
     expect(merged).toContain("demand gen");
     expect(merged).toContain("vp demand generation");
-    expect(merged.length).toBeLessThanOrEqual(18);
+    expect(merged.length).toBeLessThanOrEqual(10);
   });
 
   it("merges title matchers with a higher cap", () => {
@@ -48,7 +48,7 @@ describe("roleExpansion", () => {
 
     expect(matchers).toContain("devops engineer");
     expect(matchers).toContain("devops practitioner");
-    expect(matchers.length).toBeLessThanOrEqual(50);
+    expect(matchers.length).toBeLessThanOrEqual(30);
   });
 
   it("uses cached expandedRolePatterns from search parameters", () => {
