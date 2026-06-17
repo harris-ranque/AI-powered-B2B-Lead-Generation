@@ -148,30 +148,30 @@ export const persistLeadProspects = internalMutation({
       const normalized = normalizeCompanyResearchPayload(
         args.companyResearchPayload,
       );
-      const researchData = {
-        searchId: args.searchId,
-        userId: args.userId,
-        leadId: args.leadId,
-        domain: args.domain,
-        researchPayload: normalized,
-        confidence:
-          typeof normalized.confidence_score === "number"
-            ? normalized.confidence_score
-            : 0.7,
-        provider: "people_discovery",
-        status: "completed" as const,
-        updatedAt: now,
-        expiresAt: now + 24 * 60 * 60 * 1000,
-      };
 
-      if (existing) {
-        await ctx.db.patch(existing._id, researchData);
-        companyResearchId = existing._id;
-      } else {
-        companyResearchId = await ctx.db.insert("companyResearch", {
-          ...researchData,
-          createdAt: now,
-        });
+      if (normalized) {
+        const researchData = {
+          searchId: args.searchId,
+          userId: args.userId,
+          leadId: args.leadId,
+          domain: args.domain,
+          researchPayload: normalized,
+          confidence: normalized.confidence_score,
+          provider: "people_discovery",
+          status: "completed" as const,
+          updatedAt: now,
+          expiresAt: now + 24 * 60 * 60 * 1000,
+        };
+
+        if (existing) {
+          await ctx.db.patch(existing._id, researchData);
+          companyResearchId = existing._id;
+        } else {
+          companyResearchId = await ctx.db.insert("companyResearch", {
+            ...researchData,
+            createdAt: now,
+          });
+        }
       }
     }
 

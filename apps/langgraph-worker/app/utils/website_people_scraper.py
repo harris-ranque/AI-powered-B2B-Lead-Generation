@@ -601,6 +601,24 @@ async def scrape_people_from_website(
     company_name: str = "",
 ) -> WebsiteScrapeResult:
     """Scrape team/about pages for leadership names and titles."""
+    try:
+        return await _scrape_people_from_website_impl(domain, company_name)
+    except Exception as error:
+        logger.exception(
+            "Website scrape crashed for %s (%s): %s",
+            company_name or domain,
+            domain,
+            error,
+        )
+        return WebsiteScrapeResult(
+            errors=[f"scrape_crashed: {type(error).__name__}: {error}"],
+        )
+
+
+async def _scrape_people_from_website_impl(
+    domain: str,
+    company_name: str = "",
+) -> WebsiteScrapeResult:
     normalized = _normalize_domain(domain)
     if not normalized:
         return WebsiteScrapeResult(errors=["invalid_domain"])

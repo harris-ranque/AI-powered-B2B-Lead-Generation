@@ -314,10 +314,17 @@ export const discoverPeopleForLead = internalAction({
       return trimmed.length > 0 ? trimmed : undefined;
     };
 
+    const overviewFromApi = sanitizeOptionalString(data.companyOverview);
+    const companyOverview =
+      overviewFromApi ??
+      (people.length > 0
+        ? `${people.length} role-matched team member${people.length === 1 ? "" : "s"} found on ${lead.businessName}'s website.`
+        : `No role-matched team members found on ${lead.businessName}'s website.`);
+
     const companyResearchPayload = {
-      company_overview: data.companyOverview ?? "",
+      company_overview: companyOverview,
       raw_data: {
-        company_overview: data.companyOverview ?? "",
+        company_overview: companyOverview,
         people_discovery: true,
         people: people,
         raw: data.rawData ?? {},
@@ -344,7 +351,7 @@ export const discoverPeopleForLead = internalAction({
           linkedinUrl: sanitizeOptionalString(person.linkedinUrl),
           rawDiscoveryData: person,
         })),
-        companyOverview: data.companyOverview,
+        companyOverview,
         companyResearchPayload,
         domain,
       },

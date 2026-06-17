@@ -931,35 +931,60 @@ async def discover_people(
             duration,
             result.research_tier,
         )
-        capture_event(
-            "api_discover_people_completed",
-            {
-                "company_name": request.company_name,
-                "domain": request.domain,
-                "user_id": request.user_id,
-                "people_found": len(result.people),
-                "duration_ms": duration * 1000,
-            },
-        )
+
+        if result.research_tier == "error":
+            capture_error(
+                Exception(result.raw_data.get("error", "people_discovery_error") if result.raw_data else "people_discovery_error"),
+                {
+                    "company_name": request.company_name,
+                    "domain": request.domain,
+                    "user_id": request.user_id,
+                    "research_tier": result.research_tier,
+                },
+            )
+        else:
+            capture_event(
+                "api_discover_people_completed",
+                {
+                    "company_name": request.company_name,
+                    "domain": request.domain,
+                    "user_id": request.user_id,
+                    "people_found": len(result.people),
+                    "duration_ms": duration * 1000,
+                },
+            )
 
         return DiscoverPeopleResponse(
             people=result.people,
-            company_overview=result.company_overview,
+            company_overview=result.company_overview or "",
             processing_time=duration,
             research_tier=result.research_tier,
             additional_credits_used=result.additional_credits_used,
             raw_data=result.raw_data,
         )
     except Exception as e:
-        logger.error(f"People discovery failed for {request.company_name}: {e}")
+        duration = (datetime.utcnow() - start_time).total_seconds()
+        logger.exception(
+            "People discovery endpoint failed for %s (%s): %s",
+            request.company_name,
+            request.domain,
+            e,
+        )
         capture_error(e, {
             "company_name": request.company_name,
             "domain": request.domain,
             "user_id": request.user_id,
         })
-        raise HTTPException(
-            status_code=500,
-            detail=f"People discovery failed: {str(e)}",
+        return DiscoverPeopleResponse(
+            people=[],
+            company_overview="",
+            processing_time=duration,
+            research_tier="error",
+            additional_credits_used=0,
+            raw_data={
+                "error": str(e),
+                "error_type": type(e).__name__,
+            },
         )
 
 @app.post("/batch-generate-emails", response_model=BatchEmailGenerationResponse)

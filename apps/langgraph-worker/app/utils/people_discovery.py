@@ -105,8 +105,10 @@ def _build_llm_context(scrape_result: WebsiteScrapeResult, max_chars: int = 2600
     chunks: List[str] = []
     remaining = max_chars
     for page in scrape_result.page_texts:
-        url = page.get("url", "")
-        text = page.get("text", "")
+        if not isinstance(page, dict):
+            continue
+        url = str(page.get("url") or "")
+        text = str(page.get("text") or "")
         if not text:
             continue
         chunk = f"\n\nSOURCE_URL: {url}\n{text}"
@@ -117,6 +119,49 @@ def _build_llm_context(scrape_result: WebsiteScrapeResult, max_chars: int = 2600
         if remaining <= 0:
             break
     return "".join(chunks).strip()
+
+
+def _safe_discovered_person_dump(person: DiscoveredPerson) -> Dict[str, Any]:
+    try:
+        return person.model_dump(by_alias=True)
+    except Exception as error:
+        logger.warning("Failed to serialize discovered person: %s", error)
+        return {
+            "name": getattr(person, "name", ""),
+            "title": getattr(person, "title", ""),
+        }
+
+
+def _empty_discovery_response(
+    *,
+    company_name: str,
+    domain: str,
+    start: float,
+    error: Exception,
+    partial_raw_data: Optional[Dict[str, Any]] = None,
+) -> DiscoverPeopleResponse:
+    elapsed = time.time() - start
+    logger.exception(
+        "People discovery failed for %s (%s): %s",
+        company_name,
+        domain,
+        error,
+    )
+    raw_data: Dict[str, Any] = {
+        "error": str(error),
+        "error_type": type(error).__name__,
+    }
+    if partial_raw_data:
+        raw_data["partial"] = partial_raw_data
+
+    return DiscoverPeopleResponse(
+        people=[],
+        company_overview="",
+        processing_time=elapsed,
+        research_tier="error",
+        additional_credits_used=0,
+        raw_data=raw_data,
+    )
 
 
 async def _extract_and_filter_people_with_llm(
@@ -318,86 +363,118 @@ async def discover_people_at_company(
         logger.error("Website scrape failed for %s: %s", domain, error)
         scrape_result = WebsiteScrapeResult(errors=[str(error)])
 
-    deterministic_people: List[DiscoveredPerson] = [
-        _build_discovered_person(
-            name=person.name,
-            title=person.title,
+    try:
+        deterministic_people: List[DiscoveredPerson] = []
+        for person in scrape_result.people:
+            try:
+                name = str(getattr(person, "name", "") or "").strip()
+                title = str(getattr(person, "title", "") or "").strip()
+                if not name or not title:
+                    continue
+                confidence_raw = getattr(person, "confidence", 0.75)
+                confidence = (
+                    float(confidence_raw)
+                    if isinstance(confidence_raw, (int, float))
+                    else 0.75
+                )
+                deterministic_people.append(
+                    _build_discovered_person(
+                        name=name,
+                        title=title,
+                        roles=roles,
+                        source=WEBSITE_SOURCE,
+                        source_url=getattr(person, "source_url", None),
+                        confidence=confidence,
+                    )
+                )
+            except Exception as error:
+                logger.warning(
+                    "Skipping scraped person for %s due to parse error: %s",
+                    domain,
+                    error,
+                )
+
+        llm_people, llm_raw = await _extract_and_filter_people_with_llm(
+            company_name=company_name,
+            domain=domain,
             roles=roles,
-            source=WEBSITE_SOURCE,
-            source_url=person.source_url,
-            confidence=person.confidence,
+            scrape_result=scrape_result,
+            provider_keys=provider_keys,
         )
-        for person in scrape_result.people
-    ]
 
-    llm_people, llm_raw = await _extract_and_filter_people_with_llm(
-        company_name=company_name,
-        domain=domain,
-        roles=roles,
-        scrape_result=scrape_result,
-        provider_keys=provider_keys,
-    )
+        # Prefer LLM-filtered results. If LLM is unavailable, fall back to local
+        # role matching so the pipeline can still run in dev/test environments.
+        website_people = llm_people or [
+            person for person in deterministic_people if person.matched_role
+        ]
 
-    # Prefer LLM-filtered results. If LLM is unavailable, fall back to local
-    # role matching so the pipeline can still run in dev/test environments.
-    website_people = llm_people or [
-        person for person in deterministic_people if person.matched_role
-    ]
+        company_overview = scrape_result.company_snippet or ""
 
-    company_overview = scrape_result.company_snippet
+        merged_people = _merge_discovered_people(website_people, [])
 
-    merged_people = _merge_discovered_people(website_people, [])
+        if website_people:
+            research_tier = "website"
+        elif scrape_result.errors:
+            research_tier = "error"
+        else:
+            research_tier = "none"
 
-    if website_people:
-        research_tier = "website"
-    elif scrape_result.errors:
-        research_tier = "error"
-    else:
-        research_tier = "none"
-
-    elapsed = time.time() - start
-    logger.info(
-        "People discovery %s (%s): scraped %d raw, %d role-matched in %.1fs | urls=%s | errors=%s",
-        company_name,
-        domain,
-        len(scrape_result.people),
-        len(merged_people),
-        elapsed,
-        scrape_result.scraped_urls,
-        scrape_result.errors,
-    )
-    for person in merged_people:
+        elapsed = time.time() - start
         logger.info(
-            "  → %s | %s | matched_role=%s | source=%s",
-            person.name,
-            person.title,
-            person.matched_role or "—",
-            person.source,
+            "People discovery %s (%s): scraped %d raw, %d role-matched in %.1fs | urls=%s | errors=%s",
+            company_name,
+            domain,
+            len(scrape_result.people),
+            len(merged_people),
+            elapsed,
+            scrape_result.scraped_urls,
+            scrape_result.errors,
         )
+        for person in merged_people:
+            logger.info(
+                "  → %s | %s | matched_role=%s | source=%s",
+                person.name,
+                person.title,
+                person.matched_role or "—",
+                person.source,
+            )
 
-    return DiscoverPeopleResponse(
-        people=merged_people,
-        company_overview=company_overview,
-        processing_time=time.time() - start,
-        research_tier=research_tier,
-        additional_credits_used=0,
-        raw_data={
-            "website": {
+        return DiscoverPeopleResponse(
+            people=merged_people,
+            company_overview=company_overview,
+            processing_time=elapsed,
+            research_tier=research_tier,
+            additional_credits_used=0,
+            raw_data={
+                "website": {
+                    "scraped_urls": scrape_result.scraped_urls,
+                    "people_found": len(scrape_result.people),
+                    "deterministic_people": [
+                        _safe_discovered_person_dump(p) for p in deterministic_people
+                    ],
+                    "errors": scrape_result.errors,
+                    "company_snippet": scrape_result.company_snippet,
+                },
+                "llm_extraction": llm_raw,
+                "perplexity": {"skipped": "disabled_for_people_discovery"},
+                "merge": {
+                    "website_count": len(website_people),
+                    "perplexity_count": 0,
+                    "merged_count": len(merged_people),
+                },
+            },
+        )
+    except Exception as error:
+        return _empty_discovery_response(
+            company_name=company_name,
+            domain=domain,
+            start=start,
+            error=error,
+            partial_raw_data={
                 "scraped_urls": scrape_result.scraped_urls,
-                "people_found": len(scrape_result.people),
-                "deterministic_people": [p.model_dump(by_alias=True) for p in deterministic_people],
-                "errors": scrape_result.errors,
-                "company_snippet": scrape_result.company_snippet,
+                "scrape_errors": scrape_result.errors,
             },
-            "llm_extraction": llm_raw,
-            "perplexity": {"skipped": "disabled_for_people_discovery"},
-            "merge": {
-                "website_count": len(website_people),
-                "perplexity_count": 0,
-                "merged_count": len(merged_people),
-            },
-        },
-    )
+        )
 
 
 async def _cli() -> None:
