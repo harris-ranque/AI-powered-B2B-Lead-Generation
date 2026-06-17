@@ -305,6 +305,13 @@ async def discover_people_at_company(
     if not roles:
         roles = ["CEO", "Founder", "Owner"]
 
+    logger.info(
+        "Starting people discovery for %s (%s) | roles=%s",
+        company_name,
+        domain,
+        roles,
+    )
+
     try:
         scrape_result = await scrape_people_from_website(domain, company_name)
     except Exception as error:
@@ -347,6 +354,26 @@ async def discover_people_at_company(
         research_tier = "error"
     else:
         research_tier = "none"
+
+    elapsed = time.time() - start
+    logger.info(
+        "People discovery %s (%s): scraped %d raw, %d role-matched in %.1fs | urls=%s | errors=%s",
+        company_name,
+        domain,
+        len(scrape_result.people),
+        len(merged_people),
+        elapsed,
+        scrape_result.scraped_urls,
+        scrape_result.errors,
+    )
+    for person in merged_people:
+        logger.info(
+            "  → %s | %s | matched_role=%s | source=%s",
+            person.name,
+            person.title,
+            person.matched_role or "—",
+            person.source,
+        )
 
     return DiscoverPeopleResponse(
         people=merged_people,

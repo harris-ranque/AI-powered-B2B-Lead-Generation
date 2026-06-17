@@ -270,3 +270,55 @@ export const markLeadPeopleDiscoveryComplete = internalMutation({
     return { prospectCount: args.prospectCount };
   },
 });
+
+export const appendPeopleDiscoveryLog = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+    leadId: v.optional(v.id("leads")),
+    batchId: v.optional(v.string()),
+    event: v.union(
+      v.literal("batch_started"),
+      v.literal("lead_started"),
+      v.literal("lead_completed"),
+      v.literal("lead_failed"),
+      v.literal("progress"),
+      v.literal("batch_completed"),
+    ),
+    message: v.string(),
+    businessName: v.optional(v.string()),
+    domain: v.optional(v.string()),
+    prospectCount: v.optional(v.number()),
+    people: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          title: v.string(),
+          matchedRole: v.optional(v.string()),
+        }),
+      ),
+    ),
+    metadata: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("peopleDiscoveryLogs", {
+      searchId: args.searchId,
+      userId: args.userId,
+      leadId: args.leadId,
+      batchId: args.batchId,
+      event: args.event,
+      message: args.message,
+      businessName: args.businessName,
+      domain: args.domain,
+      prospectCount: args.prospectCount,
+      people: args.people,
+      metadata: args.metadata,
+      createdAt: Date.now(),
+    });
+
+    const leadHint = args.businessName ?? args.domain ?? args.leadId ?? "search";
+    console.log(
+      `[PeopleDiscovery] ${args.event} | ${leadHint}: ${args.message}`,
+    );
+  },
+});

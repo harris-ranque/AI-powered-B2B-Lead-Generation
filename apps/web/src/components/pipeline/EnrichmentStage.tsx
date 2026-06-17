@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { usePipeline } from "@/pipeline/context";
 import { useLeads } from "@/hooks/useLeads";
 import { useSearch } from "@/hooks/useSearches";
@@ -19,7 +20,16 @@ import {
   Phone,
   Globe,
   AlertTriangle,
+  Users,
 } from "lucide-react";
+
+type PeopleDiscoveryBroadcast = {
+  totalLeads?: number;
+  completedLeads?: number;
+  businessesWithPeople?: number;
+  totalProspects?: number;
+  percentComplete?: number;
+};
 
 function getLeadDisplayName(lead: {
   businessName?: string;
@@ -59,11 +69,29 @@ function extractBroadcastEnrichedCount(
 ): number {
   for (const broadcast of broadcasts) {
     if (!broadcast.data || typeof broadcast.data !== "object") continue;
-    const enriched = (broadcast.data as { progress?: { enriched?: number } })
-      .progress?.enriched;
+    const data = broadcast.data as {
+      stage?: string;
+      peopleDiscovery?: unknown;
+      progress?: { enriched?: number };
+    };
+    if (data.stage === "people_discovery" || data.peopleDiscovery) continue;
+    const enriched = data.progress?.enriched;
     if (typeof enriched === "number") return enriched;
   }
   return 0;
+}
+
+function extractPeopleDiscoveryBroadcast(
+  broadcasts: Array<{ data?: unknown }>,
+): PeopleDiscoveryBroadcast | null {
+  for (const broadcast of broadcasts) {
+    if (!broadcast.data || typeof broadcast.data !== "object") continue;
+    const data = broadcast.data as {
+      peopleDiscovery?: PeopleDiscoveryBroadcast;
+    };
+    if (data.peopleDiscovery) return data.peopleDiscovery;
+  }
+  return null;
 }
 
 export function EnrichmentStage() {
@@ -77,6 +105,16 @@ export function EnrichmentStage() {
   const enrichmentProgress = useQuery(
     api.leads.queries.getEnrichmentProgress,
     searchId ? { searchId } : "skip",
+  );
+
+  const peopleDiscoveryProgress = useQuery(
+    api.leads.queries.getPeopleDiscoveryProgress,
+    searchId ? { searchId } : "skip",
+  );
+
+  const peopleDiscoveryLogs = useQuery(
+    api.leads.queries.getPeopleDiscoveryLogs,
+    searchId ? { searchId, limit: 300 } : "skip",
   );
 
   const acceptedContactCounts = useQuery(
@@ -112,6 +150,11 @@ export function EnrichmentStage() {
     [broadcasts],
   );
 
+  const broadcastPeopleDiscovery = useMemo(
+    () => extractPeopleDiscoveryBroadcast(broadcasts),
+    [broadcasts],
+  );
+
   const leadsWithAcceptedContacts = Object.keys(
     acceptedContactCounts?.byLead ?? {},
   ).length;
@@ -121,11 +164,39 @@ export function EnrichmentStage() {
     search?.progress?.total ?? 0,
     search?.progress?.discovered ?? 0,
     search?.results?.totalFound ?? 0,
-    // Only use leads.length as a fallback when those leads actually belong to this search
     leads.every((l) => (l as { searchId?: string }).searchId === searchId)
       ? leads.length
       : 0,
   );
+
+  const peopleDiscoveryEnabled = peopleDiscoveryProgress?.enabled ?? true;
+  const peopleDiscoveryComplete =
+    peopleDiscoveryProgress?.isComplete ?? !peopleDiscoveryEnabled;
+
+  const businessesScanned = Math.max(
+    peopleDiscoveryProgress?.businessesProcessed ?? 0,
+    broadcastPeopleDiscovery?.completedLeads ?? 0,
+  );
+  const peopleScanTotal = Math.max(
+    peopleDiscoveryProgress?.totalBusinesses ?? 0,
+    broadcastPeopleDiscovery?.totalLeads ?? 0,
+    totalBusinesses,
+  );
+  const totalProspects = Math.max(
+    peopleDiscoveryProgress?.totalProspects ?? 0,
+    broadcastPeopleDiscovery?.totalProspects ?? 0,
+  );
+  const businessesWithPeople = Math.max(
+    peopleDiscoveryProgress?.businessesWithPeople ?? 0,
+    broadcastPeopleDiscovery?.businessesWithPeople ?? 0,
+  );
+  const peopleScanPercent =
+    peopleScanTotal > 0
+      ? Math.min(
+          100,
+          Math.round((businessesScanned / peopleScanTotal) * 100),
+        )
+      : 0;
 
   // emailsFromLeads counts leads on THIS search that have emails on their row.
   // For repeat/linked searches (totalFound=0), skip this fallback entirely — all emails
@@ -157,16 +228,17 @@ export function EnrichmentStage() {
       );
 
   const enrichmentComplete =
-    enrichmentProgress?.isComplete ??
-    (totalBusinesses > 0 &&
-      enrichmentProgress !== undefined &&
-      enrichmentProgress.pending === 0 &&
-      enrichmentProgress.inProgress === 0);
+    peopleDiscoveryComplete &&
+    (enrichmentProgress?.isComplete ??
+      (totalBusinesses > 0 &&
+        enrichmentProgress !== undefined &&
+        enrichmentProgress.pending === 0 &&
+        enrichmentProgress.inProgress === 0));
 
-  const processingPercent =
+  const emailProcessingPercent =
     enrichmentProgress?.percentComplete ??
     broadcastBreakdown?.percentComplete ??
-    (totalBusinesses > 0
+    (totalBusinesses > 0 && peopleDiscoveryComplete
       ? Math.round(
           ((enrichmentProgress?.processed ??
             broadcastBreakdown
@@ -181,6 +253,10 @@ export function EnrichmentStage() {
     totalBusinesses > 0
       ? Math.min(100, (emailsFound / totalBusinesses) * 100)
       : 0;
+
+  const processingPercent = peopleDiscoveryComplete
+    ? emailProcessingPercent
+    : peopleScanPercent;
 
   // Mark enrichment complete when processing finishes
   useEffect(() => {
@@ -241,39 +317,153 @@ export function EnrichmentStage() {
           Getting Email Addresses
         </h3>
         <p className="text-muted-foreground">
-          Finding decision-maker emails for each business
+          Finding decision-makers on each website, then looking up their emails
         </p>
       </div>
 
-      {/* Progress Overview */}
+      {peopleDiscoveryEnabled && (
+        <Card className="glass-card">
+          <CardContent className="p-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h4 className="font-semibold flex items-center gap-2">
+                    <Users className="h-4 w-4 text-primary" />
+                    Step 1 — Find people on websites
+                  </h4>
+                  <p className="text-sm text-muted-foreground">
+                    {businessesScanned} of {peopleScanTotal || displayTotal}{" "}
+                    businesses scanned
+                    {totalProspects > 0 &&
+                      ` · ${totalProspects} people found (${businessesWithPeople} businesses)`}
+                    {!peopleDiscoveryComplete &&
+                      peopleScanTotal > businessesScanned &&
+                      ` · ${peopleScanTotal - businessesScanned} remaining`}
+                  </p>
+                </div>
+                <Badge
+                  variant={peopleDiscoveryComplete ? "default" : "secondary"}
+                >
+                  {peopleDiscoveryComplete
+                    ? "Complete"
+                    : `${peopleScanPercent}%`}
+                </Badge>
+              </div>
+              <Progress value={peopleScanPercent} className="h-2" />
+              {!peopleDiscoveryComplete && (
+                <p className="text-xs text-muted-foreground">
+                  Scraping team pages and matching titles to your roles…
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {peopleDiscoveryEnabled && (
+        <Card className="glass-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg">People Discovery Log</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-64 pr-3">
+              {peopleDiscoveryLogs && peopleDiscoveryLogs.length > 0 ? (
+                <ol className="space-y-3 text-sm">
+                  {peopleDiscoveryLogs.map((entry) => (
+                    <li
+                      key={entry.id}
+                      className="rounded-lg border border-border/60 bg-muted/10 p-3"
+                    >
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <Badge variant="outline" className="text-[10px] uppercase">
+                          {entry.event.replace(/_/g, " ")}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(entry.createdAt).toLocaleTimeString()}
+                        </span>
+                        {entry.businessName && (
+                          <span className="font-medium truncate">
+                            {entry.businessName}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-muted-foreground">{entry.message}</p>
+                      {entry.people && entry.people.length > 0 && (
+                        <ul className="mt-2 space-y-1 text-xs">
+                          {entry.people.map((person) => (
+                            <li key={`${person.name}-${person.title}`}>
+                              <span className="font-medium text-foreground">
+                                {person.name}
+                              </span>
+                              <span className="text-muted-foreground">
+                                {" "}
+                                — {person.title}
+                                {person.matchedRole
+                                  ? ` (${person.matchedRole})`
+                                  : ""}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center">
+                  <Clock className="h-4 w-4 animate-pulse" />
+                  Waiting for people discovery events…
+                </div>
+              )}
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Email discovery (step 2) */}
       <Card className="glass-card">
         <CardContent className="p-6">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
-                <h4 className="font-semibold">Email Discovery Progress</h4>
+                <h4 className="font-semibold flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-primary" />
+                  Step 2 — Find email addresses
+                </h4>
                 <p className="text-sm text-muted-foreground">
-                  {emailsFound} of {displayTotal} emails found
-                  {enrichmentProgress &&
+                  {!peopleDiscoveryComplete
+                    ? "Waiting for people discovery to finish…"
+                    : `${emailsFound} of ${displayTotal} businesses with verified emails`}
+                  {peopleDiscoveryComplete &&
+                    enrichmentProgress &&
                     enrichmentProgress.pending + enrichmentProgress.inProgress > 0 &&
                     ` · ${enrichmentProgress.pending + enrichmentProgress.inProgress} processing`}
                 </p>
               </div>
 
               <Badge
-                variant={enrichmentComplete ? "default" : "secondary"}
+                variant={
+                  peopleDiscoveryComplete && enrichmentComplete
+                    ? "default"
+                    : "secondary"
+                }
               >
-                {emailDiscoveryPercent.toFixed(0)}% Complete
+                {peopleDiscoveryComplete
+                  ? `${emailDiscoveryPercent.toFixed(0)}%`
+                  : "Waiting"}
               </Badge>
             </div>
 
             <Progress
-              value={emailDiscoveryPercent}
+              value={peopleDiscoveryComplete ? emailDiscoveryPercent : 0}
               className="h-3 progress-pulse"
             />
             <p className="text-xs text-muted-foreground">
-              {processingPercent}% of businesses processed
-              {enrichmentProgress &&
+              {peopleDiscoveryComplete
+                ? `${processingPercent}% of businesses processed for email lookup`
+                : "Email lookup starts after people are found on each website"}
+              {peopleDiscoveryComplete &&
+                enrichmentProgress &&
                 enrichmentProgress.pending + enrichmentProgress.inProgress > 0 &&
                 ` · ${enrichmentProgress.pending + enrichmentProgress.inProgress} still running`}
             </p>

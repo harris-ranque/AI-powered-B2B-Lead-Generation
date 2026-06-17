@@ -119,6 +119,84 @@ function isEnrichmentReturnSuccessful(returnValue: unknown): boolean {
 }
 
 /**
+ * People discovery progress — does not update search.progress.enriched (emails).
+ */
+async function publishPeopleDiscoveryProgress(
+  ctx: MutationCtx,
+  args: {
+    userId: Id<"users">;
+    searchId: Id<"searches">;
+    batchId: string;
+    totalLeads: number;
+    completedLeads: number;
+    businessesWithPeople: number;
+    totalProspects: number;
+    failedLeads: number;
+  },
+): Promise<void> {
+  const progressPercent =
+    args.totalLeads > 0
+      ? Math.round((args.completedLeads / args.totalLeads) * 100)
+      : 0;
+
+  const search = await ctx.db.get(args.searchId);
+  const currentProgress = search?.progress;
+
+  await ctx.runMutation(internal.search.internal.updateSearchProgressInternal, {
+    searchId: args.searchId,
+    progress: {
+      discovered: args.totalLeads,
+      enriched: currentProgress?.enriched ?? 0,
+      analyzed: currentProgress?.analyzed ?? 0,
+      total: args.totalLeads,
+    },
+  });
+
+  await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+    userId: args.userId,
+    searchId: args.searchId,
+    stage: "people_discovery",
+    progress: progressPercent,
+    message: `Found ${args.totalProspects} people at ${args.businessesWithPeople} of ${args.totalLeads} businesses (${progressPercent}% scanned)`,
+    data: {
+      progress: {
+        peopleDiscovered: args.totalProspects,
+        peopleBusinesses: args.businessesWithPeople,
+        total: args.totalLeads,
+      },
+      peopleDiscovery: {
+        totalLeads: args.totalLeads,
+        completedLeads: args.completedLeads,
+        businessesWithPeople: args.businessesWithPeople,
+        totalProspects: args.totalProspects,
+        failedLeads: args.failedLeads,
+        percentComplete: progressPercent,
+        batchId: args.batchId,
+      },
+    },
+  });
+
+  await ctx.runMutation(
+    internal.leads.peopleDiscoveryInternal.appendPeopleDiscoveryLog,
+    {
+      searchId: args.searchId,
+      userId: args.userId,
+      batchId: args.batchId,
+      event: "progress",
+      message: `${args.completedLeads}/${args.totalLeads} businesses scanned · ${args.totalProspects} people · ${args.businessesWithPeople} businesses with matches`,
+      metadata: {
+        completedLeads: args.completedLeads,
+        totalLeads: args.totalLeads,
+        businessesWithPeople: args.businessesWithPeople,
+        totalProspects: args.totalProspects,
+        failedLeads: args.failedLeads,
+        percentComplete: progressPercent,
+      },
+    },
+  );
+}
+
+/**
  * Keep search.progress and pipeline broadcasts aligned during enrichment.
  * `successfulLeads` = businesses with at least one accepted email (UI "emails found").
  * `completedLeads` = businesses finished processing (success, failure, or no contacts).
@@ -678,6 +756,27 @@ export const onPeopleDiscoveryComplete = internalMutation({
         prospectCount > 0;
       const isFailed = result.kind === "failed" || result.kind === "canceled";
 
+      const lead = await ctx.db.get(leadId);
+
+      if (isFailed) {
+        await ctx.runMutation(
+          internal.leads.peopleDiscoveryInternal.appendPeopleDiscoveryLog,
+          {
+            searchId,
+            userId,
+            leadId,
+            batchId,
+            event: "lead_failed",
+            message: `People discovery workpool ${result.kind}`,
+            businessName: lead?.businessName,
+            metadata: {
+              workId: String(workId),
+              kind: result.kind,
+            },
+          },
+        );
+      }
+
       const newCompletedLeads = batch.completedLeads + 1;
       const newSuccessfulLeads = batch.successfulLeads + (isSuccess ? 1 : 0);
       const newFailedLeads = batch.failedLeads + (isFailed ? 1 : 0);
@@ -698,15 +797,24 @@ export const onPeopleDiscoveryComplete = internalMutation({
         `[Workpool] People discovery lead ${leadId} ${result.kind} (${newCompletedLeads}/${batch.totalLeads} = ${progressPercent}%)`,
       );
 
-      await publishEnrichmentProgress(ctx, {
+      const prospects = await ctx.db
+        .query("leadProspects")
+        .withIndex("by_search", (q) => q.eq("searchId", searchId))
+        .collect();
+      const totalProspects = prospects.length;
+      const businessesWithPeople = new Set(
+        prospects.map((prospect) => String(prospect.leadId)),
+      ).size;
+
+      await publishPeopleDiscoveryProgress(ctx, {
         userId,
         searchId,
         batchId,
         totalLeads: batch.totalLeads,
         completedLeads: newCompletedLeads,
-        successfulLeads: newSuccessfulLeads,
+        businessesWithPeople,
+        totalProspects,
         failedLeads: newFailedLeads,
-        analyzed: 0,
       });
 
       if (isComplete) {
@@ -732,6 +840,23 @@ export const onPeopleDiscoveryComplete = internalMutation({
                 totalProspects: prospectStats.total,
                 byStatus: prospectStats.byStatus,
               },
+            },
+          },
+        );
+
+        await ctx.runMutation(
+          internal.leads.peopleDiscoveryInternal.appendPeopleDiscoveryLog,
+          {
+            searchId,
+            userId,
+            batchId,
+            event: "batch_completed",
+            message: `People discovery complete — ${prospectStats.total} people across ${batch.totalLeads} businesses`,
+            metadata: {
+              totalProspects: prospectStats.total,
+              byStatus: prospectStats.byStatus,
+              successfulLeads: newSuccessfulLeads,
+              failedLeads: newFailedLeads,
             },
           },
         );

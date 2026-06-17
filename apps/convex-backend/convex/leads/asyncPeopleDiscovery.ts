@@ -77,6 +77,18 @@ export const discoverPeopleForSearch = internalAction({
 
     const batchId = `people_${generateBatchId(args.searchId)}`;
 
+    await ctx.runMutation(
+      internal.leads.peopleDiscoveryInternal.appendPeopleDiscoveryLog,
+      {
+        searchId: args.searchId,
+        userId: search.userId,
+        batchId,
+        event: "batch_started",
+        message: `Starting people discovery for ${leads.length} businesses`,
+        metadata: { totalLeads: leads.length, roles: search.parameters?.roles },
+      },
+    );
+
     logWithCorrelation(
       "info",
       correlation,
@@ -172,8 +184,32 @@ export const discoverPeopleForLead = internalAction({
 
     const domain = extractDomainFromWebsite(lead.website);
     if (!domain) {
+      await ctx.runMutation(
+        internal.leads.peopleDiscoveryInternal.appendPeopleDiscoveryLog,
+        {
+          searchId: args.searchId,
+          userId: args.userId,
+          leadId: args.leadId,
+          event: "lead_failed",
+          message: "No valid website domain — skipped people discovery",
+          businessName: lead.businessName,
+        },
+      );
       return { success: false, reason: "no_domain", prospectCount: 0 };
     }
+
+    await ctx.runMutation(
+      internal.leads.peopleDiscoveryInternal.appendPeopleDiscoveryLog,
+      {
+        searchId: args.searchId,
+        userId: args.userId,
+        leadId: args.leadId,
+        event: "lead_started",
+        message: `Scraping website and matching roles for ${lead.businessName}`,
+        businessName: lead.businessName,
+        domain,
+      },
+    );
 
     const langgraphUrl = normalizeLangGraphBaseUrl(process.env.LANGGRAPH_URL ?? "");
     const langgraphApiKey = process.env.LANGGRAPH_API_KEY;
@@ -238,6 +274,19 @@ export const discoverPeopleForLead = internalAction({
       const errorText = await response.text();
       console.error(
         `[PeopleDiscovery] Failed for ${lead.businessName}: ${response.status} ${errorText}`,
+      );
+      await ctx.runMutation(
+        internal.leads.peopleDiscoveryInternal.appendPeopleDiscoveryLog,
+        {
+          searchId: args.searchId,
+          userId: args.userId,
+          leadId: args.leadId,
+          event: "lead_failed",
+          message: `LangGraph API error (${response.status})`,
+          businessName: lead.businessName,
+          domain,
+          metadata: { error: errorText.slice(0, 500) },
+        },
       );
       return {
         success: false,
@@ -308,6 +357,49 @@ export const discoverPeopleForLead = internalAction({
         prospectCount: persistResult.prospectCount,
       },
     );
+
+    const peopleForLog = people.map((person) => ({
+      name: person.name.trim(),
+      title: person.title.trim(),
+      matchedRole: person.matchedRole?.trim() || undefined,
+    }));
+
+    if (peopleForLog.length > 0) {
+      await ctx.runMutation(
+        internal.leads.peopleDiscoveryInternal.appendPeopleDiscoveryLog,
+        {
+          searchId: args.searchId,
+          userId: args.userId,
+          leadId: args.leadId,
+          event: "lead_completed",
+          message: `Found ${peopleForLog.length} role-matched ${peopleForLog.length === 1 ? "person" : "people"}`,
+          businessName: lead.businessName,
+          domain,
+          prospectCount: peopleForLog.length,
+          people: peopleForLog,
+          metadata: {
+            researchTier: data.researchTier,
+            scrapedPeople: (data.rawData as { website?: { people_found?: number } })
+              ?.website?.people_found,
+          },
+        },
+      );
+    } else {
+      await ctx.runMutation(
+        internal.leads.peopleDiscoveryInternal.appendPeopleDiscoveryLog,
+        {
+          searchId: args.searchId,
+          userId: args.userId,
+          leadId: args.leadId,
+          event: "lead_completed",
+          message: "No role-matched people found on website",
+          businessName: lead.businessName,
+          domain,
+          prospectCount: 0,
+          metadata: { researchTier: data.researchTier },
+        },
+      );
+    }
 
     return {
       success: true,

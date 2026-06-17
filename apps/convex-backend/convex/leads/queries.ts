@@ -633,6 +633,131 @@ export const getEnrichmentProgress = query({
   },
 });
 
+// People discovery progress (website scrape + semantic role filter) for a search
+export const getPeopleDiscoveryProgress = query({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    const search = await ctx.db.get(args.searchId);
+    if (!search || search.userId !== user._id) {
+      throw new Error("Search not found or access denied");
+    }
+
+    const peopleDiscoveryEnabled =
+      process.env.PEOPLE_DISCOVERY_ENABLED !== "false";
+
+    const nativeLeads = await ctx.db
+      .query("leads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    const linkedRows = await ctx.db
+      .query("searchLinkedLeads")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    const totalBusinesses = nativeLeads.length + linkedRows.length;
+
+    if (!peopleDiscoveryEnabled) {
+      return {
+        searchId: args.searchId,
+        enabled: false,
+        totalBusinesses,
+        businessesProcessed: totalBusinesses,
+        businessesWithPeople: 0,
+        totalProspects: 0,
+        percentComplete: 100,
+        isComplete: true,
+      };
+    }
+
+    const batches = await ctx.db
+      .query("enrichmentBatches")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    const peopleBatch = batches
+      .filter((batch) => batch.batchId.startsWith("people_"))
+      .sort((a, b) => b.startedAt - a.startedAt)[0];
+
+    const prospects = await ctx.db
+      .query("leadProspects")
+      .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+      .collect();
+
+    const totalProspects = prospects.length;
+    const businessesWithPeople = new Set(
+      prospects.map((prospect) => String(prospect.leadId)),
+    ).size;
+
+    const batchTotal = peopleBatch?.totalLeads ?? totalBusinesses;
+    const businessesProcessed = peopleBatch?.completedLeads ?? 0;
+    const percentComplete =
+      batchTotal > 0
+        ? Math.round((businessesProcessed / batchTotal) * 100)
+        : 0;
+
+    const isComplete =
+      peopleBatch?.status === "completed" ||
+      (batchTotal > 0 && businessesProcessed >= batchTotal);
+
+    return {
+      searchId: args.searchId,
+      enabled: true,
+      totalBusinesses: batchTotal,
+      businessesProcessed,
+      businessesWithPeople,
+      totalProspects,
+      percentComplete,
+      isComplete,
+      batchStatus: peopleBatch?.status,
+    };
+  },
+});
+
+export const getPeopleDiscoveryLogs = query({
+  args: {
+    searchId: v.id("searches"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
+    }
+
+    const search = await ctx.db.get(args.searchId);
+    if (!search || search.userId !== user._id) {
+      throw new Error("Search not found or access denied");
+    }
+
+    const limit = Math.min(Math.max(args.limit ?? 200, 1), 500);
+    const logs = await ctx.db
+      .query("peopleDiscoveryLogs")
+      .withIndex("by_search_created", (q) => q.eq("searchId", args.searchId))
+      .order("asc")
+      .take(limit);
+
+    return logs.map((log) => ({
+      id: log._id,
+      event: log.event,
+      message: log.message,
+      businessName: log.businessName,
+      domain: log.domain,
+      prospectCount: log.prospectCount,
+      people: log.people,
+      leadId: log.leadId,
+      batchId: log.batchId,
+      metadata: log.metadata,
+      createdAt: log.createdAt,
+    }));
+  },
+});
+
 // Live analysis / "Write Emails" progress for a search
 export const getAnalysisProgress = query({
   args: { searchId: v.id("searches") },

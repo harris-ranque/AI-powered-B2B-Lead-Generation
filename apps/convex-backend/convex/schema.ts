@@ -707,6 +707,39 @@ export default defineSchema({
     .index("by_search_status", ["searchId", "status"])
     .index("by_search_email_status", ["searchId", "emailDiscoveryStatus"]),
 
+  // Audit trail for website people discovery (scrape + role match)
+  peopleDiscoveryLogs: defineTable({
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+    leadId: v.optional(v.id("leads")),
+    batchId: v.optional(v.string()),
+    event: v.union(
+      v.literal("batch_started"),
+      v.literal("lead_started"),
+      v.literal("lead_completed"),
+      v.literal("lead_failed"),
+      v.literal("progress"),
+      v.literal("batch_completed"),
+    ),
+    message: v.string(),
+    businessName: v.optional(v.string()),
+    domain: v.optional(v.string()),
+    prospectCount: v.optional(v.number()),
+    people: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          title: v.string(),
+          matchedRole: v.optional(v.string()),
+        }),
+      ),
+    ),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_search", ["searchId"])
+    .index("by_search_created", ["searchId", "createdAt"]),
+
   // Accepted contacts per company lead (multi-contact pipeline)
   leadContacts: defineTable({
     leadId: v.id("leads"),

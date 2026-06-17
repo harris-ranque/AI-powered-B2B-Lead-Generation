@@ -923,6 +923,14 @@ async def discover_people(
         )
 
         duration = (datetime.utcnow() - start_time).total_seconds()
+        logger.info(
+            "discover-people completed %s (%s): %d people in %.1fs tier=%s",
+            request.company_name,
+            request.domain,
+            len(result.people),
+            duration,
+            result.research_tier,
+        )
         capture_event(
             "api_discover_people_completed",
             {

@@ -29,8 +29,9 @@ const STAGE_ALIASES: Record<string, PipelineStage> = {
   source_selection: "source_selection",
   source: "source_selection",
   sourcing: "source_selection",
-  discovery: "lead_discovery",
+  people_discovery: "enrichment",
   lead_discovery: "lead_discovery",
+  discovery: "lead_discovery",
   enrichment: "enrichment",
   research_enrichment: "enrichment",
   ai: "ai_personalization",
@@ -54,6 +55,10 @@ export function normalizeStageId(
   const normalized = input.toLowerCase().replace(/[^a-z_]/g, "_");
   const direct = STAGE_ALIASES[normalized];
   if (direct) return direct;
+  // people_discovery must map to enrichment, not lead_discovery (substring "discovery")
+  if (normalized.includes("people_discovery")) {
+    return "enrichment";
+  }
   const matched = Object.entries(STAGE_ALIASES).find(([alias]) =>
     normalized.includes(alias),
   );
@@ -114,16 +119,45 @@ export function extractBroadcastMetrics(
   for (const update of progressUpdates) {
     if (!update.data || typeof update.data !== "object") continue;
 
-    const progress = (update.data as Record<string, unknown>).progress;
-    if (!progress || typeof progress !== "object") continue;
+    const data = update.data as Record<string, unknown>;
+    const progress = data.progress;
+    if (progress && typeof progress === "object") {
+      for (const [key, rawValue] of Object.entries(
+        progress as Record<string, unknown>,
+      )) {
+        const value = getNumericValue(rawValue);
+        if (value === null) continue;
 
-    for (const [key, rawValue] of Object.entries(
-      progress as Record<string, unknown>,
-    )) {
-      const value = getNumericValue(rawValue);
-      if (value === null) continue;
+        metrics[key] = Math.max(metrics[key] ?? 0, value);
+      }
+    }
 
-      metrics[key] = Math.max(metrics[key] ?? 0, value);
+    const peopleDiscovery = data.peopleDiscovery;
+    if (peopleDiscovery && typeof peopleDiscovery === "object") {
+      const pd = peopleDiscovery as Record<string, unknown>;
+      const totalProspects = getNumericValue(pd.totalProspects);
+      const businessesWithPeople = getNumericValue(pd.businessesWithPeople);
+      const completedLeads = getNumericValue(pd.completedLeads);
+      const totalLeads = getNumericValue(pd.totalLeads);
+      if (totalProspects !== null) {
+        metrics.peopleDiscovered = Math.max(
+          metrics.peopleDiscovered ?? 0,
+          totalProspects,
+        );
+      }
+      if (businessesWithPeople !== null) {
+        metrics.peopleBusinesses = Math.max(
+          metrics.peopleBusinesses ?? 0,
+          businessesWithPeople,
+        );
+      }
+      if (completedLeads !== null && totalLeads !== null && totalLeads > 0) {
+        const pct = Math.round((completedLeads / totalLeads) * 100);
+        metrics.peopleScannedPercent = Math.max(
+          metrics.peopleScannedPercent ?? 0,
+          pct,
+        );
+      }
     }
   }
 
@@ -361,6 +395,9 @@ export function deriveStageFromSearch(
   }
 
   if (researchStage) {
+    if (researchStage.includes("people_discovery")) {
+      return "enrichment";
+    }
     if (researchStage.includes("analysis") || researchStage.includes("ai")) {
       return "ai_personalization";
     }

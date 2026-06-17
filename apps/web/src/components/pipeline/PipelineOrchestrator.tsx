@@ -107,6 +107,13 @@ export function PipelineOrchestrator({
       ? { searchId: activeSearchId as Id<"searches"> }
       : "skip",
   );
+  const peopleDiscoveryProgress = useQuery(
+    api.leads.queries.getPeopleDiscoveryProgress,
+    activeSearchId ? { searchId: activeSearchId as Id<"searches"> } : "skip",
+  );
+  const peopleDiscoveryComplete =
+    peopleDiscoveryProgress?.isComplete ??
+    peopleDiscoveryProgress?.enabled === false;
   const acceptedContactCount = featureFlags.multiContactPipeline
     ? (contactCounts?.totalAccepted ?? enrichedCount)
     : enrichedCount;
@@ -492,9 +499,10 @@ export function PipelineOrchestrator({
     );
     const enrichedMetric = Math.max(
       featureFlags.multiContactPipeline ? acceptedContactCount : 0,
-      enrichedFromSearch,
+      // Only use search.progress.enriched after people discovery — avoid prospect counts
+      peopleDiscoveryComplete ? enrichedFromSearch : 0,
       enrichedFromLeads,
-      state.enrichedLeads.length,
+      peopleDiscoveryComplete ? state.enrichedLeads.length : 0,
     );
     // When leads are loaded from DB: use the accurate count directly (leads with email + emailContent).
     // Don't Math.max against state/progress counters — they can include failed attempts.
@@ -516,6 +524,8 @@ export function PipelineOrchestrator({
       enriched: enrichedMetric,
       analyzed: analyzedMetric,
       total: totalMetric,
+      peopleDiscovered: peopleDiscoveryProgress?.totalProspects ?? 0,
+      peopleBusinesses: peopleDiscoveryProgress?.businessesWithPeople ?? 0,
     };
   }, [
     analyzedFromSearch,
@@ -524,6 +534,9 @@ export function PipelineOrchestrator({
     enrichedFromSearch,
     leadsLoading,
     leadsFromPipeline?.length,
+    peopleDiscoveryComplete,
+    peopleDiscoveryProgress?.businessesWithPeople,
+    peopleDiscoveryProgress?.totalProspects,
     personalizedFromLeads,
     search?.progress?.total,
     search?.results?.totalFound,
