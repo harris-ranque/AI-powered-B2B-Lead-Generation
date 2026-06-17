@@ -455,6 +455,36 @@ export const searchGoogleMaps: any = action({
           search.parameters.deduplication?.enableAddressDedup ??
           user?.preferences?.enableAddressDedup ??
           true,
+        skipCompaniesWithExistingEmails:
+          search.parameters.deduplication?.skipCompaniesWithExistingEmails ??
+          false,
+      };
+
+      const linkLeadForReenrichmentIfNeeded = async (leadId: Id<"leads">) => {
+        if (deduplicationConfig.skipCompaniesWithExistingEmails) {
+          const hasExistingEmail = await ctx.runQuery(
+            internal.leads.internal.leadHasExistingContactEmail,
+            { leadId },
+          );
+          if (hasExistingEmail) {
+            logWithCorrelation(
+              "debug",
+              discoveryCorrelation,
+              "⏭️ Skipping re-enrichment for duplicate with existing email",
+              { leadId },
+            );
+            return;
+          }
+        }
+
+        await ctx.runMutation(
+          internal.leads.searchLinkedLeads.linkLeadForSearchReenrichment,
+          {
+            searchId: args.searchId,
+            userId: search.userId,
+            leadId,
+          },
+        );
       };
 
       const maxExpansionIterations = Math.max(
@@ -689,13 +719,8 @@ export const searchGoogleMaps: any = action({
                 },
               );
 
-              await ctx.runMutation(
-                internal.leads.searchLinkedLeads.linkLeadForSearchReenrichment,
-                {
-                  searchId: args.searchId,
-                  userId: search.userId,
-                  leadId: duplicateAddressLeadId as Id<"leads">,
-                },
+              await linkLeadForReenrichmentIfNeeded(
+                duplicateAddressLeadId as Id<"leads">,
               );
 
               duplicateCounters.address++;
@@ -767,13 +792,8 @@ export const searchGoogleMaps: any = action({
               leadResult.reason === "user_level" &&
               leadResult.duplicateLeadId
             ) {
-              await ctx.runMutation(
-                internal.leads.searchLinkedLeads.linkLeadForSearchReenrichment,
-                {
-                  searchId: args.searchId,
-                  userId: search.userId,
-                  leadId: leadResult.duplicateLeadId,
-                },
+              await linkLeadForReenrichmentIfNeeded(
+                leadResult.duplicateLeadId,
               );
             }
           } else if (leadResult.reason === "place_name") {

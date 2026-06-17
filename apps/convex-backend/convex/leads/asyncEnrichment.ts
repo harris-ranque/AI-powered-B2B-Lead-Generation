@@ -918,33 +918,15 @@ export const enrichSingleLeadWorkpool = internalAction({
         logWithCorrelation(
           "info",
           correlation,
-          "[Workpool] Prospects found but no accepted emails — skipping role search fallback",
-          { leadId: args.leadId, candidateCount: prospectAttempt.candidateCount },
+          "[Workpool] Prospect name search found no accepted emails — falling back to role/domain search",
+          {
+            leadId: args.leadId,
+            candidateCount: prospectAttempt.candidateCount,
+          },
         );
-
-        await ctx.runMutation(
-          internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
-          { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
-        );
-
-        if (args._fromQueue) {
-          await ctx.runMutation(
-            internal.leads.workpool.reportQueuedLeadCompletion,
-            { searchId: args.searchId, leadId: args.leadId, success: false },
-          );
-        }
-
-        await completeReenrichLink(true);
-
-        return {
-          success: false,
-          provider: "findymail",
-          reason: "no_accepted_contacts",
-          source: "prospect_name_search",
-        };
       }
 
-      // PRIMARY PROVIDER: FindyMail role search (fallback when no prospects)
+      // FindyMail role/domain search (no prospects, or hybrid fallback after prospect name search)
       let result: (EnrichmentResult & { provider: "findymail" }) | null = null;
 
       if (isMultiContactPipelineEnabled()) {

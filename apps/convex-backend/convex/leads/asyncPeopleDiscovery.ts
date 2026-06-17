@@ -26,6 +26,15 @@ type DiscoverPeopleApiPerson = {
   linkedinUrl?: string;
 };
 
+function mapProspectSource(
+  source: string | undefined,
+): "perplexity" | "website_inference" {
+  if (source === "website_inference") {
+    return "website_inference";
+  }
+  return "perplexity";
+}
+
 /**
  * Orchestrate people discovery for native and linked re-enrichment leads (Phase 2A).
  */
@@ -291,7 +300,7 @@ export const discoverPeopleForLead = internalAction({
           matchedRole: sanitizeOptionalString(person.matchedRole),
           confidence:
             typeof person.confidence === "number" ? person.confidence : 0.7,
-          source: "perplexity" as const,
+          source: mapProspectSource(person.source),
           sourceUrl: sanitizeOptionalString(person.sourceUrl),
           linkedinUrl: sanitizeOptionalString(person.linkedinUrl),
           rawDiscoveryData: person,

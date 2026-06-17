@@ -4,6 +4,7 @@ import {
   normalizeAddress,
   normalizePlaceName,
   extractPrimaryEmail,
+  leadRecordHasStoredEmail,
 } from "../lib/deduplication";
 import { resolveSearchExportData } from "../lib/exportEligibility";
 import { getAnalysisCompletionState } from "../lib/analysisProgress";
@@ -18,6 +19,30 @@ export const getLeadInternal = internalQuery({
   args: { leadId: v.id("leads") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.leadId);
+  },
+});
+
+/** Whether a business already has email on the lead row or accepted leadContacts. */
+export const leadHasExistingContactEmail = internalQuery({
+  args: { leadId: v.id("leads") },
+  handler: async (ctx, args) => {
+    const lead = await ctx.db.get(args.leadId);
+    if (!lead) {
+      return false;
+    }
+
+    if (leadRecordHasStoredEmail(lead)) {
+      return true;
+    }
+
+    const acceptedContact = await ctx.db
+      .query("leadContacts")
+      .withIndex("by_lead_status", (q) =>
+        q.eq("leadId", args.leadId).eq("status", "accepted"),
+      )
+      .first();
+
+    return acceptedContact !== null;
   },
 });
 

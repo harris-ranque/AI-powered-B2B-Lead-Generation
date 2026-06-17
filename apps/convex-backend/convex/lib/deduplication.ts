@@ -133,3 +133,18 @@ export function extractPrimaryEmail(contactInfo: any): string | null {
 
   return null;
 }
+
+/** Whether a lead row already stores at least one email (legacy contactInfo or denormalized field). */
+export function leadRecordHasStoredEmail(lead: {
+  primaryEmail?: string;
+  contactInfo?: { emails?: Array<{ email?: string }> };
+}): boolean {
+  if (lead.primaryEmail && isValidEmail(lead.primaryEmail)) {
+    return true;
+  }
+  const emails = lead.contactInfo?.emails;
+  if (!emails?.length) {
+    return false;
+  }
+  return emails.some((entry) => entry?.email && isValidEmail(entry.email));
+}

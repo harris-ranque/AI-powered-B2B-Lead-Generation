@@ -889,7 +889,8 @@ async def discover_people(
 ):
     """
     Identify decision makers at a company before email lookup.
-    Returns structured people[] with names and titles for FindyMail name search.
+    Runs website scrape (team/about pages) and Perplexity in parallel,
+    merges and deduplicates results for FindyMail name search.
     """
     start_time = datetime.utcnow()
 

@@ -1,19 +1,23 @@
-"""People discovery — identify decision makers before email lookup."""
+"""People discovery — website scrape + Perplexity, merged before email lookup."""
 
+import asyncio
 import json
 import logging
 import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
 
 from ..models.people_discovery_models import DiscoveredPerson, DiscoverPeopleResponse
+from .website_people_scraper import scrape_people_from_website, WebsiteScrapeResult
 
 logger = logging.getLogger(__name__)
 
 MAX_PEOPLE_PER_LEAD = 8
 PERPLEXITY_TIMEOUT_SECONDS = 90
+WEBSITE_SOURCE = "website_inference"
+PERPLEXITY_SOURCE = "perplexity"
 
 
 def _normalize(text: str) -> str:
@@ -124,38 +128,76 @@ def _build_people_discovery_prompt(
     )
 
 
-async def discover_people_at_company(
+def _build_discovered_person(
+    name: str,
+    title: str,
+    roles: List[str],
+    expanded_role_patterns: Optional[List[str]],
+    source: str,
+    source_url: Optional[str] = None,
+    linkedin_url: Optional[str] = None,
+    confidence: float = 0.75,
+) -> DiscoveredPerson:
+    matched_role = _match_requested_role(title, roles, expanded_role_patterns)
+    return DiscoveredPerson(
+        name=name,
+        title=title,
+        matched_role=matched_role,
+        confidence=max(0.0, min(1.0, confidence)),
+        source=source,
+        source_url=source_url,
+        linkedin_url=linkedin_url,
+    )
+
+
+def _merge_discovered_people(
+    website_people: List[DiscoveredPerson],
+    perplexity_people: List[DiscoveredPerson],
+) -> List[DiscoveredPerson]:
+    """Merge by normalized name; website data wins on conflicts."""
+    merged: Dict[str, DiscoveredPerson] = {}
+
+    for person in website_people:
+        key = _normalize(person.name)
+        if key:
+            merged[key] = person
+
+    for person in perplexity_people:
+        key = _normalize(person.name)
+        if not key:
+            continue
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = person
+            continue
+
+        if not existing.matched_role and person.matched_role:
+            existing.matched_role = person.matched_role
+        if not existing.linkedin_url and person.linkedin_url:
+            existing.linkedin_url = person.linkedin_url
+        if existing.source == WEBSITE_SOURCE and person.confidence > existing.confidence:
+            existing.confidence = min(existing.confidence + 0.05, 0.98)
+
+    ranked = list(merged.values())
+    ranked.sort(
+        key=lambda p: (
+            0 if p.matched_role else 1,
+            0 if p.source == WEBSITE_SOURCE else 1,
+            -p.confidence,
+        ),
+    )
+    return ranked[:MAX_PEOPLE_PER_LEAD]
+
+
+async def _discover_people_perplexity(
     company_name: str,
     domain: str,
-    location: str = "",
-    industry: str = "",
-    requested_roles: Optional[List[str]] = None,
-    expanded_role_patterns: Optional[List[str]] = None,
-    provider_keys: Optional[Dict[str, str]] = None,
-) -> DiscoverPeopleResponse:
-    """Run Perplexity Sonar Pro to enumerate people before email lookup."""
-    start = time.time()
-    roles = [r.strip() for r in (requested_roles or []) if r and r.strip()]
-    if not roles:
-        roles = ["CEO", "Founder", "Owner"]
-
-    api_key = None
-    if provider_keys and provider_keys.get("perplexity"):
-        api_key = provider_keys["perplexity"]
-    if not api_key:
-        import os
-
-        api_key = os.getenv("PERPLEXITY_API_KEY")
-
-    if not api_key:
-        logger.error("Perplexity API key not configured for people discovery")
-        return DiscoverPeopleResponse(
-            people=[],
-            company_overview="",
-            processing_time=time.time() - start,
-            research_tier="error",
-        )
-
+    location: str,
+    industry: str,
+    roles: List[str],
+    expanded_role_patterns: Optional[List[str]],
+    api_key: str,
+) -> Tuple[List[DiscoveredPerson], str, Dict[str, Any]]:
     prompt = _build_people_discovery_prompt(
         company_name, domain, location, industry, roles
     )
@@ -185,6 +227,7 @@ async def discover_people_at_company(
 
     raw_content = ""
     citations: List[str] = []
+    raw_data: Dict[str, Any] = {}
 
     try:
         async with aiohttp.ClientSession(
@@ -202,11 +245,7 @@ async def discover_people_at_company(
                         response.status,
                         error_text[:500],
                     )
-                    return DiscoverPeopleResponse(
-                        people=[],
-                        processing_time=time.time() - start,
-                        research_tier="error",
-                    )
+                    return [], "", {"error": error_text[:500], "status": response.status}
                 data = await response.json()
 
         choices = data.get("choices", [])
@@ -214,12 +253,8 @@ async def discover_people_at_company(
             raw_content = choices[0].get("message", {}).get("content", "") or ""
         citations = data.get("citations", []) or []
     except Exception as error:
-        logger.error("People discovery request failed: %s", error)
-        return DiscoverPeopleResponse(
-            people=[],
-            processing_time=time.time() - start,
-            research_tier="error",
-        )
+        logger.error("People discovery Perplexity request failed: %s", error)
+        return [], "", {"error": str(error)}
 
     parsed = _extract_json_object(raw_content) or {}
     company_overview = str(parsed.get("company_overview") or "").strip()
@@ -240,14 +275,12 @@ async def discover_people_at_company(
             continue
         seen_names.add(name_key)
 
-        matched_role = _match_requested_role(title, roles, expanded_role_patterns)
         confidence_raw = entry.get("confidence")
         confidence = (
             float(confidence_raw)
             if isinstance(confidence_raw, (int, float))
             else 0.75
         )
-        confidence = max(0.0, min(1.0, confidence))
 
         source_url = entry.get("source_url") or entry.get("sourceUrl")
         if isinstance(source_url, str) and source_url.strip():
@@ -262,29 +295,141 @@ async def discover_people_at_company(
             linkedin_url = None
 
         people.append(
-            DiscoveredPerson(
+            _build_discovered_person(
                 name=name,
                 title=title,
-                matched_role=matched_role,
-                confidence=confidence,
-                source=str(entry.get("source") or "perplexity"),
+                roles=roles,
+                expanded_role_patterns=expanded_role_patterns,
+                source=str(entry.get("source") or PERPLEXITY_SOURCE),
                 source_url=source_url,
                 linkedin_url=linkedin_url,
+                confidence=confidence,
             )
         )
 
         if len(people) >= MAX_PEOPLE_PER_LEAD:
             break
 
+    raw_data = {
+        "raw_content": raw_content,
+        "citations": citations,
+        "parsed": parsed,
+    }
+    return people, company_overview, raw_data
+
+
+async def discover_people_at_company(
+    company_name: str,
+    domain: str,
+    location: str = "",
+    industry: str = "",
+    requested_roles: Optional[List[str]] = None,
+    expanded_role_patterns: Optional[List[str]] = None,
+    provider_keys: Optional[Dict[str, str]] = None,
+) -> DiscoverPeopleResponse:
+    """Website scrape + Perplexity in parallel, merged and deduplicated."""
+    start = time.time()
+    roles = [r.strip() for r in (requested_roles or []) if r and r.strip()]
+    if not roles:
+        roles = ["CEO", "Founder", "Owner"]
+
+    api_key: Optional[str] = None
+    if provider_keys and provider_keys.get("perplexity"):
+        api_key = provider_keys["perplexity"]
+    if not api_key:
+        import os
+
+        api_key = os.getenv("PERPLEXITY_API_KEY")
+
+    scrape_coro = scrape_people_from_website(domain, company_name)
+
+    scrape_result: Any
+    perplexity_people: List[DiscoveredPerson] = []
+    company_overview = ""
+    perplexity_raw: Dict[str, Any] = {}
+
+    if api_key:
+        scrape_result, perplexity_result = await asyncio.gather(
+            scrape_coro,
+            _discover_people_perplexity(
+                company_name,
+                domain,
+                location,
+                industry,
+                roles,
+                expanded_role_patterns,
+                api_key,
+            ),
+            return_exceptions=True,
+        )
+
+        if isinstance(scrape_result, Exception):
+            logger.error("Website scrape failed for %s: %s", domain, scrape_result)
+            scrape_result = WebsiteScrapeResult(errors=[str(scrape_result)])
+
+        if isinstance(perplexity_result, Exception):
+            logger.error("Perplexity people discovery failed for %s: %s", domain, perplexity_result)
+            perplexity_raw = {"error": str(perplexity_result)}
+        else:
+            perplexity_people, perplexity_overview, perplexity_raw = perplexity_result
+            company_overview = perplexity_overview
+    else:
+        logger.warning(
+            "Perplexity API key not configured; using website scrape only for %s",
+            domain,
+        )
+        scrape_result = await scrape_coro
+        perplexity_raw = {"skipped": "no_perplexity_key"}
+
+    website_people: List[DiscoveredPerson] = [
+        _build_discovered_person(
+            name=person.name,
+            title=person.title,
+            roles=roles,
+            expanded_role_patterns=expanded_role_patterns,
+            source=WEBSITE_SOURCE,
+            source_url=person.source_url,
+            confidence=person.confidence,
+        )
+        for person in scrape_result.people
+    ]
+
+    if company_overview and scrape_result.company_snippet:
+        company_overview = f"{scrape_result.company_snippet}\n\n{company_overview}".strip()
+    elif scrape_result.company_snippet and not company_overview:
+        company_overview = scrape_result.company_snippet
+
+    merged_people = _merge_discovered_people(website_people, perplexity_people)
+
+    if website_people and perplexity_people:
+        research_tier = "website+pro"
+    elif website_people:
+        research_tier = "website"
+    elif perplexity_people:
+        research_tier = "pro"
+    elif perplexity_raw.get("error"):
+        research_tier = "error"
+    else:
+        research_tier = "none"
+
     return DiscoverPeopleResponse(
-        people=people,
+        people=merged_people,
         company_overview=company_overview,
         processing_time=time.time() - start,
-        research_tier="pro",
+        research_tier=research_tier,
         additional_credits_used=0,
         raw_data={
-            "raw_content": raw_content,
-            "citations": citations,
-            "parsed": parsed,
+            "website": {
+                "scraped_urls": scrape_result.scraped_urls,
+                "people_found": len(scrape_result.people),
+                "errors": scrape_result.errors,
+                "company_snippet": scrape_result.company_snippet,
+            },
+            "perplexity": perplexity_raw,
+            "merge": {
+                "website_count": len(website_people),
+                "perplexity_count": len(perplexity_people),
+                "merged_count": len(merged_people),
+            },
         },
     )

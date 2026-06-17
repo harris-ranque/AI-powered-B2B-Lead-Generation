@@ -130,6 +130,8 @@ export default defineSchema({
           enablePlaceNameDedup: v.optional(v.boolean()),
           enableEmailDedup: v.optional(v.boolean()),
           enableAddressDedup: v.optional(v.boolean()),
+          /** Skip re-enrichment when a duplicate business already has contact email(s). */
+          skipCompaniesWithExistingEmails: v.optional(v.boolean()),
         }),
       ),
     }),

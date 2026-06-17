@@ -76,6 +76,7 @@ export interface SearchParams {
     enablePlaceNameDedup?: boolean;
     enableEmailDedup?: boolean;
     enableAddressDedup?: boolean;
+    skipCompaniesWithExistingEmails?: boolean;
   };
 }
 
