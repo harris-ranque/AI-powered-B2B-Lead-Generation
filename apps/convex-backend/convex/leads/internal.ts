@@ -614,6 +614,7 @@ export const createLeadInternal = internalMutation({
         enablePlaceNameDedup: v.optional(v.boolean()),
         enableEmailDedup: v.optional(v.boolean()),
         enableAddressDedup: v.optional(v.boolean()),
+        skipCompaniesWithExistingEmails: v.optional(v.boolean()),
       }),
     ),
     leadData: v.object({

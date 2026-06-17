@@ -460,6 +460,12 @@ export const searchGoogleMaps: any = action({
           false,
       };
 
+      const leadCreateDeduplication = {
+        enablePlaceNameDedup: deduplicationConfig.enablePlaceNameDedup,
+        enableEmailDedup: deduplicationConfig.enableEmailDedup,
+        enableAddressDedup: deduplicationConfig.enableAddressDedup,
+      };
+
       const linkLeadForReenrichmentIfNeeded = async (leadId: Id<"leads">) => {
         if (deduplicationConfig.skipCompaniesWithExistingEmails) {
           const hasExistingEmail = await ctx.runQuery(
@@ -737,7 +743,7 @@ export const searchGoogleMaps: any = action({
           {
             userId: search.userId,
             searchId: args.searchId,
-            deduplication: deduplicationConfig,
+            deduplication: leadCreateDeduplication,
             leadData: {
               businessName: detailedPlace.name || "Unknown",
               address: detailedPlace.formatted_address || "",
