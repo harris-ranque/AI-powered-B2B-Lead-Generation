@@ -959,25 +959,53 @@ export const enrichSingleLeadWorkpool = internalAction({
             acceptedCount: prospectAttempt.acceptedCount,
             source: "prospect_name_search",
           };
-        } else if (!pipelineBlockingError) {
+        } else if (!pipelineBlockingError && prospectAttempt) {
+          // People discovery: email via /search/name only. Do not fall back to
+          // /search/domain — that stores queried roles (ceo/owner) as titles.
           logWithCorrelation(
             "info",
             correlation,
-            "[Workpool] Prospect email path yielded no accepted contacts — falling back to FindyMail role search",
+            "[Workpool] Prospect email path complete — skipping domain role search",
             {
               leadId: args.leadId,
-              hadProspects: prospectAttempt?.hadProspects ?? false,
-              candidateCount: prospectAttempt?.candidateCount ?? 0,
-              acceptedCount: prospectAttempt?.acceptedCount ?? 0,
+              hadProspects: prospectAttempt.hadProspects,
+              candidateCount: prospectAttempt.candidateCount,
+              acceptedCount: prospectAttempt.acceptedCount,
             },
           );
+
+          await updateLeadEnrichmentStatus({
+            status: "no_contacts_found",
+            error: prospectAttempt.hadProspects
+              ? "No email found via FindyMail name search for discovered prospects"
+              : "No role-matched prospects available for email lookup",
+          });
+          await completeReenrichLink(true);
+
+          await ctx.runMutation(
+            internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
+            { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
+          );
+
+          if (args._fromQueue) {
+            await ctx.runMutation(
+              internal.leads.workpool.reportQueuedLeadCompletion,
+              { searchId: args.searchId, leadId: args.leadId, success: false },
+            );
+          }
+
+          return {
+            success: false,
+            provider: "findymail",
+            reason: "no_accepted_prospect_emails",
+          };
         }
       }
 
-      // Legacy / fallback FindyMail role search (also runs when people-discovery path finds no accepted contacts).
+      // Legacy FindyMail role search — only when people discovery is OFF.
       let result: (EnrichmentResult & { provider: "findymail" }) | null = null;
 
-      if (!pipelineBlockingError) {
+      if (!isPeopleDiscoveryEnabled() && !pipelineBlockingError) {
         if (isMultiContactPipelineEnabled()) {
           const cacheEntry = await ctx.runQuery(
             internal.leads.contactInternal.getEnrichmentCacheEntry,
