@@ -1,6 +1,9 @@
 """Tests for cached company research → ResearchResult conversion."""
 
-from app.langgraph.nodes.business_intelligence_agent import _research_result_from_cache
+from app.langgraph.nodes.business_intelligence_agent import (
+    _is_people_discovery_only,
+    _research_result_from_cache,
+)
 from app.utils.data_validation import BaseDataValidator
 from app.utils.research_clients import ResearchTier
 
@@ -40,6 +43,35 @@ def test_research_result_from_cache_has_required_fields():
     validator = BaseDataValidator()
     validation = validator.validate_research_result(result)
     assert validation.validation_score > 0
+
+
+def test_people_discovery_only_cache_is_not_reused():
+    payload = {
+        "company_overview": "2 role-matched team members found on Acme's website.",
+        "raw_data": {
+            "people_discovery": True,
+            "research_metadata": {
+                "source": "people_discovery",
+                "comprehensive_report": "2 role-matched team members found on Acme's website.",
+            },
+        },
+    }
+
+    assert _is_people_discovery_only(payload) is True
+
+
+def test_perplexity_merged_cache_can_be_reused():
+    payload = {
+        "company_overview": "Acme is a services firm.",
+        "raw_data": {
+            "people_discovery": True,
+            "research_metadata": {
+                "comprehensive_report": "### 1. ANNUAL REVENUE\nRevenue is $1M-$5M.",
+            },
+        },
+    }
+
+    assert _is_people_discovery_only(payload) is False
 
 
 def test_validate_research_result_handles_minimal_cached_result():

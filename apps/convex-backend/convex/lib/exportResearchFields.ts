@@ -3,6 +3,8 @@
  * Per-contact aiAnalysis is slimmed; full payloads live in companyResearch.
  */
 
+import { hasPerplexityResearchStructure } from "./companyResearchCache";
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
@@ -112,6 +114,18 @@ function firstNonEmptyString(...values: Array<unknown>): string {
     }
   }
   return "";
+}
+
+function preferComprehensiveReport(...values: Array<unknown>): string {
+  const texts = values
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.trim());
+  for (const text of texts) {
+    if (hasPerplexityResearchStructure(text)) {
+      return text;
+    }
+  }
+  return texts[0] ?? "";
 }
 
 /** True when webhook lead_analysis has enough text to persist companyResearch. */
@@ -303,10 +317,19 @@ export function mergeCompanyResearchPayloadForWebhook(
 
   const companyOverview = firstNonEmptyString(
     incomingEnriched.company_overview,
-    incomingMeta.comprehensive_report,
     incomingRaw.company_overview,
     existingEnriched.company_overview,
+    existingRaw.company_overview,
+  );
+
+  const comprehensiveReport = preferComprehensiveReport(
+    incomingMeta.comprehensive_report,
     existingMeta.comprehensive_report,
+    incomingRaw.comprehensive_report,
+    existingRaw.comprehensive_report,
+    incomingEnriched.company_overview,
+    existingEnriched.company_overview,
+    incomingRaw.company_overview,
     existingRaw.company_overview,
   );
 
@@ -344,7 +367,11 @@ export function mergeCompanyResearchPayloadForWebhook(
     research_metadata: {
       ...existingMeta,
       ...incomingMeta,
-      ...(companyOverview ? { comprehensive_report: companyOverview } : {}),
+      ...(comprehensiveReport
+        ? { comprehensive_report: comprehensiveReport }
+        : companyOverview
+          ? { comprehensive_report: companyOverview }
+          : {}),
       ...(citations.length > 0 ? { citations } : {}),
       ...(typeof confidenceScore === "number"
         ? { confidence_score: confidenceScore }
@@ -352,9 +379,13 @@ export function mergeCompanyResearchPayloadForWebhook(
     },
   };
 
+  if (comprehensiveReport) {
+    mergedRaw.comprehensive_report = comprehensiveReport;
+  } else if (companyOverview) {
+    mergedRaw.comprehensive_report = companyOverview;
+  }
   if (companyOverview) {
     mergedRaw.company_overview = companyOverview;
-    mergedRaw.comprehensive_report = companyOverview;
   }
   if (citations.length > 0) {
     mergedRaw.citations = citations;
@@ -451,39 +482,19 @@ export function resolveExportResearchFields(
   const payload = asRecord(companyResearchPayload);
   const rawData = asRecord(payload?.raw_data);
 
-  let fullResearchReport = "";
-  if (researchMetadata) {
-    const report = researchMetadata.comprehensive_report;
-    if (typeof report === "string" && report.trim()) {
-      fullResearchReport = report.trim();
-    }
-  }
-  if (!fullResearchReport && leadAnalysis) {
-    const leadReport = leadAnalysis.comprehensive_report;
-    if (typeof leadReport === "string" && leadReport.trim()) {
-      fullResearchReport = leadReport.trim();
-    }
-  }
-  if (!fullResearchReport && leadAnalysis) {
-    const overview = firstNonEmptyString(
-      leadAnalysis.company_overview,
-      leadAnalysis.research_summary,
-      leadAnalysis.company_profile,
-      leadAnalysis.summary,
-    );
-    if (overview) {
-      fullResearchReport = overview;
-    }
-  }
-  if (!fullResearchReport && payload) {
-    const overview = firstNonEmptyString(
-      payload.company_overview,
-      rawData?.company_overview,
-    );
-    if (overview) {
-      fullResearchReport = overview;
-    }
-  }
+  let fullResearchReport = preferComprehensiveReport(
+    researchMetadata?.comprehensive_report,
+    leadAnalysis?.comprehensive_report,
+    rawData?.comprehensive_report,
+    asRecord(rawData?.research_metadata)?.comprehensive_report,
+    payload?.comprehensive_report,
+    leadAnalysis?.company_overview,
+    leadAnalysis?.research_summary,
+    leadAnalysis?.company_profile,
+    leadAnalysis?.summary,
+    payload?.company_overview,
+    rawData?.company_overview,
+  );
 
   let citations = normalizeCitations(researchMetadata?.citations);
   if (citations.length === 0 && researchMetadata) {

@@ -194,6 +194,53 @@ def _coerce_research_string_list(value: Any) -> List[str]:
     return items
 
 
+def _extract_cached_overview(payload: dict) -> str:
+    overview = payload.get("company_overview")
+    if isinstance(overview, str) and overview.strip():
+        return overview.strip()
+    raw_data = payload.get("raw_data")
+    if isinstance(raw_data, dict):
+        for key in ("company_overview", "research_summary", "comprehensive_report"):
+            value = raw_data.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    lead_analysis = payload.get("lead_analysis")
+    if isinstance(lead_analysis, dict):
+        for key in ("company_overview", "research_summary", "comprehensive_report"):
+            value = lead_analysis.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    comprehensive = payload.get("comprehensive_report")
+    if isinstance(comprehensive, str) and comprehensive.strip():
+        return comprehensive.strip()
+    return ""
+
+
+def _is_people_discovery_only(payload: dict) -> bool:
+    """People-discovery cache rows are not valid Perplexity company research."""
+    raw_data = payload.get("raw_data")
+    if not isinstance(raw_data, dict) or raw_data.get("people_discovery") is not True:
+        return False
+
+    research_metadata = raw_data.get("research_metadata")
+    if isinstance(research_metadata, dict) and research_metadata.get("source") == "people_discovery":
+        return True
+
+    report = _extract_cached_overview(payload)
+    if not report:
+        return True
+
+    normalized = report.lower()
+    has_perplexity_structure = (
+        "annual revenue" in normalized
+        or "employee count" in normalized
+        or "leadership names" in normalized
+        or "### 1." in normalized
+        or "## 1." in normalized
+    )
+    return not has_perplexity_structure
+
+
 def _research_result_from_cache(
     cached_payload: Dict[str, Any],
     cached_overview: str,
@@ -350,31 +397,12 @@ async def business_intelligence_agent_node(state: EmailGenerationState) -> Dict[
         # Phase 1: Execute tiered business context research
         precomputed = getattr(lead, "company_research", None)
 
-        def _extract_cached_overview(payload: dict) -> str:
-            overview = payload.get("company_overview")
-            if isinstance(overview, str) and overview.strip():
-                return overview.strip()
-            raw_data = payload.get("raw_data")
-            if isinstance(raw_data, dict):
-                for key in ("company_overview", "research_summary", "comprehensive_report"):
-                    value = raw_data.get(key)
-                    if isinstance(value, str) and value.strip():
-                        return value.strip()
-            lead_analysis = payload.get("lead_analysis")
-            if isinstance(lead_analysis, dict):
-                for key in ("company_overview", "research_summary", "comprehensive_report"):
-                    value = lead_analysis.get(key)
-                    if isinstance(value, str) and value.strip():
-                        return value.strip()
-            comprehensive = payload.get("comprehensive_report")
-            if isinstance(comprehensive, str) and comprehensive.strip():
-                return comprehensive.strip()
-            return ""
-
         cached_overview = (
             _extract_cached_overview(precomputed) if isinstance(precomputed, dict) else ""
         )
-        use_cached_research = bool(cached_overview)
+        use_cached_research = bool(cached_overview) and not (
+            isinstance(precomputed, dict) and _is_people_discovery_only(precomputed)
+        )
 
         if use_cached_research:
             logger.info(

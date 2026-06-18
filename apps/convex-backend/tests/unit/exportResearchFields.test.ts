@@ -226,6 +226,44 @@ describe("resolveExportResearchFields", () => {
       "UCSF",
     );
   });
+
+  it("mergeCompanyResearchPayloadForWebhook prefers Perplexity comprehensive_report", () => {
+    const existing = {
+      company_overview: "2 team members found on website",
+      raw_data: {
+        people_discovery: true,
+        research_metadata: {
+          comprehensive_report: "2 team members found on website",
+          source: "people_discovery",
+        },
+      },
+    };
+    const incoming = {
+      company_overview: "Short BI summary",
+      raw_data: {
+        research_metadata: {
+          comprehensive_report: `### 1. ANNUAL REVENUE
+Revenue is $768,000 in 2024.`,
+          citations: [{ url: "https://growjo.com/company/Acme", title: "Growjo" }],
+        },
+      },
+    };
+
+    const merged = mergeCompanyResearchPayloadForWebhook(
+      existing,
+      incoming,
+    ) as {
+      raw_data: {
+        comprehensive_report: string;
+        research_metadata: { comprehensive_report: string };
+      };
+    };
+
+    expect(merged.raw_data.research_metadata.comprehensive_report).toContain(
+      "ANNUAL REVENUE",
+    );
+    expect(merged.raw_data.comprehensive_report).toContain("ANNUAL REVENUE");
+  });
 });
 
 describe("leadAnalysisHasSaveableResearch", () => {

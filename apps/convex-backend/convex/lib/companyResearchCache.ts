@@ -30,7 +30,54 @@ function firstNonEmptyString(...values: Array<unknown>): string {
   return "";
 }
 
+/** Perplexity reports use multi-section headings; people-discovery stubs do not. */
+export function hasPerplexityResearchStructure(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return (
+    normalized.includes("annual revenue") ||
+    normalized.includes("employee count") ||
+    normalized.includes("leadership names") ||
+    normalized.includes("### 1.") ||
+    normalized.includes("## 1.")
+  );
+}
+
+/** People discovery writes a thin companyResearch row for contacts only — not Perplexity. */
+export function isPeopleDiscoveryOnlyResearch(payload: unknown): boolean {
+  const record = asRecord(payload);
+  if (!record) {
+    return false;
+  }
+
+  const rawData =
+    asRecord(record.raw_data) ??
+    asRecord(record.lead_analysis) ??
+    asRecord(record.leadAnalysis) ??
+    {};
+  if (rawData.people_discovery !== true) {
+    return false;
+  }
+
+  const researchMetadata = asRecord(rawData.research_metadata);
+  if (researchMetadata?.source === "people_discovery") {
+    return true;
+  }
+
+  const report = firstNonEmptyString(
+    researchMetadata?.comprehensive_report,
+    rawData.comprehensive_report,
+    record.comprehensive_report,
+    record.company_overview,
+    rawData.company_overview,
+  );
+  return report.length > 0 && !hasPerplexityResearchStructure(report);
+}
+
+/** True when payload is real Perplexity/Tavily company research (not people-discovery stub). */
 export function isValidCompanyResearchCache(payload: unknown): boolean {
+  if (isPeopleDiscoveryOnlyResearch(payload)) {
+    return false;
+  }
   const normalized = normalizeCompanyResearchPayload(payload);
   return normalized !== null && normalized.company_overview.length > 0;
 }

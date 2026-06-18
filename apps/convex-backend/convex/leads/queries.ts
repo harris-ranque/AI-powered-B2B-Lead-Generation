@@ -15,6 +15,7 @@ import {
   resolveSearchExportData,
 } from "../lib/exportEligibility";
 import { resolveExportResearchFields } from "../lib/exportResearchFields";
+import { isValidCompanyResearchCache } from "../lib/companyResearchCache";
 import { computeAnalysisProgress } from "../lib/analysisProgress";
 
 // Get leads for a search (FULL documents - use sparingly, prefer getLeadsListView)
@@ -195,7 +196,10 @@ export const exportLeads = query({
       const companyResearchById = new Map<string, unknown>();
       for (const researchId of pageCompanyResearchIds) {
         const doc = await ctx.db.get(researchId);
-        if (doc?.status === "completed") {
+        if (
+          doc?.status === "completed" &&
+          isValidCompanyResearchCache(doc.researchPayload)
+        ) {
           companyResearchById.set(String(researchId), doc.researchPayload);
         }
       }

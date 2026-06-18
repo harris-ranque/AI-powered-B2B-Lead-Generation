@@ -1,7 +1,10 @@
 import { internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
-import { normalizeCompanyResearchPayload } from "../lib/companyResearchCache";
+import {
+  isValidCompanyResearchCache,
+  normalizeCompanyResearchPayload,
+} from "../lib/companyResearchCache";
 
 /**
  * Native new leads on this search plus linked prior-account businesses queued
@@ -147,32 +150,40 @@ export const persistLeadProspects = internalMutation({
         )
         .first();
 
-      const normalized = normalizeCompanyResearchPayload(
-        args.companyResearchPayload,
-      );
+      if (
+        existing?.researchPayload &&
+        isValidCompanyResearchCache(existing.researchPayload)
+      ) {
+        companyResearchId = existing._id;
+      } else {
+        const normalized = normalizeCompanyResearchPayload(
+          args.companyResearchPayload,
+        );
 
-      if (normalized) {
-        const researchData = {
-          searchId: args.searchId,
-          userId: args.userId,
-          leadId: args.leadId,
-          domain,
-          researchPayload: normalized,
-          confidence: normalized.confidence_score,
-          provider: "people_discovery",
-          status: "completed" as const,
-          updatedAt: now,
-          expiresAt: now + 24 * 60 * 60 * 1000,
-        };
+        if (normalized) {
+          const researchData = {
+            searchId: args.searchId,
+            userId: args.userId,
+            leadId: args.leadId,
+            domain,
+            researchPayload: normalized,
+            confidence: normalized.confidence_score,
+            provider: "people_discovery",
+            // Pending until Perplexity company research completes in Write Emails.
+            status: "pending" as const,
+            updatedAt: now,
+            expiresAt: now + 24 * 60 * 60 * 1000,
+          };
 
-        if (existing) {
-          await ctx.db.patch(existing._id, researchData);
-          companyResearchId = existing._id;
-        } else {
-          companyResearchId = await ctx.db.insert("companyResearch", {
-            ...researchData,
-            createdAt: now,
-          });
+          if (existing) {
+            await ctx.db.patch(existing._id, researchData);
+            companyResearchId = existing._id;
+          } else {
+            companyResearchId = await ctx.db.insert("companyResearch", {
+              ...researchData,
+              createdAt: now,
+            });
+          }
         }
       }
     }

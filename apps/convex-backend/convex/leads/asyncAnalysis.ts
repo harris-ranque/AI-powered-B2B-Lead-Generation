@@ -21,6 +21,7 @@ import { getMissingApiKeysError } from "../lib/errorMessages";
 import { captureAnalyticsEvent } from "../lib/analytics";
 import { extractDomainFromWebsite } from "../lib/contactVerification";
 import {
+  isValidCompanyResearchCache,
   normalizeCompanyResearchPayload,
 } from "../lib/companyResearchCache";
 import {
@@ -220,7 +221,10 @@ export const analyzeLeadsBatch: any = internalAction({
                 internal.leads.contactInternal.getCompanyResearchByDomain,
                 { searchId: args.searchId, domain },
               );
-              if (cached?.researchPayload) {
+              if (
+                cached?.researchPayload &&
+                isValidCompanyResearchCache(cached.researchPayload)
+              ) {
                 const normalized = normalizeCompanyResearchPayload(
                   cached.researchPayload,
                 );

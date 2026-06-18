@@ -1126,7 +1126,11 @@ export const getCompanyResearchPayloadsForExport = internalQuery({
 
     for (const id of args.ids) {
       const doc = await ctx.db.get(id);
-      if (!doc || doc.status !== "completed") {
+      if (
+        !doc ||
+        doc.status !== "completed" ||
+        !isValidCompanyResearchCache(doc.researchPayload)
+      ) {
         continue;
       }
       rows.push({ _id: doc._id, researchPayload: doc.researchPayload });
@@ -1156,7 +1160,11 @@ export const getCompanyResearchPayloadsByDomainsForExport = internalQuery({
           q.eq("searchId", args.searchId).eq("domain", domain),
         )
         .first();
-      if (!doc || doc.status !== "completed") {
+      if (
+        !doc ||
+        doc.status !== "completed" ||
+        !isValidCompanyResearchCache(doc.researchPayload)
+      ) {
         continue;
       }
       rows.push({
