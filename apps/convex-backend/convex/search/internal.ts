@@ -486,6 +486,113 @@ export const logApiError = internalMutation({
   },
 });
 
+/**
+ * Fail a search with a user-actionable API error (discovery / analysis phases).
+ */
+export const blockSearchWithApiError = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+    errorCode: v.string(),
+    errorMessage: v.string(),
+    provider: v.string(),
+    category: v.string(),
+    severity: v.string(),
+    operationType: v.string(),
+    suggestedAction: v.optional(v.string()),
+    actionUrl: v.optional(v.string()),
+    actionLabel: v.optional(v.string()),
+    originalStatus: v.optional(v.number()),
+    correlationId: v.optional(v.string()),
+    pipelineStage: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      return { success: false, reason: "search_not_found" };
+    }
+
+    const alreadyBlocked =
+      search.status === "failed" && search.error === args.errorMessage;
+
+    await ctx.runMutation(internal.search.internal.updateSearchStatusInternal, {
+      searchId: args.searchId,
+      status: "failed",
+      error: args.errorMessage,
+    });
+
+    if (alreadyBlocked) {
+      return { success: true, notificationsSent: false };
+    }
+
+    await ctx.runMutation(internal.search.internal.logApiError, {
+      userId: args.userId,
+      searchId: args.searchId,
+      errorCode: args.errorCode,
+      provider: args.provider,
+      category: args.category,
+      severity: args.severity,
+      userMessage: args.errorMessage,
+      originalStatus: args.originalStatus,
+      operationType: args.operationType,
+      correlationId: args.correlationId,
+    });
+
+    await ctx.runMutation(internal.realtime.broadcaster.broadcast, {
+      userId: args.userId,
+      type: "pipeline_blocked",
+      title: "Search paused",
+      message: args.errorMessage,
+      data: {
+        searchId: args.searchId,
+        errorCode: args.errorCode,
+        category: args.category,
+        actionRequired: args.suggestedAction,
+        actionUrl: args.actionUrl,
+        stage: args.pipelineStage ?? "lead_discovery",
+        apiError: {
+          code: args.errorCode,
+          provider: args.provider,
+          category: args.category,
+          userMessage: args.errorMessage,
+          suggestedAction: args.suggestedAction,
+          actionUrl: args.actionUrl,
+          actionLabel: args.actionLabel,
+        },
+      },
+      priority: "critical",
+      category: "search_error",
+      entityType: "search",
+      entityId: args.searchId,
+      requiresAck: true,
+      tags: ["search", "blocked", args.category],
+    });
+
+    await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+      userId: args.userId,
+      searchId: args.searchId,
+      stage: "error",
+      progress: 0,
+      priority: "urgent",
+      message: args.errorMessage,
+      data: {
+        stage: args.pipelineStage ?? "lead_discovery",
+        apiError: {
+          code: args.errorCode,
+          provider: args.provider,
+          category: args.category,
+          userMessage: args.errorMessage,
+          suggestedAction: args.suggestedAction,
+          actionUrl: args.actionUrl,
+          actionLabel: args.actionLabel,
+        },
+      },
+    });
+
+    return { success: true, notificationsSent: true };
+  },
+});
+
 // Track duplicate prevention for analytics
 // Used by actions that perform deduplication checks before calling mutations
 export const trackDuplicateMetric = internalMutation({

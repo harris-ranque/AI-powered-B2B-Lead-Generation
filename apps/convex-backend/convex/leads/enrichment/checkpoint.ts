@@ -15,7 +15,6 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "../../_generated/server";
 import { internal } from "../../_generated/api";
-import type { ApiError } from "../../lib/apiErrors";
 
 /**
  * Checkpoint data structure
@@ -67,6 +66,12 @@ export const saveCheckpoint = internalMutation({
 
     await ctx.db.patch(args.searchId, {
       enrichmentCheckpoint: checkpoint,
+      ...(args.errorCode
+        ? {
+            enrichmentPaused: true,
+            pausedAt: Date.now(),
+          }
+        : {}),
       updatedAt: Date.now(),
     });
 
@@ -345,5 +350,129 @@ export const createCheckpointFromCurrentState = internalMutation({
         errorMessage: args.errorMessage,
       }
     );
+  },
+});
+
+/**
+ * Pause enrichment, save checkpoint, log error, and notify the user (once per search).
+ * Called when FindyMail or other providers return pipeline-blocking errors.
+ */
+export const handlePipelineBlockingError = internalMutation({
+  args: {
+    searchId: v.id("searches"),
+    userId: v.id("users"),
+    leadId: v.optional(v.id("leads")),
+    errorCode: v.string(),
+    errorMessage: v.string(),
+    provider: v.string(),
+    category: v.string(),
+    severity: v.string(),
+    suggestedAction: v.optional(v.string()),
+    actionUrl: v.optional(v.string()),
+    actionLabel: v.optional(v.string()),
+    originalStatus: v.optional(v.number()),
+    correlationId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      return { success: false, reason: "search_not_found" };
+    }
+
+    const alreadyBlocked =
+      search.enrichmentPaused &&
+      search.enrichmentCheckpoint?.errorCode === args.errorCode;
+
+    await ctx.runMutation(
+      internal.leads.enrichment.checkpoint.createCheckpointFromCurrentState,
+      {
+        searchId: args.searchId,
+        errorCode: args.errorCode,
+        errorMessage: args.errorMessage,
+      },
+    );
+
+    await ctx.db.patch(args.searchId, {
+      enrichmentPaused: true,
+      pausedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    if (alreadyBlocked) {
+      return { success: true, notificationsSent: false };
+    }
+
+    await ctx.runMutation(internal.search.internal.logApiError, {
+      userId: args.userId,
+      searchId: args.searchId,
+      leadId: args.leadId,
+      errorCode: args.errorCode,
+      provider: args.provider,
+      category: args.category,
+      severity: args.severity,
+      userMessage: args.errorMessage,
+      originalStatus: args.originalStatus,
+      operationType: "email_enrichment",
+      correlationId: args.correlationId,
+    });
+
+    await ctx.runMutation(internal.realtime.broadcaster.broadcast, {
+      userId: args.userId,
+      type: "pipeline_blocked",
+      title: "Email Enrichment Paused",
+      message:
+        args.errorMessage ||
+        "Enrichment has been paused due to an issue that requires your attention.",
+      data: {
+        searchId: args.searchId,
+        errorCode: args.errorCode,
+        category: args.category,
+        actionRequired: args.suggestedAction,
+        actionUrl: args.actionUrl,
+        stage: "enrichment",
+        apiError: {
+          code: args.errorCode,
+          provider: args.provider,
+          category: args.category,
+          userMessage: args.errorMessage,
+          suggestedAction: args.suggestedAction,
+          actionUrl: args.actionUrl,
+          actionLabel: args.actionLabel,
+        },
+      },
+      priority: "critical",
+      category: "enrichment_error",
+      entityType: "search",
+      entityId: args.searchId,
+      requiresAck: true,
+      tags: ["enrichment", "blocked", args.category],
+    });
+
+    await ctx.runMutation(internal.realtime.broadcaster.broadcastPipelineUpdate, {
+      userId: args.userId,
+      searchId: args.searchId,
+      stage: "error",
+      progress: 0,
+      priority: "urgent",
+      message: args.errorMessage,
+      data: {
+        stage: "enrichment",
+        apiError: {
+          code: args.errorCode,
+          provider: args.provider,
+          category: args.category,
+          userMessage: args.errorMessage,
+          suggestedAction: args.suggestedAction,
+          actionUrl: args.actionUrl,
+          actionLabel: args.actionLabel,
+        },
+      },
+    });
+
+    console.log(
+      `[Checkpoint] Pipeline blocked for search ${args.searchId}: ${args.errorCode}`,
+    );
+
+    return { success: true, notificationsSent: true };
   },
 });

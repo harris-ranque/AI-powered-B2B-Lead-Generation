@@ -4,11 +4,30 @@ Configuration management for Genni LangGraph Worker
 import logging
 import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Dict, Optional
 from urllib.parse import urlparse, urlunparse
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
+
+# Resolve .env from the worker package root (not process cwd) for CLI and module runs
+WORKER_ROOT = Path(__file__).resolve().parent.parent.parent
+ENV_FILE = WORKER_ROOT / ".env"
+
+
+def _bootstrap_dotenv() -> None:
+    if not ENV_FILE.is_file():
+        return
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(ENV_FILE, override=False)
+    except ImportError:
+        pass
+
+
+_bootstrap_dotenv()
 
 
 def _ensure_convex_webhook_path(url: str) -> str:
@@ -219,7 +238,7 @@ class Settings(BaseSettings):
     enable_competitor_discovery: bool = os.getenv("ENABLE_COMPETITOR_DISCOVERY", "true").lower() == "true"
     
     class Config:
-        env_file = ".env"
+        env_file = str(ENV_FILE)
         env_file_encoding = "utf-8"
         extra = "ignore"
 

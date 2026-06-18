@@ -55,6 +55,7 @@ import type * as leads_enrichment_rateLimitMutations from "../leads/enrichment/r
 import type * as leads_enrichment_types from "../leads/enrichment/types.js";
 import type * as leads_enrichmentMonitoring from "../leads/enrichmentMonitoring.js";
 import type * as leads_enrichmentQueueProcessor from "../leads/enrichmentQueueProcessor.js";
+import type * as leads_findymailCacheInternal from "../leads/findymailCacheInternal.js";
 import type * as leads_internal from "../leads/internal.js";
 import type * as leads_monitoring from "../leads/monitoring.js";
 import type * as leads_mutations from "../leads/mutations.js";
@@ -93,6 +94,8 @@ import type * as lib_logger from "../lib/logger.js";
 import type * as lib_logging from "../lib/logging.js";
 import type * as lib_pipelineHandoff from "../lib/pipelineHandoff.js";
 import type * as lib_profileLogic from "../lib/profileLogic.js";
+import type * as lib_prospectRanking from "../lib/prospectRanking.js";
+import type * as lib_providerHealthCheck from "../lib/providerHealthCheck.js";
 import type * as lib_rateLimiter from "../lib/rateLimiter.js";
 import type * as lib_roleExpansion from "../lib/roleExpansion.js";
 import type * as lib_roleFamilies from "../lib/roleFamilies.js";
@@ -204,6 +207,7 @@ declare const fullApi: ApiFromModules<{
   "leads/enrichment/types": typeof leads_enrichment_types;
   "leads/enrichmentMonitoring": typeof leads_enrichmentMonitoring;
   "leads/enrichmentQueueProcessor": typeof leads_enrichmentQueueProcessor;
+  "leads/findymailCacheInternal": typeof leads_findymailCacheInternal;
   "leads/internal": typeof leads_internal;
   "leads/monitoring": typeof leads_monitoring;
   "leads/mutations": typeof leads_mutations;
@@ -242,6 +246,8 @@ declare const fullApi: ApiFromModules<{
   "lib/logging": typeof lib_logging;
   "lib/pipelineHandoff": typeof lib_pipelineHandoff;
   "lib/profileLogic": typeof lib_profileLogic;
+  "lib/prospectRanking": typeof lib_prospectRanking;
+  "lib/providerHealthCheck": typeof lib_providerHealthCheck;
   "lib/rateLimiter": typeof lib_rateLimiter;
   "lib/roleExpansion": typeof lib_roleExpansion;
   "lib/roleFamilies": typeof lib_roleFamilies;

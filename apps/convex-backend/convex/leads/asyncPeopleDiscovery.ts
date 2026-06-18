@@ -22,6 +22,8 @@ type DiscoverPeopleApiPerson = {
   title: string;
   matchedRole?: string;
   confidence?: number;
+  roleMatchScore?: number;
+  sources?: string[];
   source?: string;
   sourceUrl?: string;
   linkedinUrl?: string;
@@ -241,8 +243,15 @@ export const discoverPeopleForLead = internalAction({
           },
         )) as Record<string, string>;
 
+        const keys: Record<string, string> = {};
         if (resolvedKeys.openai) {
-          providerKeys = { openai: resolvedKeys.openai };
+          keys.openai = resolvedKeys.openai;
+        }
+        if (resolvedKeys.perplexity) {
+          keys.perplexity = resolvedKeys.perplexity;
+        }
+        if (Object.keys(keys).length > 0) {
+          providerKeys = keys;
         }
       } catch {
         // fall back to platform keys
@@ -262,11 +271,7 @@ export const discoverPeopleForLead = internalAction({
           requestedRoles,
           userId: args.userId,
           userTier: user?.plan ?? "free",
-          providerKeys: providerKeys
-            ? {
-                openai: providerKeys.openai,
-              }
-            : undefined,
+          providerKeys: providerKeys ?? undefined,
         }),
       },
     );
@@ -366,6 +371,14 @@ export const discoverPeopleForLead = internalAction({
           matchedRole: sanitizeOptionalString(person.matchedRole),
           confidence:
             typeof person.confidence === "number" ? person.confidence : 0.7,
+          rankScore:
+            typeof person.roleMatchScore === "number"
+              ? person.roleMatchScore
+              : undefined,
+          discoverySources:
+            person.sources && person.sources.length > 0
+              ? person.sources
+              : undefined,
           source: mapProspectSource(person.source),
           sourceUrl: sanitizeOptionalString(person.sourceUrl),
           linkedinUrl: sanitizeOptionalString(person.linkedinUrl),

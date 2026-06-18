@@ -111,11 +111,53 @@ function isEnrichmentReturnSuccessful(returnValue: unknown): boolean {
     return false;
   }
 
+  if (value.reason === "pipeline_blocked") {
+    return false;
+  }
+
   if (typeof value.success === "boolean") {
     return value.success;
   }
 
   return !value.skipped;
+}
+
+function isPipelineBlockedReturn(returnValue: unknown): boolean {
+  if (!returnValue || typeof returnValue !== "object") {
+    return false;
+  }
+
+  return (returnValue as { reason?: string }).reason === "pipeline_blocked";
+}
+
+async function isEnrichmentBlockedForSearch(
+  ctx: MutationCtx,
+  searchId: Id<"searches">,
+): Promise<boolean> {
+  const search = await ctx.db.get(searchId);
+  return Boolean(
+    search?.enrichmentPaused && search.enrichmentCheckpoint?.errorCode,
+  );
+}
+
+async function finalizeEnrichmentBatchIfReady(
+  ctx: MutationCtx,
+  searchId: Id<"searches">,
+  batchId: string,
+  triggeredBy: string,
+): Promise<void> {
+  if (await isEnrichmentBlockedForSearch(ctx, searchId)) {
+    console.log(
+      `[Workpool] Skipping analysis/completion — enrichment blocked for search ${searchId}`,
+    );
+    return;
+  }
+
+  await ctx.runMutation(internal.leads.enrichment.checkpoint.clearCheckpoint, {
+    searchId,
+  });
+
+  await triggerAnalysisOrCompleteSearch(ctx, searchId, batchId, triggeredBy);
 }
 
 /**
@@ -419,9 +461,27 @@ export const onEnrichmentComplete = internalMutation({
         return;
       }
 
+      if (batch.status === "failed") {
+        return;
+      }
+
       // Update batch progress — count enrichment success only when contacts were accepted
       const returnValue =
         result.kind === "success" ? (result.returnValue as unknown) : undefined;
+
+      if (isPipelineBlockedReturn(returnValue)) {
+        console.log(
+          `[Workpool] Pipeline blocked for search ${searchId}, stopping batch ${batchId}`,
+        );
+        await ctx.db.patch(batch._id, {
+          completedLeads: batch.completedLeads + 1,
+          failedLeads: batch.failedLeads + 1,
+          status: "failed",
+          completedAt: Date.now(),
+        });
+        return;
+      }
+
       const isSuccess =
         result.kind === "success" && isEnrichmentReturnSuccessful(returnValue);
       const isFailed = result.kind === "failed" || result.kind === "canceled";
@@ -466,14 +526,12 @@ export const onEnrichmentComplete = internalMutation({
           `[Workpool] 🎉 All ${batch.totalLeads} leads enriched! Triggering analysis phase...`
         );
 
-        // Clear any existing checkpoint since enrichment completed successfully
-        await ctx.runMutation(
-          internal.leads.enrichment.checkpoint.clearCheckpoint,
-          { searchId }
+        await finalizeEnrichmentBatchIfReady(
+          ctx,
+          searchId,
+          batchId,
+          "workpool_onComplete",
         );
-
-        // Use the existing tryTriggerAnalysisPhase for race-safe transition
-        await triggerAnalysisOrCompleteSearch(ctx, searchId, batchId, "workpool_onComplete");
 
         // Calculate and log final stats
         const duration = Date.now() - batch.startedAt;
@@ -661,14 +719,7 @@ export const reportQueuedLeadCompletion = internalMutation({
           `[Workpool] 🎉 All ${batch.totalLeads} leads enriched (from queue)! Triggering analysis phase...`
         );
 
-        // Clear any existing checkpoint since enrichment completed successfully
-        await ctx.runMutation(
-          internal.leads.enrichment.checkpoint.clearCheckpoint,
-          { searchId: args.searchId }
-        );
-
-        // Use the existing tryTriggerAnalysisPhase for race-safe transition
-        await triggerAnalysisOrCompleteSearch(
+        await finalizeEnrichmentBatchIfReady(
           ctx,
           args.searchId,
           batch.batchId,

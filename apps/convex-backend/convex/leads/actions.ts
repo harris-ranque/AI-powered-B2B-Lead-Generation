@@ -15,6 +15,17 @@ import {
   createEnrichmentService,
   EnrichmentProviderFactory
 } from "./enrichment/provider";
+import {
+  shouldBlockPipeline,
+} from "../lib/apiErrors";
+import {
+  checkFindyMailCreditsHealth,
+  checkOpenAIHealth,
+  checkPerplexityHealth,
+  isBlockingHealthResult,
+  mapHealthCheckToApiError,
+  apiErrorToBlockMutationArgs,
+} from "../lib/providerHealthCheck";
 import { getSingleProviderError } from "../lib/errorMessages";
 
 // Import enrichment types
@@ -401,6 +412,58 @@ export const enrichLeads: any = action({
           throw new Error(
             getSingleProviderError(providerType, "lead enrichment")
           );
+        }
+      }
+
+      // Pre-flight FindyMail credits/auth check before enqueueing enrichment work
+      if (providerType === "findymail") {
+        const apiKeyForCheck =
+          userApiKey ?? process.env.FINDYMAIL_API_KEY ?? undefined;
+
+        if (apiKeyForCheck) {
+          const health = await checkFindyMailCreditsHealth(apiKeyForCheck);
+
+          if (isBlockingHealthResult(health)) {
+            const apiError = mapHealthCheckToApiError("findymail", health);
+
+            if (shouldBlockPipeline(apiError)) {
+              logWithCorrelation(
+                "error",
+                correlation,
+                "🚨 FindyMail pre-flight check failed — blocking enrichment",
+                {
+                  status: health.status,
+                  message: health.message,
+                  errorCode: apiError.errorCode,
+                },
+              );
+
+              await ctx.runMutation(
+                internal.leads.enrichment.checkpoint.handlePipelineBlockingError,
+                {
+                  searchId: args.searchId,
+                  userId: search.userId,
+                  errorCode: apiError.errorCode,
+                  errorMessage: apiError.userMessage,
+                  provider: apiError.provider,
+                  category: apiError.category,
+                  severity: apiError.severity,
+                  suggestedAction: apiError.suggestedAction,
+                  actionUrl: apiError.actionUrl,
+                  actionLabel: apiError.actionLabel,
+                  originalStatus: apiError.originalStatus,
+                  correlationId: correlation.correlationId,
+                },
+              );
+
+              return {
+                success: false,
+                message: apiError.userMessage,
+                blocked: true,
+                errorCode: apiError.errorCode,
+              };
+            }
+          }
         }
       }
 
@@ -941,6 +1004,104 @@ export const analyzeLeads: any = internalAction({
 
       if (!profile) {
         throw new Error("Business profile required for AI analysis");
+      }
+
+      let openaiKey = process.env.OPENAI_API_KEY;
+      let perplexityKey = process.env.PERPLEXITY_API_KEY;
+
+      if (user.plan === "enterprise") {
+        try {
+          const enterpriseKeys = await ctx.runAction(
+            internal.userApiKeys.actions.resolveUserProviderKeys,
+            {
+              userId: user._id,
+              purpose: "langgraph_lead_analysis",
+            },
+          );
+          if (enterpriseKeys.openai) {
+            openaiKey = enterpriseKeys.openai;
+          }
+          if (enterpriseKeys.perplexity) {
+            perplexityKey = enterpriseKeys.perplexity;
+          }
+        } catch {
+          // Fall back to platform keys
+        }
+      }
+
+      if (!openaiKey) {
+        throw new Error("OpenAI API key not configured for AI analysis");
+      }
+
+      const openaiHealth = await checkOpenAIHealth(openaiKey);
+      if (isBlockingHealthResult(openaiHealth)) {
+        const openaiApiError = mapHealthCheckToApiError("openai", openaiHealth);
+        if (shouldBlockPipeline(openaiApiError)) {
+          logWithCorrelation(
+            "error",
+            correlation,
+            "🚨 OpenAI pre-flight check failed — blocking analysis",
+            {
+              status: openaiHealth.status,
+              message: openaiHealth.message,
+              errorCode: openaiApiError.errorCode,
+            },
+          );
+
+          await ctx.runMutation(internal.search.internal.blockSearchWithApiError, {
+            searchId: args.searchId,
+            userId: search.userId,
+            ...apiErrorToBlockMutationArgs(openaiApiError),
+            operationType: "ai_analysis",
+            correlationId: correlation.correlationId,
+            pipelineStage: "ai_personalization",
+          });
+
+          return {
+            success: false,
+            message: openaiApiError.userMessage,
+            blocked: true,
+            errorCode: openaiApiError.errorCode,
+          };
+        }
+      }
+
+      if (perplexityKey) {
+        const perplexityHealth = await checkPerplexityHealth(perplexityKey);
+        if (isBlockingHealthResult(perplexityHealth)) {
+          const perplexityApiError = mapHealthCheckToApiError(
+            "perplexity",
+            perplexityHealth,
+          );
+          if (shouldBlockPipeline(perplexityApiError)) {
+            logWithCorrelation(
+              "error",
+              correlation,
+              "🚨 Perplexity pre-flight check failed — blocking analysis",
+              {
+                status: perplexityHealth.status,
+                message: perplexityHealth.message,
+                errorCode: perplexityApiError.errorCode,
+              },
+            );
+
+            await ctx.runMutation(internal.search.internal.blockSearchWithApiError, {
+              searchId: args.searchId,
+              userId: search.userId,
+              ...apiErrorToBlockMutationArgs(perplexityApiError),
+              operationType: "ai_analysis",
+              correlationId: correlation.correlationId,
+              pipelineStage: "ai_personalization",
+            });
+
+            return {
+              success: false,
+              message: perplexityApiError.userMessage,
+              blocked: true,
+              errorCode: perplexityApiError.errorCode,
+            };
+          }
+        }
       }
 
       if (multiContact && leads.length > 0) {

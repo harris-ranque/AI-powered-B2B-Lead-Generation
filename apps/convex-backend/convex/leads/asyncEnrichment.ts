@@ -56,6 +56,11 @@ import {
   type ApiError,
 } from "../lib/apiErrors";
 import {
+  FINDYMAIL_MIN_CONFIDENCE,
+  MAX_FINDYMAIL_NAME_ATTEMPTS,
+  rankProspectsForFindyMail,
+} from "../lib/prospectRanking";
+import {
   isMultiContactPipelineEnabled,
   isPeopleDiscoveryEnabled,
 } from "../lib/featureFlags";
@@ -303,7 +308,7 @@ type ProspectEmailDiscoveryResult = {
 
 /**
  * Email lookup for people-discovery prospects via FindyMail /search/name.
- * Returns null when people discovery is disabled or no prospects exist.
+ * Ranked sequential lookup: top candidate first, fallback second — cache-aware.
  */
 async function tryProspectEmailDiscovery(
   ctx: ActionCtx,
@@ -337,16 +342,30 @@ async function tryProspectEmailDiscovery(
     return null;
   }
 
+  const ranked = rankProspectsForFindyMail(pending, args.requestedRoles);
   const service = createEnrichmentService(args.userApiKey, "findymail");
-  const prospectPayloads: Array<{
-    prospectId: Id<"leadProspects">;
-    name: string;
-    title: string;
-    matchedRole?: string;
-    enrichmentResult: EnrichmentResult | { emails: []; contacts: [] };
-  }> = [];
 
-  for (const prospect of pending) {
+  for (const prospect of ranked) {
+    if (prospect.confidence < FINDYMAIL_MIN_CONFIDENCE) {
+      await ctx.runMutation(
+        internal.leads.peopleDiscoveryInternal.updateProspectEmailDiscoveryStatus,
+        {
+          prospectId: prospect._id,
+          emailDiscoveryStatus: "skipped",
+          status: "rejected",
+        },
+      );
+    }
+  }
+
+  const eligible = ranked.filter(
+    (prospect) => prospect.confidence >= FINDYMAIL_MIN_CONFIDENCE,
+  );
+  const toTry = eligible.slice(0, MAX_FINDYMAIL_NAME_ATTEMPTS);
+
+  let acceptedCount = 0;
+
+  for (const prospect of toTry) {
     await ctx.runMutation(
       internal.leads.peopleDiscoveryInternal.updateProspectEmailDiscoveryStatus,
       {
@@ -356,52 +375,127 @@ async function tryProspectEmailDiscovery(
       },
     );
 
-    try {
-      const nameResult = await service.enrichByName(args.domain, prospect.name);
-      prospectPayloads.push({
-        prospectId: prospect._id,
+    let enrichmentResult: EnrichmentResult | { emails: []; contacts: [] } = {
+      emails: [],
+      contacts: [],
+    };
+
+    const cache = await ctx.runQuery(
+      internal.leads.findymailCacheInternal.getCachedNameSearch,
+      {
+        domain: args.domain,
         name: prospect.name,
         title: prospect.title,
-        matchedRole: prospect.matchedRole,
-        enrichmentResult: nameResult ?? { emails: [], contacts: [] },
-      });
-    } catch (error) {
-      const apiError = (error as { apiError?: ApiError }).apiError;
-      if (apiError && shouldBlockPipeline(apiError)) {
-        return {
-          acceptedCount: 0,
-          candidateCount: pending.length,
-          hadProspects: true,
-          pipelineBlockingError: apiError,
-        };
+      },
+    );
+
+    if (cache?.status === "found" && cache.email) {
+      enrichmentResult = {
+        emails: [{ email: cache.email, confidence: 0.9, verified: true }],
+        contacts: [
+          {
+            name: prospect.name,
+            email: cache.email,
+            confidence: 0.9,
+            verified: true,
+            title: prospect.title,
+            domain: args.domain,
+          },
+        ],
+      };
+    } else if (cache?.status === "not_found") {
+      enrichmentResult = { emails: [], contacts: [] };
+    } else {
+      try {
+        const nameResult = await service.enrichByName(args.domain, prospect.name);
+        enrichmentResult = nameResult ?? { emails: [], contacts: [] };
+
+        const cachedEmail =
+          enrichmentResult.emails?.[0]?.email ??
+          enrichmentResult.contacts?.[0]?.email;
+        const hasEmail = Boolean(cachedEmail?.trim());
+
+        await ctx.runMutation(
+          internal.leads.findymailCacheInternal.upsertCachedNameSearch,
+          {
+            domain: args.domain,
+            name: prospect.name,
+            title: prospect.title,
+            email: hasEmail ? cachedEmail : undefined,
+            status: hasEmail ? "found" : "not_found",
+          },
+        );
+      } catch (error) {
+        const apiError = (error as { apiError?: ApiError }).apiError;
+        if (apiError && shouldBlockPipeline(apiError)) {
+          return {
+            acceptedCount: 0,
+            candidateCount: eligible.length,
+            hadProspects: true,
+            pipelineBlockingError: apiError,
+          };
+        }
+
+        await ctx.runMutation(
+          internal.leads.findymailCacheInternal.upsertCachedNameSearch,
+          {
+            domain: args.domain,
+            name: prospect.name,
+            title: prospect.title,
+            status: "error",
+            errorMessage:
+              error instanceof Error ? error.message : "FindyMail name search failed",
+          },
+        );
+        enrichmentResult = { emails: [], contacts: [] };
       }
-      prospectPayloads.push({
-        prospectId: prospect._id,
-        name: prospect.name,
-        title: prospect.title,
-        matchedRole: prospect.matchedRole,
-        enrichmentResult: { emails: [], contacts: [] },
-      });
+
+      await sleep(500);
     }
 
-    await sleep(500);
+    const processResult = await ctx.runMutation(
+      internal.leads.contactInternal.processProspectEmailEnrichment,
+      {
+        leadId: args.leadId,
+        searchId: args.searchId,
+        userId: args.userId,
+        requestedRoles: args.requestedRoles,
+        companyWebsite: args.companyWebsite,
+        prospects: [
+          {
+            prospectId: prospect._id,
+            name: prospect.name,
+            title: prospect.title,
+            matchedRole: prospect.matchedRole,
+            enrichmentResult,
+          },
+        ],
+      },
+    );
+
+    acceptedCount += processResult.acceptedCount;
+
+    if (acceptedCount > 0) {
+      for (const skipped of eligible) {
+        if (skipped._id === prospect._id) {
+          continue;
+        }
+        await ctx.runMutation(
+          internal.leads.peopleDiscoveryInternal.updateProspectEmailDiscoveryStatus,
+          {
+            prospectId: skipped._id,
+            emailDiscoveryStatus: "skipped",
+            status: "email_not_found",
+          },
+        );
+      }
+      break;
+    }
   }
 
-  const processResult = await ctx.runMutation(
-    internal.leads.contactInternal.processProspectEmailEnrichment,
-    {
-      leadId: args.leadId,
-      searchId: args.searchId,
-      userId: args.userId,
-      requestedRoles: args.requestedRoles,
-      companyWebsite: args.companyWebsite,
-      prospects: prospectPayloads,
-    },
-  );
-
   return {
-    acceptedCount: processResult.acceptedCount,
-    candidateCount: processResult.candidateCount,
+    acceptedCount,
+    candidateCount: eligible.length,
     hadProspects: true,
   };
 }
@@ -986,37 +1080,22 @@ export const enrichSingleLeadWorkpool = internalAction({
           },
         );
 
-        // Save checkpoint for resume capability
         await ctx.runMutation(
-          internal.leads.enrichment.checkpoint.createCheckpointFromCurrentState,
+          internal.leads.enrichment.checkpoint.handlePipelineBlockingError,
           {
             searchId: args.searchId,
+            userId: args.userId,
+            leadId: args.leadId,
             errorCode: pipelineBlockingError.errorCode,
             errorMessage: pipelineBlockingError.userMessage,
-          },
-        );
-
-        // Broadcast critical notification to user
-        await ctx.runMutation(
-          internal.realtime.broadcaster.broadcast,
-          {
-            userId: args.userId,
-            type: "pipeline_blocked",
-            title: "Email Enrichment Paused",
-            message: pipelineBlockingError.userMessage || "Enrichment has been paused due to an issue that requires your attention.",
-            data: {
-              searchId: args.searchId,
-              errorCode: pipelineBlockingError.errorCode,
-              category: pipelineBlockingError.category,
-              actionRequired: pipelineBlockingError.suggestedAction,
-              actionUrl: pipelineBlockingError.actionUrl,
-            },
-            priority: "critical",
-            category: "enrichment_error",
-            entityType: "search",
-            entityId: args.searchId,
-            requiresAck: true,
-            tags: ["enrichment", "blocked", pipelineBlockingError.category],
+            provider: pipelineBlockingError.provider,
+            category: pipelineBlockingError.category,
+            severity: pipelineBlockingError.severity,
+            suggestedAction: pipelineBlockingError.suggestedAction,
+            actionUrl: pipelineBlockingError.actionUrl,
+            actionLabel: pipelineBlockingError.actionLabel,
+            originalStatus: pipelineBlockingError.originalStatus,
+            correlationId: correlation.correlationId,
           },
         );
 
@@ -1864,13 +1943,22 @@ export const enrichSingleLead = internalAction({
           },
         );
 
-        // Save checkpoint for resume capability
         await ctx.runMutation(
-          internal.leads.enrichment.checkpoint.createCheckpointFromCurrentState,
+          internal.leads.enrichment.checkpoint.handlePipelineBlockingError,
           {
             searchId: args.searchId,
+            userId: args.userId,
+            leadId: args.leadId,
             errorCode: pipelineBlockingError.errorCode,
             errorMessage: pipelineBlockingError.userMessage,
+            provider: pipelineBlockingError.provider,
+            category: pipelineBlockingError.category,
+            severity: pipelineBlockingError.severity,
+            suggestedAction: pipelineBlockingError.suggestedAction,
+            actionUrl: pipelineBlockingError.actionUrl,
+            actionLabel: pipelineBlockingError.actionLabel,
+            originalStatus: pipelineBlockingError.originalStatus,
+            correlationId: correlation.correlationId,
           },
         );
 

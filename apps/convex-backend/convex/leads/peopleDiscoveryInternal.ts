@@ -118,6 +118,8 @@ export const persistLeadProspects = internalMutation({
         title: v.string(),
         matchedRole: v.optional(v.string()),
         confidence: v.number(),
+        rankScore: v.optional(v.number()),
+        discoverySources: v.optional(v.array(v.string())),
         source: v.union(
           v.literal("perplexity"),
           v.literal("tavily"),
@@ -198,6 +200,8 @@ export const persistLeadProspects = internalMutation({
         linkedinUrl: person.linkedinUrl,
         matchedRole: person.matchedRole,
         confidence: person.confidence,
+        rankScore: person.rankScore,
+        discoverySources: person.discoverySources,
         source: person.source,
         sourceUrl: person.sourceUrl,
         status: "discovered" as const,

@@ -24,6 +24,14 @@ import {
   shouldBlockPipeline,
   type ApiError,
 } from "../lib/apiErrors";
+import {
+  checkGoogleMapsHealth,
+  checkOpenAIHealth,
+  checkPerplexityHealth,
+  isBlockingHealthResult,
+  mapHealthCheckToApiError,
+  apiErrorToBlockMutationArgs,
+} from "../lib/providerHealthCheck";
 import { normalizeAddress } from "../lib/deduplication";
 import { shouldEndDiscoveryWithoutEnrichment } from "../lib/searchAnalysisRecovery";
 import { schedulePostDiscoveryPipeline } from "../lib/pipelineHandoff";
@@ -440,6 +448,144 @@ export const searchGoogleMaps: any = action({
 
       if (!googleMapsApiKey) {
         throw new Error("Google Places API key not configured");
+      }
+
+      const googleHealth = await checkGoogleMapsHealth(googleMapsApiKey);
+      if (isBlockingHealthResult(googleHealth)) {
+        const googleApiError = mapHealthCheckToApiError("google", googleHealth);
+        if (shouldBlockPipeline(googleApiError)) {
+          logWithCorrelation(
+            "error",
+            correlation,
+            "🚨 Google Maps pre-flight check failed — blocking discovery",
+            {
+              status: googleHealth.status,
+              message: googleHealth.message,
+              errorCode: googleApiError.errorCode,
+            },
+          );
+
+          await ctx.runMutation(
+            internal.search.internal.blockSearchWithApiError,
+            {
+              searchId: args.searchId,
+              userId: search.userId,
+              ...apiErrorToBlockMutationArgs(googleApiError),
+              operationType: "lead_discovery",
+              correlationId: correlation.correlationId,
+              pipelineStage: "lead_discovery",
+            },
+          );
+
+          return {
+            success: false,
+            message: googleApiError.userMessage,
+            blocked: true,
+            errorCode: googleApiError.errorCode,
+          } as any;
+        }
+      }
+
+      let openaiKey = process.env.OPENAI_API_KEY;
+      let perplexityKey = process.env.PERPLEXITY_API_KEY;
+
+      if (user?.plan === "enterprise") {
+        try {
+          const enterpriseKeys = await ctx.runAction(
+            internal.userApiKeys.actions.resolveUserProviderKeys,
+            {
+              userId: search.userId,
+              purpose: "langgraph_lead_analysis",
+            },
+          );
+          if (enterpriseKeys.openai) {
+            openaiKey = enterpriseKeys.openai;
+          }
+          if (enterpriseKeys.perplexity) {
+            perplexityKey = enterpriseKeys.perplexity;
+          }
+        } catch {
+          // Fall back to platform keys when enterprise resolution fails
+        }
+      }
+
+      if (openaiKey) {
+        const openaiHealth = await checkOpenAIHealth(openaiKey);
+        if (isBlockingHealthResult(openaiHealth)) {
+          const openaiApiError = mapHealthCheckToApiError("openai", openaiHealth);
+          if (shouldBlockPipeline(openaiApiError)) {
+            logWithCorrelation(
+              "error",
+              correlation,
+              "🚨 OpenAI pre-flight check failed — blocking search",
+              {
+                status: openaiHealth.status,
+                message: openaiHealth.message,
+                errorCode: openaiApiError.errorCode,
+              },
+            );
+
+            await ctx.runMutation(
+              internal.search.internal.blockSearchWithApiError,
+              {
+                searchId: args.searchId,
+                userId: search.userId,
+                ...apiErrorToBlockMutationArgs(openaiApiError),
+                operationType: "lead_discovery",
+                correlationId: correlation.correlationId,
+                pipelineStage: "lead_discovery",
+              },
+            );
+
+            return {
+              success: false,
+              message: openaiApiError.userMessage,
+              blocked: true,
+              errorCode: openaiApiError.errorCode,
+            } as any;
+          }
+        }
+      }
+
+      if (perplexityKey) {
+        const perplexityHealth = await checkPerplexityHealth(perplexityKey);
+        if (isBlockingHealthResult(perplexityHealth)) {
+          const perplexityApiError = mapHealthCheckToApiError(
+            "perplexity",
+            perplexityHealth,
+          );
+          if (shouldBlockPipeline(perplexityApiError)) {
+            logWithCorrelation(
+              "error",
+              correlation,
+              "🚨 Perplexity pre-flight check failed — blocking search",
+              {
+                status: perplexityHealth.status,
+                message: perplexityHealth.message,
+                errorCode: perplexityApiError.errorCode,
+              },
+            );
+
+            await ctx.runMutation(
+              internal.search.internal.blockSearchWithApiError,
+              {
+                searchId: args.searchId,
+                userId: search.userId,
+                ...apiErrorToBlockMutationArgs(perplexityApiError),
+                operationType: "lead_discovery",
+                correlationId: correlation.correlationId,
+                pipelineStage: "lead_discovery",
+              },
+            );
+
+            return {
+              success: false,
+              message: perplexityApiError.userMessage,
+              blocked: true,
+              errorCode: perplexityApiError.errorCode,
+            } as any;
+          }
+        }
       }
 
       const deduplicationConfig = {

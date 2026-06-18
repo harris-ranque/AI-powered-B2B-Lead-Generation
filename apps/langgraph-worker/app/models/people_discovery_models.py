@@ -34,6 +34,8 @@ class DiscoveredPerson(BaseModel):
     source: str = Field(default="website_inference")
     source_url: Optional[str] = Field(default=None, alias="sourceUrl")
     linkedin_url: Optional[str] = Field(default=None, alias="linkedinUrl")
+    sources: List[str] = Field(default_factory=list)
+    role_match_score: float = Field(default=0.0, alias="roleMatchScore", ge=0, le=1)
 
 
 class DiscoverPeopleResponse(BaseModel):

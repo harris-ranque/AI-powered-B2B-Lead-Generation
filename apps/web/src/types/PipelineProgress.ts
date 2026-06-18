@@ -276,6 +276,13 @@ export function gatherWarnings(
 ): string[] {
   const warnings: string[] = [];
 
+  if (search?.enrichmentPaused && search.enrichmentCheckpoint?.errorCode) {
+    const message =
+      search.enrichmentCheckpoint.errorMessage ??
+      "Email enrichment was paused due to an external API issue.";
+    warnings.push(message);
+  }
+
   if (search?.status === "failed") {
     warnings.push("The search failed. Review the error details in history.");
   }
@@ -312,6 +319,9 @@ export function deriveHealth(
   search: Search | null | undefined,
   warnings: string[],
 ): "ok" | "warning" | "error" {
+  if (search?.enrichmentPaused && search.enrichmentCheckpoint?.errorCode) {
+    return "error";
+  }
   if (search?.status === "failed") return "error";
   if (search?.status === "cancelled") return "warning";
   if (warnings.length > 0) {

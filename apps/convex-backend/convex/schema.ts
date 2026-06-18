@@ -672,6 +672,8 @@ export default defineSchema({
     linkedinUrl: v.optional(v.string()),
     matchedRole: v.optional(v.string()),
     confidence: v.number(),
+    rankScore: v.optional(v.number()),
+    discoverySources: v.optional(v.array(v.string())),
 
     source: v.union(
       v.literal("perplexity"),
@@ -706,6 +708,25 @@ export default defineSchema({
     .index("by_search", ["searchId"])
     .index("by_search_status", ["searchId", "status"])
     .index("by_search_email_status", ["searchId", "emailDiscoveryStatus"]),
+
+  // Cached FindyMail /search/name results (30-day TTL)
+  findymailNameSearchCache: defineTable({
+    domain: v.string(),
+    normalizedName: v.string(),
+    normalizedTitle: v.optional(v.string()),
+    email: v.optional(v.string()),
+    status: v.union(
+      v.literal("found"),
+      v.literal("not_found"),
+      v.literal("error"),
+    ),
+    errorMessage: v.optional(v.string()),
+    lastCheckedAt: v.number(),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_domain_name", ["domain", "normalizedName"]),
 
   // Audit trail for website people discovery (scrape + role match)
   peopleDiscoveryLogs: defineTable({

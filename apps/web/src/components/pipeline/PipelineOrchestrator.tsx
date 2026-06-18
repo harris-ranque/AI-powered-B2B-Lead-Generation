@@ -58,6 +58,12 @@ import { PipelineProgressProvider } from "@/contexts/PipelineProgressContext";
 import { PipelineProgressPanel } from "@/components/PipelineProgressPanel";
 import { featureFlags } from "@/lib/featureFlags";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { ApiErrorAlert } from "@/components/errors/ApiErrorAlert";
+import { useApiError } from "@/hooks/useApiError";
+import {
+  extractEnrichmentBlockingError,
+  isPipelineBlocked,
+} from "@/utils/enrichmentErrors";
 
 interface PipelineOrchestratorProps {
   userCredits: number;
@@ -78,15 +84,19 @@ export function PipelineOrchestrator({
     usePipeline();
   const [isPipelineCollapsed, setIsPipelineCollapsed] = useState(false);
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
+  const [showEnrichmentErrorDialog, setShowEnrichmentErrorDialog] =
+    useState(false);
   const lastCompletedSearchIdRef = useRef<string | null>(null);
   const prevSearchIdRef = useRef<string | null | undefined>(state.searchId);
+  const dismissedEnrichmentErrorRef = useRef<string | null>(null);
   const { toast } = useToast();
   const analytics = useAnalytics();
+  const { navigateToAction } = useApiError();
 
   // Get search data and real-time updates
   const { search } = useSearch(state.searchId || undefined);
   const { searches, cancelSearch } = useSearches();
-  const { broadcasts, latestStatus } = useSearchBroadcasts(
+  const { broadcasts, latestStatus, acknowledgeBroadcast } = useSearchBroadcasts(
     state.searchId || undefined,
   );
 
@@ -99,6 +109,21 @@ export function PipelineOrchestrator({
   const searchStatus = search?.status;
   const isSearchCompleted = searchStatus === "completed";
   const activeSearchId = (search?._id ?? state.searchId) ?? null;
+  const isEnrichmentBlockedState = isPipelineBlocked(search);
+  const enrichmentBlockingError = useMemo(
+    () => extractEnrichmentBlockingError(search, broadcasts),
+    [search, broadcasts],
+  );
+  const pipelineBlockedBroadcast = useMemo(
+    () =>
+      broadcasts.find(
+        (broadcast) =>
+          broadcast.type === "pipeline_blocked" &&
+          broadcast.requiresAck &&
+          !broadcast.acknowledged,
+      ),
+    [broadcasts],
+  );
   const totalFound = search?.results?.totalFound ?? 0;
   const enrichedCount = search?.results?.enrichedCount ?? 0;
   const contactCounts = useQuery(
@@ -144,6 +169,45 @@ export function PipelineOrchestrator({
   const priorSearchExportable = contactCounts?.duplicateFallbackExportable ?? 0;
   const isRepeatSearchNoNewLeads =
     totalFound === 0 && duplicateSkipCount > 0;
+
+  useEffect(() => {
+    dismissedEnrichmentErrorRef.current = null;
+    setShowEnrichmentErrorDialog(false);
+  }, [activeSearchId]);
+
+  useEffect(() => {
+    if (!enrichmentBlockingError || !activeSearchId) {
+      return;
+    }
+
+    const key = `${activeSearchId}:${enrichmentBlockingError.errorCode}`;
+    if (dismissedEnrichmentErrorRef.current === key) {
+      return;
+    }
+
+    setShowEnrichmentErrorDialog(true);
+  }, [enrichmentBlockingError, activeSearchId]);
+
+  const handleDismissEnrichmentError = useCallback(async () => {
+    setShowEnrichmentErrorDialog(false);
+
+    if (enrichmentBlockingError && activeSearchId) {
+      dismissedEnrichmentErrorRef.current = `${activeSearchId}:${enrichmentBlockingError.errorCode}`;
+    }
+
+    if (pipelineBlockedBroadcast) {
+      try {
+        await acknowledgeBroadcast(pipelineBlockedBroadcast._id);
+      } catch (error) {
+        console.error("Failed to acknowledge enrichment error broadcast:", error);
+      }
+    }
+  }, [
+    activeSearchId,
+    acknowledgeBroadcast,
+    enrichmentBlockingError,
+    pipelineBlockedBroadcast,
+  ]);
 
   const openLeadHistory = useCallback(() => {
     setShowCompletionDialog(false);
@@ -300,9 +364,10 @@ export function PipelineOrchestrator({
 
   // Compute processing state from backend + local state
   const isBusy =
-    state.isProcessing ||
-    search?.status === "in_progress" ||
-    search?.status === "processing";
+    !isEnrichmentBlockedState &&
+    (state.isProcessing ||
+      search?.status === "in_progress" ||
+      search?.status === "processing");
 
   const trackerInlineContent = inlineSourcePanel || isBusy
     ? (
@@ -587,6 +652,43 @@ export function PipelineOrchestrator({
 
   return (
     <>
+      <Dialog
+        open={showEnrichmentErrorDialog && enrichmentBlockingError !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleDismissEnrichmentError();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg border border-border bg-card shadow-[0_24px_48px_-24px_hsl(var(--shadow-glow))]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Search paused
+            </DialogTitle>
+            <DialogDescription>
+              The search was stopped because an external API needs attention
+              before the pipeline can continue.
+            </DialogDescription>
+          </DialogHeader>
+          {enrichmentBlockingError && (
+            <ApiErrorAlert
+              error={enrichmentBlockingError}
+              onDismiss={handleDismissEnrichmentError}
+              onAction={(action) =>
+                navigateToAction(action, enrichmentBlockingError.actionUrl)
+              }
+              showDismiss={false}
+            />
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={handleDismissEnrichmentError}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Search Completion Dialog */}
       <Dialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
         <DialogContent className="sm:max-w-md border border-border bg-card shadow-[0_24px_48px_-24px_hsl(var(--shadow-glow))]">
