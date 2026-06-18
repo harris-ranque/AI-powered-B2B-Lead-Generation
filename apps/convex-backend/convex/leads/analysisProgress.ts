@@ -2,12 +2,7 @@ import { internalMutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { computeAnalysisProgress } from "../lib/analysisProgress";
-import { countExportableSummaryForSearch } from "../lib/exportEligibility";
 import { insertPipelineBroadcast } from "../realtime/broadcaster";
-import {
-  isUpdatedAtSchemaError,
-  withUpdatedAtIfSupported,
-} from "../search/utils";
 
 export type PublishAnalysisProgressArgs = {
   searchId: Id<"searches">;
@@ -19,6 +14,13 @@ export type PublishAnalysisProgressArgs = {
   activityPhase?: "researching" | "writing_email" | "completed";
 };
 
+/**
+ * Broadcast live Write Emails progress to the UI.
+ *
+ * Does not patch the searches document — concurrent LangGraph batch/lead
+ * webhooks would cause OCC conflicts on the same search row. Final
+ * search.progress / results are written by completeSearch.
+ */
 export async function publishAnalysisProgressHandler(
   ctx: MutationCtx,
   args: PublishAnalysisProgressArgs,
@@ -71,52 +73,10 @@ export async function publishAnalysisProgressHandler(
     },
   });
 
-  const exportableSummary = await countExportableSummaryForSearch(
-    ctx,
-    args.searchId,
-    search.userId,
-  );
-  const exportableCount = exportableSummary.exportableContacts;
-  const existingResults = search.results ?? {
-    totalFound: discovered,
-    enrichedCount: enriched,
-  };
-
-  const now = Date.now();
-  const progress = {
-    discovered,
-    enriched,
-    analyzed: analysis.personalized,
-    total: discovered,
-  };
-  let searchPatch: Record<string, unknown> = {
-    progress,
-    lastOrchestrationAt: now,
-    results: {
-      ...existingResults,
-      exportableCount,
-      analyzedCount: analysis.personalized,
-    },
-  };
-  searchPatch = withUpdatedAtIfSupported(searchPatch, search, now);
-
-  try {
-    await ctx.db.patch(args.searchId, searchPatch);
-  } catch (error) {
-    if (!isUpdatedAtSchemaError(error)) {
-      throw error;
-    }
-    const { updatedAt: _unused, ...withoutTimestamp } = searchPatch as typeof searchPatch & {
-      updatedAt?: number;
-    };
-    await ctx.db.patch(args.searchId, withoutTimestamp);
-  }
-
   return {
     updated: true,
     personalized: analysis.personalized,
     total: analysis.total,
-    exportableCount,
     isComplete: analysis.isComplete,
   };
 }

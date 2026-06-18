@@ -130,7 +130,7 @@ describe("exportEligibility", () => {
     ).toBe(false);
   });
 
-  it("requires title and research for full CSV export (phone optional)", () => {
+  it("requires research for full CSV export; title is not a blocker (phone optional)", () => {
     const baseContact = {
       email: "alex@company.com",
       analysisStatus: "completed",
@@ -177,7 +177,7 @@ describe("exportEligibility", () => {
         { ...baseContact, title: "" },
         { companyResearchPayload: researchPayload },
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("classifies export readiness blockers", () => {
@@ -223,7 +223,7 @@ describe("exportEligibility", () => {
         },
         { companyResearchPayload: researchPayload },
       ),
-    ).toBe("missing_title");
+    ).toBe("exportable");
 
     const summary = summarizeExportReadiness(
       [

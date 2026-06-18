@@ -168,15 +168,12 @@ export function isContactEmailExportable(contact: ExportableContact): boolean {
   );
 }
 
-/** Full CSV row: email content, title, and complete research fields. Phone is optional. */
+/** Full CSV row: written email + complete research fields. Title comes from discovery (optional in row). */
 export function isContactFullyExportable(
   contact: ExportableContact,
   context?: ContactExportContext,
 ): boolean {
   if (!isContactEmailExportable(contact)) {
-    return false;
-  }
-  if (!resolveContactExportTitle(contact).trim()) {
     return false;
   }
   const leadAnalysis = contact.aiAnalysis?.leadAnalysis;
@@ -234,9 +231,6 @@ export function classifyContactExportReadiness(
     !hasWrittenEmail(contact.emailContent)
   ) {
     return "awaiting_email_writing";
-  }
-  if (!resolveContactExportTitle(contact).trim()) {
-    return "missing_title";
   }
   const leadAnalysis = contact.aiAnalysis?.leadAnalysis;
   const exportResearch = resolveExportResearchFields(

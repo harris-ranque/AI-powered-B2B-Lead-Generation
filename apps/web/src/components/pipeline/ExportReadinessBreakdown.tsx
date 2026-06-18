@@ -85,7 +85,7 @@ export function ExportReadinessBreakdown({
   const description =
     variant === "compact"
       ? formatExportReadinessSentence(readiness)
-      : `${total.toLocaleString()} accepted contact${total === 1 ? "" : "s"} with email — ${formatExportReadinessSentence(readiness)}. CSV export only includes rows that are fully complete (written email, title, and research fields).`;
+      : `${total.toLocaleString()} accepted contact${total === 1 ? "" : "s"} with email — ${formatExportReadinessSentence(readiness)}. CSV export only includes rows with a written email and complete research fields.`;
 
   return (
     <Alert className="border-cyan-500/30 bg-cyan-500/5">
