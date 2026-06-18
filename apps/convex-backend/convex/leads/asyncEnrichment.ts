@@ -55,11 +55,7 @@ import {
   API_ERROR_CODES,
   type ApiError,
 } from "../lib/apiErrors";
-import {
-  FINDYMAIL_MIN_CONFIDENCE,
-  MAX_FINDYMAIL_NAME_ATTEMPTS,
-  rankProspectsForFindyMail,
-} from "../lib/prospectRanking";
+import { selectProspectsForFindyMailNameSearch } from "../lib/prospectRanking";
 import {
   isMultiContactPipelineEnabled,
   isPeopleDiscoveryEnabled,
@@ -339,29 +335,18 @@ async function tryProspectEmailDiscovery(
   );
 
   if (pending.length === 0) {
-    return null;
+    return {
+      acceptedCount: 0,
+      candidateCount: 0,
+      hadProspects: prospects.length > 0,
+    };
   }
 
-  const ranked = rankProspectsForFindyMail(pending, args.requestedRoles);
-  const service = createEnrichmentService(args.userApiKey, "findymail");
-
-  for (const prospect of ranked) {
-    if (prospect.confidence < FINDYMAIL_MIN_CONFIDENCE) {
-      await ctx.runMutation(
-        internal.leads.peopleDiscoveryInternal.updateProspectEmailDiscoveryStatus,
-        {
-          prospectId: prospect._id,
-          emailDiscoveryStatus: "skipped",
-          status: "rejected",
-        },
-      );
-    }
-  }
-
-  const eligible = ranked.filter(
-    (prospect) => prospect.confidence >= FINDYMAIL_MIN_CONFIDENCE,
+  const toTry = selectProspectsForFindyMailNameSearch(
+    pending,
+    args.requestedRoles,
   );
-  const toTry = eligible.slice(0, MAX_FINDYMAIL_NAME_ATTEMPTS);
+  const service = createEnrichmentService(args.userApiKey, "findymail");
 
   let acceptedCount = 0;
 
@@ -430,7 +415,7 @@ async function tryProspectEmailDiscovery(
         if (apiError && shouldBlockPipeline(apiError)) {
           return {
             acceptedCount: 0,
-            candidateCount: eligible.length,
+            candidateCount: toTry.length,
             hadProspects: true,
             pipelineBlockingError: apiError,
           };
@@ -476,7 +461,7 @@ async function tryProspectEmailDiscovery(
     acceptedCount += processResult.acceptedCount;
 
     if (acceptedCount > 0) {
-      for (const skipped of eligible) {
+      for (const skipped of toTry) {
         if (skipped._id === prospect._id) {
           continue;
         }
@@ -495,8 +480,8 @@ async function tryProspectEmailDiscovery(
 
   return {
     acceptedCount,
-    candidateCount: eligible.length,
-    hadProspects: true,
+    candidateCount: toTry.length,
+    hadProspects: pending.length > 0,
   };
 }
 
@@ -975,65 +960,58 @@ export const enrichSingleLeadWorkpool = internalAction({
             source: "prospect_name_search",
           };
         } else if (!pipelineBlockingError) {
-          const noContactError = prospectAttempt?.hadProspects
-            ? "Role-matched prospects found but no verified emails from FindyMail name search"
-            : "No role-matched people discovered from website";
-
           logWithCorrelation(
             "info",
             correlation,
-            "[Workpool] People discovery path complete — no accepted contacts",
+            "[Workpool] Prospect email path yielded no accepted contacts — falling back to FindyMail role search",
             {
               leadId: args.leadId,
               hadProspects: prospectAttempt?.hadProspects ?? false,
               candidateCount: prospectAttempt?.candidateCount ?? 0,
+              acceptedCount: prospectAttempt?.acceptedCount ?? 0,
             },
           );
-
-          await updateLeadEnrichmentStatus({
-            status: "no_contacts_found",
-            error: noContactError,
-          });
-          await completeReenrichLink(true);
-
-          await ctx.runMutation(
-            internal.apiKeySemaphore.semaphore.releaseApiKeySlot,
-            { apiKeyHash, claimId: acquiredClaimId, slotIndex: acquiredSlotIndex },
-          );
-
-          if (args._fromQueue) {
-            await ctx.runMutation(
-              internal.leads.workpool.reportQueuedLeadCompletion,
-              { searchId: args.searchId, leadId: args.leadId, success: false },
-            );
-          }
-
-          return {
-            success: false,
-            provider: "findymail",
-            reason: "no_accepted_contacts",
-          };
         }
       }
 
-      // Legacy enrichment (people discovery disabled): FindyMail domain search using literal UI roles only.
+      // Legacy / fallback FindyMail role search (also runs when people-discovery path finds no accepted contacts).
       let result: (EnrichmentResult & { provider: "findymail" }) | null = null;
 
-      if (isMultiContactPipelineEnabled()) {
-        const cacheEntry = await ctx.runQuery(
-          internal.leads.contactInternal.getEnrichmentCacheEntry,
-          { searchId: args.searchId, domain },
-        );
-        const cacheValid =
-          cacheEntry &&
-          cacheEntry.expiresAt > Date.now() &&
-          cacheEntry.enrichmentData;
+      if (!pipelineBlockingError) {
+        if (isMultiContactPipelineEnabled()) {
+          const cacheEntry = await ctx.runQuery(
+            internal.leads.contactInternal.getEnrichmentCacheEntry,
+            { searchId: args.searchId, domain },
+          );
+          const cacheValid =
+            cacheEntry &&
+            cacheEntry.expiresAt > Date.now() &&
+            cacheEntry.enrichmentData;
 
-        if (cacheValid) {
-          result = {
-            ...(cacheEntry.enrichmentData as EnrichmentResult),
-            provider: "findymail",
-          };
+          if (cacheValid) {
+            result = {
+              ...(cacheEntry.enrichmentData as EnrichmentResult),
+              provider: "findymail",
+            };
+          } else {
+            const providerAttempt = await tryProvider("findymail", domain, {
+              retries: 3,
+              roles: requestedRoles,
+              rolePatterns: literalRolePatterns,
+              rolePatternsByRole: literalRolePatternsByRole,
+              userApiKey: args.userApiKey,
+            });
+            result = providerAttempt.result;
+            pipelineBlockingError = providerAttempt.pipelineBlockingError;
+
+            if (result) {
+              await ctx.runMutation(internal.leads.contactInternal.cacheEnrichmentData, {
+                searchId: args.searchId,
+                domain,
+                enrichmentData: result,
+              });
+            }
+          }
         } else {
           const providerAttempt = await tryProvider("findymail", domain, {
             retries: 3,
@@ -1044,25 +1022,7 @@ export const enrichSingleLeadWorkpool = internalAction({
           });
           result = providerAttempt.result;
           pipelineBlockingError = providerAttempt.pipelineBlockingError;
-
-          if (result) {
-            await ctx.runMutation(internal.leads.contactInternal.cacheEnrichmentData, {
-              searchId: args.searchId,
-              domain,
-              enrichmentData: result,
-            });
-          }
         }
-      } else {
-        const providerAttempt = await tryProvider("findymail", domain, {
-          retries: 3,
-          roles: requestedRoles,
-          rolePatterns: literalRolePatterns,
-          rolePatternsByRole: literalRolePatternsByRole,
-          userApiKey: args.userApiKey,
-        });
-        result = providerAttempt.result;
-        pipelineBlockingError = providerAttempt.pipelineBlockingError;
       }
 
       // PIPELINE-BLOCKING ERROR handling uses pipelineBlockingError from above

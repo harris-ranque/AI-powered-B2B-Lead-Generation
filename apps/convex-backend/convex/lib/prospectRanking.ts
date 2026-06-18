@@ -1,8 +1,8 @@
 /**
- * Rank prospects for sequential FindyMail name search (credit optimization).
+ * Rank prospects for sequential FindyMail /search/name (credit optimization).
+ * Role match is established in people discovery — no confidence gate before lookup.
  */
 
-export const FINDYMAIL_MIN_CONFIDENCE = 0.85;
 export const MAX_FINDYMAIL_NAME_ATTEMPTS = 2;
 export const FINDYMAIL_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -48,6 +48,15 @@ export function rankProspectsForFindyMail<T extends RankableProspect>(
       computeEffectiveRankScore(b, requestedRoles) -
       computeEffectiveRankScore(a, requestedRoles),
   );
+}
+
+/** Top N role-matched prospects for sequential name search (rank only, no re-filter). */
+export function selectProspectsForFindyMailNameSearch<T extends RankableProspect>(
+  prospects: T[],
+  requestedRoles: string[],
+  maxAttempts = MAX_FINDYMAIL_NAME_ATTEMPTS,
+): T[] {
+  return rankProspectsForFindyMail(prospects, requestedRoles).slice(0, maxAttempts);
 }
 
 export function normalizeCacheKeyPart(value: string): string {

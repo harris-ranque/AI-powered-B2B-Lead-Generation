@@ -268,9 +268,24 @@ export function EnrichmentStage() {
       ? Math.min(100, (emailsFound / emailLookupTotal) * 100)
       : 0;
 
-  const processingPercent = peopleDiscoveryComplete
-    ? emailProcessingPercent
-    : peopleScanPercent;
+  const emailLookupProcessed = enrichmentProgress?.processed ??
+    (enrichmentProgress
+      ? enrichmentProgress.completed +
+        enrichmentProgress.failed +
+        (enrichmentProgress.noContacts ?? 0)
+      : 0);
+
+  const emailLookupStillRunning =
+    enrichmentProgress !== undefined &&
+    enrichmentProgress.pending + enrichmentProgress.inProgress > 0;
+
+  // While lookups are running, show processing progress (not email success rate).
+  const step2ProgressPercent =
+    !peopleDiscoveryComplete || emailLookupTotal === 0
+      ? 0
+      : enrichmentComplete
+        ? emailDiscoveryPercent
+        : emailProcessingPercent;
 
   // Mark enrichment complete when processing finishes
   useEffect(() => {
@@ -465,27 +480,32 @@ export function EnrichmentStage() {
                     : "secondary"
                 }
               >
-                {peopleDiscoveryComplete
-                  ? `${emailDiscoveryPercent.toFixed(0)}%`
-                  : "Waiting"}
+                {!peopleDiscoveryComplete
+                  ? "Waiting"
+                  : emailLookupTotal === 0
+                    ? "Skipped"
+                    : enrichmentComplete
+                      ? `${emailDiscoveryPercent.toFixed(0)}%`
+                      : `${emailProcessingPercent.toFixed(0)}%`}
               </Badge>
             </div>
 
             <Progress
-              value={peopleDiscoveryComplete ? emailDiscoveryPercent : 0}
+              value={step2ProgressPercent}
               className="h-3 progress-pulse"
             />
             <p className="text-xs text-muted-foreground">
               {peopleDiscoveryComplete
                 ? emailLookupTotal === 0
                   ? "Skipped — no businesses passed people discovery"
-                  : `${processingPercent}% of passed businesses processed for email lookup`
+                  : enrichmentComplete
+                    ? `${emailsFound} of ${emailLookupTotal} businesses with verified emails`
+                    : `${emailLookupProcessed} of ${emailLookupTotal} businesses processed for email lookup`
                 : "Email lookup starts after people are found on each website"}
               {peopleDiscoveryComplete &&
                 emailLookupTotal > 0 &&
-                enrichmentProgress &&
-                enrichmentProgress.pending + enrichmentProgress.inProgress > 0 &&
-                ` · ${enrichmentProgress.pending + enrichmentProgress.inProgress} still running`}
+                emailLookupStillRunning &&
+                ` · ${enrichmentProgress!.pending + enrichmentProgress!.inProgress} still running`}
             </p>
 
             {enrichmentComplete && (

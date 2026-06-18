@@ -2,7 +2,13 @@ import { internalMutation, internalQuery, type MutationCtx } from "../_generated
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { extractPrimaryEmail } from "../lib/deduplication";
-import { evaluateContactCandidate, evaluateProspectEmailCandidate, extractProviderTitle, resolveDisplayableContactTitle, resolveProspectStoredTitle } from "../lib/contactAcceptance";
+import {
+  acceptFindyMailNameSearchEmail,
+  evaluateContactCandidate,
+  extractProviderTitle,
+  resolveDisplayableContactTitle,
+  resolveProspectStoredTitle,
+} from "../lib/contactAcceptance";
 import { slimContactAiAnalysisForStorage } from "../lib/contactAnalysisStorage";
 import { extractDomainFromWebsite } from "../lib/contactVerification";
 import { resolveEnrichmentRoles } from "../lib/enrichmentRoles";
@@ -720,37 +726,40 @@ export const processProspectEmailEnrichment = internalMutation({
         }>;
       };
 
+      // FindyMail /search/name: only the email matters; title/name from provider are ignored.
       const emailCandidates: Array<{
         email: string;
         confidence: number;
-        verified?: boolean;
         linkedin?: string;
       }> = [];
+      const seenCandidateEmails = new Set<string>();
 
+      const pushEmail = (raw: string, confidence = 0.7, linkedin?: string) => {
+        const trimmed = raw.trim();
+        if (!trimmed) return;
+        const key = trimmed.toLowerCase();
+        if (seenCandidateEmails.has(key)) return;
+        seenCandidateEmails.add(key);
+        emailCandidates.push({ email: trimmed, confidence, linkedin });
+      };
+
+      for (const emailEntry of result.emails ?? []) {
+        pushEmail(emailEntry.email, emailEntry.confidence ?? 0.7);
+      }
       for (const contact of result.contacts ?? []) {
         if (contact.email?.trim()) {
-          emailCandidates.push({
-            email: contact.email.trim(),
-            confidence: contact.confidence ?? 0.7,
-            verified: contact.verified,
-            linkedin: contact.linkedin,
-          });
-        }
-      }
-      for (const emailEntry of result.emails ?? []) {
-        if (emailEntry.email?.trim()) {
-          emailCandidates.push({
-            email: emailEntry.email.trim(),
-            confidence: emailEntry.confidence ?? 0.6,
-            verified: emailEntry.verified,
-          });
+          pushEmail(
+            contact.email,
+            contact.confidence ?? 0.7,
+            contact.linkedin,
+          );
         }
       }
 
       let prospectAccepted = false;
 
       for (const emailCandidate of emailCandidates) {
-        const evaluation = evaluateProspectEmailCandidate(emailCandidate.email, {
+        const evaluation = acceptFindyMailNameSearchEmail(emailCandidate.email, {
           acceptedEmailsInSearch: acceptedEmails,
           prospectMatchedRole: prospectInput.matchedRole,
         });

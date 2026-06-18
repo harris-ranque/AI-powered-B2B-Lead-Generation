@@ -253,11 +253,15 @@ export function collectTitlesNeedingSemanticReview(
 }
 
 /**
- * People-discovery prospect path: title/role already matched on the website.
- * FindyMail /search/name emails are treated as verified. Only rejects missing
- * or duplicate emails within the search.
+ * Website-discovery + FindyMail /search/name path.
+ *
+ * Role/title were validated during people discovery (scraper + semantic match).
+ * FindyMail returns email for domain+name — if present, treat as a strong candidate.
+ * No title, domain, or verification re-checks here.
+ *
+ * This is a persistence/dedupe gate only (leadContacts row), not a quality filter.
  */
-export function evaluateProspectEmailCandidate(
+export function acceptFindyMailNameSearchEmail(
   email: string | undefined,
   options: {
     acceptedEmailsInSearch: Set<string>;
@@ -295,6 +299,9 @@ export function evaluateProspectEmailCandidate(
   };
 }
 
+/** @deprecated Use acceptFindyMailNameSearchEmail */
+export const evaluateProspectEmailCandidate = acceptFindyMailNameSearchEmail;
+
 export function evaluateContactCandidate(
   candidate: ContactCandidateInput,
   options: {
@@ -318,7 +325,7 @@ export function evaluateContactCandidate(
   },
 ): ContactAcceptanceResult {
   if (options.fromProspect) {
-    return evaluateProspectEmailCandidate(candidate.email, {
+    return acceptFindyMailNameSearchEmail(candidate.email, {
       acceptedEmailsInSearch: options.acceptedEmailsInSearch,
       prospectMatchedRole: options.prospectMatchedRole,
     });

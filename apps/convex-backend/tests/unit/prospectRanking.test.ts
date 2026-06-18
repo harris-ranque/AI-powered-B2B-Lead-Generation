@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   computeEffectiveRankScore,
   rankProspectsForFindyMail,
-  FINDYMAIL_MIN_CONFIDENCE,
+  selectProspectsForFindyMailNameSearch,
+  MAX_FINDYMAIL_NAME_ATTEMPTS,
 } from "../../convex/lib/prospectRanking";
 
 describe("prospectRanking", () => {
@@ -55,7 +56,38 @@ describe("prospectRanking", () => {
     expect(highRank).toBeGreaterThan(lowRank);
   });
 
-  it("defines findymail confidence gate", () => {
-    expect(FINDYMAIL_MIN_CONFIDENCE).toBe(0.85);
+  it("selects top prospects by rank without confidence gate", () => {
+    const prospects = [
+      {
+        name: "Jane",
+        title: "Operations Manager",
+        confidence: 0.72,
+        matchedRole: "Operations Manager",
+        rankScore: 0.72,
+      },
+      {
+        name: "John",
+        title: "Founder",
+        confidence: 0.88,
+        matchedRole: "Founder",
+        rankScore: 0.98,
+      },
+      {
+        name: "Bob",
+        title: "CEO",
+        confidence: 0.5,
+        matchedRole: "CEO",
+        rankScore: 0.95,
+      },
+    ];
+
+    const selected = selectProspectsForFindyMailNameSearch(prospects, [
+      "Founder",
+      "CEO",
+    ]);
+
+    expect(selected.length).toBe(MAX_FINDYMAIL_NAME_ATTEMPTS);
+    expect(selected[0]?.name).toBe("John");
+    expect(selected[1]?.name).toBe("Bob");
   });
 });
