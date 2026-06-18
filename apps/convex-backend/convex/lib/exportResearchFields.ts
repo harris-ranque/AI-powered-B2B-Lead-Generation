@@ -114,6 +114,59 @@ function firstNonEmptyString(...values: Array<unknown>): string {
   return "";
 }
 
+/** True when webhook lead_analysis has enough text to persist companyResearch. */
+export function leadAnalysisHasSaveableResearch(
+  leadAnalysis: Record<string, unknown> | undefined,
+): boolean {
+  if (!leadAnalysis) {
+    return false;
+  }
+
+  const researchMetadata = asRecord(leadAnalysis.research_metadata);
+  return Boolean(
+    firstNonEmptyString(
+      leadAnalysis.company_overview,
+      leadAnalysis.research_summary,
+      leadAnalysis.comprehensive_report,
+      leadAnalysis.company_profile,
+      researchMetadata?.comprehensive_report,
+      researchMetadata?.company_overview,
+    ),
+  );
+}
+
+export type WebhookResearchPayloadExtras = {
+  confidence_score: number;
+  research_tier: string;
+  deep_research_used: boolean;
+  deep_research_reason?: string | null;
+};
+
+/** Build a companyResearch payload from LangGraph lead_analysis for storage/export. */
+export function buildWebhookResearchPayload(
+  leadAnalysis: Record<string, unknown>,
+  extras: WebhookResearchPayloadExtras,
+): Record<string, unknown> {
+  const researchMetadata = asRecord(leadAnalysis.research_metadata);
+  const companyOverview = firstNonEmptyString(
+    leadAnalysis.company_overview,
+    leadAnalysis.research_summary,
+    leadAnalysis.comprehensive_report,
+    leadAnalysis.company_profile,
+    researchMetadata?.comprehensive_report,
+    researchMetadata?.company_overview,
+  );
+
+  return {
+    company_overview: companyOverview,
+    raw_data: leadAnalysis,
+    confidence_score: extras.confidence_score,
+    research_tier: extras.research_tier,
+    deep_research_used: extras.deep_research_used,
+    deep_research_reason: extras.deep_research_reason,
+  };
+}
+
 /**
  * Ensure stored companyResearch payloads include export-ready research_metadata
  * (comprehensive report, citations, confidence) under raw_data.

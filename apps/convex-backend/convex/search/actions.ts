@@ -2116,6 +2116,11 @@ export const completeSearch: any = action({
         throw new Error("Search not found");
       }
 
+      await ctx.runMutation(
+        internal.leads.contactInternal.backfillContactCompanyResearchForSearch,
+        { searchId: args.searchId },
+      );
+
       // Calculate final results
       const results: any = await ctx.runQuery(
         internal.search.internal.getSearchResults,

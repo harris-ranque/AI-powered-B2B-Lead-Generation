@@ -7,6 +7,10 @@ import { extractDomainFromWebsite } from "../lib/contactVerification";
 import { hasAcceptedContactsAwaitingAnalysis } from "../lib/analysisProgress";
 import { slimLeadAnalysisForContactStorage } from "../lib/contactAnalysisStorage";
 import { insertPipelineBroadcast } from "../realtime/broadcaster";
+import {
+  buildWebhookResearchPayload,
+  leadAnalysisHasSaveableResearch,
+} from "../lib/exportResearchFields";
 
 const BatchLeadResultArg = v.object({
   leadId: v.string(),
@@ -158,7 +162,10 @@ export const applyBatchLeadResult = internalMutation({
         });
       }
 
-      const leadAnalysisPayload = result.lead_analysis || {};
+      const leadAnalysisPayload = (result.lead_analysis ?? {}) as Record<
+        string,
+        unknown
+      >;
       const researchMetadata = (leadAnalysisPayload.research_metadata ??
         {}) as Record<string, unknown>;
       const companyDomain = extractDomainFromWebsite(lead.website);
@@ -193,10 +200,7 @@ export const applyBatchLeadResult = internalMutation({
         leadTierReason: result.lead_tier_reason,
       });
 
-      if (
-        companyDomain &&
-        (leadAnalysisPayload.company_overview || leadAnalysisPayload.research_summary)
-      ) {
+      if (companyDomain && leadAnalysisHasSaveableResearch(leadAnalysisPayload)) {
         const researchConfidence =
           typeof researchMetadata.confidence_score === "number"
             ? researchMetadata.confidence_score
@@ -215,21 +219,28 @@ export const applyBatchLeadResult = internalMutation({
               userId,
               leadId: lead._id,
               domain: companyDomain,
-              researchPayload: {
-                company_overview:
-                  leadAnalysisPayload.company_overview ||
-                  leadAnalysisPayload.research_summary ||
-                  "",
-                raw_data: leadAnalysisPayload,
+              researchPayload: buildWebhookResearchPayload(leadAnalysisPayload, {
                 confidence_score: researchConfidence,
                 research_tier: result.deep_research_used ? "perplexity" : "tavily",
                 deep_research_used: Boolean(result.deep_research_used),
                 deep_research_reason: result.deep_research_reason,
-              },
+              }),
             },
           );
-        } catch {
-          // Lead tier and contact analysis are already persisted; research link is best-effort.
+        } catch (researchError) {
+          const researchLogger = createOperationLogger.webhook(
+            "system",
+            "batch_lead_research_save",
+          );
+          researchLogger.error("Failed to save company research from batch lead result", {
+            batchId,
+            leadId: leadResult.leadId,
+            domain: companyDomain,
+            error:
+              researchError instanceof Error
+                ? researchError.message
+                : "Unknown error",
+          });
         }
       }
 
@@ -343,6 +354,19 @@ export const finalizeBatchCompletion = internalMutation({
         analysisComplete: isComplete,
       },
     });
+
+    const backfill = await ctx.runMutation(
+      internal.leads.contactInternal.backfillContactCompanyResearchForSearch,
+      { searchId: args.searchId },
+    );
+    if (backfill.linked > 0) {
+      logger.info("Backfilled companyResearch links after batch completion", {
+        searchId: args.searchId,
+        batchId: args.batchId,
+        linked: backfill.linked,
+        total: backfill.total,
+      });
+    }
 
     if (isComplete) {
       const currentSearch = await ctx.db.get(args.searchId);

@@ -19,6 +19,60 @@ import {
 import { enrichResearchPayloadForExport, mergeCompanyResearchPayloadForWebhook } from "../lib/exportResearchFields";
 import { deriveLeadAnalysisStatusFromContacts } from "../lib/contactAnalysisSync";
 
+/** Link all accepted contacts in a search that share the same website domain. */
+async function linkSearchContactsToDomainResearch(
+  ctx: MutationCtx,
+  args: {
+    searchId: Id<"searches">;
+    domain: string;
+  },
+): Promise<number> {
+  const existing = await ctx.db
+    .query("companyResearch")
+    .withIndex("by_search_domain", (q) =>
+      q.eq("searchId", args.searchId).eq("domain", args.domain),
+    )
+    .first();
+
+  if (!existing || existing.status !== "completed") {
+    return 0;
+  }
+
+  const contacts = await ctx.db
+    .query("leadContacts")
+    .withIndex("by_search_status", (q) =>
+      q.eq("searchId", args.searchId).eq("status", "accepted"),
+    )
+    .collect();
+
+  const now = Date.now();
+  let linked = 0;
+
+  for (const contact of contacts) {
+    if (contact.companyResearchId) {
+      continue;
+    }
+
+    const lead = await ctx.db.get(contact.leadId);
+    if (!lead?.website) {
+      continue;
+    }
+
+    const contactDomain = extractDomainFromWebsite(lead.website);
+    if (contactDomain !== args.domain) {
+      continue;
+    }
+
+    await ctx.db.patch(contact._id, {
+      companyResearchId: existing._id,
+      updatedAt: now,
+    });
+    linked += 1;
+  }
+
+  return linked;
+}
+
 async function linkLeadContactsToDomainResearch(
   ctx: MutationCtx,
   args: {
@@ -32,34 +86,10 @@ async function linkLeadContactsToDomainResearch(
     return;
   }
 
-  const existing = await ctx.db
-    .query("companyResearch")
-    .withIndex("by_search_domain", (q) =>
-      q.eq("searchId", args.searchId).eq("domain", domain),
-    )
-    .first();
-
-  if (!existing || existing.status !== "completed") {
-    return;
-  }
-
-  const contacts = await ctx.db
-    .query("leadContacts")
-    .withIndex("by_lead_status", (q) =>
-      q.eq("leadId", args.leadId).eq("status", "accepted"),
-    )
-    .collect();
-
-  const now = Date.now();
-  for (const contact of contacts) {
-    if (contact.companyResearchId) {
-      continue;
-    }
-    await ctx.db.patch(contact._id, {
-      companyResearchId: existing._id,
-      updatedAt: now,
-    });
-  }
+  await linkSearchContactsToDomainResearch(ctx, {
+    searchId: args.searchId,
+    domain,
+  });
 }
 
 const contactStatusValidator = v.union(
@@ -1076,11 +1106,9 @@ export const saveCompanyResearchFromWebhook = internalMutation({
       });
     }
 
-    const lead = await ctx.db.get(args.leadId);
-    await linkLeadContactsToDomainResearch(ctx, {
+    await linkSearchContactsToDomainResearch(ctx, {
       searchId: args.searchId,
-      leadId: args.leadId,
-      website: lead?.website,
+      domain: args.domain,
     });
 
     return companyResearchId;

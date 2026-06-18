@@ -1104,7 +1104,7 @@ export const analyzeLeads: any = internalAction({
         }
       }
 
-      if (multiContact && leads.length > 0) {
+      if (leads.length > 0) {
         await ctx.runAction(
           (internal as any)["leads/asyncAnalysis"].ensureCompanyResearchForSearch,
           {

@@ -9,6 +9,10 @@ import {
 } from "../lib/analysisProgress";
 import { slimLeadAnalysisForContactStorage } from "../lib/contactAnalysisStorage";
 import { publishAnalysisProgressHandler } from "../leads/analysisProgress";
+import {
+  buildWebhookResearchPayload,
+  leadAnalysisHasSaveableResearch,
+} from "../lib/exportResearchFields";
 
 // TODO: Add webhook idempotency table to prevent duplicate processing
 // Current implementation has partial checks but no dedicated tracking.
@@ -452,10 +456,7 @@ export const handleEmailGenerationCompleted = internalMutation({
 
         const leadAnalysisPayload = (result.lead_analysis ?? {}) as Record<string, unknown>;
         const companyDomain = extractDomainFromWebsite(lead.website);
-        if (
-          companyDomain &&
-          (leadAnalysisPayload.company_overview || leadAnalysisPayload.research_summary)
-        ) {
+        if (companyDomain && leadAnalysisHasSaveableResearch(leadAnalysisPayload)) {
           const researchMetadata = (leadAnalysisPayload.research_metadata ??
             {}) as Record<string, unknown>;
           const researchConfidence =
@@ -476,17 +477,12 @@ export const handleEmailGenerationCompleted = internalMutation({
                 userId: search.userId,
                 leadId: lead._id,
                 domain: companyDomain,
-                researchPayload: {
-                  company_overview:
-                    (leadAnalysisPayload.company_overview as string | undefined) ||
-                    (leadAnalysisPayload.research_summary as string | undefined) ||
-                    "",
-                  raw_data: leadAnalysisPayload,
+                researchPayload: buildWebhookResearchPayload(leadAnalysisPayload, {
                   confidence_score: researchConfidence,
                   research_tier: result.deep_research_used ? "perplexity" : "tavily",
                   deep_research_used: Boolean(result.deep_research_used),
                   deep_research_reason: result.deep_research_reason,
-                },
+                }),
               },
             );
           } catch (researchError) {

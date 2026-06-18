@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildWebhookResearchPayload,
   enrichResearchPayloadForExport,
   hasCompleteExportResearch,
+  leadAnalysisHasSaveableResearch,
   mergeCompanyResearchPayloadForWebhook,
   resolveExportResearchFields,
 } from "../../convex/lib/exportResearchFields";
@@ -223,5 +225,64 @@ describe("resolveExportResearchFields", () => {
     expect(merged.raw_data.research_metadata.comprehensive_report).toContain(
       "UCSF",
     );
+  });
+});
+
+describe("leadAnalysisHasSaveableResearch", () => {
+  it("returns true when comprehensive_report is nested in research_metadata", () => {
+    expect(
+      leadAnalysisHasSaveableResearch({
+        research_metadata: {
+          comprehensive_report: "Full report from Perplexity",
+          citations: ["https://example.com"],
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("returns false when lead_analysis has no research text", () => {
+    expect(leadAnalysisHasSaveableResearch({ pain_points: ["slow ops"] })).toBe(
+      false,
+    );
+  });
+});
+
+describe("buildWebhookResearchPayload", () => {
+  it("uses company_overview when present", () => {
+    const payload = buildWebhookResearchPayload(
+      {
+        company_overview: "Short",
+        research_metadata: {
+          comprehensive_report: "Long comprehensive report",
+        },
+      },
+      {
+        confidence_score: 0.88,
+        research_tier: "perplexity",
+        deep_research_used: true,
+        deep_research_reason: "Missing data points",
+      },
+    );
+
+    expect(payload.company_overview).toBe("Short");
+    expect(payload.confidence_score).toBe(0.88);
+    expect(payload.deep_research_used).toBe(true);
+  });
+
+  it("falls back to comprehensive_report when overview is missing", () => {
+    const payload = buildWebhookResearchPayload(
+      {
+        research_metadata: {
+          comprehensive_report: "Long comprehensive report",
+        },
+      },
+      {
+        confidence_score: 0.88,
+        research_tier: "perplexity",
+        deep_research_used: false,
+      },
+    );
+
+    expect(payload.company_overview).toBe("Long comprehensive report");
   });
 });
