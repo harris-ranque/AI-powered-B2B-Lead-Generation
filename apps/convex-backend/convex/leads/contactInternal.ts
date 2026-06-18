@@ -16,7 +16,7 @@ import {
   isValidCompanyResearchCache,
   normalizeCompanyResearchPayload,
 } from "../lib/companyResearchCache";
-import { enrichResearchPayloadForExport } from "../lib/exportResearchFields";
+import { enrichResearchPayloadForExport, mergeCompanyResearchPayloadForWebhook } from "../lib/exportResearchFields";
 import { deriveLeadAnalysisStatusFromContacts } from "../lib/contactAnalysisSync";
 
 const contactStatusValidator = v.union(
@@ -970,7 +970,11 @@ export const saveCompanyResearchFromWebhook = internalMutation({
     researchPayload: v.any(),
   },
   handler: async (ctx, args) => {
-    const enriched = enrichResearchPayloadForExport(args.researchPayload);
+    const merged = mergeCompanyResearchPayloadForWebhook(
+      researchId?.researchPayload,
+      args.researchPayload,
+    );
+    const enriched = enrichResearchPayloadForExport(merged);
     const normalized = normalizeCompanyResearchPayload(enriched);
     const payloadToStore = normalized ?? enriched;
 

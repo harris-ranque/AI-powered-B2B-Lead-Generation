@@ -1221,11 +1221,14 @@ async def process_batch_with_progress(
                         # Check approval status from QA (strict check - must be explicitly True)
                         is_approved = result.get("approved") is True
 
-                        # Check quality_score against tier-aware threshold
-                        # B-tier leads (less public data) use 0.50; A-tier uses 0.60
+                        # Check quality_score against tier-aware threshold (qa_config.py)
+                        from .langgraph.qa_config import APPROVAL_THRESHOLDS
+
                         quality_score = result.get("quality_score", 0)
                         lead_tier = result.get("lead_tier", "A")
-                        tier_threshold = 0.50 if lead_tier == "B" else 0.60
+                        tier_threshold = APPROVAL_THRESHOLDS.get(
+                            lead_tier, APPROVAL_THRESHOLDS["A"]
+                        )
                         meets_quality_threshold = quality_score >= tier_threshold
 
                         # Check for errors in lead_analysis (where aggregator stores them)

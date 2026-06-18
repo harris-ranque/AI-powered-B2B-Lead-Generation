@@ -17,10 +17,11 @@ import {
 } from "./lib/cryptoHelpers";
 import {
   dedupeExportContactsByEmail,
+  sortExportContactsForCsv,
   extractContactDetails,
   isLeadExportable,
   isContactEmailExportable,
-  isContactFullyExportable,
+  isContactExportable,
   noExportableLeadsMessage,
   formatExportPhone,
   resolveContactExportTitle,
@@ -1162,15 +1163,7 @@ http.route({
         }
 
         const exportableContacts = dedupeExportContactsByEmail(
-          exportContacts.filter((contact) => {
-            const lead = leadById.get(String(contact.leadId));
-            const companyResearchPayload = contact.companyResearchId
-              ? companyResearchById.get(String(contact.companyResearchId))
-              : undefined;
-            return isContactFullyExportable(contact, {
-              companyResearchPayload,
-            });
-          }),
+          exportContacts.filter((contact) => isContactExportable(contact)),
           searchId,
         );
 
@@ -1199,7 +1192,16 @@ http.route({
           );
         }
 
-        csvRows = exportableContacts.map((contact) => {
+        const companyNameByLeadId = new Map<string, string>();
+        for (const [leadKey, lead] of leadById) {
+          companyNameByLeadId.set(leadKey, lead.businessName ?? "");
+        }
+        const sortedExportableContacts = sortExportContactsForCsv(
+          exportableContacts,
+          companyNameByLeadId,
+        );
+
+        csvRows = sortedExportableContacts.map((contact) => {
           const lead = leadById.get(String(contact.leadId));
           if (!lead) {
             return "";

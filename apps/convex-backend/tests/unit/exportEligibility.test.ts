@@ -5,6 +5,7 @@ import {
   hasWrittenEmail,
   formatExportPhone,
   dedupeExportContactsByEmail,
+  sortExportContactsForCsv,
   classifyContactExportReadiness,
   summarizeExportReadiness,
   isContactEmailExportable,
@@ -132,7 +133,7 @@ describe("exportEligibility", () => {
     ).toBe(false);
   });
 
-  it("requires research for full CSV export; title is not a blocker (phone optional)", () => {
+  it("isContactExportable requires written email only; research is optional for CSV", () => {
     const baseContact = {
       email: "alex@company.com",
       analysisStatus: "completed",
@@ -160,11 +161,6 @@ describe("exportEligibility", () => {
     };
 
     expect(
-      isContactFullyExportable(baseContact, {
-        companyResearchPayload: researchPayload,
-      }),
-    ).toBe(true);
-    expect(
       isContactExportable(baseContact, {
         companyResearchPayload: researchPayload,
       }),
@@ -175,11 +171,26 @@ describe("exportEligibility", () => {
       }),
     ).toBe(true);
     expect(
+      isContactExportable({
+        ...baseContact,
+        title: "",
+      }),
+    ).toBe(true);
+    expect(
       isContactFullyExportable(
         { ...baseContact, title: "" },
         { companyResearchPayload: researchPayload },
       ),
     ).toBe(true);
+    expect(isContactExportable(baseContact)).toBe(true);
+    expect(
+      isContactFullyExportable({
+        email: "alex@company.com",
+        analysisStatus: "completed",
+        emailContent: { subject: "Hi", body: "Body" },
+        status: "accepted",
+      }),
+    ).toBe(false);
   });
 
   it("classifies export readiness blockers", () => {
@@ -246,7 +257,8 @@ describe("exportEligibility", () => {
       () => undefined,
     );
     expect(summary.awaitingEmailWriting).toBe(1);
-    expect(summary.incompleteResearch).toBe(1);
+    expect(summary.exportable).toBe(1);
+    expect(summary.incompleteResearch).toBe(0);
   });
 
   it("formatExportPhone uses placeholder when phone is missing", () => {
@@ -353,5 +365,29 @@ describe("exportEligibility", () => {
     expect(
       deduped.find((c) => c.normalizedEmail === "malte@mondu.ai")?.searchId,
     ).toBe(searchA);
+  });
+
+  it("sorts export contacts by company name then contact name", () => {
+    const leadA = "lead_a" as Id<"leads">;
+    const leadB = "lead_b" as Id<"leads">;
+    const companyNameByLeadId = new Map<string, string>([
+      [String(leadA), "Zebra Housing"],
+      [String(leadB), "Alpha Properties"],
+    ]);
+    const sorted = sortExportContactsForCsv(
+      [
+        { leadId: leadA, name: "Zoe" },
+        { leadId: leadB, name: "Bob" },
+        { leadId: leadB, name: "Alice" },
+        { leadId: leadA, name: "Ann" },
+      ],
+      companyNameByLeadId,
+    );
+    expect(sorted.map((c) => `${companyNameByLeadId.get(String(c.leadId))}:${c.name}`)).toEqual([
+      "Alpha Properties:Alice",
+      "Alpha Properties:Bob",
+      "Zebra Housing:Ann",
+      "Zebra Housing:Zoe",
+    ]);
   });
 });

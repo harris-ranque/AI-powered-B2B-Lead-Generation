@@ -16,6 +16,12 @@ from .nodes.email_generation_agent import email_generation_agent_node
 from .nodes.quality_assurance_agent import quality_assurance_agent_node
 from .nodes.aggregator import aggregator_node
 from .nodes.service_matcher_agent import service_matcher_agent_node
+from .qa_config import (
+    APPROVAL_THRESHOLDS,
+    INSTANT_REJECT_FLOOR,
+    MAX_QA_RETRIES,
+    RETRY_FLOOR,
+)
 
 logger = setup_logger(__name__)
 
@@ -78,34 +84,47 @@ def create_email_generation_workflow(
         """
         Route after QA: decide whether to approve, retry, or reject.
 
-        Hybrid quality strategy:
-        - Score ≥0.60: Approve immediately (high quality)
-        - Score 0.35-0.60: Retry up to 3 times with QA feedback (3 retry attempts)
-        - Score <0.35: Reject immediately (poor quality, not worth retrying)
+        Hybrid quality strategy (see qa_config.py):
+        - Score >= tier threshold: Approve
+        - Score in [RETRY_FLOOR, threshold): Retry up to MAX_QA_RETRIES times
+        - Score < INSTANT_REJECT_FLOOR: Reject without retry
         """
         qa = state.get("quality_assessment", {})
         approval_status = qa.get("approval_status", "Unknown")
         quality_score = qa.get("overall_quality_score", 0)
         retry_count = state.get("retry_count", 0)
-        max_retries = state.get("max_retries", 3)  # 4 total attempts (1 initial + 3 retries)
+        max_retries = state.get("max_retries", MAX_QA_RETRIES)
+        lead_tier = state.get("lead_tier", "A")
+        tier_threshold = APPROVAL_THRESHOLDS.get(lead_tier, APPROVAL_THRESHOLDS["A"])
 
         # If approved or error state, go to aggregator
         if approval_status == "Approved" or state.get("current_stage") == "error":
             logger.info(f"QA {approval_status} - proceeding to aggregator (score={quality_score:.2f})")
             return "aggregator"
 
-        # If quality is too poor (<0.35), reject immediately without retry
-        if quality_score < 0.35:
-            logger.warning(f"QA score too low ({quality_score:.2f}) - rejecting without retry")
+        # If quality is too poor, reject immediately without retry
+        if quality_score < INSTANT_REJECT_FLOOR:
+            logger.warning(
+                f"QA score too low ({quality_score:.2f}) - rejecting without retry"
+            )
             return "aggregator"
 
-        # If we have retries left and quality is in retry range (0.35-0.60), retry
-        if retry_count < max_retries and 0.35 <= quality_score < 0.60:
-            logger.info(f"QA needs improvement (score={quality_score:.2f}) - retry {retry_count + 1}/{max_retries}")
+        # If we have retries left and quality is in retry range, retry
+        if (
+            retry_count < max_retries
+            and RETRY_FLOOR <= quality_score < tier_threshold
+        ):
+            logger.info(
+                f"QA needs improvement (score={quality_score:.2f}) - "
+                f"retry {retry_count + 1}/{max_retries}"
+            )
             return "retry_email_generation"
 
         # Otherwise, max retries exhausted, go to aggregator
-        logger.warning(f"Max retries exhausted ({retry_count}/{max_retries}) - proceeding to aggregator (score={quality_score:.2f})")
+        logger.warning(
+            f"Max retries exhausted ({retry_count}/{max_retries}) - "
+            f"proceeding to aggregator (score={quality_score:.2f})"
+        )
         return "aggregator"
 
     # Define the error-aware conditional workflow with retry loop
@@ -245,7 +264,7 @@ async def execute_email_generation(
         "final_result": {},
         # Quality retry tracking
         "retry_count": 0,
-        "max_retries": 3,  # Allow 4 total attempts (1 initial + 3 retries) for quality improvement
+        "max_retries": MAX_QA_RETRIES,
         "previous_quality_feedback": [],
         "service_matches": None,
     }
@@ -390,7 +409,7 @@ async def execute_with_streaming(
         "final_result": {},
         # Quality retry tracking
         "retry_count": 0,
-        "max_retries": 3,  # Allow 4 total attempts (1 initial + 3 retries) for quality improvement
+        "max_retries": MAX_QA_RETRIES,
         "previous_quality_feedback": [],
         "service_matches": None,
     }

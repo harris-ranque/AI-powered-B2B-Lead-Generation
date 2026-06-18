@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   enrichResearchPayloadForExport,
   hasCompleteExportResearch,
+  mergeCompanyResearchPayloadForWebhook,
   resolveExportResearchFields,
 } from "../../convex/lib/exportResearchFields";
 
@@ -150,5 +151,52 @@ describe("resolveExportResearchFields", () => {
       "https://tavily.com/1",
     ]);
     expect(enriched.raw_data.research_metadata.confidence_score).toBe(0.66);
+  });
+
+  it("mergeCompanyResearchPayloadForWebhook preserves people-discovery citations", () => {
+    const existing = {
+      company_overview: "2 team members found on website",
+      confidence_score: 0.75,
+      raw_data: {
+        people_discovery: true,
+        research_metadata: {
+          comprehensive_report: "2 team members found on website",
+          citations: [{ url: "https://cafe.com/team", title: "Company website" }],
+          confidence_score: 0.75,
+          source: "people_discovery",
+        },
+      },
+    };
+    const incoming = {
+      company_overview: "UCSF student housing operations overview",
+      raw_data: {
+        company_overview: "UCSF student housing operations overview",
+        research_metadata: {},
+      },
+      confidence_score: 0.52,
+    };
+
+    const merged = mergeCompanyResearchPayloadForWebhook(
+      existing,
+      incoming,
+    ) as {
+      company_overview: string;
+      raw_data: {
+        people_discovery: boolean;
+        research_metadata: {
+          citations: Array<{ url: string }>;
+          comprehensive_report: string;
+        };
+      };
+    };
+
+    expect(merged.company_overview).toContain("UCSF");
+    expect(merged.raw_data.people_discovery).toBe(true);
+    expect(merged.raw_data.research_metadata.citations).toEqual([
+      { url: "https://cafe.com/team", title: "Company website" },
+    ]);
+    expect(merged.raw_data.research_metadata.comprehensive_report).toContain(
+      "UCSF",
+    );
   });
 });

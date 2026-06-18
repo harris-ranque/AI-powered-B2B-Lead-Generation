@@ -193,6 +193,128 @@ export function enrichResearchPayloadForExport(payload: unknown): unknown {
   };
 }
 
+function resolveCitationsFromSources(
+  ...sources: Array<unknown>
+): unknown[] {
+  for (const source of sources) {
+    const citations = normalizeCitations(source);
+    if (citations.length > 0) {
+      return citations;
+    }
+  }
+  for (const source of sources) {
+    const record = asRecord(source);
+    if (record) {
+      const fromTavily = extractTavilyCitationUrls(record);
+      if (fromTavily.length > 0) {
+        return normalizeCitations(fromTavily);
+      }
+    }
+  }
+  return [];
+}
+
+/**
+ * Merge LangGraph webhook research into existing people-discovery cache
+ * without dropping citations or people-discovery context.
+ */
+export function mergeCompanyResearchPayloadForWebhook(
+  existing: unknown,
+  incoming: unknown,
+): unknown {
+  if (!existing) {
+    return incoming;
+  }
+  if (!incoming) {
+    return existing;
+  }
+
+  const existingEnriched = enrichResearchPayloadForExport(existing) as Record<
+    string,
+    unknown
+  >;
+  const incomingEnriched = enrichResearchPayloadForExport(incoming) as Record<
+    string,
+    unknown
+  >;
+
+  const existingRaw = { ...(asRecord(existingEnriched.raw_data) ?? {}) };
+  const incomingRaw = { ...(asRecord(incomingEnriched.raw_data) ?? {}) };
+  const existingMeta = { ...(asRecord(existingRaw.research_metadata) ?? {}) };
+  const incomingMeta = { ...(asRecord(incomingRaw.research_metadata) ?? {}) };
+
+  const companyOverview = firstNonEmptyString(
+    incomingEnriched.company_overview,
+    incomingMeta.comprehensive_report,
+    incomingRaw.company_overview,
+    existingEnriched.company_overview,
+    existingMeta.comprehensive_report,
+    existingRaw.company_overview,
+  );
+
+  const citations = resolveCitationsFromSources(
+    incomingMeta.citations,
+    incomingRaw.citations,
+    incomingMeta,
+    incomingRaw,
+    existingMeta.citations,
+    existingRaw.citations,
+    existingMeta,
+    existingRaw,
+  );
+
+  const confidenceScore =
+    typeof incomingEnriched.confidence_score === "number"
+      ? incomingEnriched.confidence_score
+      : typeof incomingMeta.confidence_score === "number"
+        ? incomingMeta.confidence_score
+        : typeof existingEnriched.confidence_score === "number"
+          ? existingEnriched.confidence_score
+          : typeof existingMeta.confidence_score === "number"
+            ? existingMeta.confidence_score
+            : undefined;
+
+  const mergedRaw: Record<string, unknown> = {
+    ...existingRaw,
+    ...incomingRaw,
+    people_discovery:
+      existingRaw.people_discovery ?? incomingRaw.people_discovery,
+    people: Array.isArray(existingRaw.people)
+      ? existingRaw.people
+      : incomingRaw.people,
+    raw: existingRaw.raw ?? incomingRaw.raw,
+    research_metadata: {
+      ...existingMeta,
+      ...incomingMeta,
+      ...(companyOverview ? { comprehensive_report: companyOverview } : {}),
+      ...(citations.length > 0 ? { citations } : {}),
+      ...(typeof confidenceScore === "number"
+        ? { confidence_score: confidenceScore }
+        : {}),
+    },
+  };
+
+  if (companyOverview) {
+    mergedRaw.company_overview = companyOverview;
+    mergedRaw.comprehensive_report = companyOverview;
+  }
+  if (citations.length > 0) {
+    mergedRaw.citations = citations;
+  }
+
+  return {
+    ...existingEnriched,
+    ...incomingEnriched,
+    company_overview: companyOverview || existingEnriched.company_overview,
+    ...(typeof confidenceScore === "number"
+      ? { confidence_score: confidenceScore }
+      : {}),
+    research_tier:
+      incomingEnriched.research_tier ?? existingEnriched.research_tier,
+    raw_data: mergedRaw,
+  };
+}
+
 function extractPeopleDiscoveryScrapedUrls(
   rawData: Record<string, unknown>,
 ): string[] {

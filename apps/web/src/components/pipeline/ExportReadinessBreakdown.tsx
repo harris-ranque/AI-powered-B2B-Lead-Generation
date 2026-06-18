@@ -33,10 +33,6 @@ function buildBreakdownItems(readiness: ExportReadinessSummary): BreakdownItem[]
       count: readiness.missingTitle,
       label: "missing job title",
     },
-    {
-      count: readiness.incompleteResearch,
-      label: "research incomplete for CSV",
-    },
   ].filter((item) => item.count > 0);
 }
 
@@ -70,7 +66,7 @@ export function ExportReadinessBreakdown({
     return null;
   }
 
-  if (exportable >= total && readiness.incompleteResearch === 0) {
+  if (exportable >= total) {
     return null;
   }
 
@@ -85,7 +81,7 @@ export function ExportReadinessBreakdown({
   const description =
     variant === "compact"
       ? formatExportReadinessSentence(readiness)
-      : `${total.toLocaleString()} accepted contact${total === 1 ? "" : "s"} with email — ${formatExportReadinessSentence(readiness)}. CSV export only includes rows with a written email and complete research fields.`;
+      : `${total.toLocaleString()} accepted contact${total === 1 ? "" : "s"} with email — ${formatExportReadinessSentence(readiness)}. CSV export includes contacts with a completed written email; research columns are included when available.`;
 
   return (
     <Alert className="border-cyan-500/30 bg-cyan-500/5">

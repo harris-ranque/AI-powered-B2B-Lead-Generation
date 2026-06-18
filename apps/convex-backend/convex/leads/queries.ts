@@ -8,6 +8,7 @@ import {
   computeExportReadinessForContacts,
   dedupeExportContactsByEmail,
   filterFullyExportableContacts,
+  sortExportContactsForCsv,
   formatExportPhone,
   resolveContactExportTitle,
   resolveSearchExportData,
@@ -154,13 +155,27 @@ export const exportLeads = query({
         allContacts,
       );
 
+      const companyNameByLeadId = new Map<string, string>();
+      for (const contact of exportableContacts) {
+        const leadKey = String(contact.leadId);
+        if (companyNameByLeadId.has(leadKey)) {
+          continue;
+        }
+        const lead = await ctx.db.get(contact.leadId);
+        companyNameByLeadId.set(leadKey, lead?.businessName ?? "");
+      }
+      const sortedExportableContacts = sortExportContactsForCsv(
+        exportableContacts,
+        companyNameByLeadId,
+      );
+
       const startIndex = args.cursor ? Number.parseInt(args.cursor, 10) : 0;
-      const pageContacts = exportableContacts.slice(
+      const pageContacts = sortedExportableContacts.slice(
         startIndex,
         startIndex + pageSize,
       );
       const nextIndex = startIndex + pageContacts.length;
-      const isDone = nextIndex >= exportableContacts.length;
+      const isDone = nextIndex >= sortedExportableContacts.length;
 
       const tierLabels: Record<string, string> = {
         basic: "Basic (Tavily)",

@@ -168,7 +168,7 @@ export function isContactEmailExportable(contact: ExportableContact): boolean {
   );
 }
 
-/** Full CSV row: written email + complete research fields. Title comes from discovery (optional in row). */
+/** Strict check: written email plus complete research fields (report, citations, confidence). */
 export function isContactFullyExportable(
   contact: ExportableContact,
   context?: ContactExportContext,
@@ -184,12 +184,12 @@ export function isContactFullyExportable(
   return hasCompleteExportResearch(exportResearch);
 }
 
-/** Alias used by export paths — every exported row must be fully populated. */
+/** CSV export gate: accepted contact with completed Write Emails. Research columns may be empty. */
 export function isContactExportable(
   contact: ExportableContact,
-  context?: ContactExportContext,
+  _context?: ContactExportContext,
 ): boolean {
-  return isContactFullyExportable(contact, context);
+  return isContactEmailExportable(contact);
 }
 
 export type ExportReadinessCategory =
@@ -211,7 +211,7 @@ export type ExportReadinessSummary = {
 /** Primary blocker for UI breakdown (one category per contact). */
 export function classifyContactExportReadiness(
   contact: ExportableContact,
-  context?: ContactExportContext,
+  _context?: ContactExportContext,
 ): ExportReadinessCategory {
   if (contact.status && contact.status !== "accepted") {
     return "analysis_failed";
@@ -231,14 +231,6 @@ export function classifyContactExportReadiness(
     !hasWrittenEmail(contact.emailContent)
   ) {
     return "awaiting_email_writing";
-  }
-  const leadAnalysis = contact.aiAnalysis?.leadAnalysis;
-  const exportResearch = resolveExportResearchFields(
-    leadAnalysis,
-    context?.companyResearchPayload,
-  );
-  if (!hasCompleteExportResearch(exportResearch)) {
-    return "incomplete_research";
   }
   return "exportable";
 }
@@ -327,12 +319,9 @@ async function loadExportContextForContacts(
 
 function isContactDocFullyExportable(
   contact: LeadContactDoc,
-  researchById: Map<string, unknown>,
+  _researchById: Map<string, unknown>,
 ): boolean {
-  const companyResearchPayload = contact.companyResearchId
-    ? researchById.get(String(contact.companyResearchId))
-    : undefined;
-  return isContactFullyExportable(contact, { companyResearchPayload });
+  return isContactExportable(contact);
 }
 
 export async function filterFullyExportableContacts(
@@ -478,10 +467,10 @@ export function noExportableLeadsMessage(
         : "";
     const pipelineNote =
       acceptedContacts > 0
-        ? ` This search has ${acceptedContacts} accepted contact(s) — complete Write Emails and ensure research fields are populated to unlock CSV export.`
+        ? ` This search has ${acceptedContacts} accepted contact(s) — complete Write Emails to unlock CSV export.`
         : " No verified emails were accepted yet — common for restaurants without team pages or without CEO/Founder listed on the website.";
     const readinessNote = readiness
-      ? ` Breakdown: ${readiness.awaitingEmailWriting} awaiting email writing, ${readiness.incompleteResearch} incomplete research, ${readiness.analysisFailed} failed analysis.`
+      ? ` Breakdown: ${readiness.awaitingEmailWriting} awaiting email writing, ${readiness.analysisFailed} failed analysis.`
       : "";
 
     if (priorSearchExportable > 0) {
@@ -542,6 +531,26 @@ function pickPreferredExportContact<T extends EmailDedupableContact>(
     if (candidatePreferred && !currentPreferred) return candidate;
   }
   return candidate.createdAt >= current.createdAt ? candidate : current;
+}
+
+/** Group CSV rows by company; stable tie-break on contact name. */
+export function sortExportContactsForCsv<T extends { leadId: Id<"leads">; name: string }>(
+  contacts: T[],
+  companyNameByLeadId: Map<string, string>,
+): T[] {
+  return [...contacts].sort((a, b) => {
+    const companyA = (companyNameByLeadId.get(String(a.leadId)) ?? "")
+      .trim()
+      .toLowerCase();
+    const companyB = (companyNameByLeadId.get(String(b.leadId)) ?? "")
+      .trim()
+      .toLowerCase();
+    const byCompany = companyA.localeCompare(companyB);
+    if (byCompany !== 0) {
+      return byCompany;
+    }
+    return a.name.trim().toLowerCase().localeCompare(b.name.trim().toLowerCase());
+  });
 }
 
 export function countDuplicateSkipsFromSearch(search: {
