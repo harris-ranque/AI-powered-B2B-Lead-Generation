@@ -15,7 +15,6 @@ import {
   normalizeLangGraphBaseUrl,
 } from "../lib/langgraphClient";
 import { extractDomainFromWebsite } from "../lib/contactVerification";
-import { buildPeopleDiscoveryResearchMetadata } from "../lib/exportResearchFields";
 import { mapFindyMailEmployeesToProspects } from "../lib/findymailEmployees";
 import { shouldBlockPipeline } from "../lib/apiErrors";
 import {
@@ -402,48 +401,6 @@ export const discoverPeopleForLead = internalAction({
       return trimmed.length > 0 ? trimmed : undefined;
     };
 
-    const overviewFromApi = sanitizeOptionalString(data.companyOverview);
-    const companyOverview =
-      overviewFromApi ??
-      (people.length > 0
-        ? usedFindyMailEmployeesFallback
-          ? `${people.length} role-matched team member${people.length === 1 ? "" : "s"} found via FindyMail employee search for ${lead.businessName}.`
-          : `${people.length} role-matched team member${people.length === 1 ? "" : "s"} found on ${lead.businessName}'s website.`
-        : `No role-matched team members found on ${lead.businessName}'s website.`);
-
-    const confidenceScore = people.length > 0 ? 0.75 : 0.3;
-    const rawDiscoveryData = (data.rawData ?? {}) as Record<string, unknown>;
-    const rawDataBody = {
-      company_overview: companyOverview,
-      people_discovery: true,
-      people: people,
-      raw: rawDiscoveryData,
-      research_tier: data.researchTier ?? "pro",
-      confidence_score: confidenceScore,
-      findymail_employees_fallback: usedFindyMailEmployeesFallback,
-    };
-    const researchMetadata = buildPeopleDiscoveryResearchMetadata(
-      companyOverview,
-      {
-        ...rawDataBody,
-        website: (rawDiscoveryData as { website?: unknown }).website,
-      },
-      confidenceScore,
-      domain,
-    );
-
-    const companyResearchPayload = {
-      company_overview: companyOverview,
-      raw_data: {
-        ...rawDataBody,
-        research_metadata: researchMetadata,
-        citations: researchMetadata.citations,
-        comprehensive_report: companyOverview,
-      },
-      confidence_score: confidenceScore,
-      research_tier: data.researchTier ?? "pro",
-    };
-
     const persistResult: {
       prospectCount: number;
       companyResearchId?: Id<"companyResearch">;
@@ -472,9 +429,6 @@ export const discoverPeopleForLead = internalAction({
           linkedinUrl: sanitizeOptionalString(person.linkedinUrl),
           rawDiscoveryData: person,
         })),
-        companyOverview,
-        companyResearchPayload,
-        domain,
       },
     );
 
@@ -542,7 +496,6 @@ export const discoverPeopleForLead = internalAction({
     return {
       success: true,
       prospectCount: persistResult.prospectCount,
-      companyResearchId: persistResult.companyResearchId,
     };
   },
 });

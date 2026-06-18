@@ -6,6 +6,7 @@ import {
   hasCompleteExportResearch,
   resolveExportResearchFields,
 } from "./exportResearchFields";
+import { isValidCompanyResearchCache } from "./companyResearchCache";
 
 export type WrittenEmailContent = {
   subject?: string;
@@ -312,7 +313,10 @@ async function loadExportContextForContacts(
 
   for (const researchId of researchIds) {
     const doc = await ctx.db.get(researchId as Id<"companyResearch">);
-    if (doc?.status === "completed") {
+    if (
+      doc?.status === "completed" &&
+      isValidCompanyResearchCache(doc.researchPayload)
+    ) {
       researchById.set(researchId, doc.researchPayload);
     }
   }

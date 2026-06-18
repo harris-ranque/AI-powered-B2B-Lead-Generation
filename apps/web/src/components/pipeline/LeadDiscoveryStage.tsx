@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import {
   AlertDialog,
@@ -1066,25 +1065,6 @@ export function LeadDiscoveryStage({
                 "This search will use credits from your balance."
               )}
             </AlertDialogDescription>
-            {state.selectedSource === "google_maps" && (
-              <div className="flex items-start gap-3 pt-3">
-                <Checkbox
-                  id="skip-companies-with-existing-emails"
-                  checked={skipCompaniesWithExistingEmails}
-                  onCheckedChange={(checked) =>
-                    setSkipCompaniesWithExistingEmails(checked === true)
-                  }
-                />
-                <label
-                  htmlFor="skip-companies-with-existing-emails"
-                  className="text-sm text-muted-foreground leading-snug cursor-pointer"
-                >
-                  Skip businesses we already have emails for. Duplicates from
-                  prior searches won&apos;t be re-enriched; only companies
-                  without known contacts will run through discovery again.
-                </label>
-              </div>
-            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setIsConfirmOpen(false)}>

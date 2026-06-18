@@ -679,7 +679,7 @@ export async function searchPlacesWithTiling(
   // 🎯 PROGRESSIVE TERMINATION: Stop when we have enough results
   // Shared counter to track total places found across all workers
   let globalPlaceCount = 0;
-  const targetWithBuffer = Math.ceil(params.maxResults * 1.2); // 20% buffer for filtering
+  const targetWithBuffer = params.maxResults;
 
   // Concurrent tile processing with worker pool
   let tileIndex = 0;

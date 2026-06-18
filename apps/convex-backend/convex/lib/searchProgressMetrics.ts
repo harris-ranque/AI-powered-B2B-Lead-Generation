@@ -11,11 +11,20 @@ export function mergeDiscoveredCount(
   if (!search) {
     return leadCount;
   }
-  return Math.max(
-    leadCount,
+  const maxResults =
+    typeof search.parameters?.maxResults === "number" &&
+    search.parameters.maxResults > 0
+      ? search.parameters.maxResults
+      : undefined;
+  const cappedLeadCount =
+    maxResults !== undefined ? Math.min(leadCount, maxResults) : leadCount;
+  const previous = Math.max(
     search.results?.totalFound ?? 0,
     search.progress?.discovered ?? 0,
   );
+  const cappedPrevious =
+    maxResults !== undefined ? Math.min(previous, maxResults) : previous;
+  return Math.max(cappedLeadCount, cappedPrevious);
 }
 
 export async function countLeadsOnSearch(

@@ -9,7 +9,7 @@ import {
 } from "../../convex/lib/exportResearchFields";
 
 describe("resolveExportResearchFields", () => {
-  it("reads citations from companyResearch when contact analysis is slimmed", () => {
+  it("reads structured Perplexity report from companyResearch", () => {
     const result = resolveExportResearchFields(
       { company_profile: "Short summary" },
       {
@@ -17,7 +17,8 @@ describe("resolveExportResearchFields", () => {
         confidence_score: 0.82,
         raw_data: {
           research_metadata: {
-            comprehensive_report: "Full Perplexity report body",
+            comprehensive_report: `### 1. ANNUAL REVENUE
+Revenue is $5M annually.`,
             citations: ["https://example.com/news", "https://example.com/about"],
             confidence_score: 0.9,
           },
@@ -25,7 +26,7 @@ describe("resolveExportResearchFields", () => {
       },
     );
 
-    expect(result.fullResearchReport).toBe("Full Perplexity report body");
+    expect(result.fullResearchReport).toContain("ANNUAL REVENUE");
     expect(result.citations).toEqual([
       "https://example.com/news",
       "https://example.com/about",
@@ -53,12 +54,13 @@ describe("resolveExportResearchFields", () => {
     ]);
   });
 
-  it("prefers leadAnalysis research_metadata when present", () => {
+  it("prefers leadAnalysis Perplexity research_metadata when present", () => {
     const result = resolveExportResearchFields(
       {
         research_metadata: {
           citations: ["https://lead.com"],
-          comprehensive_report: "From lead",
+          comprehensive_report: `### 1. ANNUAL REVENUE
+From lead`,
         },
       },
       {
@@ -71,11 +73,11 @@ describe("resolveExportResearchFields", () => {
       },
     );
 
-    expect(result.fullResearchReport).toBe("From lead");
+    expect(result.fullResearchReport).toContain("ANNUAL REVENUE");
     expect(result.citations).toEqual(["https://lead.com"]);
   });
 
-  it("supports people discovery payloads with scraped website citations", () => {
+  it("ignores people-discovery-only company research payloads", () => {
     const result = resolveExportResearchFields(undefined, {
       company_overview: "Team found on website",
       confidence_score: 0.75,
@@ -86,18 +88,13 @@ describe("resolveExportResearchFields", () => {
           comprehensive_report: "Team found on website",
           citations: [{ url: "https://cafe.com/team", title: "Company website" }],
           confidence_score: 0.75,
-        },
-        raw: {
-          website: {
-            scraped_urls: ["https://cafe.com/team [http]"],
-          },
+          source: "people_discovery",
         },
       },
     });
 
-    expect(result.fullResearchReport).toBe("Team found on website");
-    expect(result.citations.length).toBeGreaterThan(0);
-    expect(hasCompleteExportResearch(result)).toBe(true);
+    expect(result.fullResearchReport).toBe("");
+    expect(result.citations).toEqual([]);
   });
 
   it("hasCompleteExportResearch requires report, citations, and numeric confidence", () => {
@@ -155,7 +152,7 @@ describe("resolveExportResearchFields", () => {
     expect(enriched.raw_data.research_metadata.confidence_score).toBe(0.66);
   });
 
-  it("falls back to slim contact leadAnalysis overview and relevance when companyResearch missing", () => {
+  it("does not use slim BI overview as full_research_report", () => {
     const result = resolveExportResearchFields(
       {
         company_overview: "Slim overview from Write Emails",
@@ -165,18 +162,18 @@ describe("resolveExportResearchFields", () => {
       { relevanceScore: 0.55 },
     );
 
-    expect(result.fullResearchReport).toBe("Slim overview from Write Emails");
+    expect(result.fullResearchReport).toBe("");
     expect(result.researchConfidenceScore).toBe(0.61);
   });
 
-  it("uses contact relevance when no research confidence is available", () => {
+  it("does not use company_profile as full_research_report without Perplexity structure", () => {
     const result = resolveExportResearchFields(
       { company_profile: "Profile text" },
       undefined,
       { relevanceScore: 0.48 },
     );
 
-    expect(result.fullResearchReport).toBe("Profile text");
+    expect(result.fullResearchReport).toBe("");
     expect(result.researchConfidenceScore).toBe(0.48);
   });
 
@@ -267,15 +264,24 @@ Revenue is $768,000 in 2024.`,
 });
 
 describe("leadAnalysisHasSaveableResearch", () => {
-  it("returns true when comprehensive_report is nested in research_metadata", () => {
+  it("returns true when Perplexity comprehensive_report is nested in research_metadata", () => {
     expect(
       leadAnalysisHasSaveableResearch({
         research_metadata: {
-          comprehensive_report: "Full report from Perplexity",
+          comprehensive_report: `### 1. ANNUAL REVENUE
+Full report from Perplexity`,
           citations: ["https://example.com"],
         },
       }),
     ).toBe(true);
+  });
+
+  it("returns false for company_overview-only BI output", () => {
+    expect(
+      leadAnalysisHasSaveableResearch({
+        company_overview: "Short company summary",
+      }),
+    ).toBe(false);
   });
 
   it("returns false when lead_analysis has no research text", () => {

@@ -1,58 +1,31 @@
 import { internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
-import {
-  isValidCompanyResearchCache,
-  normalizeCompanyResearchPayload,
-} from "../lib/companyResearchCache";
 
 /**
- * Native new leads on this search plus linked prior-account businesses queued
- * for re-enrichment (duplicate address/place re-runs with new roles).
+ * Native Google Maps leads for this search, capped at parameters.maxResults.
  */
 export const getLeadsForPeopleDiscovery = internalQuery({
   args: { searchId: v.id("searches") },
   handler: async (ctx, args) => {
+    const search = await ctx.db.get(args.searchId);
+    const maxResults =
+      typeof search?.parameters.maxResults === "number" &&
+      search.parameters.maxResults > 0
+        ? search.parameters.maxResults
+        : undefined;
+
     const nativeLeads = await ctx.db
       .query("leads")
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
       .collect();
 
-    const newNativeLeads = nativeLeads;
+    const cappedNativeLeads =
+      maxResults !== undefined
+        ? nativeLeads.slice(0, maxResults)
+        : nativeLeads;
 
-    const pendingLinks = await ctx.db
-      .query("searchLinkedLeads")
-      .withIndex("by_search_status", (q) =>
-        q.eq("searchId", args.searchId).eq("status", "pending"),
-      )
-      .collect();
-
-    const nativeIds = new Set(newNativeLeads.map((lead) => String(lead._id)));
-    const linkedLeads: Doc<"leads">[] = [];
-
-    for (const link of pendingLinks) {
-      if (nativeIds.has(String(link.leadId))) {
-        continue;
-      }
-      const lead = await ctx.db.get(link.leadId);
-      if (lead) {
-        linkedLeads.push(lead);
-      }
-    }
-
-    const seen = new Set<string>();
-    const result: Doc<"leads">[] = [];
-
-    for (const lead of [...newNativeLeads, ...linkedLeads]) {
-      const id = String(lead._id);
-      if (seen.has(id)) {
-        continue;
-      }
-      seen.add(id);
-      result.push(lead);
-    }
-
-    return result;
+    return cappedNativeLeads;
   },
 });
 
@@ -133,61 +106,9 @@ export const persistLeadProspects = internalMutation({
         rawDiscoveryData: v.optional(v.any()),
       }),
     ),
-    companyOverview: v.optional(v.string()),
-    companyResearchPayload: v.optional(v.any()),
-    domain: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    let companyResearchId: Id<"companyResearch"> | undefined;
-
-    if (args.companyResearchPayload && args.domain) {
-      const domain = args.domain;
-      const existing = await ctx.db
-        .query("companyResearch")
-        .withIndex("by_search_domain", (q) =>
-          q.eq("searchId", args.searchId).eq("domain", domain),
-        )
-        .first();
-
-      if (
-        existing?.researchPayload &&
-        isValidCompanyResearchCache(existing.researchPayload)
-      ) {
-        companyResearchId = existing._id;
-      } else {
-        const normalized = normalizeCompanyResearchPayload(
-          args.companyResearchPayload,
-        );
-
-        if (normalized) {
-          const researchData = {
-            searchId: args.searchId,
-            userId: args.userId,
-            leadId: args.leadId,
-            domain,
-            researchPayload: normalized,
-            confidence: normalized.confidence_score,
-            provider: "people_discovery",
-            // Pending until Perplexity company research completes in Write Emails.
-            status: "pending" as const,
-            updatedAt: now,
-            expiresAt: now + 24 * 60 * 60 * 1000,
-          };
-
-          if (existing) {
-            await ctx.db.patch(existing._id, researchData);
-            companyResearchId = existing._id;
-          } else {
-            companyResearchId = await ctx.db.insert("companyResearch", {
-              ...researchData,
-              createdAt: now,
-            });
-          }
-        }
-      }
-    }
-
     const insertedIds: Id<"leadProspects">[] = [];
 
     for (const person of args.people) {
@@ -217,7 +138,6 @@ export const persistLeadProspects = internalMutation({
         sourceUrl: person.sourceUrl,
         status: "discovered" as const,
         emailDiscoveryStatus: "pending" as const,
-        companyResearchId,
         rawDiscoveryData: person.rawDiscoveryData,
         updatedAt: now,
       };
@@ -236,7 +156,6 @@ export const persistLeadProspects = internalMutation({
 
     return {
       prospectCount: insertedIds.length,
-      companyResearchId,
     };
   },
 });

@@ -84,7 +84,6 @@ const findAddressComponentValue = (
   return match.long_name ?? match.short_name ?? undefined;
 };
 
-const INITIAL_FETCH_MULTIPLIER = 1.5;
 const MAX_RADIUS_MULTIPLIER = 3;
 const DEFAULT_EXPANSION_ITERATIONS = 5;
 const DEFAULT_EXPANSION_MULTIPLIER = 1.5;
@@ -612,31 +611,10 @@ export const searchGoogleMaps: any = action({
         enableAddressDedup: deduplicationConfig.enableAddressDedup,
       };
 
-      const linkLeadForReenrichmentIfNeeded = async (leadId: Id<"leads">) => {
-        if (deduplicationConfig.skipCompaniesWithExistingEmails) {
-          const hasExistingEmail = await ctx.runQuery(
-            internal.leads.internal.leadHasExistingContactEmail,
-            { leadId },
-          );
-          if (hasExistingEmail) {
-            logWithCorrelation(
-              "debug",
-              discoveryCorrelation,
-              "⏭️ Skipping re-enrichment for duplicate with existing email",
-              { leadId },
-            );
-            return;
-          }
-        }
-
-        await ctx.runMutation(
-          internal.leads.searchLinkedLeads.linkLeadForSearchReenrichment,
-          {
-            searchId: args.searchId,
-            userId: search.userId,
-            leadId,
-          },
-        );
+      const linkLeadForReenrichmentIfNeeded = async (_leadId: Id<"leads">) => {
+        // Prior-search duplicate re-linking is paused while the UI option is hidden.
+        // Google Maps discovery only creates up to maxResults new businesses per search.
+        return;
       };
 
       const maxExpansionIterations = Math.max(
@@ -1328,7 +1306,6 @@ export const searchGoogleMaps: any = action({
             hasBounds: !!bounds,
             hasCenter: lat !== 0 && lng !== 0,
             strategy: "optimized_tiled_search_nearby_api",
-            fetchMultiplier: INITIAL_FETCH_MULTIPLIER,
             maxTiles: maxTilesForSearch,
             calculatedTiles,
             tileReduction: `${((1 - maxTilesForSearch / 250) * 100).toFixed(0)}% vs baseline`,
@@ -1340,9 +1317,7 @@ export const searchGoogleMaps: any = action({
           },
         );
 
-        const initialFetchCount = Math.ceil(
-          requestedResults * INITIAL_FETCH_MULTIPLIER,
-        );
+        const initialFetchCount = requestedResults;
 
         const tilingResult = await searchPlacesWithTiling({
           apiKey: googleMapsApiKey,
@@ -1472,10 +1447,8 @@ export const searchGoogleMaps: any = action({
         let nextPageToken: string | undefined = undefined;
         const maxPages = 3;
         let currentPage = 0;
-        const paginationTarget = Math.ceil(
-          requestedResults * INITIAL_FETCH_MULTIPLIER,
-        );
-        const simpleFetchCap = Math.max(requestedResults, paginationTarget);
+        const paginationTarget = requestedResults;
+        const simpleFetchCap = requestedResults;
 
         while (currentPage < maxPages && places.length < simpleFetchCap) {
           const placesUrl = new URL(
@@ -1657,10 +1630,7 @@ export const searchGoogleMaps: any = action({
 
           for (const segment of ringSegments) {
             const remainingNeed = requestedResults - leadIds.length;
-            const segmentFetchCount = Math.max(
-              Math.ceil(remainingNeed * INITIAL_FETCH_MULTIPLIER),
-              requestedResults,
-            );
+            const segmentFetchCount = remainingNeed;
 
             // 🎯 PHASE 3 OPTIMIZATION: Reduce expansion tiles by 50%
             // Old logic: 120/150/200 tiles for expansion
@@ -1716,28 +1686,22 @@ export const searchGoogleMaps: any = action({
         }
       }
 
-      const deliveredLeads = leadIds.length;
+      const deliveredLeads = Math.min(leadIds.length, requestedResults);
       const shortfall = Math.max(requestedResults - deliveredLeads, 0);
       const totalDuplicatesPlaceId =
         duplicateCounters.placeId + duplicatesFromTiles;
-
-      const linkedLeadCount = await ctx.runQuery(
-        internal.leads.searchLinkedLeads.countSearchLinkedLeads,
-        { searchId: args.searchId },
-      );
-      const pipelineLeadCount = deliveredLeads + linkedLeadCount;
 
       await ctx.runMutation(
         internal.search.internal.updateSearchProgressInternal,
         {
           searchId: args.searchId,
           progress: {
-            discovered: pipelineLeadCount,
+            discovered: deliveredLeads,
             enriched: 0,
             analyzed: 0,
-            total: pipelineLeadCount,
+            total: deliveredLeads,
           },
-          partialResults: pipelineLeadCount < requestedResults,
+          partialResults: deliveredLeads < requestedResults,
           requestedCount: requestedResults,
         },
       );
@@ -1864,16 +1828,16 @@ export const searchGoogleMaps: any = action({
       await ctx.runMutation(internal.search.internal.updateSearchResults, {
         searchId: args.searchId,
         results: {
-          totalFound: pipelineLeadCount,
+          totalFound: deliveredLeads,
           enrichedCount: 0, // Will be updated during enrichment phase
           analyzedCount: 0, // Will be updated during analysis phase
           avgRelevanceScore: 0, // Will be updated during analysis phase
         },
         progress: {
-          discovered: pipelineLeadCount,
+          discovered: deliveredLeads,
           enriched: 0,
           analyzed: 0,
-          total: pipelineLeadCount,
+          total: deliveredLeads,
         },
       });
 
@@ -1961,7 +1925,7 @@ export const searchGoogleMaps: any = action({
       );
 
       // If nothing was discovered or linked, complete immediately
-      if (shouldEndDiscoveryWithoutEnrichment(deliveredLeads, pipelineLeadCount)) {
+      if (shouldEndDiscoveryWithoutEnrichment(deliveredLeads, deliveredLeads)) {
         logWithCorrelation(
           "warn",
           correlation,
@@ -2020,9 +1984,8 @@ export const searchGoogleMaps: any = action({
             correlation,
             "🔄 PHASE TRANSITION: Triggering Phase 2 (People Discovery / Enrichment)",
             {
-              leadsToEnrich: pipelineLeadCount,
+              leadsToEnrich: deliveredLeads,
               newLeads: deliveredLeads,
-              linkedLeads: pipelineLeadCount - deliveredLeads,
               schedulingDelay: "immediate",
             },
           );

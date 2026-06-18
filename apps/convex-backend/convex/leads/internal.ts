@@ -638,7 +638,24 @@ export const createLeadInternal = internalMutation({
     }),
   },
   handler: async (ctx, args) => {
-    // Trust caller to ensure search exists and belongs to user
+    const search = await ctx.db.get(args.searchId);
+    if (!search) {
+      return { status: "skipped" as const, reason: "search_level" as const };
+    }
+
+    const maxResults = search.parameters.maxResults;
+    if (typeof maxResults === "number" && maxResults > 0) {
+      const leadsOnSearch = await ctx.db
+        .query("leads")
+        .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
+        .collect();
+      if (leadsOnSearch.length >= maxResults) {
+        return {
+          status: "skipped" as const,
+          reason: "search_level" as const,
+        };
+      }
+    }
 
     // FIRST: Check for duplicate within THIS search (for spatial tiling deduplication)
     const duplicateInSearch = await ctx.db

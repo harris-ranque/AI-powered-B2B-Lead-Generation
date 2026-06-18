@@ -3,7 +3,11 @@
  * Per-contact aiAnalysis is slimmed; full payloads live in companyResearch.
  */
 
-import { hasPerplexityResearchStructure } from "./companyResearchCache";
+import {
+  hasPerplexityResearchStructure,
+  isPeopleDiscoveryOnlyResearch,
+  isValidCompanyResearchCache,
+} from "./companyResearchCache";
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -52,37 +56,69 @@ function normalizeCitations(citations: unknown): unknown[] {
   });
 }
 
+function isPerplexityResearchMetadata(
+  metadata: Record<string, unknown> | undefined,
+): boolean {
+  if (!metadata || metadata.source === "people_discovery") {
+    return false;
+  }
+  const report =
+    typeof metadata.comprehensive_report === "string"
+      ? metadata.comprehensive_report.trim()
+      : "";
+  if (report && hasPerplexityResearchStructure(report)) {
+    return true;
+  }
+  if (normalizeCitations(metadata.citations).length > 0) {
+    return true;
+  }
+  return extractTavilyCitationUrls(metadata).length > 0;
+}
+
 function findResearchMetadata(
   leadAnalysis: Record<string, unknown> | undefined,
   companyResearchPayload: unknown,
 ): Record<string, unknown> | undefined {
   const fromLead = asRecord(leadAnalysis?.research_metadata);
-  if (fromLead && hasResearchContent(fromLead)) {
+  if (fromLead && isPerplexityResearchMetadata(fromLead)) {
     return fromLead;
+  }
+
+  if (
+    companyResearchPayload &&
+    isPeopleDiscoveryOnlyResearch(companyResearchPayload)
+  ) {
+    return fromLead && isPerplexityResearchMetadata(fromLead)
+      ? fromLead
+      : undefined;
   }
 
   const payload = asRecord(companyResearchPayload);
   if (!payload) {
-    return fromLead;
+    return fromLead && isPerplexityResearchMetadata(fromLead)
+      ? fromLead
+      : undefined;
   }
 
   const rawData = asRecord(payload.raw_data);
   if (rawData) {
     const nested = asRecord(rawData.research_metadata);
-    if (nested && hasResearchContent(nested)) {
+    if (nested && isPerplexityResearchMetadata(nested)) {
       return nested;
     }
-    if (hasResearchContent(rawData)) {
+    if (isPerplexityResearchMetadata(rawData)) {
       return rawData;
     }
   }
 
   const direct = asRecord(payload.research_metadata);
-  if (direct && hasResearchContent(direct)) {
+  if (direct && isPerplexityResearchMetadata(direct)) {
     return direct;
   }
 
-  return fromLead;
+  return fromLead && isPerplexityResearchMetadata(fromLead)
+    ? fromLead
+    : undefined;
 }
 
 export type ExportResearchFields = {
@@ -116,19 +152,20 @@ function firstNonEmptyString(...values: Array<unknown>): string {
   return "";
 }
 
-function preferComprehensiveReport(...values: Array<unknown>): string {
-  const texts = values
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .map((value) => value.trim());
-  for (const text of texts) {
-    if (hasPerplexityResearchStructure(text)) {
-      return text;
+function preferPerplexityComprehensiveReport(...values: Array<unknown>): string {
+  for (const value of values) {
+    if (
+      typeof value === "string" &&
+      value.trim() &&
+      hasPerplexityResearchStructure(value.trim())
+    ) {
+      return value.trim();
     }
   }
-  return texts[0] ?? "";
+  return "";
 }
 
-/** True when webhook lead_analysis has enough text to persist companyResearch. */
+/** True when Write Emails produced Perplexity-grade research worth persisting. */
 export function leadAnalysisHasSaveableResearch(
   leadAnalysis: Record<string, unknown> | undefined,
 ): boolean {
@@ -137,16 +174,15 @@ export function leadAnalysisHasSaveableResearch(
   }
 
   const researchMetadata = asRecord(leadAnalysis.research_metadata);
-  return Boolean(
-    firstNonEmptyString(
-      leadAnalysis.company_overview,
-      leadAnalysis.research_summary,
+  if (!isPerplexityResearchMetadata(researchMetadata)) {
+    const report = firstNonEmptyString(
       leadAnalysis.comprehensive_report,
-      leadAnalysis.company_profile,
       researchMetadata?.comprehensive_report,
-      researchMetadata?.company_overview,
-    ),
-  );
+    );
+    return report.length > 0 && hasPerplexityResearchStructure(report);
+  }
+
+  return true;
 }
 
 export type WebhookResearchPayloadExtras = {
@@ -163,17 +199,32 @@ export function buildWebhookResearchPayload(
 ): Record<string, unknown> {
   const researchMetadata = asRecord(leadAnalysis.research_metadata);
   const companyOverview = firstNonEmptyString(
+    researchMetadata?.company_overview,
     leadAnalysis.company_overview,
     leadAnalysis.research_summary,
-    leadAnalysis.comprehensive_report,
     leadAnalysis.company_profile,
     researchMetadata?.comprehensive_report,
-    researchMetadata?.company_overview,
+    leadAnalysis.comprehensive_report,
   );
+
+  const rawData: Record<string, unknown> = {
+    ...leadAnalysis,
+    research_metadata: {
+      ...(researchMetadata ?? {}),
+      ...(companyOverview ? { company_overview: companyOverview } : {}),
+      comprehensive_report:
+        preferPerplexityComprehensiveReport(
+          researchMetadata?.comprehensive_report,
+          leadAnalysis.comprehensive_report,
+        ) || researchMetadata?.comprehensive_report,
+      citations: researchMetadata?.citations,
+      confidence_score: researchMetadata?.confidence_score,
+    },
+  };
 
   return {
     company_overview: companyOverview,
-    raw_data: leadAnalysis,
+    raw_data: rawData,
     confidence_score: extras.confidence_score,
     research_tier: extras.research_tier,
     deep_research_used: extras.deep_research_used,
@@ -322,15 +373,11 @@ export function mergeCompanyResearchPayloadForWebhook(
     existingRaw.company_overview,
   );
 
-  const comprehensiveReport = preferComprehensiveReport(
+  const comprehensiveReport = preferPerplexityComprehensiveReport(
     incomingMeta.comprehensive_report,
     existingMeta.comprehensive_report,
     incomingRaw.comprehensive_report,
     existingRaw.comprehensive_report,
-    incomingEnriched.company_overview,
-    existingEnriched.company_overview,
-    incomingRaw.company_overview,
-    existingRaw.company_overview,
   );
 
   const citations = resolveCitationsFromSources(
@@ -482,29 +529,17 @@ export function resolveExportResearchFields(
   const payload = asRecord(companyResearchPayload);
   const rawData = asRecord(payload?.raw_data);
 
-  let fullResearchReport = preferComprehensiveReport(
+  let fullResearchReport = preferPerplexityComprehensiveReport(
     researchMetadata?.comprehensive_report,
     leadAnalysis?.comprehensive_report,
     rawData?.comprehensive_report,
     asRecord(rawData?.research_metadata)?.comprehensive_report,
     payload?.comprehensive_report,
-    leadAnalysis?.company_overview,
-    leadAnalysis?.research_summary,
-    leadAnalysis?.company_profile,
-    leadAnalysis?.summary,
-    payload?.company_overview,
-    rawData?.company_overview,
   );
 
   let citations = normalizeCitations(researchMetadata?.citations);
   if (citations.length === 0 && researchMetadata) {
     citations = extractTavilyCitationUrls(researchMetadata);
-  }
-  if (citations.length === 0 && rawData) {
-    const scrapedUrls = extractPeopleDiscoveryScrapedUrls(rawData);
-    if (scrapedUrls.length > 0) {
-      citations = normalizeCitations(scrapedUrls);
-    }
   }
 
   let researchConfidenceScore: string | number = "";

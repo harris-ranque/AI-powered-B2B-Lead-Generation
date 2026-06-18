@@ -771,11 +771,11 @@ describe('Google Places Helper Tests - search/googlePlaces.ts', () => {
       expect(globalPlaceCount).toBe(60);
     });
 
-    it('should calculate correct target with buffer', () => {
+    it('should use exact maxResults as termination target', () => {
       const maxResults = 100;
-      const targetWithBuffer = Math.ceil(maxResults * 1.2);
+      const targetWithBuffer = maxResults;
 
-      expect(targetWithBuffer).toBe(120);
+      expect(targetWithBuffer).toBe(100);
     });
 
     it('should track early termination across workers', async () => {
