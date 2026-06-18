@@ -33,6 +33,7 @@ import type * as instantly_internal from "../instantly/internal.js";
 import type * as instantly_mutations from "../instantly/mutations.js";
 import type * as instantly_queries from "../instantly/queries.js";
 import type * as langgraph_actions from "../langgraph/actions.js";
+import type * as langgraph_batchWebhookHandlers from "../langgraph/batchWebhookHandlers.js";
 import type * as langgraph_health from "../langgraph/health.js";
 import type * as langgraph_internal from "../langgraph/internal.js";
 import type * as langgraph_mutations from "../langgraph/mutations.js";
@@ -187,6 +188,7 @@ declare const fullApi: ApiFromModules<{
   "instantly/mutations": typeof instantly_mutations;
   "instantly/queries": typeof instantly_queries;
   "langgraph/actions": typeof langgraph_actions;
+  "langgraph/batchWebhookHandlers": typeof langgraph_batchWebhookHandlers;
   "langgraph/health": typeof langgraph_health;
   "langgraph/internal": typeof langgraph_internal;
   "langgraph/mutations": typeof langgraph_mutations;

@@ -1076,24 +1076,12 @@ export const saveCompanyResearchFromWebhook = internalMutation({
       });
     }
 
-    const contacts = await ctx.db
-      .query("leadContacts")
-      .withIndex("by_search_status", (q) =>
-        q.eq("searchId", args.searchId).eq("status", "accepted"),
-      )
-      .collect();
-
-    for (const contact of contacts) {
-      const lead = await ctx.db.get(contact.leadId);
-      if (!lead?.website) continue;
-      const contactDomain = extractDomainFromWebsite(lead.website);
-      if (contactDomain !== args.domain) continue;
-
-      await ctx.db.patch(contact._id, {
-        companyResearchId,
-        updatedAt: now,
-      });
-    }
+    const lead = await ctx.db.get(args.leadId);
+    await linkLeadContactsToDomainResearch(ctx, {
+      searchId: args.searchId,
+      leadId: args.leadId,
+      website: lead?.website,
+    });
 
     return companyResearchId;
   },

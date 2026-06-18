@@ -144,6 +144,34 @@ export type AnalysisCompletionState = {
   isComplete: boolean;
 };
 
+/** True when any accepted contact with email is still queued or running Write Emails. */
+export async function hasAcceptedContactsAwaitingAnalysis(
+  ctx: AnalysisProgressCtx,
+  searchId: Id<"searches">,
+): Promise<boolean> {
+  const inFlightStatuses = ["pending", "scheduled", "processing"] as const;
+
+  for (const status of inFlightStatuses) {
+    const sample = await ctx.db
+      .query("leadContacts")
+      .withIndex("by_search_analysis", (q) =>
+        q.eq("searchId", searchId).eq("analysisStatus", status),
+      )
+      .take(1);
+
+    const contact = sample[0];
+    if (
+      contact &&
+      contact.status === "accepted" &&
+      contact.email.trim().length > 0
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Lightweight completion check for webhook handlers — avoids loading all search leads/contacts.
  */
