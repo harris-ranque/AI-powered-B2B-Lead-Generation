@@ -23,7 +23,10 @@ import { internalMutation, internalQuery, type MutationCtx } from "../_generated
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
-import { scheduleSearchCompletionIfReady } from "../lib/searchCompletion";
+import {
+  schedulePendingLinkedEnrichmentRecovery,
+  scheduleSearchCompletionIfReady,
+} from "../lib/searchCompletion";
 
 async function triggerAnalysisOrCompleteSearch(
   ctx: MutationCtx,
@@ -76,11 +79,29 @@ async function triggerAnalysisOrCompleteSearch(
     console.log(
       `[Workpool] ✅ Search completion scheduled for ${searchId} (${completion.reason})`,
     );
-  } else {
-    console.log(
-      `[Workpool] Analysis not triggered for search ${searchId} (${completion.reason})`,
-    );
+    return;
   }
+
+  if (completion.reason === "linked_enrichment_incomplete") {
+    const recovery = await schedulePendingLinkedEnrichmentRecovery(
+      ctx,
+      searchId,
+    );
+    if (recovery.scheduled) {
+      console.log(
+        `[Workpool] Scheduled linked re-enrichment for search ${searchId} (${recovery.pendingCount} pending duplicate businesses)`,
+      );
+      return;
+    }
+    console.log(
+      `[Workpool] Analysis not triggered for search ${searchId} (${completion.reason}; recovery: ${recovery.reason})`,
+    );
+    return;
+  }
+
+  console.log(
+    `[Workpool] Analysis not triggered for search ${searchId} (${completion.reason})`,
+  );
 }
 
 function isEnrichmentReturnSuccessful(returnValue: unknown): boolean {
@@ -654,19 +675,11 @@ export const reportQueuedLeadCompletion = internalMutation({
           return { updated: false, reason: "no_running_batch_analysis_triggered" };
         }
 
-        const completion = await scheduleSearchCompletionIfReady(ctx, args.searchId);
-        if (completion.scheduled) {
-          console.log(
-            `[Workpool] ✅ Search completion scheduled for ${args.searchId} (${completion.reason})`,
-          );
-          return {
-            updated: false,
-            reason: "no_running_batch_completion_scheduled",
-          };
-        }
-
-        console.log(
-          `[Workpool] Analysis not needed for search ${args.searchId} (${completion.reason})`,
+        await triggerAnalysisOrCompleteSearch(
+          ctx,
+          args.searchId,
+          "no_batch",
+          "queued_no_batch_fallback",
         );
 
         return { updated: false, reason: "no_running_batch" };

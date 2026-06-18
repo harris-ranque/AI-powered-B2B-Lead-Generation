@@ -378,13 +378,7 @@ export const recoverStuckSearches: any = internalAction({
           },
         );
 
-        const enrichedProgress = search.progress?.enriched ?? 0;
-
-        if (
-          pendingLinkedCount > 0 &&
-          enrichedProgress === 0 &&
-          age >= ANALYSIS_RECOVERY_GRACE_MS
-        ) {
+        if (pendingLinkedCount > 0 && age >= ANALYSIS_RECOVERY_GRACE_MS) {
           logWithCorrelation(
             "info",
             correlation,

@@ -5,17 +5,74 @@ import { isAllEnrichmentTerminal } from "./searchAnalysisRecovery";
 
 type CompletionCtx = QueryCtx | MutationCtx;
 
-async function hasPendingLinkedEnrichment(
+export async function countPendingLinkedEnrichment(
   ctx: CompletionCtx,
   searchId: Id<"searches">,
-): Promise<boolean> {
+): Promise<number> {
   const pending = await ctx.db
     .query("searchLinkedLeads")
     .withIndex("by_search_status", (q) =>
       q.eq("searchId", searchId).eq("status", "pending"),
     )
+    .collect();
+  return pending.length;
+}
+
+async function hasPendingLinkedEnrichment(
+  ctx: CompletionCtx,
+  searchId: Id<"searches">,
+): Promise<boolean> {
+  const pendingCount = await countPendingLinkedEnrichment(ctx, searchId);
+  return pendingCount > 0;
+}
+
+async function hasRunningEnrichmentBatch(
+  ctx: CompletionCtx,
+  searchId: Id<"searches">,
+): Promise<boolean> {
+  const running = await ctx.db
+    .query("enrichmentBatches")
+    .withIndex("by_search", (q) => q.eq("searchId", searchId))
+    .filter((q) => q.eq(q.field("status"), "running"))
     .take(1);
-  return pending.length > 0;
+  return running.length > 0;
+}
+
+/**
+ * Native enrichment batch finished but duplicate-linked businesses are still pending.
+ * Schedules enrichLeads so linked re-enrichment runs, then analysis can start.
+ */
+export async function schedulePendingLinkedEnrichmentRecovery(
+  ctx: MutationCtx,
+  searchId: Id<"searches">,
+): Promise<{ scheduled: boolean; reason: string; pendingCount: number }> {
+  const pendingCount = await countPendingLinkedEnrichment(ctx, searchId);
+  if (pendingCount === 0) {
+    return { scheduled: false, reason: "no_pending_linked", pendingCount: 0 };
+  }
+
+  const search = await ctx.db.get(searchId);
+  if (!search || search.status === "cancelled") {
+    return { scheduled: false, reason: "search_not_active", pendingCount };
+  }
+
+  if (search.enrichmentCheckpoint?.errorCode && search.enrichmentCheckpoint.resumable) {
+    return { scheduled: false, reason: "checkpoint_paused", pendingCount };
+  }
+
+  if (await hasRunningEnrichmentBatch(ctx, searchId)) {
+    return { scheduled: false, reason: "enrichment_batch_running", pendingCount };
+  }
+
+  await ctx.scheduler.runAfter(0, "leads/actions:enrichLeads" as any, {
+    searchId,
+  });
+
+  return {
+    scheduled: true,
+    reason: "linked_reenrichment_scheduled",
+    pendingCount,
+  };
 }
 
 /** Whether enrichment finished for native leads and linked re-enrichment queue. */
