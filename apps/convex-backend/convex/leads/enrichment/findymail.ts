@@ -20,10 +20,18 @@ import {
   resolveExpandedPatternsByRole,
 } from "../../lib/roleExpansion";
 import { isContactEmailVerified } from "../../lib/contactVerification";
+import {
+  parseFindyMailEmployeesResponse,
+  sanitizeFindyMailEmployeeJobTitles,
+} from "../../lib/findymailEmployees";
+import type { FindyMailEmployeeRecord } from "../../lib/findymailEmployees";
 
 const FINDYMAIL_BASE_URL = "https://app.findymail.com/api";
 const FINDYMAIL_TIMEOUT_MS = 50_000;
 const FINDYMAIL_NAME_TIMEOUT_MS = 15_000;
+const FINDYMAIL_EMPLOYEES_TIMEOUT_MS = 20_000;
+const MAX_EMPLOYEES_PER_REQUEST = 5;
+const MAX_EMPLOYEE_JOB_TITLES = 10;
 
 function createTimeoutController(timeoutMs: number) {
   const controller = new AbortController();
@@ -957,6 +965,121 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
     );
 
     return totalConfidence / data.emails.length;
+  }
+
+  /**
+   * Find employees by website + job titles via POST /search/employees.
+   * Does not return emails — used as people-discovery fallback before /search/name.
+   */
+  async searchEmployees(
+    website: string,
+    jobTitles: string[],
+    options?: { count?: number },
+  ): Promise<FindyMailEmployeeRecord[]> {
+    const trimmedWebsite = website.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    if (!trimmedWebsite) {
+      return [];
+    }
+
+    const titles = sanitizeFindyMailEmployeeJobTitles(jobTitles, MAX_EMPLOYEE_JOB_TITLES);
+    if (titles.length === 0) {
+      return [];
+    }
+
+    const count = Math.min(
+      MAX_EMPLOYEES_PER_REQUEST,
+      Math.max(1, options?.count ?? MAX_EMPLOYEES_PER_REQUEST),
+    );
+
+    console.log(
+      `[FindyMail] Employee search: ${trimmedWebsite} titles=${titles.join(", ")} count=${count}`,
+    );
+
+    let attempt = 0;
+    while (attempt < SINGLE_REQUEST_MAX_RETRIES) {
+      attempt += 1;
+      const timeout = createTimeoutController(FINDYMAIL_EMPLOYEES_TIMEOUT_MS);
+      let response: Response;
+
+      try {
+        response = await fetch(`${FINDYMAIL_BASE_URL}/search/employees`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            website: trimmedWebsite,
+            job_titles: titles,
+            count,
+          }),
+          signal: timeout.signal,
+        });
+      } catch (error) {
+        timeout.clear();
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new Error(
+            `FindyMail employee search timed out after ${FINDYMAIL_EMPLOYEES_TIMEOUT_MS}ms`,
+          );
+        }
+        throw error;
+      } finally {
+        timeout.clear();
+      }
+
+      if (response.status === 429 || response.status === 504) {
+        if (attempt >= SINGLE_REQUEST_MAX_RETRIES) {
+          const errorText = await response.text();
+          const apiError = classifyFindyMailError(response.status, errorText);
+          const error = new Error(
+            `FindyMail API error: ${response.status} ${response.statusText}`,
+          ) as Error & { apiError?: ApiError };
+          error.apiError = apiError;
+          throw error;
+        }
+        const delayMs = withJitter(
+          Math.min(
+            SINGLE_REQUEST_MAX_DELAY_MS,
+            SINGLE_REQUEST_BASE_DELAY_MS * 2 ** (attempt - 1),
+          ),
+        );
+        await sleep(delayMs);
+        continue;
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorBody: unknown = errorText;
+        try {
+          errorBody = JSON.parse(errorText);
+        } catch {
+          // keep text
+        }
+        const apiError = classifyFindyMailError(response.status, errorBody);
+        const error = new Error(
+          `FindyMail API error: ${response.status} ${response.statusText}`,
+        ) as Error & { apiError?: ApiError };
+        error.apiError = apiError;
+        throw error;
+      }
+
+      try {
+        const payload = await response.json();
+        const employees = parseFindyMailEmployeesResponse(payload);
+        console.log(
+          `[FindyMail] Employee search response for ${trimmedWebsite}: ${employees.length} employee(s)`,
+        );
+        return employees;
+      } catch (error) {
+        console.error(
+          `[FindyMail] Failed to parse employee search response for ${trimmedWebsite}:`,
+          error,
+        );
+        return [];
+      }
+    }
+
+    return [];
   }
 
   /**

@@ -167,6 +167,14 @@ export class EnrichmentService {
     return await this.provider.enrichByName(domain, name);
   }
 
+  async searchEmployees(
+    website: string,
+    jobTitles: string[],
+    options?: { count?: number },
+  ) {
+    return await this.provider.searchEmployees(website, jobTitles, options);
+  }
+
   /**
    * Validate API key
    */

@@ -124,6 +124,7 @@ export const persistLeadProspects = internalMutation({
           v.literal("perplexity"),
           v.literal("tavily"),
           v.literal("website_inference"),
+          v.literal("findymail_employees"),
           v.literal("manual"),
         ),
         sourceUrl: v.optional(v.string()),

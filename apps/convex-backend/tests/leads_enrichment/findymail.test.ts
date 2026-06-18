@@ -838,4 +838,45 @@ describe('Lead Enrichment Tests - Batch 7', () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
   });
+
+  describe("searchEmployees", () => {
+    it("calls /search/employees with website, job titles, and count", async () => {
+      const provider = new FindyMailProvider("test_api_key");
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          {
+            name: "Christian Ritosek",
+            jobTitle: "Co-Founder, CEO",
+            linkedinUrl: "https://linkedin.com/in/christian",
+          },
+        ],
+      });
+
+      const employees = await provider.searchEmployees("candis.io", [
+        "CEO",
+        "Founder",
+      ]);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://app.findymail.com/api/search/employees",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            website: "candis.io",
+            job_titles: ["CEO", "Founder"],
+            count: 5,
+          }),
+        }),
+      );
+      expect(employees).toEqual([
+        {
+          name: "Christian Ritosek",
+          jobTitle: "Co-Founder, CEO",
+          linkedinUrl: "https://linkedin.com/in/christian",
+        },
+      ]);
+    });
+  });
 });

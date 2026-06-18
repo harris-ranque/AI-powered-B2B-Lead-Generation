@@ -1,5 +1,9 @@
 // Shared types for enrichment providers
 
+import type { FindyMailEmployeeRecord } from "../../lib/findymailEmployees";
+
+export type { FindyMailEmployeeRecord };
+
 export type EnrichmentProvider = "findymail";
 
 export interface EmailContact {
@@ -89,6 +93,11 @@ export interface EnrichmentProviderInterface {
     options?: EnrichmentOptions,
   ): Promise<EnrichmentResult | null>;
   enrichByName(domain: string, name: string): Promise<EnrichmentResult | null>;
+  searchEmployees(
+    website: string,
+    jobTitles: string[],
+    options?: { count?: number },
+  ): Promise<FindyMailEmployeeRecord[]>;
   validateApiKey(apiKey: string): Promise<boolean>;
   getCredits(apiKey: string): Promise<number>;
 }

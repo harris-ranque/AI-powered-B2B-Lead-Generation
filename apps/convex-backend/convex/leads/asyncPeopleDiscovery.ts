@@ -15,6 +15,12 @@ import {
 } from "../lib/langgraphClient";
 import { extractDomainFromWebsite } from "../lib/contactVerification";
 import { buildPeopleDiscoveryResearchMetadata } from "../lib/exportResearchFields";
+import { mapFindyMailEmployeesToProspects } from "../lib/findymailEmployees";
+import { shouldBlockPipeline } from "../lib/apiErrors";
+import {
+  createEnrichmentService,
+  EnrichmentProviderFactory,
+} from "./enrichment/provider";
 import { enrichmentPool, generateBatchId } from "./workpool";
 
 type DiscoverPeopleApiPerson = {
@@ -31,7 +37,10 @@ type DiscoverPeopleApiPerson = {
 
 function mapProspectSource(
   source: string | undefined,
-): "perplexity" | "website_inference" {
+): "perplexity" | "website_inference" | "findymail_employees" {
+  if (source === "findymail_employees") {
+    return "findymail_employees";
+  }
   if (source === "website_inference" || source === "website_llm") {
     return "website_inference";
   }
@@ -233,6 +242,7 @@ export const discoverPeopleForLead = internalAction({
     const isEnterpriseUser = user?.plan === "enterprise";
 
     let providerKeys: Record<string, string> | undefined;
+    let findymailApiKey: string | undefined;
     if (isEnterpriseUser) {
       try {
         const resolvedKeys = (await ctx.runAction(
@@ -249,6 +259,10 @@ export const discoverPeopleForLead = internalAction({
         }
         if (resolvedKeys.perplexity) {
           keys.perplexity = resolvedKeys.perplexity;
+        }
+        if (resolvedKeys.findymail) {
+          keys.findymail = resolvedKeys.findymail;
+          findymailApiKey = resolvedKeys.findymail;
         }
         if (Object.keys(keys).length > 0) {
           providerKeys = keys;
@@ -308,9 +322,69 @@ export const discoverPeopleForLead = internalAction({
       researchTier?: string;
     };
 
-    const people = (data.people ?? []).filter(
+    let people = (data.people ?? []).filter(
       (p) => p.name?.trim() && p.title?.trim(),
     );
+
+    let usedFindyMailEmployeesFallback = false;
+
+    if (people.length === 0) {
+      const findymailKey = EnrichmentProviderFactory.getProviderApiKey(
+        "findymail",
+        findymailApiKey,
+      );
+
+      if (findymailKey) {
+        try {
+          const service = createEnrichmentService(findymailApiKey, "findymail");
+          const employees = await service.searchEmployees(domain, requestedRoles);
+          const mapped = mapFindyMailEmployeesToProspects(
+            employees,
+            requestedRoles,
+          );
+
+          if (mapped.length > 0) {
+            usedFindyMailEmployeesFallback = true;
+            people = mapped.map((person) => ({
+              name: person.name,
+              title: person.title,
+              matchedRole: person.matchedRole,
+              confidence: person.confidence,
+              roleMatchScore: person.roleMatchScore,
+              linkedinUrl: person.linkedinUrl,
+              source: person.source,
+              sources: ["findymail_employees"],
+            }));
+          }
+        } catch (error) {
+          const apiError = (error as { apiError?: import("../lib/apiErrors").ApiError })
+            .apiError;
+          const message =
+            error instanceof Error ? error.message : "FindyMail employee search failed";
+
+          await ctx.runMutation(
+            internal.leads.peopleDiscoveryInternal.appendPeopleDiscoveryLog,
+            {
+              searchId: args.searchId,
+              userId: args.userId,
+              leadId: args.leadId,
+              event: "lead_failed",
+              message: `FindyMail /search/employees fallback failed`,
+              businessName: lead.businessName,
+              domain,
+              metadata: {
+                error: message.slice(0, 500),
+                errorCode: apiError?.errorCode,
+              },
+            },
+          );
+
+          if (apiError && shouldBlockPipeline(apiError)) {
+            throw error;
+          }
+        }
+      }
+    }
 
     const sanitizeOptionalString = (value: unknown): string | undefined => {
       if (typeof value !== "string") {
@@ -324,7 +398,9 @@ export const discoverPeopleForLead = internalAction({
     const companyOverview =
       overviewFromApi ??
       (people.length > 0
-        ? `${people.length} role-matched team member${people.length === 1 ? "" : "s"} found on ${lead.businessName}'s website.`
+        ? usedFindyMailEmployeesFallback
+          ? `${people.length} role-matched team member${people.length === 1 ? "" : "s"} found via FindyMail employee search for ${lead.businessName}.`
+          : `${people.length} role-matched team member${people.length === 1 ? "" : "s"} found on ${lead.businessName}'s website.`
         : `No role-matched team members found on ${lead.businessName}'s website.`);
 
     const confidenceScore = people.length > 0 ? 0.75 : 0.3;
@@ -336,6 +412,7 @@ export const discoverPeopleForLead = internalAction({
       raw: rawDiscoveryData,
       research_tier: data.researchTier ?? "pro",
       confidence_score: confidenceScore,
+      findymail_employees_fallback: usedFindyMailEmployeesFallback,
     };
     const researchMetadata = buildPeopleDiscoveryResearchMetadata(
       companyOverview,
@@ -412,7 +489,9 @@ export const discoverPeopleForLead = internalAction({
           userId: args.userId,
           leadId: args.leadId,
           event: "lead_completed",
-          message: `Found ${peopleForLog.length} role-matched ${peopleForLog.length === 1 ? "person" : "people"}`,
+          message: usedFindyMailEmployeesFallback
+            ? `Found ${peopleForLog.length} role-matched ${peopleForLog.length === 1 ? "person" : "people"} via FindyMail /search/employees fallback`
+            : `Found ${peopleForLog.length} role-matched ${peopleForLog.length === 1 ? "person" : "people"}`,
           businessName: lead.businessName,
           domain,
           prospectCount: peopleForLog.length,
@@ -421,6 +500,7 @@ export const discoverPeopleForLead = internalAction({
             researchTier: data.researchTier,
             scrapedPeople: (data.rawData as { website?: { people_found?: number } })
               ?.website?.people_found,
+            findymailEmployeesFallback: usedFindyMailEmployeesFallback,
           },
         },
       );
@@ -432,11 +512,18 @@ export const discoverPeopleForLead = internalAction({
           userId: args.userId,
           leadId: args.leadId,
           event: "lead_completed",
-          message: "No role-matched people found on website",
+          message: usedFindyMailEmployeesFallback
+            ? "FindyMail /search/employees fallback returned no role-matched people"
+            : "No role-matched people found on website",
           businessName: lead.businessName,
           domain,
           prospectCount: 0,
-          metadata: { researchTier: data.researchTier },
+          metadata: {
+            researchTier: data.researchTier,
+            findymailEmployeesFallbackAttempted: Boolean(
+              EnrichmentProviderFactory.getProviderApiKey("findymail", findymailApiKey),
+            ),
+          },
         },
       );
     }
