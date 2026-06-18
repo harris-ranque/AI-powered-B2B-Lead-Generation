@@ -42,6 +42,7 @@ export type DashboardTabName =
 
 export interface LeadStatsSummary {
   totalLeads?: number;
+  totalContacts?: number;
   withEmails?: number;
   thisWeek?: number;
 }
@@ -128,24 +129,27 @@ export function DashboardOverview({
   const planMeta = formatPlan(planId);
   const greetingName = userName || businessName || "there";
 
-  const totalLeads = leadStats?.totalLeads ?? 0;
-  const verifiedEmails = leadStats?.withEmails ?? 0;
-  const targetedEmailsCount = verifiedEmails;
+  const totalContacts =
+    leadStats?.totalContacts ?? leadStats?.totalLeads ?? 0;
+  const exportableContacts = leadStats?.withEmails ?? 0;
 
   const stats = [
     {
-      label: "Total leads",
-      value: totalLeads.toLocaleString(),
+      label: "Total contacts",
+      value: totalContacts.toLocaleString(),
       sublabel:
         leadStats?.thisWeek && leadStats.thisWeek > 0
           ? `+${leadStats.thisWeek} this week`
-          : "No new leads this week",
+          : "No new contacts this week",
       icon: Sparkles,
     },
     {
       label: "Highly targeted emails created",
-      value: targetedEmailsCount > 0 ? targetedEmailsCount.toLocaleString() : "0",
-      sublabel: targetedEmailsCount > 0 ? `${targetedEmailsCount} personalized email${targetedEmailsCount !== 1 ? 's' : ''} ready` : "No emails generated yet",
+      value: exportableContacts > 0 ? exportableContacts.toLocaleString() : "0",
+      sublabel:
+        exportableContacts > 0
+          ? `${exportableContacts} exportable contact${exportableContacts !== 1 ? "s" : ""} ready`
+          : "No exportable contacts yet",
       icon: Mail,
     },
   ];

@@ -1017,10 +1017,7 @@ export const getRejectedFindyMailContactsBySearch = query({
   },
 });
 
-// Get lead statistics for user
-// OPTIMIZED: Aggregates from searches table (much lighter than leads)
-// Searches already have pre-computed stats in progress/results fields
-// Returns null if not authenticated (allows query during auth hydration)
+// Get contact statistics for user (from leadContacts, not business count)
 export const getLeadStats = query({
   args: {},
   handler: async (ctx) => {
@@ -1036,71 +1033,91 @@ export const getLeadStats = query({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
 
-    // Aggregate stats from all searches
-    // totalLeads = all businesses discovered by Google Maps (with + without email)
-    // verifiedEmails = exportable leads (email found AND analysis succeeded)
-    let totalLeads = 0;
-    let verifiedEmails = 0;
+    // Aggregate search-level metrics (businesses discovered, rates)
+    let totalBusinessesDiscovered = 0;
     let enrichedLeads = 0;
     let analyzedLeads = 0;
     let relevanceSum = 0;
     let relevanceCount = 0;
-    let thisWeekLeads = 0;
 
     const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
     for (const search of searches) {
       const searchDiscovered = search.results?.totalFound || 0;
-      // exportableCount = verified emails (email found + analysis not failed)
-      const searchExportable =
-        search.results?.exportableCount ?? search.results?.enrichedCount ?? 0;
       const searchEnriched = search.results?.enrichedCount || 0;
       const searchAnalyzed = search.results?.analyzedCount || 0;
       const searchAvgRelevance = search.results?.avgRelevanceScore;
 
-      // totalLeads = all discovered (with + without email) = Google Maps count
-      totalLeads += searchDiscovered;
-      // verifiedEmails = leads ready to export/email
-      verifiedEmails += searchExportable;
+      totalBusinessesDiscovered += searchDiscovered;
       enrichedLeads += searchEnriched;
       analyzedLeads += searchAnalyzed;
 
-      // Calculate weighted average for relevance score
       if (searchAvgRelevance && searchAnalyzed > 0) {
         relevanceSum += searchAvgRelevance * searchAnalyzed;
         relevanceCount += searchAnalyzed;
       }
-
-      // Count leads created this week (use search creation time as proxy)
-      if (search._creationTime >= oneWeekAgo) {
-        thisWeekLeads += searchDiscovered;
-      }
     }
+
+    const acceptedContacts = await ctx.db
+      .query("leadContacts")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+
+    const acceptedWithEmail = acceptedContacts.filter(
+      (contact) =>
+        contact.status === "accepted" && contact.email.trim().length > 0,
+    );
+
+    const exportableContacts = await filterFullyExportableContacts(
+      ctx,
+      acceptedWithEmail,
+    );
+
+    const dedupeByEmail = <T extends { normalizedEmail: string; createdAt: number }>(
+      contacts: T[],
+    ): T[] => {
+      const byEmail = new Map<string, T>();
+      for (const contact of contacts) {
+        const key = contact.normalizedEmail.toLowerCase().trim();
+        if (!key) continue;
+        const existing = byEmail.get(key);
+        if (!existing || contact.createdAt > existing.createdAt) {
+          byEmail.set(key, contact);
+        }
+      }
+      return [...byEmail.values()];
+    };
+
+    const uniqueAccepted = dedupeByEmail(acceptedWithEmail);
+    const uniqueExportable = dedupeByEmail(exportableContacts);
+
+    const totalContacts = uniqueAccepted.length;
+    const exportableCount = uniqueExportable.length;
+    const thisWeekContacts = uniqueAccepted.filter(
+      (contact) => contact.createdAt >= oneWeekAgo,
+    ).length;
 
     const avgRelevanceScore =
       relevanceCount > 0 ? relevanceSum / relevanceCount : 0;
 
-    // Rates use totalLeads (all discovered) as denominator — bounded to 0–100%
-    const rateBase = totalLeads > 0 ? totalLeads : 1;
+    const rateBase =
+      totalBusinessesDiscovered > 0 ? totalBusinessesDiscovered : 1;
 
     return {
-      // Primary stats (from search aggregation)
-      // totalLeads = all discovered businesses (with + without email)
-      totalLeads,
+      // Dashboard: people with verified emails (multi-contact per company)
+      totalLeads: totalContacts,
+      totalContacts,
+      totalBusinessesDiscovered,
       enrichedLeads,
       analyzedLeads,
-      // withEmails = verified emails (exportable: email found + analysis not failed)
-      withEmails: verifiedEmails,
-      // thisWeek is approximate based on search creation dates
-      thisWeek: thisWeekLeads,
-      // Rates — denominator is totalLeads (all discovered) so results are bounded to 0–100%
+      withEmails: exportableCount,
+      thisWeek: thisWeekContacts,
       enrichmentRate:
         rateBase > 0 ? Math.round((enrichedLeads / rateBase) * 100) : 0,
       analysisRate:
         rateBase > 0 ? Math.round((analyzedLeads / rateBase) * 100) : 0,
       avgRelevanceScore: Math.round(avgRelevanceScore * 100),
-      // Note: qualifiedLeads/contactedLeads/conversionRate not available from search aggregation
-      // These would require scanning leads or pre-computing on status changes
+      acceptedContacts: uniqueAccepted.length,
       qualifiedLeads: 0,
       contactedLeads: 0,
       conversionRate: 0,

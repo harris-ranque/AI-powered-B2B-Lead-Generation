@@ -169,6 +169,8 @@ export type UseLeadResult = ReturnType<typeof useLeadBase>;
 // Default stats to prevent crashes when query returns undefined
 const DEFAULT_LEAD_STATS = {
   totalLeads: 0,
+  totalContacts: 0,
+  totalBusinessesDiscovered: 0,
   enrichedLeads: 0,
   analyzedLeads: 0,
   withEmails: 0,

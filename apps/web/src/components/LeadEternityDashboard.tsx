@@ -363,6 +363,7 @@ function LeadEternityDashboardContent() {
     if (!leadStats) return null;
     return {
       totalLeads: leadStats.totalLeads,
+      totalContacts: leadStats.totalContacts ?? leadStats.totalLeads,
       withEmails: leadStats.withEmails,
       thisWeek: leadStats.thisWeek,
     };

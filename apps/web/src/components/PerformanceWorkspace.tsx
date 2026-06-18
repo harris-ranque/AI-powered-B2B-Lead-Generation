@@ -103,13 +103,15 @@ function PerformanceWorkspaceComponent({
   }, []);
 
   const highlightCards = useMemo(() => {
-    const verifiedEmails = leadStats?.withEmails ?? 0;
-    const totalLeads = leadStats?.totalLeads ?? 0;
+    const exportableContacts = leadStats?.withEmails ?? 0;
+    const totalContacts =
+      leadStats?.totalContacts ?? leadStats?.totalLeads ?? 0;
+    const businessesDiscovered = leadStats?.totalBusinessesDiscovered ?? 0;
 
     return [
       {
-        title: "Leads generated",
-        value: totalLeads.toLocaleString(),
+        title: "Total contacts",
+        value: totalContacts.toLocaleString(),
         helper:
           leadStats?.thisWeek && leadStats.thisWeek > 0
             ? `+${leadStats.thisWeek} this week`
@@ -117,11 +119,11 @@ function PerformanceWorkspaceComponent({
         icon: Rocket,
       },
       {
-        title: "Verified emails",
-        value: verifiedEmails.toLocaleString(),
+        title: "Exportable contacts",
+        value: exportableContacts.toLocaleString(),
         helper:
-          totalLeads > 0
-            ? `${Math.round((verifiedEmails / Math.max(totalLeads, 1)) * 100)}% coverage`
+          businessesDiscovered > 0
+            ? `${businessesDiscovered.toLocaleString()} businesses searched`
             : "Enrich leads to unlock outreach",
         icon: Mail,
       },
@@ -147,7 +149,15 @@ function PerformanceWorkspaceComponent({
         icon: LineChart,
       },
     ];
-  }, [leadStats?.thisWeek, leadStats?.totalLeads, leadStats?.withEmails, usageSummary, userCredits]);
+  }, [
+    leadStats?.thisWeek,
+    leadStats?.totalLeads,
+    leadStats?.totalContacts,
+    leadStats?.totalBusinessesDiscovered,
+    leadStats?.withEmails,
+    usageSummary,
+    userCredits,
+  ]);
 
   const activeSearches = useMemo(() => {
     try {
