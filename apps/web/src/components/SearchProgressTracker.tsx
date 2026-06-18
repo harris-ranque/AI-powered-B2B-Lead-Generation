@@ -129,6 +129,10 @@ export function SearchProgressTracker({
     api.leads.queries.getEnrichmentProgress,
     search ? { searchId } : "skip"
   );
+  const analysisProgress = useQuery(
+    api.leads.queries.getAnalysisProgress,
+    search ? { searchId } : "skip",
+  );
   const liveExportSummaries = useQuery(
     api.leads.queries.getExportSummariesBySearchIds,
     { searchIds: [searchId] },
@@ -238,7 +242,14 @@ export function SearchProgressTracker({
     }
 
     if (analyzedCount > 0 ||
+      (analysisProgress?.total ?? 0) > 0 ||
       (search.researchStage && search.researchStage !== "research_failed")) {
+      return STAGE_ORDER.indexOf("analysis");
+    }
+    if (
+      enrichmentProgress?.isComplete ||
+      (enrichmentProgress?.percentComplete ?? 0) >= 100
+    ) {
       return STAGE_ORDER.indexOf("analysis");
     }
     if (enrichedCount > 0 || search.status === "processing") {

@@ -223,6 +223,7 @@ export function AIPersonalizationStage() {
   const displayTotal = totalToWrite > 0 ? totalToWrite : leads.length;
   const scheduledCount = analysisProgress?.scheduled ?? 0;
   const processingCount = analysisProgress?.processing ?? 0;
+  const workerCount = scheduledCount + processingCount;
   const inProgressCount =
     analysisProgress?.inProgress ??
     broadcastBreakdown?.inProgress ??
@@ -230,6 +231,8 @@ export function AIPersonalizationStage() {
   const pendingCount =
     analysisProgress?.pending ?? broadcastBreakdown?.pending ?? 0;
   const stuckCount = analysisProgress?.stuckInProgress ?? 0;
+  const awaitingWorkerStart =
+    pendingCount > 0 && workerCount === 0 && !analysisComplete;
 
   const activityPhase = broadcastActivity.phase;
   const activityLabel = broadcastActivity.label;
@@ -343,7 +346,8 @@ export function AIPersonalizationStage() {
         </CardContent>
       </Card>
 
-      {!analysisComplete && (stuckCount > 0 || inProgressCount > 0) && (
+      {!analysisComplete &&
+        (stuckCount > 0 || workerCount > 0 || awaitingWorkerStart) && (
         <Alert>
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription className="space-y-3">
@@ -351,9 +355,11 @@ export function AIPersonalizationStage() {
               Email writing runs on the LangGraph worker (~2–5 minutes per contact).
               {stuckCount > 0
                 ? ` ${stuckCount} contact(s) look stuck (no update for 10+ minutes), often because the worker or ngrok tunnel went offline.`
-                : inProgressCount > 0
-                  ? ` ${inProgressCount} still processing — wait a few minutes if the worker is running.`
-                  : ""}
+                : workerCount > 0
+                  ? ` ${workerCount} in the worker now${processingCount > 0 ? ` (${processingCount} actively writing)` : ""}.`
+                  : awaitingWorkerStart
+                    ? ` ${pendingCount} queued but not started yet — the system should schedule them automatically within a few minutes after email discovery finishes.`
+                    : ""}
             </p>
             <div className="flex flex-wrap gap-2">
               {stuckCount > 0 && (
@@ -366,14 +372,15 @@ export function AIPersonalizationStage() {
                   Skip {stuckCount} stuck contact(s)
                 </Button>
               )}
-              {inProgressCount > 0 && (
+              {(workerCount > 0 || awaitingWorkerStart) && (
                 <Button
                   size="sm"
                   variant="ghost"
                   disabled={isSkipping}
                   onClick={() => handleSkipStuck(0)}
                 >
-                  Skip all {inProgressCount} in progress
+                  Skip all {workerCount > 0 ? workerCount : pendingCount}{" "}
+                  {workerCount > 0 ? "in progress" : "queued"}
                 </Button>
               )}
             </div>

@@ -81,7 +81,7 @@ async def validate_perplexity_key(api_key: str) -> ValidationResult:
         # Reference: https://docs.perplexity.ai/docs/model-cards
         "model": "sonar",
         "messages": [{"role": "user", "content": "test"}],
-        "max_tokens": 1
+        "max_tokens": 16
     }
 
     try:

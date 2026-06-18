@@ -105,6 +105,14 @@ export function summarizeAcceptedContactAnalysis(
   };
 }
 
+/** LangGraph batches are in flight — pending alone means not scheduled yet. */
+export function isAnalysisActivelyInFlight(completion: {
+  scheduled: number;
+  processing: number;
+}): boolean {
+  return completion.scheduled + completion.processing > 0;
+}
+
 async function collectContactsByAnalysisStatus(
   ctx: AnalysisProgressCtx,
   searchId: Id<"searches">,

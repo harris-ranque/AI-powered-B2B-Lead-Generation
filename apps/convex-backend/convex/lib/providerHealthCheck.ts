@@ -234,7 +234,7 @@ export async function checkPerplexityHealth(
       body: JSON.stringify({
         model: "sonar",
         messages: [{ role: "user", content: "test" }],
-        max_tokens: 1,
+        max_tokens: 16,
       }),
       signal: AbortSignal.timeout(15000),
     });

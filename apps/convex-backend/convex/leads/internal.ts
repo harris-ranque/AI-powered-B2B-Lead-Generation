@@ -7,7 +7,7 @@ import {
   leadRecordHasStoredEmail,
 } from "../lib/deduplication";
 import { resolveSearchExportData } from "../lib/exportEligibility";
-import { getAnalysisCompletionState } from "../lib/analysisProgress";
+import { getAnalysisCompletionState, isAnalysisActivelyInFlight } from "../lib/analysisProgress";
 import {
   isAllEnrichmentTerminal,
   isFailedSearchAnalysisTimeout,
@@ -1458,7 +1458,7 @@ export const tryTriggerAnalysisPhase = internalMutation({
 
       const completion = await getAnalysisCompletionState(ctx, args.searchId);
 
-      if (completion.inProgress > 0) {
+      if (isAnalysisActivelyInFlight(completion)) {
         return false;
       }
 
@@ -1527,7 +1527,7 @@ export const tryTriggerAnalysisPhase = internalMutation({
       if (acceptedSample.length > 0) {
         const completion = await getAnalysisCompletionState(ctx, args.searchId);
 
-        if (completion.inProgress > 0) {
+        if (isAnalysisActivelyInFlight(completion)) {
           return false;
         }
 
