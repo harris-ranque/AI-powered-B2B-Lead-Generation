@@ -25,8 +25,10 @@ import {
   noExportableLeadsMessage,
   formatExportPhone,
   resolveContactExportTitle,
+  type LeadContactDoc,
 } from "./lib/exportEligibility";
 import { resolveExportResearchFields } from "./lib/exportResearchFields";
+import { extractDomainFromWebsite } from "./lib/contactVerification";
 
 const http = httpRouter();
 
@@ -863,21 +865,7 @@ http.route({
       // Get leads data
       const searchId = searchIdParam as Id<"searches"> | undefined;
       let leads: LeadDoc[] = [];
-      let exportContacts: Array<{
-        _id: Id<"leadContacts">;
-        leadId: Id<"leads">;
-        name: string;
-        title?: string;
-        email: string;
-        analysisStatus?: string;
-        companyResearchId?: Id<"companyResearch">;
-        emailContent?: {
-          subject: string;
-          body: string;
-        };
-        followUpEmails?: Array<{ subject: string; body: string }>;
-        aiAnalysis?: Record<string, unknown>;
-      }> = [];
+      let exportContacts: LeadContactDoc[] = [];
       let includesPriorSearchLeads = false;
       let duplicateSkips = 0;
       let priorSearchExportable = 0;
@@ -1108,6 +1096,16 @@ http.route({
         const exportResearch = resolveExportResearchFields(
           leadAnalysis,
           companyResearchPayload,
+          {
+            confidence:
+              typeof aiAnalysis?.confidence === "number"
+                ? aiAnalysis.confidence
+                : undefined,
+            relevanceScore:
+              typeof aiAnalysis?.relevanceScore === "number"
+                ? aiAnalysis.relevanceScore
+                : undefined,
+          },
         );
         const fullResearchReport = exportResearch.fullResearchReport;
         const perplexityCitations = JSON.stringify(exportResearch.citations);
@@ -1135,7 +1133,10 @@ http.route({
           fullResearchReport,
           perplexityCitations,
           researchConfidenceScore,
-          (lead as any).leadTier ?? "",
+          (lead as { leadTier?: string }).leadTier ??
+            (typeof contactAiAnalysis?.leadTier === "string"
+              ? contactAiAnalysis.leadTier
+              : ""),
         ];
 
         return rowValues.map(escapeCsvValue).join(",");
@@ -1201,6 +1202,35 @@ http.route({
           companyNameByLeadId,
         );
 
+        const domainsForFallback = new Set<string>();
+        for (const contact of sortedExportableContacts) {
+          if (contact.companyResearchId) {
+            continue;
+          }
+          const lead = leadById.get(String(contact.leadId));
+          if (!lead?.website) {
+            continue;
+          }
+          const domain = extractDomainFromWebsite(lead.website);
+          if (domain) {
+            domainsForFallback.add(domain);
+          }
+        }
+
+        const companyResearchByDomain = new Map<string, unknown>();
+        if (domainsForFallback.size > 0) {
+          const domainRows = await ctx.runQuery(
+            internal.leads.contactInternal.getCompanyResearchPayloadsByDomainsForExport,
+            {
+              searchId: searchId as Id<"searches">,
+              domains: [...domainsForFallback],
+            },
+          );
+          for (const row of domainRows) {
+            companyResearchByDomain.set(row.domain, row.researchPayload);
+          }
+        }
+
         csvRows = sortedExportableContacts.map((contact) => {
           const lead = leadById.get(String(contact.leadId));
           if (!lead) {
@@ -1210,6 +1240,15 @@ http.route({
           const emailDetails = emailDetailsByLead.get(leadKey);
           const fullName = contact.name;
           const firstName = fullName.split(/\s+/)[0] ?? "";
+          let companyResearchPayload = contact.companyResearchId
+            ? companyResearchById.get(String(contact.companyResearchId))
+            : undefined;
+          if (!companyResearchPayload && lead.website) {
+            const domain = extractDomainFromWebsite(lead.website);
+            if (domain) {
+              companyResearchPayload = companyResearchByDomain.get(domain);
+            }
+          }
           return buildExportRow(
             lead,
             leadKey,
@@ -1220,9 +1259,7 @@ http.route({
             contact.emailContent,
             contact.followUpEmails,
             contact.aiAnalysis,
-            contact.companyResearchId
-              ? companyResearchById.get(String(contact.companyResearchId))
-              : undefined,
+            companyResearchPayload,
           );
         }).filter((row) => row.length > 0);
       } else {

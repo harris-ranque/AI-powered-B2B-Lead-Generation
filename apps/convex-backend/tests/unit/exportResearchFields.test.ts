@@ -153,6 +153,31 @@ describe("resolveExportResearchFields", () => {
     expect(enriched.raw_data.research_metadata.confidence_score).toBe(0.66);
   });
 
+  it("falls back to slim contact leadAnalysis overview and relevance when companyResearch missing", () => {
+    const result = resolveExportResearchFields(
+      {
+        company_overview: "Slim overview from Write Emails",
+        confidence_score: 0.61,
+      },
+      undefined,
+      { relevanceScore: 0.55 },
+    );
+
+    expect(result.fullResearchReport).toBe("Slim overview from Write Emails");
+    expect(result.researchConfidenceScore).toBe(0.61);
+  });
+
+  it("uses contact relevance when no research confidence is available", () => {
+    const result = resolveExportResearchFields(
+      { company_profile: "Profile text" },
+      undefined,
+      { relevanceScore: 0.48 },
+    );
+
+    expect(result.fullResearchReport).toBe("Profile text");
+    expect(result.researchConfidenceScore).toBe(0.48);
+  });
+
   it("mergeCompanyResearchPayloadForWebhook preserves people-discovery citations", () => {
     const existing = {
       company_overview: "2 team members found on website",

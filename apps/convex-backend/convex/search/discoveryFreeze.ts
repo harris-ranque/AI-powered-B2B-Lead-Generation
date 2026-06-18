@@ -7,6 +7,7 @@
 import { v } from "convex/values";
 import { internalAction, internalMutation, mutation } from "../_generated/server";
 import { internal } from "../_generated/api";
+import type { Doc, Id } from "../_generated/dataModel";
 import { requireAuth } from "../auth";
 import { isAdmin } from "../lib/helpers";
 import {
@@ -302,14 +303,22 @@ export const cloneDiscoveryLeadsInternal = internalMutation({
   },
 });
 
+type ApplyFrozenDiscoveryResult = {
+  success: boolean;
+  clonedCount: number;
+  message?: string;
+  leadIds?: Id<"leads">[];
+  sourceSearchId?: Id<"searches">;
+};
+
 export const applyFrozenDiscovery = internalAction({
   args: {
     searchId: v.id("searches"),
   },
-  handler: async (ctx, args) => {
-    const search = await ctx.runQuery(internal.search.internal.getSearchInternal, {
+  handler: async (ctx, args): Promise<ApplyFrozenDiscoveryResult> => {
+    const search = (await ctx.runQuery(internal.search.internal.getSearchInternal, {
       searchId: args.searchId,
-    });
+    })) as Doc<"searches"> | null;
 
     if (!search) {
       throw new Error(`Search ${args.searchId} not found`);
@@ -319,7 +328,11 @@ export const applyFrozenDiscovery = internalAction({
       throw new Error("Search is not configured for frozen discovery replay");
     }
 
-    const cloneResult = await ctx.runMutation(
+    const cloneResult: {
+      clonedCount: number;
+      leadIds: Id<"leads">[];
+      sourceSearchId: Id<"searches">;
+    } = await ctx.runMutation(
       (internal as any).search.discoveryFreeze.cloneDiscoveryLeadsInternal,
       {
         targetSearchId: args.searchId,

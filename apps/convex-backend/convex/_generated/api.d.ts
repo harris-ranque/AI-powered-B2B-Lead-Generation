@@ -105,6 +105,7 @@ import type * as lib_sanitization from "../lib/sanitization.js";
 import type * as lib_searchAnalysisRecovery from "../lib/searchAnalysisRecovery.js";
 import type * as lib_searchCompletion from "../lib/searchCompletion.js";
 import type * as lib_searchLogic from "../lib/searchLogic.js";
+import type * as lib_searchProgressMetrics from "../lib/searchProgressMetrics.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as middleware_subscriptionMiddleware from "../middleware/subscriptionMiddleware.js";
 import type * as notifications_actions from "../notifications/actions.js";
@@ -258,6 +259,7 @@ declare const fullApi: ApiFromModules<{
   "lib/searchAnalysisRecovery": typeof lib_searchAnalysisRecovery;
   "lib/searchCompletion": typeof lib_searchCompletion;
   "lib/searchLogic": typeof lib_searchLogic;
+  "lib/searchProgressMetrics": typeof lib_searchProgressMetrics;
   "lib/validators": typeof lib_validators;
   "middleware/subscriptionMiddleware": typeof middleware_subscriptionMiddleware;
   "notifications/actions": typeof notifications_actions;

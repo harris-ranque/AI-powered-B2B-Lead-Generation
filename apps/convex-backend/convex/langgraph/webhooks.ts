@@ -444,9 +444,61 @@ export const handleEmailGenerationCompleted = internalMutation({
             : [],
           deepResearchCreditsCharged: 0, // Credits charged at search completion, not per-lead
           // Lead tier classification from LangGraph
-          leadTier: result.lead_tier,
+          leadTier: result.lead_tier ?? "A",
           leadTierReason: result.lead_tier_reason,
         });
+
+        const leadAnalysisPayload = (result.lead_analysis ?? {}) as Record<string, unknown>;
+        const companyDomain = extractDomainFromWebsite(lead.website);
+        if (
+          companyDomain &&
+          (leadAnalysisPayload.company_overview || leadAnalysisPayload.research_summary)
+        ) {
+          const researchMetadata = (leadAnalysisPayload.research_metadata ??
+            {}) as Record<string, unknown>;
+          const researchConfidence =
+            typeof researchMetadata.confidence_score === "number"
+              ? researchMetadata.confidence_score
+              : typeof (result as Record<string, unknown>).research_confidence ===
+                  "number"
+                ? ((result as Record<string, unknown>).research_confidence as number)
+                : typeof result.relevance_score === "number"
+                  ? result.relevance_score
+                  : 0.5;
+
+          try {
+            await ctx.runMutation(
+              internal.leads.contactInternal.saveCompanyResearchFromWebhook,
+              {
+                searchId: searchId as Id<"searches">,
+                userId: search.userId,
+                leadId: lead._id,
+                domain: companyDomain,
+                researchPayload: {
+                  company_overview:
+                    (leadAnalysisPayload.company_overview as string | undefined) ||
+                    (leadAnalysisPayload.research_summary as string | undefined) ||
+                    "",
+                  raw_data: leadAnalysisPayload,
+                  confidence_score: researchConfidence,
+                  research_tier: result.deep_research_used ? "perplexity" : "tavily",
+                  deep_research_used: Boolean(result.deep_research_used),
+                  deep_research_reason: result.deep_research_reason,
+                },
+              },
+            );
+          } catch (researchError) {
+            logger.error("Failed to save company research from email webhook", {
+              requestId: args.payload.request_id,
+              leadId: leadIdStr,
+              domain: companyDomain,
+              error:
+                researchError instanceof Error
+                  ? researchError.message
+                  : "Unknown error",
+            });
+          }
+        }
 
         // Create email sequence record if we have email content (idempotent by request_id per lead)
         if (result.primary_email && result.primary_email !== null) {
@@ -1191,6 +1243,12 @@ export const handleBatchCompleted = internalMutation({
                 {},
               processingTime: leadResult.processingTime,
               confidence: result.relevance_score || 0.5,
+              researchTier: result.research_tier,
+              leadTier:
+                result.lead_tier === "A" || result.lead_tier === "B"
+                  ? result.lead_tier
+                  : "A",
+              leadTierReason: result.lead_tier_reason,
             };
             const emailContentPayload =
               result.primary_email && result.primary_email !== null
@@ -1243,43 +1301,6 @@ export const handleBatchCompleted = internalMutation({
             const researchMetadata = (leadAnalysisPayload.research_metadata ??
               {}) as Record<string, unknown>;
             const companyDomain = extractDomainFromWebsite(lead.website);
-            if (
-              companyDomain &&
-              (leadAnalysisPayload.company_overview ||
-                leadAnalysisPayload.research_summary)
-            ) {
-              const researchConfidence =
-                typeof researchMetadata.confidence_score === "number"
-                  ? researchMetadata.confidence_score
-                  : typeof result.research_confidence === "number"
-                    ? result.research_confidence
-                    : typeof result.relevance_score === "number"
-                      ? result.relevance_score
-                      : 0.5;
-
-              await ctx.runMutation(
-                internal.leads.contactInternal.saveCompanyResearchFromWebhook,
-                {
-                  searchId: searchIdTyped,
-                  userId: search.userId,
-                  leadId: lead._id,
-                  domain: companyDomain,
-                  researchPayload: {
-                    company_overview:
-                      leadAnalysisPayload.company_overview ||
-                      leadAnalysisPayload.research_summary ||
-                      "",
-                    raw_data: leadAnalysisPayload,
-                    confidence_score: researchConfidence,
-                    research_tier: result.deep_research_used
-                      ? "perplexity"
-                      : "tavily",
-                    deep_research_used: Boolean(result.deep_research_used),
-                    deep_research_reason: result.deep_research_reason,
-                  },
-                },
-              );
-            }
 
             // Handle deep research credits for non-enterprise users
             const deepResearchUsed = Boolean(result.deep_research_used);
@@ -1294,7 +1315,8 @@ export const handleBatchCompleted = internalMutation({
               });
             }
 
-            // Update deep research metadata and lead tier
+            // Persist lead tier and deep-research metadata before company research save
+            // so a research-link failure cannot leave leadTier unset.
             await ctx.db.patch(lead._id, {
               deepResearchUsed,
               deepResearchProvider: deepResearchUsed ? "perplexity" : "tavily",
@@ -1309,10 +1331,60 @@ export const handleBatchCompleted = internalMutation({
                 deepResearchUsed && result.additional_credits_used
                   ? result.additional_credits_used
                   : 0,
-              // Lead tier classification from LangGraph
-              leadTier: result.lead_tier,
+              leadTier: result.lead_tier ?? "A",
               leadTierReason: result.lead_tier_reason,
             });
+
+            if (
+              companyDomain &&
+              (leadAnalysisPayload.company_overview ||
+                leadAnalysisPayload.research_summary)
+            ) {
+              const researchConfidence =
+                typeof researchMetadata.confidence_score === "number"
+                  ? researchMetadata.confidence_score
+                  : typeof (result as Record<string, unknown>).research_confidence ===
+                      "number"
+                    ? ((result as Record<string, unknown>).research_confidence as number)
+                    : typeof result.relevance_score === "number"
+                      ? result.relevance_score
+                      : 0.5;
+
+              try {
+                await ctx.runMutation(
+                  internal.leads.contactInternal.saveCompanyResearchFromWebhook,
+                  {
+                    searchId: searchIdTyped,
+                    userId: search.userId,
+                    leadId: lead._id,
+                    domain: companyDomain,
+                    researchPayload: {
+                      company_overview:
+                        leadAnalysisPayload.company_overview ||
+                        leadAnalysisPayload.research_summary ||
+                        "",
+                      raw_data: leadAnalysisPayload,
+                      confidence_score: researchConfidence,
+                      research_tier: result.deep_research_used
+                        ? "perplexity"
+                        : "tavily",
+                      deep_research_used: Boolean(result.deep_research_used),
+                      deep_research_reason: result.deep_research_reason,
+                    },
+                  },
+                );
+              } catch (researchError) {
+                logger.error("Failed to save company research from batch webhook", {
+                  batchId,
+                  leadId: leadResult.leadId,
+                  domain: companyDomain,
+                  error:
+                    researchError instanceof Error
+                      ? researchError.message
+                      : "Unknown error",
+                });
+              }
+            }
 
             // Create email sequence if we have email content
             if (result.primary_email && result.primary_email !== null) {

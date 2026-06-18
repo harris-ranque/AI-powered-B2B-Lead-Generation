@@ -89,6 +89,11 @@ export type ExportResearchFields = {
   researchConfidenceScore: string | number;
 };
 
+export type ExportResearchContactFallback = {
+  relevanceScore?: number;
+  confidence?: number;
+};
+
 export function hasCompleteExportResearch(
   fields: ExportResearchFields,
 ): boolean {
@@ -384,6 +389,7 @@ export function buildPeopleDiscoveryResearchMetadata(
 export function resolveExportResearchFields(
   leadAnalysis: Record<string, unknown> | undefined,
   companyResearchPayload?: unknown,
+  contactFallback?: ExportResearchContactFallback,
 ): ExportResearchFields {
   const researchMetadata = findResearchMetadata(
     leadAnalysis,
@@ -403,6 +409,17 @@ export function resolveExportResearchFields(
     const leadReport = leadAnalysis.comprehensive_report;
     if (typeof leadReport === "string" && leadReport.trim()) {
       fullResearchReport = leadReport.trim();
+    }
+  }
+  if (!fullResearchReport && leadAnalysis) {
+    const overview = firstNonEmptyString(
+      leadAnalysis.company_overview,
+      leadAnalysis.research_summary,
+      leadAnalysis.company_profile,
+      leadAnalysis.summary,
+    );
+    if (overview) {
+      fullResearchReport = overview;
     }
   }
   if (!fullResearchReport && payload) {
@@ -433,6 +450,12 @@ export function resolveExportResearchFields(
     researchConfidenceScore = rawData.confidence_score;
   } else if (typeof payload?.confidence_score === "number") {
     researchConfidenceScore = payload.confidence_score;
+  } else if (typeof leadAnalysis?.confidence_score === "number") {
+    researchConfidenceScore = leadAnalysis.confidence_score;
+  } else if (typeof contactFallback?.confidence === "number") {
+    researchConfidenceScore = contactFallback.confidence;
+  } else if (typeof contactFallback?.relevanceScore === "number") {
+    researchConfidenceScore = contactFallback.relevanceScore;
   }
 
   return {

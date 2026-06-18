@@ -157,25 +157,32 @@ describe('Lead Enrichment Tests - Batch 7', () => {
       const provider = new FindyMailProvider(apiKey);
       const domain = 'acme.com';
 
-      mockFetch.mockImplementation(async () => ({
-        ok: true,
-        json: async () => ({
-          contacts: [
-            {
-              name: 'Alice Regional',
-              title: 'Regional Property Manager',
-              email: 'alice@acme.com',
-              confidence: 0.9,
-            },
-            {
-              name: 'Bob Director',
-              title: 'Director of Property Management',
-              email: 'bob@acme.com',
-              confidence: 0.85,
-            },
-          ],
-        }),
-      }));
+      let callCount = 0;
+      mockFetch.mockImplementation(async () => {
+        callCount += 1;
+        const contacts =
+          callCount === 1
+            ? [
+                {
+                  name: 'Alice Regional',
+                  title: 'Regional Property Manager',
+                  email: 'alice@acme.com',
+                  confidence: 0.9,
+                },
+              ]
+            : [
+                {
+                  name: 'Bob Director',
+                  title: 'Director of Property Management',
+                  email: 'bob@acme.com',
+                  confidence: 0.85,
+                },
+              ];
+        return {
+          ok: true,
+          json: async () => ({ contacts }),
+        };
+      });
 
       const result = await provider.enrichSingle(domain, {
         roles: ['Property Manager'],

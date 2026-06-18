@@ -27,6 +27,10 @@ import {
   schedulePendingLinkedEnrichmentRecovery,
   scheduleSearchCompletionIfReady,
 } from "../lib/searchCompletion";
+import {
+  mergeDiscoveredCount,
+  resolveDiscoveredCountForSearch,
+} from "../lib/searchProgressMetrics";
 
 async function triggerAnalysisOrCompleteSearch(
   ctx: MutationCtx,
@@ -204,14 +208,15 @@ async function publishPeopleDiscoveryProgress(
 
   const search = await ctx.db.get(args.searchId);
   const currentProgress = search?.progress;
+  const discoveredCount = mergeDiscoveredCount(search, args.totalLeads);
 
   await ctx.runMutation(internal.search.internal.updateSearchProgressInternal, {
     searchId: args.searchId,
     progress: {
-      discovered: args.totalLeads,
+      discovered: discoveredCount,
       enriched: currentProgress?.enriched ?? 0,
       analyzed: currentProgress?.analyzed ?? 0,
-      total: args.totalLeads,
+      total: discoveredCount,
     },
   });
 
@@ -282,13 +287,23 @@ async function publishEnrichmentProgress(
       ? Math.round((args.completedLeads / args.totalLeads) * 100)
       : 0;
 
+  const search = await ctx.db.get(args.searchId);
+  const discoveredCount = await resolveDiscoveredCountForSearch(
+    ctx,
+    args.searchId,
+  );
+  const enrichedCount = Math.max(
+    search?.progress?.enriched ?? 0,
+    args.successfulLeads,
+  );
+
   await ctx.runMutation(internal.search.internal.updateSearchProgressInternal, {
     searchId: args.searchId,
     progress: {
-      discovered: args.totalLeads,
-      enriched: args.successfulLeads,
+      discovered: discoveredCount,
+      enriched: enrichedCount,
       analyzed: args.analyzed,
-      total: args.totalLeads,
+      total: discoveredCount,
     },
   });
 
@@ -297,13 +312,13 @@ async function publishEnrichmentProgress(
     searchId: args.searchId,
     stage: "enrichment",
     progress: progressPercent,
-    message: `Found emails for ${args.successfulLeads} of ${args.totalLeads} businesses (${progressPercent}% processed)`,
+    message: `Found emails for ${args.successfulLeads} of ${args.totalLeads} businesses in this batch (${progressPercent}% processed)`,
     data: {
       progress: {
-        discovered: args.totalLeads,
-        enriched: args.successfulLeads,
+        discovered: discoveredCount,
+        enriched: enrichedCount,
         analyzed: args.analyzed,
-        total: args.totalLeads,
+        total: discoveredCount,
       },
       enrichmentBreakdown: {
         completed: args.successfulLeads,

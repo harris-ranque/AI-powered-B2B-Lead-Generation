@@ -156,7 +156,7 @@ export function buildFindyMailPerRoleFetchPlan(
               .filter(Boolean),
           ]),
         )
-      : resolveExpandedPatternsFromOptions(options, userRoles);
+      : resolveExpandedPatternsFromOptions(userRoles, options);
 
   const expandedPatterns = buildRoundRobinExpandedPatterns(
     sanitizeRoles(options?.roles).roles,
@@ -181,8 +181,8 @@ export function buildFindyMailPerRoleFetchPlan(
 }
 
 function resolveExpandedPatternsFromOptions(
-  options?: EnrichmentOptions,
   userRoles: string[],
+  options?: EnrichmentOptions,
 ): Record<string, string[]> {
   if (options?.rolePatternsByRole) {
     return options.rolePatternsByRole;

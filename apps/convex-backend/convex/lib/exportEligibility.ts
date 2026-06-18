@@ -116,6 +116,7 @@ export type ExportableContact = {
   emailContent?: WrittenEmailContent;
   title?: string;
   matchedRole?: string;
+  companyResearchId?: Id<"companyResearch">;
   aiAnalysis?: {
     leadAnalysis?: Record<string, unknown>;
   };
@@ -293,6 +294,8 @@ export async function computeExportReadinessForContacts(
 }
 
 type LeadContactDoc = DataModel["leadContacts"]["document"];
+
+export type { LeadContactDoc };
 
 async function loadExportContextForContacts(
   ctx: { db: GenericDatabaseReader<DataModel> },

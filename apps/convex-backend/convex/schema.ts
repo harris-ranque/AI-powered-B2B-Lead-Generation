@@ -839,6 +839,8 @@ export default defineSchema({
         processingTime: v.optional(v.number()),
         confidence: v.optional(v.number()),
         researchTier: v.optional(v.string()),
+        leadTier: v.optional(v.union(v.literal("A"), v.literal("B"))),
+        leadTierReason: v.optional(v.string()),
         companyData: v.optional(v.any()),
         fitAssessment: v.optional(v.string()),
         recommendedApproach: v.optional(v.string()),

@@ -19,6 +19,49 @@ import {
 import { enrichResearchPayloadForExport, mergeCompanyResearchPayloadForWebhook } from "../lib/exportResearchFields";
 import { deriveLeadAnalysisStatusFromContacts } from "../lib/contactAnalysisSync";
 
+async function linkLeadContactsToDomainResearch(
+  ctx: MutationCtx,
+  args: {
+    searchId: Id<"searches">;
+    leadId: Id<"leads">;
+    website?: string | null;
+  },
+): Promise<void> {
+  const domain = extractDomainFromWebsite(args.website);
+  if (!domain) {
+    return;
+  }
+
+  const existing = await ctx.db
+    .query("companyResearch")
+    .withIndex("by_search_domain", (q) =>
+      q.eq("searchId", args.searchId).eq("domain", domain),
+    )
+    .first();
+
+  if (!existing || existing.status !== "completed") {
+    return;
+  }
+
+  const contacts = await ctx.db
+    .query("leadContacts")
+    .withIndex("by_lead_status", (q) =>
+      q.eq("leadId", args.leadId).eq("status", "accepted"),
+    )
+    .collect();
+
+  const now = Date.now();
+  for (const contact of contacts) {
+    if (contact.companyResearchId) {
+      continue;
+    }
+    await ctx.db.patch(contact._id, {
+      companyResearchId: existing._id,
+      updatedAt: now,
+    });
+  }
+}
+
 const contactStatusValidator = v.union(
   v.literal("candidate"),
   v.literal("accepted"),
@@ -34,6 +77,8 @@ const aiAnalysisValidator = v.object({
   processingTime: v.optional(v.number()),
   confidence: v.optional(v.number()),
   researchTier: v.optional(v.string()),
+  leadTier: v.optional(v.union(v.literal("A"), v.literal("B"))),
+  leadTierReason: v.optional(v.string()),
   companyData: v.optional(v.any()),
   fitAssessment: v.optional(v.string()),
   recommendedApproach: v.optional(v.string()),
@@ -668,6 +713,14 @@ export const processMultiContactEnrichment = internalMutation({
       });
     }
 
+    if (acceptedCount > 0) {
+      await linkLeadContactsToDomainResearch(ctx, {
+        searchId: args.searchId,
+        leadId: args.leadId,
+        website: args.companyWebsite,
+      });
+    }
+
     return { acceptedCount, candidateCount: candidates.length };
   },
 });
@@ -711,6 +764,9 @@ export const processProspectEmailEnrichment = internalMutation({
     }> = [];
 
     for (const prospectInput of args.prospects) {
+      const prospect = await ctx.db.get(prospectInput.prospectId);
+      const prospectCompanyResearchId = prospect?.companyResearchId;
+
       const result = prospectInput.enrichmentResult as {
         contacts?: Array<{
           name?: string;
@@ -788,6 +844,9 @@ export const processProspectEmailEnrichment = internalMutation({
           searchId: args.searchId,
           userId: args.userId,
           leadProspectId: prospectInput.prospectId,
+          ...(prospectCompanyResearchId
+            ? { companyResearchId: prospectCompanyResearchId }
+            : {}),
           name: prospectInput.name,
           title: storedTitle,
           email: emailCandidate.email,
@@ -876,6 +935,14 @@ export const processProspectEmailEnrichment = internalMutation({
       await ctx.db.patch(args.leadId, {
         contactInfo,
         primaryEmail: primaryEmail?.toLowerCase().trim(),
+      });
+    }
+
+    if (acceptedCount > 0) {
+      await linkLeadContactsToDomainResearch(ctx, {
+        searchId: args.searchId,
+        leadId: args.leadId,
+        website: args.companyWebsite,
       });
     }
 
@@ -970,31 +1037,31 @@ export const saveCompanyResearchFromWebhook = internalMutation({
     researchPayload: v.any(),
   },
   handler: async (ctx, args) => {
-    const merged = mergeCompanyResearchPayloadForWebhook(
-      researchId?.researchPayload,
-      args.researchPayload,
-    );
-    const enriched = enrichResearchPayloadForExport(merged);
-    const normalized = normalizeCompanyResearchPayload(enriched);
-    const payloadToStore = normalized ?? enriched;
-
-    const researchId = await ctx.db
+    const existingResearch = await ctx.db
       .query("companyResearch")
       .withIndex("by_search_domain", (q) =>
         q.eq("searchId", args.searchId).eq("domain", args.domain),
       )
       .first();
 
+    const merged = mergeCompanyResearchPayloadForWebhook(
+      existingResearch?.researchPayload,
+      args.researchPayload,
+    );
+    const enriched = enrichResearchPayloadForExport(merged);
+    const normalized = normalizeCompanyResearchPayload(enriched);
+    const payloadToStore = normalized ?? enriched;
+
     const now = Date.now();
     let companyResearchId;
 
-    if (researchId) {
-      await ctx.db.patch(researchId._id, {
+    if (existingResearch) {
+      await ctx.db.patch(existingResearch._id, {
         researchPayload: payloadToStore,
         status: "completed",
         updatedAt: now,
       });
-      companyResearchId = researchId._id;
+      companyResearchId = existingResearch._id;
     } else {
       companyResearchId = await ctx.db.insert("companyResearch", {
         searchId: args.searchId,
@@ -1047,6 +1114,40 @@ export const getCompanyResearchPayloadsForExport = internalQuery({
         continue;
       }
       rows.push({ _id: doc._id, researchPayload: doc.researchPayload });
+    }
+
+    return rows;
+  },
+});
+
+/** Batch-load company research by domain for CSV export fallbacks. */
+export const getCompanyResearchPayloadsByDomainsForExport = internalQuery({
+  args: {
+    searchId: v.id("searches"),
+    domains: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const rows: Array<{
+      domain: string;
+      _id: Id<"companyResearch">;
+      researchPayload: unknown;
+    }> = [];
+
+    for (const domain of args.domains) {
+      const doc = await ctx.db
+        .query("companyResearch")
+        .withIndex("by_search_domain", (q) =>
+          q.eq("searchId", args.searchId).eq("domain", domain),
+        )
+        .first();
+      if (!doc || doc.status !== "completed") {
+        continue;
+      }
+      rows.push({
+        domain,
+        _id: doc._id,
+        researchPayload: doc.researchPayload,
+      });
     }
 
     return rows;
@@ -1119,6 +1220,57 @@ export const getDomainsNeedingCompanyResearch = internalQuery({
     }
 
     return domainsNeeded;
+  },
+});
+
+/** Link accepted contacts to existing companyResearch rows by website domain. */
+export const backfillContactCompanyResearchForSearch = internalMutation({
+  args: { searchId: v.id("searches") },
+  handler: async (ctx, args) => {
+    const contacts = await ctx.db
+      .query("leadContacts")
+      .withIndex("by_search_status", (q) =>
+        q.eq("searchId", args.searchId).eq("status", "accepted"),
+      )
+      .collect();
+
+    const now = Date.now();
+    let linked = 0;
+
+    for (const contact of contacts) {
+      if (contact.companyResearchId) {
+        continue;
+      }
+
+      const lead = await ctx.db.get(contact.leadId);
+      if (!lead?.website) {
+        continue;
+      }
+
+      const domain = extractDomainFromWebsite(lead.website);
+      if (!domain) {
+        continue;
+      }
+
+      const existing = await ctx.db
+        .query("companyResearch")
+        .withIndex("by_search_domain", (q) =>
+          q.eq("searchId", args.searchId).eq("domain", domain),
+        )
+        .first();
+
+      if (!existing || existing.status !== "completed") {
+        continue;
+      }
+
+      await ctx.db.patch(contact._id, {
+        companyResearchId: existing._id,
+        updatedAt: now,
+      });
+      linked += 1;
+    }
+
+    return { linked, total: contacts.length };
   },
 });
 

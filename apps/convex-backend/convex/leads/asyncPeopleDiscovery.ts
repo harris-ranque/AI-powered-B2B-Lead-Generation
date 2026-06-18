@@ -1,6 +1,7 @@
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
+import type { Doc, Id } from "../_generated/dataModel";
 import {
   createCorrelationContext,
   logWithCorrelation,
@@ -169,6 +170,13 @@ export const discoverPeopleForSearch = internalAction({
   },
 });
 
+type DiscoverPeopleForLeadResult = {
+  success: boolean;
+  reason?: string;
+  prospectCount: number;
+  companyResearchId?: Id<"companyResearch">;
+};
+
 /**
  * Discover people for a single lead via LangGraph /discover-people.
  */
@@ -178,10 +186,10 @@ export const discoverPeopleForLead = internalAction({
     searchId: v.id("searches"),
     userId: v.id("users"),
   },
-  handler: async (ctx, args) => {
-    const lead = await ctx.runQuery(internal.leads.internal.getLeadInternal, {
+  handler: async (ctx, args): Promise<DiscoverPeopleForLeadResult> => {
+    const lead = (await ctx.runQuery(internal.leads.internal.getLeadInternal, {
       leadId: args.leadId,
-    });
+    })) as Doc<"leads"> | null;
     if (!lead) {
       return { success: false, reason: "lead_not_found", prospectCount: 0 };
     }
@@ -436,7 +444,10 @@ export const discoverPeopleForLead = internalAction({
       research_tier: data.researchTier ?? "pro",
     };
 
-    const persistResult = await ctx.runMutation(
+    const persistResult: {
+      prospectCount: number;
+      companyResearchId?: Id<"companyResearch">;
+    } = await ctx.runMutation(
       internal.leads.peopleDiscoveryInternal.persistLeadProspects,
       {
         leadId: args.leadId,

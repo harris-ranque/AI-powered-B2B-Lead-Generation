@@ -4,7 +4,8 @@ describe("people discovery JSON parsing", () => {
   it("parses JSON from fenced code block", () => {
     const text = '```json\n{"company_overview": "SaaS co", "people": []}\n```';
     const match = text.match(/```(?:json)?\s*([\{].*?[\}])\s*```/s);
-    const parsed = JSON.parse(match![1]);
+    expect(match?.[1]).toBeDefined();
+    const parsed = JSON.parse(match![1]!);
     expect(parsed.company_overview).toBe("SaaS co");
   });
 

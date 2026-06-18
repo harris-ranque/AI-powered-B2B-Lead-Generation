@@ -1,11 +1,16 @@
 import { internalQuery, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { Doc } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import { withUpdatedAtIfSupported, isUpdatedAtSchemaError } from "./utils";
 import { countExportableSummaryForSearch } from "../lib/exportEligibility";
 import { getSearchAnalysisCompletionReadiness, scheduleSearchCompletionIfReady } from "../lib/searchCompletion";
 import { getAnalysisCompletionState } from "../lib/analysisProgress";
 import { computeAnalysisCreditBreakdown } from "../lib/helpers";
+import {
+  mergeDiscoveredCount,
+  resolveDiscoveredCountForSearch,
+} from "../lib/searchProgressMetrics";
 
 // Internal query to get search without auth check
 export const getSearchInternal = internalQuery({
@@ -58,10 +63,7 @@ export const getSearchResults = internalQuery({
           ) / contactsWithScores.length
         : 0;
 
-    const totalFound =
-      search.progress?.discovered ??
-      search.results?.totalFound ??
-      leads.length;
+    const totalFound = await resolveDiscoveredCountForSearch(ctx, args.searchId);
 
     return {
       totalFound,

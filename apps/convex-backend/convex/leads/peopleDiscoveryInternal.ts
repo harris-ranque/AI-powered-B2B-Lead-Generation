@@ -15,9 +15,7 @@ export const getLeadsForPeopleDiscovery = internalQuery({
       .withIndex("by_search", (q) => q.eq("searchId", args.searchId))
       .collect();
 
-    const newNativeLeads = nativeLeads.filter(
-      (lead) => lead.sourceType === "new" || lead.sourceType === undefined,
-    );
+    const newNativeLeads = nativeLeads;
 
     const pendingLinks = await ctx.db
       .query("searchLinkedLeads")
@@ -141,10 +139,11 @@ export const persistLeadProspects = internalMutation({
     let companyResearchId: Id<"companyResearch"> | undefined;
 
     if (args.companyResearchPayload && args.domain) {
+      const domain = args.domain;
       const existing = await ctx.db
         .query("companyResearch")
         .withIndex("by_search_domain", (q) =>
-          q.eq("searchId", args.searchId).eq("domain", args.domain),
+          q.eq("searchId", args.searchId).eq("domain", domain),
         )
         .first();
 
@@ -157,7 +156,7 @@ export const persistLeadProspects = internalMutation({
           searchId: args.searchId,
           userId: args.userId,
           leadId: args.leadId,
-          domain: args.domain,
+          domain,
           researchPayload: normalized,
           confidence: normalized.confidence_score,
           provider: "people_discovery",

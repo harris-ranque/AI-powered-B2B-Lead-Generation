@@ -61,6 +61,6 @@ describe("findymailEmployees helpers", () => {
       title: "CEO and Co-Founder",
       source: "findymail_employees",
     });
-    expect(prospects[0].matchedRole).toBeTruthy();
+    expect(prospects[0]?.matchedRole).toBeTruthy();
   });
 });

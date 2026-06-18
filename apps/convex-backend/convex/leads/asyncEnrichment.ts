@@ -30,7 +30,7 @@
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
-import type { Id } from "../_generated/dataModel";
+import type { Id, Doc } from "../_generated/dataModel";
 import { Workpool } from "@convex-dev/workpool";
 import {
   createCorrelationContext,
@@ -328,7 +328,7 @@ async function tryProspectEmailDiscovery(
   );
 
   const pending = prospects.filter(
-    (prospect) =>
+    (prospect: Doc<"leadProspects">) =>
       prospect.status === "discovered" ||
       prospect.status === "email_pending" ||
       prospect.emailDiscoveryStatus === "pending",
@@ -376,7 +376,7 @@ async function tryProspectEmailDiscovery(
 
     if (cache?.status === "found" && cache.email) {
       enrichmentResult = {
-        emails: [{ email: cache.email, confidence: 0.9, verified: true }],
+        emails: [{ email: cache.email, type: "work", confidence: 0.9, verified: true }],
         contacts: [
           {
             name: prospect.name,
@@ -489,7 +489,11 @@ type EnrichmentWorkpoolResult = {
   errorMessage?: string;
   checkpointSaved?: boolean;
   emailsFound?: number;
-  queueDepth?: number; // Present when lead was queued for later processing
+  queueDepth?: number;
+  retrying?: boolean;
+  queueReason?: string;
+  acceptedCount?: number;
+  source?: string;
 };
 
 // Enrichment checkpoint type - matches schema definition
@@ -548,7 +552,13 @@ export const enrichSingleLeadWorkpool = internalAction({
     };
 
     const updateLeadEnrichmentStatus = async (params: {
-      status: string;
+      status:
+        | "pending"
+        | "in_progress"
+        | "completed"
+        | "failed"
+        | "completed_fallback"
+        | "no_contacts_found";
       error?: string;
       enrichmentStartedAt?: number;
     }) => {
