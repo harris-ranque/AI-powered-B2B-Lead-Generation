@@ -57,6 +57,31 @@ describe("contactAcceptance", () => {
 
     expect(result.accepted).toBe(true);
     expect(result.matchedRole).toBe("CEO");
+    expect(result.titleMatchReason).toBe("queried_role_trust");
+  });
+
+  it("accepts untitled FindyMail role contact with enableRoleExpansion false (production path)", () => {
+    const result = evaluateContactCandidate(
+      {
+        name: "Julian Lubke",
+        email: "julian@deeploi.io",
+        verified: true,
+        confidence: 0,
+      },
+      {
+        requestedRoles: ["Ceo", "Founder", "Owner"],
+        companyWebsite: "https://www.deeploi.io/de",
+        acceptedEmailsInSearch: new Set(),
+        enableRoleExpansion: false,
+        requireVerifiedEmail: true,
+        fromRoleContact: true,
+        sourceRole: "ceo",
+      },
+    );
+
+    expect(result.accepted).toBe(true);
+    expect(result.titleMatchReason).toBe("queried_role_trust");
+    expect(result.rejectionReason).toBeUndefined();
   });
 
   it("rejects untitled FindyMail role contact without a queried role fallback", () => {

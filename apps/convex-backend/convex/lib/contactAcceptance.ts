@@ -381,6 +381,38 @@ export function evaluateContactCandidate(
 
   const providerTitle = extractProviderTitle(candidate);
 
+  // FindyMail per-role query returned a named contact without a job title.
+  // The queried role (sourceRole) is the acceptance criterion — do not re-match titles.
+  if (
+    options.fromRoleContact &&
+    !providerTitle?.trim() &&
+    options.sourceRole?.trim()
+  ) {
+    const queriedRole = options.sourceRole.trim();
+    const roleAgainstRequested = scoreTitleAgainstPatterns(
+      queriedRole,
+      options.requestedRoles,
+    );
+    if (roleAgainstRequested.score >= TITLE_MATCH_ACCEPT_THRESHOLD) {
+      const displayableTitle = resolveDisplayableContactTitle({
+        providerTitle,
+        matchedRole: roleAgainstRequested.matchedRole ?? queriedRole,
+        sourceRole: queriedRole,
+      });
+      if (displayableTitle) {
+        return {
+          accepted: true,
+          emailVerified,
+          domainMatchVerified,
+          normalizedEmail,
+          matchedRole: roleAgainstRequested.matchedRole ?? queriedRole,
+          titleMatchScore: roleAgainstRequested.score,
+          titleMatchReason: "queried_role_trust",
+        };
+      }
+    }
+  }
+
   // FindyMail role-query hits often omit provider titles. If the contact came
   // from a specific role search, allow that queried role to be used for matching
   // after verification/domain checks; otherwise reject untitled contacts.

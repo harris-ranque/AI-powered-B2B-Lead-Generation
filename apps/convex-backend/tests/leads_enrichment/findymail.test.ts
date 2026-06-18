@@ -839,6 +839,30 @@ describe('Lead Enrichment Tests - Batch 7', () => {
     });
   });
 
+  describe("enrichByName", () => {
+    it("parses FindyMail /search/name singular contact response", async () => {
+      const provider = new FindyMailProvider("test_api_key");
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          contact: {
+            name: "Julian Lübke",
+            email: "julian@deeploi.io",
+            domain: "deeploi.io",
+          },
+        }),
+      });
+
+      const result = await provider.enrichByName("deeploi.io", "Julian Lübke");
+
+      expect(result?.contacts).toHaveLength(1);
+      expect(result?.contacts[0]?.email).toBe("julian@deeploi.io");
+      expect(result?.emails).toHaveLength(1);
+      expect(result?.emails[0]?.email).toBe("julian@deeploi.io");
+    });
+  });
+
   describe("searchEmployees", () => {
     it("calls /search/employees with website, job titles, and count", async () => {
       const provider = new FindyMailProvider("test_api_key");

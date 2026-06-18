@@ -88,6 +88,7 @@ import type * as lib_errorMessages from "../lib/errorMessages.js";
 import type * as lib_exportEligibility from "../lib/exportEligibility.js";
 import type * as lib_exportResearchFields from "../lib/exportResearchFields.js";
 import type * as lib_featureFlags from "../lib/featureFlags.js";
+import type * as lib_findymailEmployees from "../lib/findymailEmployees.js";
 import type * as lib_helpers from "../lib/helpers.js";
 import type * as lib_langgraphClient from "../lib/langgraphClient.js";
 import type * as lib_logger from "../lib/logger.js";
@@ -240,6 +241,7 @@ declare const fullApi: ApiFromModules<{
   "lib/exportEligibility": typeof lib_exportEligibility;
   "lib/exportResearchFields": typeof lib_exportResearchFields;
   "lib/featureFlags": typeof lib_featureFlags;
+  "lib/findymailEmployees": typeof lib_findymailEmployees;
   "lib/helpers": typeof lib_helpers;
   "lib/langgraphClient": typeof lib_langgraphClient;
   "lib/logger": typeof lib_logger;

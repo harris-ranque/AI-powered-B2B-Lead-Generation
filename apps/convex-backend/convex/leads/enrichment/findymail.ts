@@ -830,6 +830,14 @@ export class FindyMailProvider implements EnrichmentProviderInterface {
       if (Array.isArray(findyMailData?.results?.contacts)) {
         return findyMailData.results.contacts;
       }
+      // POST /search/name returns a single { contact: { name, email, domain } } object
+      const singular =
+        findyMailData?.contact ??
+        findyMailData?.data?.contact ??
+        findyMailData?.results?.contact;
+      if (singular && typeof singular === "object" && !Array.isArray(singular)) {
+        return [singular];
+      }
       return [];
     };
 
