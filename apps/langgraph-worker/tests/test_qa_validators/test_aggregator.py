@@ -2,8 +2,9 @@ import pytest
 from app.langgraph.nodes.qa_validators.models import (
     SubjectQAResult, BodyQAResult, FollowUpQAResult, ServiceMatchQAResult,
 )
-from app.langgraph.nodes.qa_validators.aggregator import aggregate_qa_results
-from app.langgraph.qa_config import APPROVAL_THRESHOLDS, HYPHEN_PENALTY, VETO_SCORE
+from app.langgraph.nodes.qa_validators.aggregator import (
+    aggregate_qa_results, VETO_SCORE,
+)
 
 
 def _make_subject(score=0.85, hyphens=False, company=True, order=True, align=True):
@@ -49,22 +50,20 @@ def test_aggregate_happy_path():
     assert result.approval_status == "Approved"
     assert failing is None
 
-def test_hyphen_penalty_in_subject_still_approves_strong_email():
+def test_veto_hyphens_in_subject():
     result, failing = aggregate_qa_results(
         _make_subject(0.85, hyphens=True), _make_body(0.90), _make_fu(0.90), _make_sm(), "A"
     )
-    # ~0.88 - HYPHEN_PENALTY still above A-tier 0.55
-    assert result.overall_quality_score == pytest.approx(0.88 - HYPHEN_PENALTY, abs=0.02)
-    assert result.approval_status == "Approved"
-    assert any("penalty" in i.lower() for i in result.quality_issues)
+    assert result.overall_quality_score <= VETO_SCORE
+    assert result.approval_status != "Approved"
+    assert failing == "primary"
 
-def test_hyphen_penalty_in_body():
+def test_veto_hyphens_in_body():
     result, failing = aggregate_qa_results(
         _make_subject(0.90), _make_body(0.90, hyphens=True), _make_fu(0.90), _make_sm(), "A"
     )
-    assert result.overall_quality_score == pytest.approx(0.90 - HYPHEN_PENALTY, abs=0.02)
-    assert result.approval_status == "Approved"
-    assert failing is None
+    assert result.overall_quality_score <= VETO_SCORE
+    assert failing == "primary"
 
 def test_veto_sender_fabrication():
     result, failing = aggregate_qa_results(
@@ -83,13 +82,12 @@ def test_overlength_body_penalty():
     assert result.approval_status == "Needs_Improvement"
     assert any("155 words" in i for i in result.quality_issues)
 
-def test_hyphen_penalty_in_follow_ups():
+def test_veto_hyphens_in_follow_ups():
     result, failing = aggregate_qa_results(
         _make_subject(0.90), _make_body(0.90), _make_fu(0.90, hyphens=True), _make_sm(), "A"
     )
-    assert result.overall_quality_score == pytest.approx(0.90 - HYPHEN_PENALTY, abs=0.02)
-    assert result.approval_status == "Approved"
-    assert failing is None
+    assert result.overall_quality_score <= VETO_SCORE
+    assert failing == "follow_ups"
 
 def test_worst_component_primary():
     result, failing = aggregate_qa_results(
@@ -113,11 +111,10 @@ def test_both_fail_returns_all():
 
 def test_b_tier_threshold():
     result, failing = aggregate_qa_results(
-        _make_subject(0.50), _make_body(0.45), _make_fu(0.45), _make_sm(), "B"
+        _make_subject(0.55), _make_body(0.50), _make_fu(0.50), _make_sm(), "B"
     )
-    # 0.20*0.50 + 0.40*0.45 + 0.25*0.45 + 0.15*0.80 = 0.505 >= 0.45 B-tier threshold
+    # 0.20*0.55 + 0.40*0.50 + 0.25*0.50 + 0.15*0.80 = 0.555 >= 0.50 B-tier threshold
     assert result.approval_status == "Approved"
-    assert APPROVAL_THRESHOLDS["B"] == 0.45
 
 def test_partial_failure_rescales():
     """When one validator returns an exception, its weight is excluded."""

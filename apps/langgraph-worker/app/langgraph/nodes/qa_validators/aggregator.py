@@ -3,16 +3,13 @@ from typing import Optional, Tuple, Union, List
 from ..quality_assurance_agent import QualityAssessment
 from .models import SubjectQAResult, BodyQAResult, FollowUpQAResult, ServiceMatchQAResult
 from ....utils.logger import setup_logger
-from ...qa_config import (
-    APPROVAL_THRESHOLDS,
-    HYPHEN_PENALTY,
-    RETRY_FLOOR,
-    VETO_SCORE,
-)
 
 logger = setup_logger(__name__)
 
 WEIGHTS = {"subject": 0.20, "body": 0.40, "follow_ups": 0.25, "service_match": 0.15}
+VETO_SCORE = 0.34  # Forces below any approval threshold
+
+APPROVAL_THRESHOLDS = {"A": 0.60, "B": 0.50}
 
 ValidatorResult = Union[SubjectQAResult, BodyQAResult, FollowUpQAResult, ServiceMatchQAResult, BaseException]
 
@@ -29,7 +26,7 @@ def aggregate_qa_results(
     Returns (assessment, failing_retry_group).
     failing_retry_group is None if approved, otherwise "primary"|"follow_ups"|"all".
     """
-    threshold = APPROVAL_THRESHOLDS.get(lead_tier, APPROVAL_THRESHOLDS["A"])
+    threshold = APPROVAL_THRESHOLDS.get(lead_tier, 0.60)
 
     # --- Resolve results, handling partial failures ---
     subj: Optional[SubjectQAResult] = (
@@ -54,22 +51,18 @@ def aggregate_qa_results(
     if isinstance(service_match_result, BaseException):
         logger.warning(f"Service Match QA failed with {type(service_match_result).__name__}: {service_match_result}")
 
-    # --- Critical veto (sender fabrication only); hyphens use penalty below ---
+    # --- Veto rules: hard gates that override weighted scoring ---
     veto_reason = None
     veto_group = None
-    hyphen_penalty = 0.0
-    hyphen_issue = None
 
-    if body and body.has_sender_fabrication:
+    if (subj and subj.has_hyphens) or (body and body.has_hyphens):
+        veto_reason = "Hyphens found in primary email"
+        veto_group = "primary"
+    elif body and body.has_sender_fabrication:
         veto_reason = "Sender fabrication detected"
         veto_group = "primary"
-    elif (subj and subj.has_hyphens) or (body and body.has_hyphens):
-        hyphen_penalty = HYPHEN_PENALTY
-        hyphen_issue = "Hyphens found in primary email"
-        veto_group = "primary"
     elif fu and fu.has_hyphens:
-        hyphen_penalty = HYPHEN_PENALTY
-        hyphen_issue = "Hyphens found in follow-ups"
+        veto_reason = "Hyphens found in follow-ups"
         veto_group = "follow_ups"
 
     # --- Weighted score with rescaling for partial failures ---
@@ -92,11 +85,6 @@ def aggregate_qa_results(
     if veto_reason:
         overall = min(overall, VETO_SCORE)
         logger.warning(f"Veto rule triggered: {veto_reason}, score clamped to {VETO_SCORE}")
-    elif hyphen_penalty > 0:
-        overall = max(0.0, overall - hyphen_penalty)
-        logger.info(
-            f"Hyphen penalty applied: -{hyphen_penalty}, score now {overall:.2f}"
-        )
 
     # --- Programmatic overlength penalty (deterministic, not LLM-scored) ---
     overlength_penalty = 0.0
@@ -112,7 +100,7 @@ def aggregate_qa_results(
     # --- Determine approval ---
     if overall >= threshold:
         approval_status = "Approved"
-    elif overall >= RETRY_FLOOR:
+    elif overall >= 0.35:
         approval_status = "Needs_Improvement"
     else:
         approval_status = "Rejected"
@@ -164,8 +152,6 @@ def aggregate_qa_results(
         all_suggestions.extend(f"[service-match] {s}" for s in sm.suggestions)
     if veto_reason:
         all_issues.insert(0, f"[veto] {veto_reason}")
-    elif hyphen_issue:
-        all_issues.insert(0, f"[penalty] {hyphen_issue} (-{hyphen_penalty})")
     if body and body.word_count > 130:
         all_issues.insert(0, f"[body] Body is {body.word_count} words — hard cap is 130, cut {body.word_count - 120} words to reach target of 120")
     elif body and body.word_count > 120:

@@ -14,10 +14,16 @@ from ...utils.analytics import capture_event, capture_error
 from ...models.lead_models import AgentResult
 from ..state import EmailGenerationState
 from .email_generation_agent import derive_short_name
-from ..qa_config import APPROVAL_THRESHOLDS, RETRY_FLOOR
 
 logger = setup_logger(__name__)
 settings = get_settings()
+
+# Tier-based approval thresholds
+# B-tier leads have lower thresholds since they have less research data for personalization
+APPROVAL_THRESHOLDS = {
+    "A": 0.60,  # Standard threshold for rich research
+    "B": 0.50,  # Lower threshold for B-tier (less personalization expected)
+}
 
 class QualityAssessment(BaseModel):
     """Comprehensive quality assessment for generated email"""
@@ -526,7 +532,7 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         # Re-evaluate approval status using tier-based thresholds
         if overall_score >= approval_threshold:
             approval_status = "Approved"
-        elif overall_score >= RETRY_FLOOR:
+        elif overall_score >= 0.35:
             approval_status = "Needs_Improvement"
         else:
             approval_status = "Rejected"
@@ -648,7 +654,7 @@ async def quality_assurance_agent_node(state: EmailGenerationState) -> Dict[str,
         previous_feedback = state.get("previous_quality_feedback", [])
 
         # If this email needs improvement and hasn't hit retry limit, save feedback for retry
-        if approval_status == "Needs_Improvement" and overall_score >= RETRY_FLOOR:
+        if approval_status == "Needs_Improvement" and overall_score >= 0.35:
             feedback_entry = {
                 "attempt": retry_count + 1,
                 "quality_score": overall_score,
