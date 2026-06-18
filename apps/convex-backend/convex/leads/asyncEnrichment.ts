@@ -304,7 +304,7 @@ type ProspectEmailDiscoveryResult = {
 
 /**
  * Email lookup for people-discovery prospects via FindyMail /search/name.
- * Ranked sequential lookup: top candidate first, fallback second — cache-aware.
+ * Tries every selected prospect — multiple contacts per company are allowed.
  */
 async function tryProspectEmailDiscovery(
   ctx: ActionCtx,
@@ -459,23 +459,6 @@ async function tryProspectEmailDiscovery(
     );
 
     acceptedCount += processResult.acceptedCount;
-
-    if (acceptedCount > 0) {
-      for (const skipped of toTry) {
-        if (skipped._id === prospect._id) {
-          continue;
-        }
-        await ctx.runMutation(
-          internal.leads.peopleDiscoveryInternal.updateProspectEmailDiscoveryStatus,
-          {
-            prospectId: skipped._id,
-            emailDiscoveryStatus: "skipped",
-            status: "email_not_found",
-          },
-        );
-      }
-      break;
-    }
   }
 
   return {

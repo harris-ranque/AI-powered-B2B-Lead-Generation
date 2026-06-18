@@ -19,7 +19,6 @@ settings = get_settings()
 
 logger = logging.getLogger(__name__)
 
-MAX_PEOPLE_PER_LEAD = 4
 WEBSITE_SOURCE = "website_inference"
 LLM_SOURCE = "website_llm"
 PERPLEXITY_SOURCE = "perplexity"
@@ -134,7 +133,7 @@ def _compute_role_match_score(
 
 
 def _rank_discovered_people(people: List[DiscoveredPerson]) -> List[DiscoveredPerson]:
-    ranked = sorted(
+    return sorted(
         people,
         key=lambda person: (
             -person.role_match_score,
@@ -142,7 +141,6 @@ def _rank_discovered_people(people: List[DiscoveredPerson]) -> List[DiscoveredPe
             0 if person.matched_role else 1,
         ),
     )
-    return ranked[:MAX_PEOPLE_PER_LEAD]
 
 
 def _build_discovered_person(
@@ -621,8 +619,6 @@ async def _extract_and_filter_people_with_llm(
                 role_match_score=role_score if matched_role else 0.0,
             )
         )
-        if len(people) >= MAX_PEOPLE_PER_LEAD:
-            break
 
     return people, {
         "model": LLM_MODEL,
@@ -679,7 +675,7 @@ async def discover_people_at_company(
 ) -> DiscoverPeopleResponse:
     """
     Pipeline: scrape → extract → semantic match → rank → Perplexity validate/fallback.
-  Candidates are ranked for sequential FindyMail lookup (top candidate first).
+    All role-matched people are returned; email lookup runs for each.
     """
     start = time.time()
     roles = [r.strip() for r in (requested_roles or []) if r and r.strip()]

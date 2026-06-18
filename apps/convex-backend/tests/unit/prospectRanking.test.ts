@@ -3,7 +3,6 @@ import {
   computeEffectiveRankScore,
   rankProspectsForFindyMail,
   selectProspectsForFindyMailNameSearch,
-  MAX_FINDYMAIL_NAME_ATTEMPTS,
 } from "../../convex/lib/prospectRanking";
 
 describe("prospectRanking", () => {
@@ -56,7 +55,7 @@ describe("prospectRanking", () => {
     expect(highRank).toBeGreaterThan(lowRank);
   });
 
-  it("selects top prospects by rank without confidence gate", () => {
+  it("selects prospects covering each role and multiple same-role contacts", () => {
     const prospects = [
       {
         name: "Jane",
@@ -79,15 +78,71 @@ describe("prospectRanking", () => {
         matchedRole: "CEO",
         rankScore: 0.95,
       },
+      {
+        name: "Alice",
+        title: "Co-CEO",
+        confidence: 0.92,
+        matchedRole: "CEO",
+        rankScore: 0.94,
+      },
     ];
 
     const selected = selectProspectsForFindyMailNameSearch(prospects, [
       "Founder",
       "CEO",
+      "Operations Manager",
     ]);
 
-    expect(selected.length).toBe(MAX_FINDYMAIL_NAME_ATTEMPTS);
-    expect(selected[0]?.name).toBe("John");
-    expect(selected[1]?.name).toBe("Bob");
+    expect(selected.map((p) => p.name)).toEqual([
+      "John",
+      "Alice",
+      "Jane",
+      "Bob",
+    ]);
+    expect(selected.length).toBe(4);
+  });
+
+  it("includes every discovered prospect with no upper cap", () => {
+    const prospects = Array.from({ length: 7 }, (_, index) => ({
+      name: `Person ${index + 1}`,
+      title: `Role ${index + 1}`,
+      confidence: 0.8,
+      matchedRole: "CEO",
+      rankScore: 0.9 - index * 0.01,
+    }));
+
+    const selected = selectProspectsForFindyMailNameSearch(prospects, ["CEO"]);
+
+    expect(selected).toHaveLength(7);
+  });
+
+  it("includes all co-founders when they share the same matched role", () => {
+    const prospects = [
+      {
+        name: "Philipp Povel",
+        title: "Co-CEO and Co-Founder",
+        confidence: 0.98,
+        matchedRole: "CEO",
+        rankScore: 0.98,
+      },
+      {
+        name: "Malte Huffmann",
+        title: "Co-CEO and Co-Founder",
+        confidence: 0.98,
+        matchedRole: "CEO",
+        rankScore: 0.98,
+      },
+    ];
+
+    const selected = selectProspectsForFindyMailNameSearch(prospects, [
+      "CEO",
+      "Founder",
+      "Owner",
+    ]);
+
+    expect(selected.map((p) => p.name)).toEqual([
+      "Philipp Povel",
+      "Malte Huffmann",
+    ]);
   });
 });

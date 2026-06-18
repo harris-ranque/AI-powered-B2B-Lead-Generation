@@ -1,12 +1,12 @@
 /**
- * Rank prospects for sequential FindyMail /search/name (credit optimization).
- * Role match is established in people discovery — no confidence gate before lookup.
+ * Rank prospects for FindyMail /search/name.
+ * Multi-contact: try every role-matched person returned by people discovery.
  */
 
-export const MAX_FINDYMAIL_NAME_ATTEMPTS = 2;
 export const FINDYMAIL_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type RankableProspect = {
+  name?: string;
   confidence: number;
   matchedRole?: string | null;
   rankScore?: number | null;
@@ -50,13 +50,57 @@ export function rankProspectsForFindyMail<T extends RankableProspect>(
   );
 }
 
-/** Top N role-matched prospects for sequential name search (rank only, no re-filter). */
+function prospectNameKey(prospect: RankableProspect): string {
+  return prospect.name?.toLowerCase().trim() ?? "";
+}
+
+/**
+ * All discovered prospects for email lookup (deduped by name).
+ * Orders so each requested role is represented first, then remaining people.
+ */
 export function selectProspectsForFindyMailNameSearch<T extends RankableProspect>(
   prospects: T[],
   requestedRoles: string[],
-  maxAttempts = MAX_FINDYMAIL_NAME_ATTEMPTS,
 ): T[] {
-  return rankProspectsForFindyMail(prospects, requestedRoles).slice(0, maxAttempts);
+  if (prospects.length === 0) {
+    return [];
+  }
+
+  const ranked = rankProspectsForFindyMail(prospects, requestedRoles);
+  const selected: T[] = [];
+  const seenNames = new Set<string>();
+
+  const tryAdd = (prospect: T): void => {
+    const nameKey = prospectNameKey(prospect);
+    if (nameKey && seenNames.has(nameKey)) {
+      return;
+    }
+    if (nameKey) {
+      seenNames.add(nameKey);
+    }
+    selected.push(prospect);
+  };
+
+  const normalizedRoles = requestedRoles
+    .map((role) => role.toLowerCase().trim())
+    .filter(Boolean);
+
+  for (const role of normalizedRoles) {
+    const match = ranked.find(
+      (prospect) =>
+        !seenNames.has(prospectNameKey(prospect)) &&
+        prospect.matchedRole?.toLowerCase().trim() === role,
+    );
+    if (match) {
+      tryAdd(match);
+    }
+  }
+
+  for (const prospect of ranked) {
+    tryAdd(prospect);
+  }
+
+  return selected;
 }
 
 export function normalizeCacheKeyPart(value: string): string {
