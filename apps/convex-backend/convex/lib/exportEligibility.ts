@@ -381,9 +381,9 @@ export async function countExportableSummaryForSearch(
   userId: Id<"users">,
 ): Promise<ExportableCountSummary> {
   const resolution = await resolveSearchExportData(ctx, searchId, userId);
-  const exportable = await filterFullyExportableContacts(
-    ctx,
-    resolution.contacts,
+  const exportable = dedupeExportContactsByEmail(
+    await filterFullyExportableContacts(ctx, resolution.contacts),
+    searchId,
   );
 
   const businessIds = new Set<string>();
@@ -500,6 +500,50 @@ export function noExportableLeadsMessage(
   return `No exportable leads found (${total} leads discovered: ${reasons.join(", ")})`;
 }
 
+type EmailDedupableContact = {
+  normalizedEmail: string;
+  searchId: Id<"searches">;
+  createdAt: number;
+};
+
+/** One row per email in exports; prefer current search, then newest contact. */
+export function dedupeExportContactsByEmail<T extends EmailDedupableContact>(
+  contacts: T[],
+  preferSearchId?: Id<"searches">,
+): T[] {
+  const byEmail = new Map<string, T>();
+  for (const contact of contacts) {
+    const key = contact.normalizedEmail.toLowerCase().trim();
+    if (!key) continue;
+    const existing = byEmail.get(key);
+    if (!existing) {
+      byEmail.set(key, contact);
+      continue;
+    }
+    byEmail.set(
+      key,
+      pickPreferredExportContact(existing, contact, preferSearchId),
+    );
+  }
+  return [...byEmail.values()];
+}
+
+function pickPreferredExportContact<T extends EmailDedupableContact>(
+  current: T,
+  candidate: T,
+  preferSearchId?: Id<"searches">,
+): T {
+  if (preferSearchId) {
+    const currentPreferred =
+      String(current.searchId) === String(preferSearchId);
+    const candidatePreferred =
+      String(candidate.searchId) === String(preferSearchId);
+    if (currentPreferred && !candidatePreferred) return current;
+    if (candidatePreferred && !currentPreferred) return candidate;
+  }
+  return candidate.createdAt >= current.createdAt ? candidate : current;
+}
+
 export function countDuplicateSkipsFromSearch(search: {
   duplicatesFilteredPlaceId?: number;
   duplicatesFilteredPlaceName?: number;
@@ -603,21 +647,28 @@ export async function resolveSearchExportData(
     originalLeadIds,
   );
 
-  let priorSearchExportable = 0;
   for (const contact of fallbackContacts) {
     if (!contactById.has(String(contact._id))) {
       contactById.set(String(contact._id), contact);
-      priorSearchExportable++;
     }
   }
 
-  for (const contact of contactById.values()) {
+  const contacts = dedupeExportContactsByEmail(
+    [...contactById.values()],
+    searchId,
+  );
+
+  let priorSearchExportable = 0;
+  for (const contact of contacts) {
     const leadKey = String(contact.leadId);
     if (!leadMap.has(leadKey)) {
       const lead = await ctx.db.get(contact.leadId);
       if (lead && lead.userId === userId) {
         leadMap.set(leadKey, lead);
       }
+    }
+    if (String(contact.searchId) !== String(searchId)) {
+      priorSearchExportable++;
     }
   }
 
@@ -627,7 +678,7 @@ export async function resolveSearchExportData(
 
   return {
     leads: [...leadMap.values()],
-    contacts: [...contactById.values()],
+    contacts,
     includesPriorSearchLeads,
     duplicateSkips,
     priorSearchExportable,

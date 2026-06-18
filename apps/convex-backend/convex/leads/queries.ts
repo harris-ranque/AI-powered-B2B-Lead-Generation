@@ -6,6 +6,7 @@ import {
   countExportableLeads,
   countExportableSummaryForSearch,
   computeExportReadinessForContacts,
+  dedupeExportContactsByEmail,
   filterFullyExportableContacts,
   formatExportPhone,
   resolveContactExportTitle,
@@ -937,9 +938,11 @@ export const getAcceptedContactCountsBySearch = query({
       byLead[key] = (byLead[key] ?? 0) + 1;
     }
 
-    const totalExportableIncludingPrior = (
-      await filterFullyExportableContacts(ctx, exportResolution.contacts)
-    ).length;
+    const dedupedExportable = dedupeExportContactsByEmail(
+      await filterFullyExportableContacts(ctx, exportResolution.contacts),
+      args.searchId,
+    );
+    const totalExportableIncludingPrior = dedupedExportable.length;
 
     const linkedForReenrichment = (
       await ctx.db
@@ -950,7 +953,10 @@ export const getAcceptedContactCountsBySearch = query({
 
     return {
       totalAccepted: contacts.length,
-      totalExportable: exportableContacts.length,
+      totalExportable: dedupeExportContactsByEmail(
+        exportableContacts,
+        args.searchId,
+      ).length,
       duplicateFallbackExportable: exportResolution.priorSearchExportable,
       totalExportableIncludingPrior,
       duplicateSkips: exportResolution.duplicateSkips,

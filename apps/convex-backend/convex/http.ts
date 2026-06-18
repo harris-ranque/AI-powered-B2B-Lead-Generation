@@ -16,6 +16,7 @@ import {
   type ExportTokenPayload,
 } from "./lib/cryptoHelpers";
 import {
+  dedupeExportContactsByEmail,
   extractContactDetails,
   isLeadExportable,
   isContactEmailExportable,
@@ -1160,15 +1161,18 @@ http.route({
           }
         }
 
-        const exportableContacts = exportContacts.filter((contact) => {
-          const lead = leadById.get(String(contact.leadId));
-          const companyResearchPayload = contact.companyResearchId
-            ? companyResearchById.get(String(contact.companyResearchId))
-            : undefined;
-          return isContactFullyExportable(contact, {
-            companyResearchPayload,
-          });
-        });
+        const exportableContacts = dedupeExportContactsByEmail(
+          exportContacts.filter((contact) => {
+            const lead = leadById.get(String(contact.leadId));
+            const companyResearchPayload = contact.companyResearchId
+              ? companyResearchById.get(String(contact.companyResearchId))
+              : undefined;
+            return isContactFullyExportable(contact, {
+              companyResearchPayload,
+            });
+          }),
+          searchId,
+        );
 
         if (exportableContacts.length === 0) {
           return new Response(

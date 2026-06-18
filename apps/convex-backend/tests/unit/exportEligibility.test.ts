@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { Id } from "../../convex/_generated/dataModel";
 import {
   extractContactDetails,
   hasWrittenEmail,
   formatExportPhone,
+  dedupeExportContactsByEmail,
   classifyContactExportReadiness,
   summarizeExportReadiness,
   isContactEmailExportable,
@@ -322,5 +324,34 @@ describe("exportEligibility", () => {
     );
     expect(msg).toContain("already in your account");
     expect(msg).toContain("none have exportable contacts yet");
+  });
+
+  it("dedupes export contacts by email, preferring current search", () => {
+    const searchA = "search_a" as Id<"searches">;
+    const searchB = "search_b" as Id<"searches">;
+    const deduped = dedupeExportContactsByEmail(
+      [
+        {
+          normalizedEmail: "malte@mondu.ai",
+          searchId: searchB,
+          createdAt: 100,
+        },
+        {
+          normalizedEmail: "malte@mondu.ai",
+          searchId: searchA,
+          createdAt: 50,
+        },
+        {
+          normalizedEmail: "philipp@mondu.ai",
+          searchId: searchA,
+          createdAt: 200,
+        },
+      ],
+      searchA,
+    );
+    expect(deduped).toHaveLength(2);
+    expect(
+      deduped.find((c) => c.normalizedEmail === "malte@mondu.ai")?.searchId,
+    ).toBe(searchA);
   });
 });
