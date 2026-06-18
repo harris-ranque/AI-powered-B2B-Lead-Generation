@@ -423,9 +423,7 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
   );
 
   const exportableContactCount = featureFlags.multiContactPipeline
-    ? (contactCounts?.totalExportableIncludingPrior ??
-        contactCounts?.totalExportable ??
-        enrichedCount)
+    ? (contactCounts?.totalExportable ?? enrichedCount)
     : enrichedCount;
 
   const duplicateSkipCount =
@@ -433,7 +431,6 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
     (search?.duplicatesFilteredAddress ?? 0) +
     (search?.duplicatesFilteredPlaceName ?? 0) +
     (search?.duplicatesFilteredEmail ?? 0);
-  const priorSearchExportable = contactCounts?.duplicateFallbackExportable ?? 0;
   const isRepeatSearchNoNewLeads =
     discoveredCount === 0 && duplicateSkipCount > 0;
 
@@ -984,10 +981,8 @@ export function ReviewExportStage({ onViewResults }: ReviewExportStageProps) {
                   </>
                 )}
                 {" "}
-                CSV export includes exportable contacts from those prior results
-                {priorSearchExportable > 0
-                  ? ` (${priorSearchExportable.toLocaleString()} available now).`
-                  : " when available."}
+                Open an earlier search in this area to export contacts from those
+                businesses.
               </AlertDescription>
             </Alert>
           )}

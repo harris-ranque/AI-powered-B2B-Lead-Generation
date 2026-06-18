@@ -5,6 +5,7 @@ import { requireAuth, getCurrentUser } from "../auth";
 import {
   countExportableLeads,
   countExportableSummaryForSearch,
+  countDuplicateSkipsFromSearch,
   computeExportReadinessForContacts,
   dedupeExportContactsByEmail,
   filterFullyExportableContacts,
@@ -942,11 +943,6 @@ export const getAcceptedContactCountsBySearch = query({
       ctx,
       contacts,
     );
-    const exportResolution = await resolveSearchExportData(
-      ctx,
-      args.searchId,
-      user._id,
-    );
     const byLead: Record<string, number> = {};
     for (const contact of exportableContacts) {
       const key = String(contact.leadId);
@@ -954,10 +950,9 @@ export const getAcceptedContactCountsBySearch = query({
     }
 
     const dedupedExportable = dedupeExportContactsByEmail(
-      await filterFullyExportableContacts(ctx, exportResolution.contacts),
+      exportableContacts,
       args.searchId,
     );
-    const totalExportableIncludingPrior = dedupedExportable.length;
 
     const linkedForReenrichment = (
       await ctx.db
@@ -968,13 +963,10 @@ export const getAcceptedContactCountsBySearch = query({
 
     return {
       totalAccepted: contacts.length,
-      totalExportable: dedupeExportContactsByEmail(
-        exportableContacts,
-        args.searchId,
-      ).length,
-      duplicateFallbackExportable: exportResolution.priorSearchExportable,
-      totalExportableIncludingPrior,
-      duplicateSkips: exportResolution.duplicateSkips,
+      totalExportable: dedupedExportable.length,
+      duplicateFallbackExportable: 0,
+      totalExportableIncludingPrior: dedupedExportable.length,
+      duplicateSkips: countDuplicateSkipsFromSearch(search),
       linkedForReenrichment,
       byLead,
       multiContactEnabled: true,

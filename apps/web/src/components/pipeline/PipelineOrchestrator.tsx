@@ -151,14 +151,11 @@ export function PipelineOrchestrator({
     completionSearchIds.length > 0 ? { searchIds: completionSearchIds } : "skip",
   );
   const exportSummary = liveExportableCounts?.[String(activeSearchId)];
-  const exportableCount =
+  const exportableThisSearch =
     exportSummary?.exportableContacts ??
-    (featureFlags.multiContactPipeline
-      ? (contactCounts?.totalExportableIncludingPrior ??
-          contactCounts?.totalExportable ??
-          search?.results?.exportableCount)
-      : search?.results?.exportableCount) ??
-    enrichedCount;
+    contactCounts?.totalExportable ??
+    search?.results?.exportableCount ??
+    0;
   const exportableBusinessCount = exportSummary?.exportableBusinesses;
 
   const duplicateSkipCount =
@@ -166,7 +163,6 @@ export function PipelineOrchestrator({
     (search?.duplicatesFilteredAddress ?? 0) +
     (search?.duplicatesFilteredPlaceName ?? 0) +
     (search?.duplicatesFilteredEmail ?? 0);
-  const priorSearchExportable = contactCounts?.duplicateFallbackExportable ?? 0;
   const isRepeatSearchNoNewLeads =
     totalFound === 0 && duplicateSkipCount > 0;
 
@@ -725,7 +721,7 @@ export function PipelineOrchestrator({
                       </div>
                       <div className="flex flex-col items-center justify-center rounded-lg border border-ring/40 bg-ring/5 p-3 transition-all hover:border-ring/60 hover:bg-ring/10">
                         <div className="text-2xl font-bold text-foreground">
-                          {exportableCount}
+                          {exportableThisSearch}
                         </div>
                         <div className="text-xs font-medium text-muted-foreground">
                           {featureFlags.multiContactPipeline
@@ -750,22 +746,9 @@ export function PipelineOrchestrator({
                     <p>
                       {duplicateSkipCount.toLocaleString()} businesses were already in
                       your account from prior searches in this area (deduplication).
+                      Open an earlier search in this area to export contacts from those
+                      businesses.
                     </p>
-                    {priorSearchExportable > 0 ? (
-                      <p>
-                        {priorSearchExportable.toLocaleString()} exportable contact
-                        {priorSearchExportable === 1 ? "" : "s"} from those prior
-                        results can still be downloaded — use{" "}
-                        <span className="font-medium text-foreground">Export CSV</span>{" "}
-                        in review or search history.
-                      </p>
-                    ) : (
-                      <p>
-                        Export CSV will include contacts from prior searches when they
-                        become available. Open an earlier search that discovered these
-                        businesses for full results.
-                      </p>
-                    )}
                   </div>
                 ) : (
                   <p>Your search has finished. Review the results in search history.</p>

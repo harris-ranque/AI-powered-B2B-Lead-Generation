@@ -379,22 +379,15 @@ export async function countExportableSummaryForSearch(
   );
 
   const businessIds = new Set<string>();
-  let fromThisSearch = 0;
-  let priorSearchExportable = 0;
   for (const contact of exportable) {
     businessIds.add(String(contact.leadId));
-    if (String(contact.searchId) === String(searchId)) {
-      fromThisSearch++;
-    } else {
-      priorSearchExportable++;
-    }
   }
 
   return {
     exportableContacts: exportable.length,
     exportableBusinesses: businessIds.size,
-    fromThisSearch,
-    priorSearchExportable,
+    fromThisSearch: exportable.length,
+    priorSearchExportable: 0,
     duplicateSkips: resolution.duplicateSkips,
     linkedForReenrichment: (
       await ctx.db
@@ -477,7 +470,7 @@ export function noExportableLeadsMessage(
       : "";
 
     if (priorSearchExportable > 0) {
-      return `No new leads were added for this search (${duplicateSkips} businesses were already in your account).${reenrichNote} ${priorSearchExportable} exportable contacts from prior searches can still be downloaded via CSV export.`;
+      return `No new leads were added for this search (${duplicateSkips} businesses were already in your account).${reenrichNote}${pipelineNote}${readinessNote}`;
     }
     return `No new leads were added for this search (${duplicateSkips} businesses were already in your account from prior searches, but none have exportable contacts yet).${reenrichNote}${pipelineNote}${readinessNote}`;
   }
@@ -643,26 +636,9 @@ export async function resolveSearchExportData(
     )
     .collect();
 
-  const leadMap = new Map<string, DataModel["leads"]["document"]>();
-  for (const lead of searchLeads) {
-    leadMap.set(String(lead._id), lead);
-  }
-
   const contactById = new Map<string, LeadContactDoc>();
   for (const contact of searchContacts) {
     contactById.set(String(contact._id), contact);
-  }
-
-  const originalLeadIds = await getDuplicateOriginalLeadIds(ctx, searchId);
-  const fallbackContacts = await getExportableContactsForLeadIds(
-    ctx,
-    originalLeadIds,
-  );
-
-  for (const contact of fallbackContacts) {
-    if (!contactById.has(String(contact._id))) {
-      contactById.set(String(contact._id), contact);
-    }
   }
 
   const contacts = dedupeExportContactsByEmail(
@@ -670,30 +646,12 @@ export async function resolveSearchExportData(
     searchId,
   );
 
-  let priorSearchExportable = 0;
-  for (const contact of contacts) {
-    const leadKey = String(contact.leadId);
-    if (!leadMap.has(leadKey)) {
-      const lead = await ctx.db.get(contact.leadId);
-      if (lead && lead.userId === userId) {
-        leadMap.set(leadKey, lead);
-      }
-    }
-    if (String(contact.searchId) !== String(searchId)) {
-      priorSearchExportable++;
-    }
-  }
-
-  const includesPriorSearchLeads =
-    priorSearchExportable > 0 ||
-    searchLeads.length < leadMap.size;
-
   return {
-    leads: [...leadMap.values()],
+    leads: searchLeads,
     contacts,
-    includesPriorSearchLeads,
+    includesPriorSearchLeads: false,
     duplicateSkips,
-    priorSearchExportable,
+    priorSearchExportable: 0,
   };
 }
 

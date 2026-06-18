@@ -326,7 +326,7 @@ describe("exportEligibility", () => {
       { duplicateSkips: 129, priorSearchExportable: 5 },
     );
     expect(msg).toContain("already in your account");
-    expect(msg).toContain("5 exportable contacts");
+    expect(msg).not.toContain("prior searches can still be downloaded");
   });
 
   it("message explains duplicate skips without exportable contacts", () => {
