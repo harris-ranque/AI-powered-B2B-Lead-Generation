@@ -1,6 +1,6 @@
 # Genni - AI-Powered Lead Generation Platform
 
-> Sophisticated AI-powered lead generation platform built as a monorepo combining React frontend with Python LangGraph worker service to generate personalized email sequences for business leads.
+> AI-powered lead generation monorepo: React frontend, Convex real-time backend, and Python LangGraph worker for personalized outreach emails.
 
 ## 🏗️ Architecture Overview
 
@@ -64,7 +64,7 @@ This is a multi-repository system with the following structure:
 ```bash
 # 1. Clone and install dependencies
 git clone <this-repository>
-cd LeadGen
+cd genni
 pnpm install
 
 # 2. Set up environment files
@@ -123,49 +123,43 @@ npx convex dev
 ## 📦 Project Structure
 
 ```
-LeadGen/
+genni/
 ├── apps/
-│   ├── web/                          # React frontend application
-│   │   ├── src/
-│   │   │   ├── components/           # React components
-│   │   │   │   ├── ui/              # shadcn/ui component library
-│   │   │   │   ├── auth/            # Authentication components
-│   │   │   │   ├── royalty/         # Royalty system components
-│   │   │   │   └── ...              # Business logic components
-│   │   │   ├── hooks/               # Custom React hooks
-│   │   │   ├── lib/                 # Utilities and API clients
-│   │   │   └── pages/               # Page components
-│   │   ├── package.json
-│   │   └── vite.config.ts
-│   │
-│   ├── langgraph-worker/            # Python FastAPI service
-│   │   ├── app/
-│   │   │   ├── langgraph/           # LangGraph workflow system
-│   │   │   │   ├── nodes/           # Individual agent nodes
-│   │   │   │   ├── state.py         # Workflow state management
-│   │   │   │   ├── supervisor.py    # Agent supervisor
-│   │   │   │   └── workflow.py      # Workflow orchestration
-│   │   │   ├── models/              # Pydantic models
-│   │   │   ├── utils/               # Utilities
-│   │   │   └── main.py              # FastAPI app
-│   │   ├── requirements.txt
-│   │   └── package.json
-│   │
-│   └── convex-backend/              # Convex backend (integrated)
-│       ├── convex/                  # Convex functions
-│       │   ├── auth/                # Authentication
-│       │   ├── leads/               # Lead management
-│       │   ├── crewai/              # LangGraph integration
-│       │   ├── billing/             # Payment processing
-│       │   └── schema.ts            # Database schema
-│       ├── package.json
-│       └── convex.json
-├── docs/                            # Documentation
-├── scripts/                         # Deployment scripts
-├── package.json                     # Root package.json
-├── turbo.json                       # Turbo configuration
-└── pnpm-workspace.yaml             # pnpm workspace config
+│   ├── web/                    # React + Vite frontend (port 3000)
+│   ├── langgraph-worker/       # Python FastAPI + LangGraph (port 8080)
+│   └── convex-backend/         # Convex functions, schema, crons
+│       └── convex/
+│           ├── search/         # Orchestration, completion, monitoring
+│           ├── leads/          # Discovery, enrichment, contacts, export
+│           ├── langgraph/      # Worker actions & batch webhooks
+│           ├── credits/        # Atomic credit transactions
+│           └── schema.ts
+├── packages/
+│   ├── shared-types/
+│   └── convex-types/           # Generated Convex API types
+├── docs/
+├── turbo.json
+└── pnpm-workspace.yaml
 ```
+
+## 🔄 Lead Search Pipeline
+
+```
+Create Search → Google Maps Discovery → People Discovery → FindyMail Enrichment
+      → Write Emails (LangGraph) → Search Complete → CSV Export
+```
+
+| Phase | What happens | Primary storage |
+|-------|----------------|-----------------|
+| Discovery | Businesses via Google Maps spatial tiling | `leads` |
+| People discovery | Role-matched prospects from websites / APIs | `leadProspects` |
+| Enrichment | Verified work emails (employment-gated) | `leadContacts` |
+| Write Emails | LangGraph writes subject + body per contact | `emailContent` on contact |
+| Export | CSV of contacts with completed emails | `/api/exports/leads.csv` |
+
+**Contact count vs exportable count:** Search History shows accepted contacts (emails found). Export requires Write Emails to finish (`analysisStatus: completed` + `emailContent`). If a search shows contacts but export fails, click **Retry Write Emails** in Search History or call `search.mutations.resumeWriteEmails`.
+
+**Reliability:** Cron monitors in `search/monitoring.ts` recover stuck searches, re-trigger missed Write Emails, and prevent premature completion while analysis is in flight. See [`docs/SEARCH_COMPLETION_RELIABILITY.md`](./docs/SEARCH_COMPLETION_RELIABILITY.md).
 
 ## 🤖 LangGraph Optimized 3-Agent System
 
@@ -408,10 +402,11 @@ class BusinessContext(BaseModel):
 **Real-time Orchestration with Advanced Reliability Engineering**
 
 ```
-Dashboard → Create Search → Google Maps Discovery → FindyMail Enrichment → LangGraph Analysis → CSV Export
-     ↓            ↓                ↓                    ↓                ↓              ↓
-Real-time    Credit Reserve    Lead Discovery     Email Enrichment   AI Analysis   Completion
-Updates      Transaction       Broadcasting       Progress Tracking   Correlation   Notification
+Dashboard → Create Search → Google Maps → People Discovery → FindyMail → Write Emails → CSV Export
+     ↓            ↓              ↓              ↓               ↓            ↓              ↓
+Real-time    Credit Reserve   Discovery    Prospects      Contacts    LangGraph      Export
+Updates      Transaction      + Dedup      + Roles        + Emails    3-Agent        (completed
+                                                                                    email required)
 ```
 
 ### Advanced Pipeline Features
@@ -427,14 +422,13 @@ Updates      Transaction       Broadcasting       Progress Tracking   Correlatio
 
 ### Data Flow & Pipeline Orchestration
 
-1. **Search Creation**: User creates search in React frontend with real-time validation
-2. **Credit Reservation**: Atomic credit reservation with transaction-based management
-3. **Pipeline Orchestration**: State machine coordination with intelligent queue processing
-4. **Google Maps Discovery**: Parallel lead discovery with real-time progress broadcasting
-5. **Lead Enrichment**: FindyMail API enrichment with batch processing and rate limiting
-6. **LangGraph Analysis**: Multi-agent AI analysis with correlation tracking and error recovery
-7. **Real-time Updates**: Continuous status broadcasting throughout entire pipeline
-8. **Completion & Export**: Results stored in Convex with CSV export and user notifications
+1. **Search creation** — User defines location, roles, keywords; credits reserved atomically
+2. **Google Maps discovery** — Spatial tiling with per-search and user-level deduplication
+3. **People discovery** — Website / API scan for role-matched prospects per business
+4. **FindyMail enrichment** — Email lookup for employment-verified prospects; multiple contacts per company allowed
+5. **Write Emails** — Convex batches contacts to LangGraph; webhooks update `leadContacts` asynchronously
+6. **Search completion** — Finalized only when enrichment and Write Emails are terminal (or legitimately empty)
+7. **Export** — CSV via authenticated HTTP route; requires completed email content per contact
 
 ### Technical Excellence
 
@@ -576,10 +570,10 @@ python test_workflow_demo.py
 Create `apps/web/.env.local`:
 
 ```env
-NEXT_PUBLIC_CONVEX_URL=your_convex_url
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
-NEXT_PUBLIC_POSTHOG_KEY=phc_...
-NEXT_PUBLIC_POSTHOG_HOST=
+VITE_CONVEX_URL=your_convex_url
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
+VITE_POSTHOG_KEY=phc_...
+VITE_POSTHOG_HOST=https://us.i.posthog.com
 ```
 
 ### LangGraph Worker Environment Variables
@@ -627,9 +621,9 @@ STRIPE_SECRET_KEY=sk_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_CONNECT_CLIENT_ID=ca_...
 
-# LangGraph Worker (environment variable names kept for compatibility)
-CREWAI_URL=http://localhost:8080
-CREWAI_API_KEY=your_secure_api_key
+# LangGraph Worker (Convex uses LANGGRAPH_*; legacy CREWAI_* may still appear in older docs)
+LANGGRAPH_URL=http://localhost:8080
+LANGGRAPH_API_KEY=your_secure_api_key
 
 # Clerk Authentication
 CLERK_SECRET_KEY=sk_...
@@ -673,8 +667,10 @@ railway up --service genni-langgraph-worker
 
 # Deploy Convex Backend
 cd apps/convex-backend
-npx convex deploy
+npx convex deploy --yes
 ```
+
+**Convex deployments:** dev `dashing-coyote-96` · prod `prestigious-mosquito-761` (see `CLAUDE.md`).
 
 ### Service Access
 
@@ -699,8 +695,32 @@ npx convex deploy
 - **Billing Integration**: Stripe-powered subscription and credit system
 - **Royalty System**: Developer revenue sharing and payment processing
 - **Email Studio**: Template management and customization
-- **Search History**: Historical search management and analytics
-- **Mobile Optimization**: Responsive design for all devices
+- **Search History**: Historical searches, export, and Write Emails retry
+
+## 🩺 Troubleshooting
+
+### Export failed but search shows contacts
+
+Write Emails did not produce exportable rows. Common causes:
+
+| Symptom | Likely cause | Fix |
+|---------|----------------|-----|
+| “awaiting email writing” | Analysis never ran or still pending | Wait, or click **Retry Write Emails** |
+| “failed analysis” + quota message | OpenAI `insufficient_quota` / 429 | Fix billing or API key in Convex env, then retry |
+| Search “Completed”, `analyzedCount: 0` | All contacts failed analysis or race completed early | Retry Write Emails; check Convex logs for `analyzeLeads` |
+
+Export error messages distinguish **awaiting email writing** vs **failed analysis** (`convex/lib/exportEligibility.ts`).
+
+### Convex schema validation after git rollback
+
+Reverting code does not revert cloud data. If deploy fails with `extra field ... not in the validator`, documents were written by a newer schema. Options:
+
+1. **Clear affected tables** (dev): `npx convex import --table leadContacts --replace empty.json -y` (and `leadProspects` if needed)
+2. **Re-add optional fields** to `schema.ts` temporarily so old documents validate
+
+### LangGraph / Railway log rate limits
+
+Production worker sets `ACCESS_LOG_ENABLED=false`, `GUNICORN_LOG_LEVEL=warning`, and gates verbose per-email debug logs. See `apps/langgraph-worker/railway.toml`.
 
 ## 🔑 Key Integrations
 

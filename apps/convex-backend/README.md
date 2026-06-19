@@ -125,11 +125,12 @@ ENABLE_WEBHOOK_RETRIES=true
 - **users**: User accounts, plans, credits, preferences
 - **businessProfiles**: Company info for AI personalization
 - **searches**: Lead search sessions and parameters
-- **leads**: Individual business leads with enrichment data
-- **emailSequences**: AI-generated personalized emails
-- **billing**: Subscription and payment tracking
-- **creditTransactions**: Credit purchases and usage
-- **notifications**: System alerts and notifications
+- **leads**: Individual businesses from discovery
+- **leadProspects**: People found before email lookup
+- **leadContacts**: Accepted/rejected contacts with analysis + email content
+- **companyResearch**: Cached per-domain research for LangGraph
+- **emailSequences**: Legacy / dual-write email storage
+- **billing**, **creditTransactions**, **notifications**
 
 ### Relationships
 
@@ -158,12 +159,25 @@ ENABLE_WEBHOOK_RETRIES=true
 
 ### Lead Generation Workflow
 
-1. **Search Creation**: User defines search parameters
-2. **Google Maps Discovery**: Find businesses using Places API with spatial tiling
-3. **Contact Enrichment**: Enhance leads with FindyMail
-4. **AI Analysis**: LangGraph analyzes leads for relevance
-5. **Email Generation**: Personalized emails created by AI
-6. **Real-time Updates**: Progress tracked and displayed live
+1. **Search creation** — Parameters, credit reservation
+2. **Google Maps discovery** — Spatial tiling + deduplication
+3. **People discovery** — Role-matched prospects per business (`leadProspects`)
+4. **FindyMail enrichment** — Verified emails → `leadContacts`
+5. **Write Emails** — LangGraph batch analysis + webhooks
+6. **Export** — CSV requires `analysisStatus: completed` and `emailContent` on each contact
+
+**Retry:** `search.mutations.resumeWriteEmails` re-queues analysis for pending/failed contacts on a completed search.
+
+**Monitoring:** `search/monitoring.monitorSearchHealth` (cron) recovers stuck searches and completed searches where Write Emails never ran.
+
+### Export eligibility
+
+| UI label | Meaning |
+|----------|---------|
+| N contacts | Accepted contacts with verified emails |
+| Exportable | Contacts with completed Write Emails |
+
+Blocker breakdown lives in `convex/lib/exportEligibility.ts` (`buildContactExportBlockerStats`, `noExportableLeadsMessage`).
 
 ### Spatial Tiling & Lead Discovery
 
@@ -262,6 +276,21 @@ Credit costs:
 - User activity tracking
 - Search performance analytics
 - Conversion funnel analysis
+
+## Troubleshooting
+
+### Schema validation on deploy
+
+If deploy fails with `extra field ... not in the validator`, cloud documents were written by a newer schema than your current `schema.ts`. Clear affected tables (`leadContacts`, `leadProspects`) via the dashboard or:
+
+```bash
+echo '[]' > /tmp/empty.json
+npx convex import --table leadContacts --replace /tmp/empty.json -y
+```
+
+### Export shows contacts but CSV is empty
+
+Enrichment succeeded; Write Emails did not. Check `OPENAI_API_KEY` quota, Convex logs for `analyzeLeads`, and use `resumeWriteEmails` from the UI or API.
 
 ## Development Guidelines
 
