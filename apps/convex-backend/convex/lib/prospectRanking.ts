@@ -11,6 +11,7 @@ export type RankableProspect = {
   matchedRole?: string | null;
   rankScore?: number | null;
   title: string;
+  employmentVerified?: boolean;
 };
 
 export function computeEffectiveRankScore(
@@ -62,11 +63,15 @@ export function selectProspectsForFindyMailNameSearch<T extends RankableProspect
   prospects: T[],
   requestedRoles: string[],
 ): T[] {
-  if (prospects.length === 0) {
+  const eligible = prospects.filter(
+    (prospect) => prospect.employmentVerified !== false,
+  );
+
+  if (eligible.length === 0) {
     return [];
   }
 
-  const ranked = rankProspectsForFindyMail(prospects, requestedRoles);
+  const ranked = rankProspectsForFindyMail(eligible, requestedRoles);
   const selected: T[] = [];
   const seenNames = new Set<string>();
 

@@ -675,6 +675,10 @@ export default defineSchema({
     rankScore: v.optional(v.number()),
     discoverySources: v.optional(v.array(v.string())),
 
+    employmentVerified: v.optional(v.boolean()),
+    employmentConfidence: v.optional(v.number()),
+    verificationEvidence: v.optional(v.array(v.any())),
+
     source: v.union(
       v.literal("perplexity"),
       v.literal("tavily"),
@@ -789,6 +793,9 @@ export default defineSchema({
     titleMatchReason: v.optional(v.string()),
     emailVerified: v.boolean(),
     domainMatchVerified: v.boolean(),
+
+    employmentVerified: v.optional(v.boolean()),
+    employmentConfidence: v.optional(v.number()),
 
     // Lifecycle
     status: v.union(

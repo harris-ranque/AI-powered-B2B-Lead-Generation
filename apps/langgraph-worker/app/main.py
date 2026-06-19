@@ -889,8 +889,8 @@ async def discover_people(
 ):
     """
     Identify decision makers at a company before email lookup.
-    Runs website scrape (team/about pages) and Perplexity in parallel,
-    merges and deduplicates results for FindyMail name search.
+    Phase 1: website, FindyMail employees, Perplexity, and Tavily — merge and dedupe.
+    Phase 2: employment verification gates FindyMail /search/name.
     """
     start_time = datetime.utcnow()
 
@@ -920,6 +920,10 @@ async def discover_people(
             industry=request.industry or "",
             requested_roles=request.requested_roles,
             provider_keys=provider_keys_payload,
+            findymail_employees=[
+                employee.model_dump(by_alias=True)
+                for employee in request.findymail_employees
+            ],
         )
 
         duration = (datetime.utcnow() - start_time).total_seconds()

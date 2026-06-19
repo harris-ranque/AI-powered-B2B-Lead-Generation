@@ -104,14 +104,75 @@ export const persistLeadProspects = internalMutation({
         sourceUrl: v.optional(v.string()),
         linkedinUrl: v.optional(v.string()),
         rawDiscoveryData: v.optional(v.any()),
+        employmentVerified: v.optional(v.boolean()),
+        employmentConfidence: v.optional(v.number()),
+        verificationEvidence: v.optional(v.array(v.any())),
+        status: v.optional(
+          v.union(
+            v.literal("discovered"),
+            v.literal("email_pending"),
+            v.literal("email_found"),
+            v.literal("email_not_found"),
+            v.literal("rejected"),
+          ),
+        ),
+        emailDiscoveryStatus: v.optional(
+          v.union(
+            v.literal("pending"),
+            v.literal("in_progress"),
+            v.literal("completed"),
+            v.literal("failed"),
+            v.literal("skipped"),
+          ),
+        ),
       }),
+    ),
+    rejectedPeople: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          title: v.string(),
+          matchedRole: v.optional(v.string()),
+          confidence: v.number(),
+          rankScore: v.optional(v.number()),
+          discoverySources: v.optional(v.array(v.string())),
+          source: v.union(
+            v.literal("perplexity"),
+            v.literal("tavily"),
+            v.literal("website_inference"),
+            v.literal("findymail_employees"),
+            v.literal("manual"),
+          ),
+          sourceUrl: v.optional(v.string()),
+          linkedinUrl: v.optional(v.string()),
+          rawDiscoveryData: v.optional(v.any()),
+          employmentVerified: v.optional(v.boolean()),
+          employmentConfidence: v.optional(v.number()),
+          verificationEvidence: v.optional(v.array(v.any())),
+        }),
+      ),
     ),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
     const insertedIds: Id<"leadProspects">[] = [];
+    let verifiedCount = 0;
 
-    for (const person of args.people) {
+    const allPeople = [
+      ...args.people.map((person) => ({
+        ...person,
+        status: person.status ?? ("discovered" as const),
+        emailDiscoveryStatus: person.emailDiscoveryStatus ?? ("pending" as const),
+      })),
+      ...(args.rejectedPeople ?? []).map((person) => ({
+        ...person,
+        status: "rejected" as const,
+        emailDiscoveryStatus: "skipped" as const,
+        employmentVerified: person.employmentVerified ?? false,
+      })),
+    ];
+
+    for (const person of allPeople) {
       const existing = await ctx.db
         .query("leadProspects")
         .withIndex("by_lead", (q) => q.eq("leadId", args.leadId))
@@ -134,10 +195,13 @@ export const persistLeadProspects = internalMutation({
         confidence: person.confidence,
         rankScore: person.rankScore,
         discoverySources: person.discoverySources,
+        employmentVerified: person.employmentVerified,
+        employmentConfidence: person.employmentConfidence,
+        verificationEvidence: person.verificationEvidence,
         source: person.source,
         sourceUrl: person.sourceUrl,
-        status: "discovered" as const,
-        emailDiscoveryStatus: "pending" as const,
+        status: person.status,
+        emailDiscoveryStatus: person.emailDiscoveryStatus,
         rawDiscoveryData: person.rawDiscoveryData,
         updatedAt: now,
       };
@@ -152,10 +216,15 @@ export const persistLeadProspects = internalMutation({
         });
         insertedIds.push(id);
       }
+
+      if (person.status === "discovered") {
+        verifiedCount += 1;
+      }
     }
 
     return {
-      prospectCount: insertedIds.length,
+      prospectCount: verifiedCount,
+      totalPersisted: insertedIds.length,
     };
   },
 });

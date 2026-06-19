@@ -33,18 +33,68 @@ type DiscoverPeopleApiPerson = {
   source?: string;
   sourceUrl?: string;
   linkedinUrl?: string;
+  employmentVerified?: boolean;
+  employmentConfidence?: number;
+  verificationEvidence?: Array<Record<string, unknown>>;
 };
 
 function mapProspectSource(
   source: string | undefined,
-): "perplexity" | "website_inference" | "findymail_employees" {
+): "perplexity" | "tavily" | "website_inference" | "findymail_employees" {
   if (source === "findymail_employees") {
     return "findymail_employees";
+  }
+  if (source === "tavily") {
+    return "tavily";
   }
   if (source === "website_inference" || source === "website_llm") {
     return "website_inference";
   }
   return "perplexity";
+}
+
+type PersistableProspect = {
+  name: string;
+  title: string;
+  matchedRole?: string;
+  confidence: number;
+  rankScore?: number;
+  discoverySources?: string[];
+  source: "perplexity" | "tavily" | "website_inference" | "findymail_employees";
+  sourceUrl?: string;
+  linkedinUrl?: string;
+  rawDiscoveryData?: unknown;
+  employmentVerified?: boolean;
+  employmentConfidence?: number;
+  verificationEvidence?: Array<Record<string, unknown>>;
+};
+
+function mapApiPersonToPersistable(
+  person: DiscoverPeopleApiPerson,
+): PersistableProspect | null {
+  if (!person.name?.trim() || !person.title?.trim()) {
+    return null;
+  }
+
+  return {
+    name: person.name.trim(),
+    title: person.title.trim(),
+    matchedRole: person.matchedRole?.trim() || undefined,
+    confidence: typeof person.confidence === "number" ? person.confidence : 0.7,
+    rankScore:
+      typeof person.roleMatchScore === "number"
+        ? person.roleMatchScore
+        : undefined,
+    discoverySources:
+      person.sources && person.sources.length > 0 ? person.sources : undefined,
+    source: mapProspectSource(person.source),
+    sourceUrl: person.sourceUrl?.trim() || undefined,
+    linkedinUrl: person.linkedinUrl?.trim() || undefined,
+    rawDiscoveryData: person,
+    employmentVerified: person.employmentVerified,
+    employmentConfidence: person.employmentConfidence,
+    verificationEvidence: person.verificationEvidence,
+  };
 }
 
 /**
@@ -267,6 +317,9 @@ export const discoverPeopleForLead = internalAction({
         if (resolvedKeys.perplexity) {
           keys.perplexity = resolvedKeys.perplexity;
         }
+        if (resolvedKeys.tavily) {
+          keys.tavily = resolvedKeys.tavily;
+        }
         if (resolvedKeys.findymail) {
           keys.findymail = resolvedKeys.findymail;
           findymailApiKey = resolvedKeys.findymail;
@@ -279,9 +332,58 @@ export const discoverPeopleForLead = internalAction({
       }
     }
 
-    const response = await fetch(
-      buildLangGraphUrl(langgraphUrl, "/discover-people"),
-      {
+    const findymailKey = EnrichmentProviderFactory.getProviderApiKey(
+      "findymail",
+      findymailApiKey,
+    );
+
+    const findymailEmployeesPromise = (async () => {
+      if (!findymailKey) {
+        return [] as Array<{ name: string; title: string; linkedinUrl?: string }>;
+      }
+
+      try {
+        const service = createEnrichmentService(findymailApiKey, "findymail");
+        const employees = await service.searchEmployees(domain, requestedRoles);
+        const mapped = mapFindyMailEmployeesToProspects(employees, requestedRoles);
+        return mapped.map((person) => ({
+          name: person.name,
+          title: person.title,
+          linkedinUrl: person.linkedinUrl,
+        }));
+      } catch (error) {
+        const apiError = (error as { apiError?: import("../lib/apiErrors").ApiError })
+          .apiError;
+        const message =
+          error instanceof Error ? error.message : "FindyMail employee search failed";
+
+        await ctx.runMutation(
+          internal.leads.peopleDiscoveryInternal.appendPeopleDiscoveryLog,
+          {
+            searchId: args.searchId,
+            userId: args.userId,
+            leadId: args.leadId,
+            event: "lead_failed",
+            message: "FindyMail /search/employees discovery failed",
+            businessName: lead.businessName,
+            domain,
+            metadata: {
+              error: message.slice(0, 500),
+              errorCode: apiError?.errorCode,
+            },
+          },
+        );
+
+        if (apiError && shouldBlockPipeline(apiError)) {
+          throw error;
+        }
+
+        return [];
+      }
+    })();
+
+    const response = await findymailEmployeesPromise.then((findymailEmployees) =>
+      fetch(buildLangGraphUrl(langgraphUrl, "/discover-people"), {
         method: "POST",
         headers: langGraphRequestHeaders(langgraphApiKey),
         body: JSON.stringify({
@@ -293,8 +395,9 @@ export const discoverPeopleForLead = internalAction({
           userId: args.userId,
           userTier: user?.plan ?? "free",
           providerKeys: providerKeys ?? undefined,
+          findymailEmployees,
         }),
-      },
+      }),
     );
 
     if (!response.ok) {
@@ -324,82 +427,23 @@ export const discoverPeopleForLead = internalAction({
 
     const data = (await response.json()) as {
       people?: DiscoverPeopleApiPerson[];
+      rejectedPeople?: DiscoverPeopleApiPerson[];
       companyOverview?: string;
       rawData?: Record<string, unknown>;
       researchTier?: string;
     };
 
-    let people = (data.people ?? []).filter(
-      (p) => p.name?.trim() && p.title?.trim(),
-    );
+    const verifiedPeople = (data.people ?? [])
+      .map(mapApiPersonToPersistable)
+      .filter((person): person is PersistableProspect => person !== null);
 
-    let usedFindyMailEmployeesFallback = false;
-
-    if (people.length === 0) {
-      const findymailKey = EnrichmentProviderFactory.getProviderApiKey(
-        "findymail",
-        findymailApiKey,
-      );
-
-      if (findymailKey) {
-        try {
-          const service = createEnrichmentService(findymailApiKey, "findymail");
-          const employees = await service.searchEmployees(domain, requestedRoles);
-          const mapped = mapFindyMailEmployeesToProspects(
-            employees,
-            requestedRoles,
-          );
-
-          if (mapped.length > 0) {
-            usedFindyMailEmployeesFallback = true;
-            people = mapped.map((person) => ({
-              name: person.name,
-              title: person.title,
-              matchedRole: person.matchedRole,
-              confidence: person.confidence,
-              roleMatchScore: person.roleMatchScore,
-              linkedinUrl: person.linkedinUrl,
-              source: person.source,
-              sources: ["findymail_employees"],
-            }));
-          }
-        } catch (error) {
-          const apiError = (error as { apiError?: import("../lib/apiErrors").ApiError })
-            .apiError;
-          const message =
-            error instanceof Error ? error.message : "FindyMail employee search failed";
-
-          await ctx.runMutation(
-            internal.leads.peopleDiscoveryInternal.appendPeopleDiscoveryLog,
-            {
-              searchId: args.searchId,
-              userId: args.userId,
-              leadId: args.leadId,
-              event: "lead_failed",
-              message: `FindyMail /search/employees fallback failed`,
-              businessName: lead.businessName,
-              domain,
-              metadata: {
-                error: message.slice(0, 500),
-                errorCode: apiError?.errorCode,
-              },
-            },
-          );
-
-          if (apiError && shouldBlockPipeline(apiError)) {
-            throw error;
-          }
-        }
-      }
-    }
-
-    const sanitizeOptionalString = (value: unknown): string | undefined => {
-      if (typeof value !== "string") {
-        return undefined;
-      }
-      const trimmed = value.trim();
-      return trimmed.length > 0 ? trimmed : undefined;
-    };
+    const rejectedPeople = (data.rejectedPeople ?? [])
+      .map(mapApiPersonToPersistable)
+      .filter((person): person is PersistableProspect => person !== null)
+      .map((person) => ({
+        ...person,
+        employmentVerified: person.employmentVerified ?? false,
+      }));
 
     const persistResult: {
       prospectCount: number;
@@ -410,25 +454,11 @@ export const discoverPeopleForLead = internalAction({
         leadId: args.leadId,
         searchId: args.searchId,
         userId: args.userId,
-        people: people.map((person) => ({
-          name: person.name.trim(),
-          title: person.title.trim(),
-          matchedRole: sanitizeOptionalString(person.matchedRole),
-          confidence:
-            typeof person.confidence === "number" ? person.confidence : 0.7,
-          rankScore:
-            typeof person.roleMatchScore === "number"
-              ? person.roleMatchScore
-              : undefined,
-          discoverySources:
-            person.sources && person.sources.length > 0
-              ? person.sources
-              : undefined,
-          source: mapProspectSource(person.source),
-          sourceUrl: sanitizeOptionalString(person.sourceUrl),
-          linkedinUrl: sanitizeOptionalString(person.linkedinUrl),
-          rawDiscoveryData: person,
+        people: verifiedPeople.map((person) => ({
+          ...person,
+          employmentVerified: person.employmentVerified ?? true,
         })),
+        rejectedPeople,
       },
     );
 
@@ -440,13 +470,13 @@ export const discoverPeopleForLead = internalAction({
       },
     );
 
-    const peopleForLog = people.map((person) => ({
-      name: person.name.trim(),
-      title: person.title.trim(),
-      matchedRole: person.matchedRole?.trim() || undefined,
+    const peopleForLog = verifiedPeople.map((person) => ({
+      name: person.name,
+      title: person.title,
+      matchedRole: person.matchedRole,
     }));
 
-    if (peopleForLog.length > 0) {
+    if (peopleForLog.length > 0 || rejectedPeople.length > 0) {
       await ctx.runMutation(
         internal.leads.peopleDiscoveryInternal.appendPeopleDiscoveryLog,
         {
@@ -454,9 +484,10 @@ export const discoverPeopleForLead = internalAction({
           userId: args.userId,
           leadId: args.leadId,
           event: "lead_completed",
-          message: usedFindyMailEmployeesFallback
-            ? `Found ${peopleForLog.length} role-matched ${peopleForLog.length === 1 ? "person" : "people"} via FindyMail /search/employees fallback`
-            : `Found ${peopleForLog.length} role-matched ${peopleForLog.length === 1 ? "person" : "people"}`,
+          message:
+            peopleForLog.length > 0
+              ? `Found ${peopleForLog.length} employment-verified ${peopleForLog.length === 1 ? "person" : "people"}${rejectedPeople.length > 0 ? ` (${rejectedPeople.length} rejected)` : ""}`
+              : `No employment-verified people (${rejectedPeople.length} rejected after verification)`,
           businessName: lead.businessName,
           domain,
           prospectCount: peopleForLog.length,
@@ -465,7 +496,8 @@ export const discoverPeopleForLead = internalAction({
             researchTier: data.researchTier,
             scrapedPeople: (data.rawData as { website?: { people_found?: number } })
               ?.website?.people_found,
-            findymailEmployeesFallback: usedFindyMailEmployeesFallback,
+            verifiedCount: peopleForLog.length,
+            rejectedCount: rejectedPeople.length,
           },
         },
       );
@@ -477,17 +509,12 @@ export const discoverPeopleForLead = internalAction({
           userId: args.userId,
           leadId: args.leadId,
           event: "lead_completed",
-          message: usedFindyMailEmployeesFallback
-            ? "FindyMail /search/employees fallback returned no role-matched people"
-            : "No role-matched people found on website",
+          message: "No role-matched people found across discovery sources",
           businessName: lead.businessName,
           domain,
           prospectCount: 0,
           metadata: {
             researchTier: data.researchTier,
-            findymailEmployeesFallbackAttempted: Boolean(
-              EnrichmentProviderFactory.getProviderApiKey("findymail", findymailApiKey),
-            ),
           },
         },
       );

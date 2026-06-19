@@ -1042,6 +1042,9 @@ http.route({
         "full_research_report",
         "perplexity_citations",
         "research_confidence_score",
+        // Employment verification
+        "employment_verified",
+        "employment_confidence",
         // Lead tier classification
         "lead_tier",
         // Removed follow_up_3 - now limited to 2 follow-ups
@@ -1060,6 +1063,8 @@ http.route({
         contactFollowUps?: Array<{ subject: string; body: string; delay_days?: number }>,
         contactAiAnalysis?: Record<string, unknown>,
         companyResearchPayload?: unknown,
+        employmentVerified?: boolean,
+        employmentConfidence?: number,
       ) => {
         let followUps = emailDetails?.followUps ?? [];
         if (followUps.length === 0 && contactFollowUps?.length) {
@@ -1133,6 +1138,12 @@ http.route({
           fullResearchReport,
           perplexityCitations,
           researchConfidenceScore,
+          employmentVerified === true
+            ? "true"
+            : employmentVerified === false
+              ? "false"
+              : "",
+          typeof employmentConfidence === "number" ? employmentConfidence : "",
           (lead as { leadTier?: string }).leadTier ??
             (typeof contactAiAnalysis?.leadTier === "string"
               ? contactAiAnalysis.leadTier
@@ -1260,6 +1271,8 @@ http.route({
             contact.followUpEmails,
             contact.aiAnalysis,
             companyResearchPayload,
+            contact.employmentVerified,
+            contact.employmentConfidence,
           );
         }).filter((row) => row.length > 0);
       } else {

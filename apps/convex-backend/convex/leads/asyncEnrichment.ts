@@ -334,7 +334,11 @@ async function tryProspectEmailDiscovery(
       prospect.emailDiscoveryStatus === "pending",
   );
 
-  if (pending.length === 0) {
+  const eligiblePending = pending.filter(
+    (prospect) => prospect.employmentVerified === true,
+  );
+
+  if (eligiblePending.length === 0) {
     return {
       acceptedCount: 0,
       candidateCount: 0,
@@ -343,7 +347,7 @@ async function tryProspectEmailDiscovery(
   }
 
   const toTry = selectProspectsForFindyMailNameSearch(
-    pending,
+    eligiblePending,
     args.requestedRoles,
   );
   const service = createEnrichmentService(args.userApiKey, "findymail");
@@ -464,7 +468,7 @@ async function tryProspectEmailDiscovery(
   return {
     acceptedCount,
     candidateCount: toTry.length,
-    hadProspects: pending.length > 0,
+    hadProspects: eligiblePending.length > 0,
   };
 }
 

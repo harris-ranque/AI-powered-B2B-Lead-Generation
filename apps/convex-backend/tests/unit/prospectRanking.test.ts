@@ -145,4 +145,32 @@ describe("prospectRanking", () => {
       "Malte Huffmann",
     ]);
   });
+
+  it("excludes prospects that failed employment verification", () => {
+    const prospects = [
+      {
+        name: "Verified Person",
+        title: "Founder",
+        confidence: 0.9,
+        matchedRole: "Founder",
+        rankScore: 0.98,
+        employmentVerified: true,
+      },
+      {
+        name: "Stale Person",
+        title: "Marketing Director",
+        confidence: 0.9,
+        matchedRole: "Operations Manager",
+        rankScore: 0.72,
+        employmentVerified: false,
+      },
+    ];
+
+    const selected = selectProspectsForFindyMailNameSearch(prospects, [
+      "Founder",
+      "Operations Manager",
+    ]);
+
+    expect(selected.map((p) => p.name)).toEqual(["Verified Person"]);
+  });
 });

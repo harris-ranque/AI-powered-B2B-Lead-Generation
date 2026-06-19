@@ -882,6 +882,12 @@ export const processProspectEmailEnrichment = internalMutation({
           email: emailCandidate.email,
           normalizedEmail,
           linkedin: emailCandidate.linkedin,
+          ...(typeof prospect?.employmentVerified === "boolean"
+            ? { employmentVerified: prospect.employmentVerified }
+            : {}),
+          ...(typeof prospect?.employmentConfidence === "number"
+            ? { employmentConfidence: prospect.employmentConfidence }
+            : {}),
           confidence: emailCandidate.confidence,
           source: "findymail" as const,
           requestedRoles: args.requestedRoles,
