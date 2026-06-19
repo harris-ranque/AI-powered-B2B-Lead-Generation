@@ -1,6 +1,6 @@
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
-import { getAnalysisCompletionState } from "./analysisProgress";
+import { getAnalysisCompletionState, hasAcceptedContactsAwaitingAnalysis } from "./analysisProgress";
 import { isAllEnrichmentTerminal } from "./searchAnalysisRecovery";
 
 type CompletionCtx = QueryCtx | MutationCtx;
@@ -162,6 +162,26 @@ export async function getSearchAnalysisCompletionReadiness(
   const completion = await getAnalysisCompletionState(ctx, searchId);
 
   if (completion.total === 0) {
+    if (await hasAcceptedContactsAwaitingAnalysis(ctx, searchId)) {
+      return {
+        ready: false,
+        reason: "analysis_in_progress",
+        inProgress: 1,
+        total: 0,
+        isComplete: false,
+      };
+    }
+
+    if (await hasRunningEnrichmentBatch(ctx, searchId)) {
+      return {
+        ready: false,
+        reason: "enrichment_batch_running",
+        inProgress: 0,
+        total: 0,
+        isComplete: false,
+      };
+    }
+
     return {
       ready: true,
       reason: "nothing_to_analyze",

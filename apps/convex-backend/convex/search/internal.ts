@@ -182,31 +182,44 @@ export const getSearchesByStatusesInternal = internalQuery({
   },
 });
 
-/** Re-open a failed search so Write Emails recovery can run (analysis timeout only). */
+/** Re-open a search so Write Emails recovery can run. */
 export const reopenSearchForAnalysisRecovery = internalMutation({
   args: { searchId: v.id("searches") },
   handler: async (ctx, args) => {
     const search = await ctx.db.get(args.searchId);
-    if (!search || search.status !== "failed") {
+    if (!search) {
       return { reopened: false };
     }
 
-    const now = Date.now();
-    let updates: Record<string, unknown> = {
-      status: "processing",
-      error: undefined,
-      completedAt: undefined,
-    };
-    updates = withUpdatedAtIfSupported(updates, search, now);
+    const recoverable =
+      search.status === "failed" ||
+      search.status === "processing" ||
+      search.status === "completed";
 
-    try {
-      await ctx.db.patch(args.searchId, updates);
-    } catch (error) {
-      if (!isUpdatedAtSchemaError(error)) {
-        throw error;
+    if (!recoverable) {
+      return { reopened: false };
+    }
+
+    if (search.status === "completed" || search.status === "failed") {
+      const now = Date.now();
+      let updates: Record<string, unknown> = {
+        status: "processing",
+        error: undefined,
+        completedAt: undefined,
+        completionTriggered: undefined,
+        completionTriggeredAt: undefined,
+      };
+      updates = withUpdatedAtIfSupported(updates, search, now);
+
+      try {
+        await ctx.db.patch(args.searchId, updates);
+      } catch (error) {
+        if (!isUpdatedAtSchemaError(error)) {
+          throw error;
+        }
+        const { updatedAt: _u, ...withoutUpdatedAt } = updates;
+        await ctx.db.patch(args.searchId, withoutUpdatedAt);
       }
-      const { updatedAt: _u, ...withoutUpdatedAt } = updates;
-      await ctx.db.patch(args.searchId, withoutUpdatedAt);
     }
 
     return { reopened: true };

@@ -1370,8 +1370,11 @@ export const evaluateAnalysisRecoveryNeed = internalQuery({
     const recoverableFailed =
       search.status === "failed" &&
       isFailedSearchAnalysisTimeout(search.error);
+    const recoverableCompleted =
+      search.status === "completed" &&
+      (search.results?.exportableCount ?? 0) === 0;
 
-    if (!recoverableProcessing && !recoverableFailed) {
+    if (!recoverableProcessing && !recoverableFailed && !recoverableCompleted) {
       return { shouldScheduleDirect: false, reason: "status_not_recoverable" };
     }
 

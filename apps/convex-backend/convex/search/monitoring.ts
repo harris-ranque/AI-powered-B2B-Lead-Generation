@@ -560,6 +560,7 @@ export const monitorSearchHealth: any = internalAction({
     const DISCOVERY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
     const PROCESSING_TIMEOUT_MS = 120 * 60 * 1000; // 120 minutes
     const FORCE_COMPLETE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+    const COMPLETED_RECOVERY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
     const results = {
       completions: { searchesChecked: 0, searchesEvaluated: 0, completionsScheduled: 0 },
@@ -588,13 +589,11 @@ export const monitorSearchHealth: any = internalAction({
           "✅ No in-progress searches to check",
           {},
         );
-        return { success: true, ...results };
-      }
+      } else {
+        results.completions.searchesChecked = candidateSearches.length;
+        results.recovery.searchesChecked = candidateSearches.length;
 
-      results.completions.searchesChecked = candidateSearches.length;
-      results.recovery.searchesChecked = candidateSearches.length;
-
-      for (const search of candidateSearches) {
+        for (const search of candidateSearches) {
         // Skip searches with active checkpoint error - they're paused waiting for user action
         const checkpoint = search.enrichmentCheckpoint;
         if (checkpoint?.errorCode && checkpoint.resumable) {
@@ -855,6 +854,50 @@ export const monitorSearchHealth: any = internalAction({
         await ctx.scheduler.runAfter(0, "search/actions:completeSearch" as any, {
           searchId: search._id as any,
         });
+      }
+      }
+
+      // ======================================================================
+      // CHECK 4: Completed searches with contacts that never got Write Emails
+      // ======================================================================
+      const completedSearches = (await ctx.runQuery(
+        internal.search.internal.getSearchesByStatusesInternal,
+        { statuses: ["completed"] },
+      )) as Doc<"searches">[];
+
+      const recentCompleted = completedSearches
+        .filter((search) => {
+          const completedAt = search.completedAt ?? search.updatedAt ?? 0;
+          return now - completedAt <= COMPLETED_RECOVERY_MAX_AGE_MS;
+        })
+        .filter((search) => (search.results?.exportableCount ?? 0) === 0)
+        .slice(0, 20);
+
+      for (const search of recentCompleted) {
+        const evaluation = await ctx.runQuery(
+          internal.leads.internal.evaluateAnalysisRecoveryNeed,
+          { searchId: search._id as Id<"searches"> },
+        );
+
+        if (!evaluation.shouldScheduleDirect) {
+          continue;
+        }
+
+        const analysisRecovered = await triggerAnalysisRecovery(
+          ctx,
+          correlation,
+          search._id,
+          {
+            reason: evaluation.reason,
+            phase: "completed_search_recovery",
+            pending: evaluation.pending,
+          },
+        );
+
+        if (analysisRecovered) {
+          results.recovery.searchesRecovered++;
+          results.recovery.analysisRecoveryScheduled++;
+        }
       }
 
       // ======================================================================

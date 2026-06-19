@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useAuth as useClerkAuth } from "@clerk/clerk-react";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@genni/convex-types";
 import type { Doc } from "@genni/convex-types/dataModel";
 import { Card } from "@/components/ui/card";
@@ -49,7 +49,9 @@ export function LeadSearchHistory() {
   const { getToken: getClerkToken } = useClerkAuth();
   const { toast } = useToast();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [retryingWriteEmailsId, setRetryingWriteEmailsId] = useState<string | null>(null);
   const [expandedSearchId, setExpandedSearchId] = useState<string | null>(null);
+  const resumeWriteEmails = useMutation(api.search.mutations.resumeWriteEmails);
 
   // Check if Instantly is configured
   const userApiKeys = useQuery(api.userApiKeys.queries.getUserApiKeys);
@@ -196,6 +198,37 @@ export function LeadSearchHistory() {
     }
   };
 
+  const handleRetryWriteEmails = async (searchId: string) => {
+    setRetryingWriteEmailsId(searchId);
+    try {
+      const result = await resumeWriteEmails({
+        searchId: searchId as Doc<"searches">["_id"],
+      });
+      if (result.success) {
+        toast({
+          title: "Write Emails started",
+          description: `Retrying email writing for ${result.scheduledContacts} contact(s). Export will be available when complete.`,
+        });
+      } else {
+        toast({
+          title: "Nothing to retry",
+          description: result.message,
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Could not retry Write Emails.";
+      toast({
+        title: "Retry failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setRetryingWriteEmailsId(null);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 text-muted-foreground">
@@ -246,6 +279,11 @@ export function LeadSearchHistory() {
             (s.duplicatesFilteredEmail || 0) +
             (s.duplicatesFilteredAddress || 0) +
             (s.duplicatesFilteredPlaceId || 0);
+
+          const needsWriteEmailsRetry =
+            s.status === "completed" &&
+            (liveSummary?.acceptedContacts ?? 0) > 0 &&
+            (liveSummary?.exportableContacts ?? 0) === 0;
 
           return (
             <Card key={String(s._id)} className="overflow-hidden" data-testid="search-history-item">
@@ -386,6 +424,28 @@ export function LeadSearchHistory() {
                         </>
                       )}
                     </Button>
+
+                    {needsWriteEmailsRetry && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleRetryWriteEmails(String(s._id))}
+                        disabled={retryingWriteEmailsId === String(s._id)}
+                        title="Re-run AI email writing for contacts that failed or were skipped"
+                      >
+                        {retryingWriteEmailsId === String(s._id) ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Retrying...
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="h-4 w-4 mr-2" />
+                            Retry Write Emails
+                          </>
+                        )}
+                      </Button>
+                    )}
 
                     {/* Push to Instantly - Show disabled button if not configured */}
                     {isInstantlyConfigured ? (

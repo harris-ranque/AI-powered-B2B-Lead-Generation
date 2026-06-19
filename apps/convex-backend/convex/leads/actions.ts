@@ -972,6 +972,34 @@ export const analyzeLeads: any = internalAction({
           };
         }
 
+        const contactsStillNeedingWork = await ctx.runQuery(
+          internal.leads.contactInternal.getContactsForAnalysis,
+          { searchId: args.searchId },
+        );
+
+        if (contactsStillNeedingWork.length > 0) {
+          logWithCorrelation(
+            "warn",
+            correlation,
+            "⚠️ Contacts need analysis but were not scheduled — re-queuing Write Emails",
+            {
+              contactCount: contactsStillNeedingWork.length,
+            },
+          );
+
+          await ctx.scheduler.runAfter(
+            0,
+            "leads/actions:analyzeLeads" as any,
+            { searchId: args.searchId },
+          );
+
+          return {
+            success: true,
+            message: "Re-scheduled analysis for contacts awaiting Write Emails",
+            scheduledCount: 0,
+          };
+        }
+
         logWithCorrelation(
           "warn",
           correlation,

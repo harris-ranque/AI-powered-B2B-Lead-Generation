@@ -19,6 +19,7 @@ import { createConvexError, ERROR_CODES } from "../lib/errorHandling";
 import { isAdmin } from "../lib/helpers";
 import { canUseAsFrozenDiscoverySource } from "../lib/discoveryFreeze";
 import { schedulePostDiscoveryPipeline } from "../lib/pipelineHandoff";
+import { getAnalysisCompletionState } from "../lib/analysisProgress";
 
 // Create a new search
 export const createSearch = mutation({
@@ -655,6 +656,65 @@ export const resumeLinkedReenrichment = mutation({
       success: true,
       searchId: args.searchId,
       pendingLinkedCount: pendingLinked.length,
+    };
+  },
+});
+
+/** Re-run Write Emails (LangGraph analysis) for contacts that are pending or failed. */
+export const resumeWriteEmails = mutation({
+  args: {
+    searchId: v.id("searches"),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const search = await ctx.db.get(args.searchId);
+
+    if (!search || search.userId !== user._id) {
+      throw createConvexError("authorization", "Search not found or access denied", {
+        code: ERROR_CODES.FORBIDDEN,
+        severity: "medium",
+        retryable: false,
+      });
+    }
+
+    if (search.status === "cancelled") {
+      throw createConvexError("validation", "Cannot retry email writing on a cancelled search", {
+        code: ERROR_CODES.VALIDATION_FAILED,
+        severity: "low",
+        retryable: false,
+      });
+    }
+
+    const completion = await getAnalysisCompletionState(ctx, args.searchId);
+    const workRemaining = completion.pending + completion.failed;
+
+    if (workRemaining === 0) {
+      return {
+        success: false,
+        message: "No contacts need email writing for this search",
+        pending: completion.pending,
+        failed: completion.failed,
+      };
+    }
+
+    if (search.status === "completed" || search.status === "failed") {
+      await ctx.runMutation(internal.search.internal.reopenSearchForAnalysisRecovery, {
+        searchId: args.searchId,
+      });
+    }
+
+    await ctx.scheduler.runAfter(
+      0,
+      (internal as any)["leads/actions"].analyzeLeads,
+      { searchId: args.searchId },
+    );
+
+    return {
+      success: true,
+      searchId: args.searchId,
+      pending: completion.pending,
+      failed: completion.failed,
+      scheduledContacts: workRemaining,
     };
   },
 });

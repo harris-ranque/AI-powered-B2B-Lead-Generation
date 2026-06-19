@@ -13,6 +13,8 @@ import {
   isContactFullyExportable,
   isLeadExportable,
   noExportableLeadsMessage,
+  buildContactExportBlockerStats,
+  isQuotaRelatedAnalysisError,
   resolveContactExportTitle,
   type ExportableLead,
 } from "../../convex/lib/exportEligibility";
@@ -313,6 +315,43 @@ describe("exportEligibility", () => {
     const msg = noExportableLeadsMessage({ total: 42, withoutEmail: 10, analysisFailed: 32 });
     expect(msg).toContain("10 had no usable email address");
     expect(msg).toContain("32 had failed analysis");
+  });
+
+  it("message distinguishes awaiting email writing from failed analysis", () => {
+    const msg = noExportableLeadsMessage({
+      total: 23,
+      withoutEmail: 0,
+      analysisFailed: 5,
+      awaitingEmailWriting: 18,
+    });
+    expect(msg).toContain("18 still awaiting email writing");
+    expect(msg).toContain("5 had failed analysis");
+  });
+
+  it("buildContactExportBlockerStats classifies pending as awaiting email writing", () => {
+    const stats = buildContactExportBlockerStats([
+      {
+        email: "a@example.com",
+        analysisStatus: "pending",
+        status: "accepted",
+      },
+      {
+        email: "b@example.com",
+        analysisStatus: "failed",
+        status: "accepted",
+      },
+    ]);
+    expect(stats.awaitingEmailWriting).toBe(1);
+    expect(stats.analysisFailed).toBe(1);
+  });
+
+  it("detects quota-related analysis errors", () => {
+    expect(
+      isQuotaRelatedAnalysisError(
+        "Error code: 429 - insufficient_quota",
+      ),
+    ).toBe(true);
+    expect(isQuotaRelatedAnalysisError("Network timeout")).toBe(false);
   });
 
   it("message handles zero total leads", () => {

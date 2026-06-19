@@ -439,11 +439,63 @@ export async function countExportableLeads(
   return countExportableContacts(ctx, searchId);
 }
 
+export type ContactExportBlockerStats = {
+  total: number;
+  withoutEmail: number;
+  awaitingEmailWriting: number;
+  analysisFailed: number;
+};
+
+/** Split accepted contacts into export blocker buckets for user-facing messages. */
+export function buildContactExportBlockerStats(
+  contacts: ExportableContact[],
+): ContactExportBlockerStats {
+  let withoutEmail = 0;
+  let awaitingEmailWriting = 0;
+  let analysisFailed = 0;
+
+  for (const contact of contacts) {
+    if (!contact.email.trim()) {
+      withoutEmail++;
+      continue;
+    }
+    const category = classifyContactExportReadiness(contact);
+    if (category === "awaiting_email_writing") {
+      awaitingEmailWriting++;
+    } else if (category === "analysis_failed") {
+      analysisFailed++;
+    } else if (category !== "exportable") {
+      awaitingEmailWriting++;
+    }
+  }
+
+  return {
+    total: contacts.length,
+    withoutEmail,
+    awaitingEmailWriting,
+    analysisFailed,
+  };
+}
+
+export function isQuotaRelatedAnalysisError(error?: string): boolean {
+  if (!error) {
+    return false;
+  }
+  const normalized = error.toLowerCase();
+  return (
+    normalized.includes("insufficient_quota") ||
+    normalized.includes("exceeded your current quota") ||
+    normalized.includes("rate limit") ||
+    normalized.includes("429")
+  );
+}
+
 export function noExportableLeadsMessage(
   stats: {
     total: number;
     withoutEmail: number;
     analysisFailed: number;
+    awaitingEmailWriting?: number;
   },
   options?: {
     duplicateSkips?: number;
@@ -451,9 +503,11 @@ export function noExportableLeadsMessage(
     linkedForReenrichment?: number;
     acceptedContacts?: number;
     exportReadiness?: ExportReadinessSummary;
+    quotaBlocked?: boolean;
   },
 ): string {
   const { total, withoutEmail, analysisFailed } = stats;
+  const awaitingEmailWriting = stats.awaitingEmailWriting ?? 0;
   const duplicateSkips = options?.duplicateSkips ?? 0;
   const priorSearchExportable = options?.priorSearchExportable ?? 0;
   const linkedForReenrichment = options?.linkedForReenrichment ?? 0;
@@ -483,10 +537,19 @@ export function noExportableLeadsMessage(
 
   const reasons: string[] = [];
   if (withoutEmail > 0) reasons.push(`${withoutEmail} had no usable email address`);
+  if (awaitingEmailWriting > 0) {
+    reasons.push(`${awaitingEmailWriting} still awaiting email writing`);
+  }
   if (analysisFailed > 0) reasons.push(`${analysisFailed} had failed analysis`);
 
-  if (reasons.length === 0) return `No exportable leads found out of ${total} total leads`;
-  return `No exportable leads found (${total} leads discovered: ${reasons.join(", ")})`;
+  const quotaNote = options?.quotaBlocked
+    ? " AI provider quota or rate limit was exceeded — check billing/API keys, then retry Write Emails from search history."
+    : "";
+
+  if (reasons.length === 0) {
+    return `No exportable leads found out of ${total} total leads.${quotaNote}`;
+  }
+  return `No exportable leads found (${total} contacts discovered: ${reasons.join(", ")}).${quotaNote}`;
 }
 
 type EmailDedupableContact = {

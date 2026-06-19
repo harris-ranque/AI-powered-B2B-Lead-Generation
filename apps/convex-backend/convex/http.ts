@@ -22,6 +22,8 @@ import {
   isLeadExportable,
   isContactEmailExportable,
   isContactExportable,
+  buildContactExportBlockerStats,
+  isQuotaRelatedAnalysisError,
   noExportableLeadsMessage,
   formatExportPhone,
   resolveContactExportTitle,
@@ -1180,22 +1182,16 @@ http.route({
         );
 
         if (exportableContacts.length === 0) {
+          const blockerStats = buildContactExportBlockerStats(exportContacts);
+          const quotaBlocked = exportContacts.some((contact) =>
+            isQuotaRelatedAnalysisError(contact.analysisError),
+          );
+
           return new Response(
-            noExportableLeadsMessage({
-              total: exportContacts.length,
-              withoutEmail: exportContacts.filter((c) => !c.email.trim()).length,
-              analysisFailed: exportContacts.filter(
-                (c) =>
-                  !isContactEmailExportable({
-                    email: c.email,
-                    analysisStatus: c.analysisStatus,
-                    status: "accepted",
-                    emailContent: c.emailContent,
-                  }) && c.email.trim().length > 0,
-              ).length,
-            }, {
+            noExportableLeadsMessage(blockerStats, {
               duplicateSkips,
               priorSearchExportable,
+              quotaBlocked,
             }),
             {
               status: 404,
